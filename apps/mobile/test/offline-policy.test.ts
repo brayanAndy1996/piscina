@@ -15,10 +15,13 @@ test('firma, ámbito y clave del dispositivo son obligatorios para acceso offlin
  assert.equal(evaluateOffline({...valid,signature:'00'.repeat(64)},expected,anchor,{bootId:'boot-a',elapsedMs:11000,wallMs:21000}).authorized,false);
  assert.equal(evaluateOffline(valid,{...expected,deviceId:'otro'},anchor,{bootId:'boot-a',elapsedMs:11000,wallMs:21000}).authorized,false);
  assert.equal(evaluateOffline(valid,{...expected,userId:'otro'},anchor,{bootId:'boot-a',elapsedMs:11000,wallMs:21000}).authorized,false);
+ for(const mismatch of [{tenantId:'otro'},{publicKey:'cd'.repeat(32)},{securityVersion:2},{serverPublicKey:'ff'.repeat(32)}])assert.equal(evaluateOffline(valid,{...expected,...mismatch},anchor,{bootId:'boot-a',elapsedMs:11000,wallMs:21000}).authorized,false);
  assert.equal(evaluateOffline(grant({...claims,permissions:[]}),expected,anchor,{bootId:'boot-a',elapsedMs:11000,wallMs:21000}).authorized,false);
 });
 test('24h exactas, reinicio, retroceso de reloj y ancla ajena bloquean',()=>{
  const valid=grant();
+ assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:10000+86399999,wallMs:20000+86399999}).authorized,true);
+ assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:9999,wallMs:19999}).authorized,false);
  assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:10000+86400000,wallMs:20000+86400000}).authorized,false);
  assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-b',elapsedMs:11000,wallMs:21000}).authorized,false);
  assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:11000,wallMs:0}).authorized,false);

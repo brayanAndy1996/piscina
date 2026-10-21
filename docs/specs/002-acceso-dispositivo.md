@@ -50,4 +50,4 @@ Pruebas de permisos, firma manipulada, replay, sesión revocada, ID de otro tena
 
 ## Resultado
 
-Implementado y verificado localmente: 13 pruebas unitarias, 11 de PostgreSQL, builds y smokes con navegador real. Evidencia y límites: [verificación de acceso](../08-verificacion-acceso.md). Compilación Kotlin remota y calificación física se registran separadamente; no se ha probado teléfono Android.
+Implementado y verificado localmente: 13 pruebas unitarias, 11 de PostgreSQL, builds y smokes con navegador real. Evidencia y límites: [verificación de acceso](../08-verificacion-acceso.md). Compilación Kotlin remota aprobada; calificación física pendiente, no se ha probado teléfono Android.

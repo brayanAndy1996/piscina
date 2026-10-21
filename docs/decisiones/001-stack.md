@@ -1,6 +1,6 @@
 # ADR 001 — Web, Android y nube
 
-Fecha: 2026-10-21. Estado: base ejecutable seleccionada y verificada a nivel de servidor/web y bundle Android. La validación nativa en dispositivo/APK sigue pendiente. No habilita funcionalidades sensibles sin spec.
+Fecha: 2026-10-21. Estado: base ejecutable seleccionada y verificada a nivel de servidor/web y bundle Android. La compilación Kotlin Android pasó en CI; validación en dispositivo/APK sigue pendiente. No habilita funcionalidades sensibles sin spec.
 
 ## Requisitos y decisión
 
@@ -24,7 +24,7 @@ React Native fue preferido por el fundador frente a Capacitor/PWA. Expo no susti
 
 Versiones exactas en manifiestos/lockfile, consultadas el 2026-10-21. Node mínimo de este proyecto: 24.13, rama 24 LTS; validado con 24.22.0 y npm 11.3.0. El Node 24.1 del equipo no cumple Expo, por lo que las verificaciones usan un runtime local ignorado por Git, sin modificar el global. TypeScript 6.0.3 coincide con el template oficial Expo SDK58. ESLint 10.13.0 evita iniciar con la rama 9 ya sin soporte. PostgreSQL 17.5 es el servidor local probado; no prescribe desplegar esa revisión antigua en producción.
 
-Evidencia: `expo-template-blank-typescript@58.0.25` oficial declara React 19.3.0, RN 0.88.0, Expo ~58.0.16 y TS ~6.0.3; `expo install --check` encontró versiones coherentes con el SDK local, aunque advirtió que su validación offline es limitada. Se probaron tipos, SQL SQLite real, API/web compiladas, PostgreSQL real y bundle Hermes. No se ha probado Android nativo.
+Evidencia: `expo-template-blank-typescript@58.0.25` oficial declara React 19.3.0, RN 0.88.0, Expo ~58.0.16 y TS ~6.0.3; `expo install --check` encontró versiones coherentes con el SDK local, aunque advirtió que su validación offline es limitada. Se probaron tipos, SQL SQLite real, API/web compiladas, PostgreSQL real y bundle Hermes. La compilación Kotlin Android de acceso pasó en CI (ver registro v0.2.0); no se ha ejecutado en hardware.
 
 Fuentes oficiales consultadas:
 

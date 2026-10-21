@@ -20,6 +20,17 @@ Revisados aislamiento por sesión y FK compuestas; autorización duplicada tras 
 
 ## Android nativo y límites
 
-El workflow incluye compilación Kotlin del proyecto generado por Expo, separada del bundle JavaScript. Su resultado remoto se registra después de publicar. Este equipo no tiene SDK Android ni teléfono conectado: no se afirma instalación ni prueba física. SecureStore, suspensión, cierre/reapertura, reinicio y comportamiento de reloj deben verificarse en un build nativo sobre hardware antes del piloto; Expo Go no contiene el módulo propio.
+El workflow incluye compilación Kotlin del proyecto generado por Expo, separada del bundle JavaScript. [GitHub Actions de 09cf6c8](https://github.com/brayanAndy1996/piscina/actions/runs/39646450580) aprobó ambos jobs: API/web/JS/PostgreSQL/smokes y compilación Kotlin Android, incluido `:piscina-clock:compileDebugKotlin`. Este equipo no tiene SDK Android ni teléfono conectado: no se afirma instalación ni prueba física. SecureStore, suspensión, cierre/reapertura, reinicio y comportamiento de reloj deben verificarse en un build nativo sobre hardware antes del piloto; Expo Go no contiene el módulo propio.
 
 La autorización firmada no permite revocación instantánea de un celular desconectado: vence en un máximo de 24 horas y la sustitución espera ese vencimiento. No hay cola durable, sincronización de alumnos/cobros, cámara ni datos operativos. RLS, cuenta de BD sin privilegios de migración, gestión productiva de claves, rate limit compartido entre réplicas, hosting y respaldo quedan como preparación del despliegue.
+
+## Instalación limpia y dependencias
+
+`npm ci` sobre un archivo ZIP de Git separado terminó correctamente (740 paquetes en Windows); también pasó desde cero en ambos jobs Linux. Generación de clave probada en carpeta aislada: crea una vez y rechaza sobrescritura sin alterar el archivo.
+
+El audit inicial detectó dos avisos críticos asociados a shell-quote en herramientas de desarrollo. Se actualizaron concurrently a 9.2.5 y shell-quote a 1.12.0 dentro de rangos compatibles: ya no hay avisos críticos. Tras el parche quedan 23 entradas agregadas (15 altas, 8 moderadas, incluidas cadenas de dependencias; no equivalen a 23 fallos diferentes).
+
+- [node-forge](https://github.com/advisories/GHSA-86w9-cpqp-85rv) y [braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm): sin versión corregida publicada según los avisos consultados. Están en herramientas Expo/Metro, no en la API; no exponer Metro/CLI a internet ni tratar certificados/patrones externos no confiables durante desarrollo. La firma de acceso usa Ed25519 de node:crypto/noble, sin node-forge. Su remediación sigue pendiente del proveedor o de una decisión de sustitución verificada antes de distribución.
+- [uuid](https://github.com/advisories/GHSA-w5hq-g745-h8pq) transitivo de Sequelize/xcode: el aviso afecta v3/v5/v6 con buffer externo, mientras estas dependencias usan v1/v4 y el módulo propio usa randomUUID de Node. La auditoría de producción del workspace API deja dos entradas moderadas (Sequelize/uuid), ninguna alta/crítica. No se fuerza una versión mayor transitiva ni se degrada Expo/Sequelize para silenciar avisos; revisar actualización compatible y alcance antes de despliegue.
+
+Esta evaluación no equivale a auditoría de dependencias limpia ni a aprobación productiva. Las correcciones futuras deben repetir pruebas pertinentes.
