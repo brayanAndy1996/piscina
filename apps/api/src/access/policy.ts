@@ -1,8 +1,8 @@
 export const ROLE_PERMISSIONS = {
-  ADMIN: ['users.read', 'users.manage', 'roles.read', 'devices.read', 'devices.manage', 'audit.read', 'offline.use'],
-  SECRETARIA: ['devices.read', 'offline.use'],
-  ENTRENADOR: [],
-  ALUMNO: [],
+  ADMIN: ['users.read', 'users.manage', 'roles.read', 'devices.read', 'devices.manage', 'audit.read', 'offline.use', 'academy.read', 'academy.manage', 'students.read', 'students.manage', 'enrollments.manage', 'cash.write', 'payments.write', 'attendance.write', 'cash.read.all', 'notices.manage'],
+  SECRETARIA: ['devices.read', 'offline.use', 'academy.read', 'students.read', 'students.manage', 'enrollments.manage', 'cash.write', 'payments.write', 'attendance.write'],
+  ENTRENADOR: ['assigned.read'],
+  ALUMNO: ['portal.read'],
 } as const;
 export type Role = keyof typeof ROLE_PERMISSIONS;
 export class AccessError extends Error {

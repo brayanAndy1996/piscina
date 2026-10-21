@@ -25,3 +25,7 @@ docs/contexto/
 apps/mobile/android/
 apps/mobile/ios/
 !apps/mobile/.env.example
+
+.backups/
+*.backup
+*.dump

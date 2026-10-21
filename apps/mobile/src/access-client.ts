@@ -59,3 +59,5 @@ export async function offlineStatus(session:Session){
  const key=await deviceKeys();
  return evaluateOffline(stored.grant,{serverPublicKey:process.env.EXPO_PUBLIC_OFFLINE_PUBLIC_KEY??'',tenantId:session.user.tenant_id,userId:session.user.id,deviceId:stored.deviceId,publicKey:key.publicKey,securityVersion:session.user.version},stored.anchor,await deviceClock());
 }
+
+export function resourceUrl(path:string){const configured=process.env.EXPO_PUBLIC_API_URL;if(!configured)throw new ClientError('Configura la URL de API.');const url=new URL(path,configured.endsWith('/')?configured:configured+'/');if(url.username||url.password||!['http:','https:'].includes(url.protocol)||(!__DEV__&&url.protocol!=='https:'))throw new ClientError('La API requiere HTTPS.');return url.toString();}

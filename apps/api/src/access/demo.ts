@@ -9,7 +9,7 @@ export async function seedAccessDemo(service:AccessService,enabled:boolean) {
  const [name]=await db.query<{name:string}>('SELECT current_database() AS name',{type:QueryTypes.SELECT});
  if(!enabled||!name?.name.endsWith('_demo')) throw new AccessError(400,'DEMO_TARGET','Demo requiere opción explícita y BD dedicada con sufijo _demo.');
  const tables=await db.query<{name:string}>('SELECT table_name AS name FROM information_schema.tables WHERE table_schema=current_schema()',{type:QueryTypes.SELECT});
- if(tables.some(t=>!t.name.startsWith('access_')&&t.name!=='piscina_migrations')) throw new AccessError(409,'UNKNOWN_DATA','Demo rechazada: existen tablas ajenas al escenario de acceso.');
+ if(tables.some(t=>!t.name.startsWith('access_')&&!['academy_demo_seed','academy_settings','academy_plans','academy_trainers','academy_classes','academy_students','academy_enrollments','academy_enrollment_classes','academy_operations','academy_cashboxes','academy_files','academy_payments','academy_movements','academy_receipts','academy_cards','academy_attendance','academy_notices'].includes(t.name)&&t.name!=='piscina_migrations')) throw new AccessError(409,'UNKNOWN_DATA','Demo rechazada: existen tablas ajenas al escenario de acceso.');
  const fixtures=[
   {username:'admin',display:'Administrador demo',role:'ADMIN',password:'DemoLocal2026!',active:true,temporary:false},
   {username:'secretaria',display:'Recepción demo',role:'SECRETARIA',password:'RecepcionDemo2026!',active:true,temporary:true},

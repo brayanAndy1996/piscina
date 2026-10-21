@@ -2,7 +2,7 @@
   "expo": {
     "name": "Academia de natación",
     "slug": "piscina",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "platforms": [
       "android"
@@ -13,7 +13,23 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permite leer el carnet QR del alumno.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite adjuntar identificación y comprobantes privados.",
+          "cameraPermission": "Permite fotografiar identificación y comprobantes.",
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }

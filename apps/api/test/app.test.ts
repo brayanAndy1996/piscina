@@ -14,7 +14,7 @@ test('vida no depende de BD; readiness devuelve 503 sin filtrar secretos', async
     assert.equal(live.json().status, 'ok');
     const ready = await app.inject('/health/ready');
     assert.equal(ready.statusCode, 503);
-    assert.deepEqual(ready.json(), { service: 'piscina-api', status: 'unavailable', version: '0.2.0' });
+    assert.deepEqual(ready.json(), { service: 'piscina-api', status: 'unavailable', version: '0.3.0' });
     assert.equal(ready.headers['cache-control'], 'no-store');
     assert.doesNotMatch(ready.body, /SECRET|postgres:\/\//);
   } finally { await app.close(); }

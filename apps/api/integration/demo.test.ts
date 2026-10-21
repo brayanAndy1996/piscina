@@ -1,3 +1,6 @@
+import {migrateOperations} from '../src/operations/migrations.js';
+import {migrateAcademy} from '../src/academy/migrations.js';
+import {seedAcademyDemo} from '../src/academy/demo.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { randomUUID,generateKeyPairSync } from 'node:crypto';
@@ -16,9 +19,10 @@ test('demo explícita, repetible y protegida frente a datos reales',async()=>{
  const db=createDatabase({...config,databaseUrl:url.toString()});
  const service=new AccessService(db,generateKeyPairSync('ed25519').privateKey);
  try {
-  await migrateAccess(db);
+  await migrateAccess(db);await migrateAcademy(db);await migrateOperations(db);
   await assert.rejects(seedAccessDemo(service,false),{code:'DEMO_TARGET'});
-  await seedAccessDemo(service,true);
+  await seedAccessDemo(service,true);await seedAcademyDemo(service,true);await seedAcademyDemo(service,true);
+  assert.equal((await service.rows('SELECT id FROM academy_students')).length,4);
   const before=await service.rows('SELECT id FROM access_users');assert.equal(before.length,8);
   await seedAccessDemo(service,true);
   assert.equal((await service.rows('SELECT id FROM access_users')).length,8);

@@ -1,3 +1,7 @@
+import {migrateOperations} from '../apps/api/src/operations/migrations.js';
+import {AcademyService} from '../apps/api/src/academy/service.js';
+import {limaDate} from '../apps/api/src/academy/rules.js';
+import {migrateAcademy} from '../apps/api/src/academy/migrations.js';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -22,9 +26,15 @@ async function main(){
  const key=generateKeyPairSync('ed25519').privateKey;
  let api:ChildProcess|undefined,web:ChildProcess|undefined;
  try{
-  await migrateAccess(db);
+  await migrateAccess(db);await migrateAcademy(db);await migrateOperations(db);
   const service=new AccessService(db,key);
   await service.bootstrap({slug:'web-prueba',name:'Academia web ficticia',username:'admin',displayName:'Propietario',password:'WebPrueba2026!'});
+  const fixtureToken=(await service.login({academy:'web-prueba',username:'admin',password:'WebPrueba2026!'})).token;
+  const academyService=new AcademyService(service),today=limaDate(),day=new Date(today+'T12:00:00Z').getUTCDay()||7;
+  const command=(data:object)=>({operationId:randomUUID(),data});
+  const planId=(await academyService.savePlan(fixtureToken,command({name:'Plan navegador',priceCents:10000,daysPerWeek:1,monthlyClasses:4,durationMinutes:60,allowedWeekdays:[day],allowedHours:[8],levels:['BASICO'],validFrom:'2026-01-01',validTo:'2099-12-31',active:true}))).id;
+  const trainerId=(await academyService.saveTrainer(fixtureToken,command({name:'Entrenador navegador',phone:'000000000',userId:null,active:true}))).id;
+  const classId=(await academyService.saveClass(fixtureToken,command({trainerId,weekday:day,hour:8,level:'BASICO',capacity:20,active:true}))).id;
   const apiPort=await port(),webPort=await port(),origin=`http://127.0.0.1:${webPort}`;
   const env={...process.env,NEXT_TELEMETRY_DISABLED:'1',WEB_ORIGIN:origin,API_DATABASE_URL:url.toString(),API_HOST:'127.0.0.1',API_PORT:String(apiPort),API_URL:`http://127.0.0.1:${apiPort}`,API_DATABASE_SSL:'disable',API_OFFLINE_PRIVATE_KEY:key.export({type:'pkcs8',format:'der'}).toString('base64')};
   api=spawn(process.execPath,['apps/api/dist/main.js'],{env:{...env,NODE_ENV:'development'},stdio:'ignore'});
@@ -63,10 +73,67 @@ async function main(){
    await form.getByLabel('Contraseña temporal',{exact:true}).fill('BrowserPrueba2026!');
    await form.getByRole('button',{name:'Crear usuario',exact:true}).click();
    await screen.getByRole('heading',{name:'browser-user',exact:true}).waitFor();
+   await screen.goto(origin+'/academia');
+   await screen.getByRole('heading',{name:'Alumnos',exact:true}).waitFor();
+   await screen.getByLabel('DNI (8 dígitos)',{exact:true}).fill('73000001');
+   await screen.getByLabel('Nombre completo',{exact:true}).fill('Alumno navegador');
+   await screen.getByLabel('Nacimiento',{exact:true}).fill('2000-01-01');
+   await screen.getByLabel('Nivel',{exact:true}).selectOption('BASICO');
+   await screen.getByLabel('Teléfono',{exact:true}).fill('000000000');
+   await screen.getByLabel('Dirección',{exact:true}).fill('Dirección ficticia');
+   await screen.getByLabel('Contacto de emergencia',{exact:true}).fill('Contacto ficticio');
+   await screen.getByLabel('Teléfono de emergencia',{exact:true}).fill('000000000');
+   await screen.getByLabel('Acepta tratamiento de datos personales',{exact:true}).check();
+   await screen.getByLabel('Acepta deslinde de responsabilidad',{exact:true}).check();
+   await screen.getByRole('button',{name:'Guardar',exact:true}).click();
+   await screen.getByRole('heading',{name:'Alumno navegador',exact:true}).waitFor();
+   const pupil=(await service.rows<{id:string}>('SELECT id FROM academy_students WHERE dni=:dni',{dni:'73000001'}))[0]!;
+   await screen.getByRole('button',{name:'Inscripciones',exact:true}).click();
+   await screen.getByLabel('Alumno',{exact:true}).selectOption(pupil.id);
+   await screen.getByLabel('Plan',{exact:true}).selectOption(planId);
+   await screen.getByLabel('Clases (un bloque por día elegido)',{exact:true}).selectOption([classId]);
+   await screen.getByLabel('Fecha de inicio',{exact:true}).fill(today);
+   await screen.getByRole('button',{name:'Guardar',exact:true}).click();
+   const enrollment=(await service.rows<{id:string;terms:{totalCents:number}}>('SELECT id,terms FROM academy_enrollments WHERE student_id=:id',{id:pupil.id}))[0];
+   // La respuesta UI llega después del commit; esperar fila antes de leer el estado.
+   await screen.locator('article').filter({has:screen.getByRole('heading',{name:'Alumno navegador',exact:true})}).waitFor();
+   const currentEnrollment=enrollment??(await service.rows<{id:string;terms:{totalCents:number}}>('SELECT id,terms FROM academy_enrollments WHERE student_id=:id',{id:pupil.id}))[0]!;
+   await screen.locator('#reason-'+currentEnrollment.id).fill('Datos comprobados presencialmente');
+   await screen.getByRole('button',{name:'Aprobar',exact:true}).click();
+   await screen.getByText(/APPROVED · S\//).waitFor();
+   await screen.goto(origin+'/operacion');
+   await screen.getByLabel('Fondo inicial S/',{exact:true}).fill('50.00');
+   await screen.getByRole('button',{name:'Registrar',exact:true}).click();
+   await screen.getByRole('button',{name:'Ver movimientos y arqueo',exact:true}).waitFor();
+   await screen.getByRole('button',{name:'Registrar cobro completo',exact:true}).click();
+   await screen.getByLabel('Inscripción',{exact:true}).selectOption(currentEnrollment.id);
+   await screen.getByLabel('Método',{exact:true}).selectOption('CASH');
+   await screen.getByLabel('Importe completo S/',{exact:true}).fill((currentEnrollment.terms.totalCents/100).toFixed(2));
+   await screen.getByRole('button',{name:'Registrar',exact:true}).click();
+   await screen.getByRole('link',{name:'Descargar recibo interno PDF',exact:true}).waitFor();
+   await screen.goto(origin+'/acceso');
    await screen.getByRole('button',{name:'Cerrar sesión',exact:true}).click();
+
    await screen.getByRole('button',{name:'Entrar',exact:true}).waitFor();
+   await screen.getByLabel('Academia',{exact:true}).fill('web-prueba');
+   await screen.getByLabel('Usuario',{exact:true}).fill('73000001');
+   await screen.getByLabel('Contraseña',{exact:true}).fill('73000001');
+   await screen.getByRole('button',{name:'Entrar',exact:true}).click();
+   await screen.getByRole('heading',{name:'Cambia tu contraseña temporal',exact:true}).waitFor();
+   await screen.getByLabel('Contraseña actual',{exact:true}).fill('73000001');
+   await screen.getByLabel('Nueva contraseña (12–128 caracteres)',{exact:true}).fill('AlumnoBrowser2026!');
+   await screen.getByRole('button',{name:'Actualizar contraseña',exact:true}).click();
+   await screen.getByRole('button',{name:'Entrar',exact:true}).waitFor();
+   await screen.getByLabel('Academia',{exact:true}).fill('web-prueba');
+   await screen.getByLabel('Usuario',{exact:true}).fill('73000001');
+   await screen.getByLabel('Contraseña',{exact:true}).fill('AlumnoBrowser2026!');
+   await screen.getByRole('button',{name:'Entrar',exact:true}).click();
+   await screen.getByRole('heading',{name:'Alumno navegador',exact:true}).waitFor();
+   await screen.goto(origin+'/portal');
+   await screen.getByRole('heading',{name:'Carnet digital',exact:true}).waitFor();
+   assert.equal(await screen.getByRole('img',{name:'QR del carnet del alumno'}).count(),1);
    await context.close();
-  }finally{await browser.close();}
+  }catch(error){const page=browser.contexts()[0]?.pages()[0];if(page)await page.screenshot({path:'.tools/modules-browser-failure.png',fullPage:true}).catch(()=>{});throw error;}finally{await browser.close();}
   const oldSession=await service.login({academy:'web-prueba',username:'admin',password:'WebPrueba2026!'});
   const recovered=spawnSync(process.execPath,['--import','tsx','apps/api/src/access/cli.ts','recover'],{env:{...env,NODE_ENV:'development',BOOTSTRAP_ACADEMY:'web-prueba',BOOTSTRAP_USERNAME:'admin',BOOTSTRAP_PASSWORD:'RecuperadaWeb2026!'},stdio:'pipe',timeout:15000});
   assert.equal(recovered.status,0,'CLI de recuperación debe completar');
@@ -77,4 +144,4 @@ async function main(){
   await Promise.all([api?stop(api):Promise.resolve(),web?stop(web):Promise.resolve()]);await db.close();await admin.query(`DROP DATABASE "${name}"`);await admin.close();
  }
 }
-main().catch((error:unknown)=>{console.error(error instanceof Error?error.message:'Falló el smoke de acceso.');process.exitCode=1;});
+main().catch((error:unknown)=>{console.error(error instanceof Error?error.stack:'Falló el smoke de acceso.');process.exitCode=1;});

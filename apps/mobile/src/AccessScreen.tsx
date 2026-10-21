@@ -1,3 +1,6 @@
+import OperationScreen from './OperationScreen';
+import StudentPortal from './StudentPortal';
+import AcademyScreen from './AcademyScreen';
 import UserAdmin from './UserAdmin';
 import { useEffect,useRef,useState } from 'react';
 import { AppState,Button,ScrollView,StyleSheet,Text,TextInput,View } from 'react-native';
@@ -24,6 +27,9 @@ export default function AccessScreen(){
  <Text accessibilityLiveRegion="polite">{offline}</Text><Text>La autorización de acceso no significa que alumnos, cobros o cola de negocio estén implementados.</Text>
  <Button disabled={busy} title="Consultar celulares de la academia" onPress={()=>{void act(async()=>{setDevices(await accessApi<Device[]>('devices',session.token));});}}/>{devices.map(d=><Text key={d.id}>{d.name}: {d.designated?'designado':'no designado'}</Text>)}</View>}
  {!session.user.must_change&&session.user.permissions.includes('users.manage')&&<UserAdmin session={session} onSignedOut={async()=>{await clearAccess();setSession(null);setOffline('Inicia sesión para recuperar acceso.');}}/>}
+ {!session.user.must_change&&(session.user.permissions.includes('academy.read')||session.user.permissions.includes('assigned.read'))&&<AcademyScreen session={session}/>}
+ {!session.user.must_change&&session.user.permissions.includes('cash.write')&&<OperationScreen session={session}/>}
+ {!session.user.must_change&&session.user.permissions.includes('portal.read')&&<StudentPortal session={session}/>}
  <Button disabled={busy} title="Cerrar sesión y eliminar permiso local" onPress={()=>{void act(logout);}}/>
  </>}
  </ScrollView>;

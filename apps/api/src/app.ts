@@ -1,3 +1,8 @@
+import {PrivateFiles,filesRoutes} from './operations/files.js';
+import {OperationsService} from './operations/service.js';
+import {operationsRoutes} from './operations/routes.js';
+import {AcademyService} from './academy/service.js';
+import {academyRoutes} from './academy/routes.js';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import type { DatabaseConnection } from './database.js';
@@ -18,16 +23,20 @@ export function buildApp(options: { database: DatabaseConnection; corsOrigins: s
     app.register(async (instance) => {
       await instance.register(rateLimit, { global: true, max: 120, timeWindow: '1 minute' });
       accessRoutes(instance, options.access!);
+      const academy=new AcademyService(options.access!);
+      academyRoutes(instance,academy);
+      operationsRoutes(instance,new OperationsService(academy));
+      filesRoutes(instance,new PrivateFiles(academy));
     });
   }
-  app.get('/health/live', async () => ({ service: 'piscina-api', status: 'ok', version: '0.2.0' }));
+  app.get('/health/live', async () => ({ service: 'piscina-api', status: 'ok', version: '0.3.0' }));
   app.get('/health/ready', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
     try {
       await options.database.authenticate();
-      return { service: 'piscina-api', status: 'ready', version: '0.2.0' };
+      return { service: 'piscina-api', status: 'ready', version: '0.3.0' };
     } catch {
-      return reply.code(503).send({ service: 'piscina-api', status: 'unavailable', version: '0.2.0' });
+      return reply.code(503).send({ service: 'piscina-api', status: 'unavailable', version: '0.3.0' });
     }
   });
   app.setErrorHandler((error, request, reply) => {

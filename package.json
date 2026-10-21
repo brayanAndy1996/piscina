@@ -1,6 +1,6 @@
 {
   "name": "piscina",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -17,7 +17,7 @@
     "dev:web": "node --env-file-if-exists=.env node_modules/next/dist/bin/next dev apps/web --hostname 127.0.0.1",
     "dev:mobile": "npm run start --workspace @piscina/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p scripts/tsconfig.json",
-    "lint": "eslint apps scripts",
+    "lint": "eslint apps scripts contracts",
     "test": "node --import tsx --test apps/api/test/*.test.ts apps/mobile/test/*.test.ts",
     "test:postgres": "node --env-file-if-exists=.env --import tsx --test apps/api/integration/*.test.ts",
     "build": "npm run build --workspace @piscina/api && npm run build --workspace @piscina/web",
@@ -33,7 +33,10 @@
     "users:recover": "node --env-file-if-exists=.env --env-file-if-exists=.env.keys --import tsx apps/api/src/access/cli.ts recover",
     "db:seed:demo": "node --env-file-if-exists=.env --env-file-if-exists=.env.keys --import tsx apps/api/src/access/demo-cli.ts --demo",
     "keys:generate": "node scripts/generate-access-key.mjs",
-    "smoke:access": "node --env-file-if-exists=.env --import tsx scripts/smoke-access.ts"
+    "smoke:access": "node --env-file-if-exists=.env --import tsx scripts/smoke-access.ts",
+    "backup:key": "node --import tsx scripts/backup.ts key",
+    "backup:create": "node --env-file-if-exists=.env --env-file-if-exists=.env.backup --import tsx scripts/backup.ts create",
+    "backup:verify": "node --env-file-if-exists=.env --env-file-if-exists=.env.backup --import tsx scripts/backup.ts verify"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -1,0 +1,20 @@
+import {QueryTypes,type Sequelize} from 'sequelize';
+import {ROLE_PERMISSIONS} from '../access/policy.js';
+const sql=`
+CREATE TABLE academy_demo_seed(tenant_id uuid PRIMARY KEY REFERENCES access_tenants(id),base_date date NOT NULL);
+CREATE TABLE academy_settings(tenant_id uuid PRIMARY KEY REFERENCES access_tenants(id), data jsonb NOT NULL DEFAULT '{}'::jsonb,version integer NOT NULL DEFAULT 1);
+CREATE TABLE academy_plans(id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES access_tenants(id),name varchar(100) NOT NULL,data jsonb NOT NULL,active boolean NOT NULL DEFAULT true,version integer NOT NULL DEFAULT 1,UNIQUE(tenant_id,id));
+CREATE TABLE academy_trainers(id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES access_tenants(id),name varchar(100) NOT NULL,phone varchar(30) NOT NULL,user_id uuid,active boolean NOT NULL DEFAULT true,version integer NOT NULL DEFAULT 1,UNIQUE(tenant_id,id),UNIQUE(tenant_id,user_id),FOREIGN KEY(tenant_id,user_id) REFERENCES access_users(tenant_id,id));
+CREATE TABLE academy_classes(id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES access_tenants(id),trainer_id uuid NOT NULL,weekday integer NOT NULL CHECK(weekday BETWEEN 1 AND 7),hour integer NOT NULL CHECK(hour BETWEEN 8 AND 19),level varchar(20) NOT NULL CHECK(level IN ('BASICO','INTERMEDIO','AVANZADO')),capacity integer NOT NULL CHECK(capacity BETWEEN 20 AND 50),active boolean NOT NULL DEFAULT true,version integer NOT NULL DEFAULT 1,UNIQUE(tenant_id,id),FOREIGN KEY(tenant_id,trainer_id) REFERENCES academy_trainers(tenant_id,id));
+CREATE UNIQUE INDEX academy_trainer_block ON academy_classes(tenant_id,trainer_id,weekday,hour) WHERE active;
+CREATE TABLE academy_students(id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES access_tenants(id),dni char(8) NOT NULL CHECK(dni ~ '^[0-9]{8}$'),name varchar(100) NOT NULL,birth date NOT NULL,level varchar(20) NOT NULL,data jsonb NOT NULL,user_id uuid,version integer NOT NULL DEFAULT 1,UNIQUE(tenant_id,id),UNIQUE(tenant_id,dni),UNIQUE(tenant_id,user_id),FOREIGN KEY(tenant_id,user_id) REFERENCES access_users(tenant_id,id));
+CREATE TABLE academy_enrollments(id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES access_tenants(id),student_id uuid NOT NULL,plan_id uuid NOT NULL,month char(7) NOT NULL,start_date date NOT NULL,status varchar(20) NOT NULL CHECK(status IN ('REQUESTED','APPROVED','REJECTED')),source varchar(10) NOT NULL,terms jsonb NOT NULL,reason varchar(500),version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL,UNIQUE(tenant_id,id),UNIQUE(tenant_id,student_id,month),FOREIGN KEY(tenant_id,student_id) REFERENCES academy_students(tenant_id,id),FOREIGN KEY(tenant_id,plan_id) REFERENCES academy_plans(tenant_id,id));
+CREATE TABLE academy_enrollment_classes(tenant_id uuid NOT NULL,enrollment_id uuid NOT NULL,class_id uuid NOT NULL,PRIMARY KEY(tenant_id,enrollment_id,class_id),FOREIGN KEY(tenant_id,enrollment_id) REFERENCES academy_enrollments(tenant_id,id),FOREIGN KEY(tenant_id,class_id) REFERENCES academy_classes(tenant_id,id));
+CREATE INDEX academy_reservations ON academy_enrollments(tenant_id,month,status);
+CREATE TABLE academy_operations(tenant_id uuid NOT NULL REFERENCES access_tenants(id),id uuid NOT NULL,actor_id uuid NOT NULL,action varchar(64) NOT NULL,hash char(64) NOT NULL,result jsonb NOT NULL,created_at timestamptz NOT NULL,PRIMARY KEY(tenant_id,id),FOREIGN KEY(tenant_id,actor_id) REFERENCES access_users(tenant_id,id));
+`;
+export async function migrateAcademy(db:Sequelize){await db.transaction(async tx=>{
+ await db.query('SELECT pg_advisory_xact_lock(77821501)',{transaction:tx});
+ const done=await db.query<{version:string}>("SELECT version FROM piscina_migrations WHERE version='002_academy'",{type:QueryTypes.SELECT,transaction:tx});
+ if(!done.length){await db.query(sql,{transaction:tx});for(const [role,permissions] of Object.entries(ROLE_PERMISSIONS))await db.query('UPDATE access_roles SET permissions=CAST(:permissions AS jsonb) WHERE name=:role',{replacements:{role,permissions:JSON.stringify(permissions)},transaction:tx});await db.query("INSERT INTO piscina_migrations(version) VALUES ('002_academy')",{transaction:tx});}
+});}

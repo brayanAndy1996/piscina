@@ -14,7 +14,7 @@ async function getApiState(): Promise<string> {
 
 export default async function Home() {
   const state = await getApiState();
-  return <main>
+  return <main><p><a href="/academia">Operación de academia</a> · <a href="/operacion">Cajas, cobros y asistencia</a> · <a href="/portal">Portal del alumno</a> · <a href="/inscripcion">Solicitud online</a></p>
     <h1>Academia de natación</h1>
     <p>Gestión de acceso disponible</p>
     <p><a href="/acceso">Iniciar sesión y administrar acceso</a></p>

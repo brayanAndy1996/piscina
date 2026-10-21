@@ -1,8 +1,8 @@
 # Academia de natación
 
-Acceso y dispositivo v0.2.0, 2026-10-21. Repositorio: [brayanAndy1996/piscina](https://github.com/brayanAndy1996/piscina).
+Operación online v0.3.0, 2026-10-21. Repositorio: [brayanAndy1996/piscina](https://github.com/brayanAndy1996/piscina).
 
-Backend Node.js/Fastify con Sequelize/PostgreSQL, web Next.js y aplicación Android React Native/Expo independientes. Incluye usuarios/roles, sesiones revocables, auditoría, pantallas web/Android y autorización firmada del único celular offline. **Todavía no hay alumnos, cobros, asistencia ni sincronización de negocio.**
+Backend Node.js/Fastify con Sequelize/PostgreSQL, web Next.js y aplicación Android React Native/Expo independientes. Incluye usuarios/roles, sesiones revocables, auditoría, pantallas web/Android y autorización firmada del único celular offline. Incluye configuración, planes, entrenadores, clases/aforo, alumnos/apoderados, solicitudes públicas, aprobación/renovación, cotización proporcional, cajas, cobros completos/verificación, PDFs internos, carnet QR, asistencia y portal del alumno. **La primera entrega completa sigue pendiente: cola/sincronización comercial offline, automatización del respaldo en hosting y validación física Android aún no terminados.**
 
 ## Requisitos
 
@@ -41,7 +41,7 @@ Estos nombres coinciden con `.env.example`; no crean un usuario administrador de
 npm run db:check
 ```
 
-Este comando solo comprueba conexión, no crea/modifica tablas. Existen migraciones y demo opcional de acceso; los datos comerciales de alumnos/cobros llegarán después. La aplicación no ejecuta `sequelize.sync`, no carga demos ni crea usuarios al arrancar. Las migraciones y demo de acceso se ejecutan explícitamente; ver preparación a continuación.
+Este comando solo comprueba conexión, no crea/modifica tablas. Existen migraciones y demo opcional de acceso y academia; incluyen el esquema comercial de esta versión. La aplicación no ejecuta `sequelize.sync`, no carga demos ni crea usuarios al arrancar. Las migraciones y demo de acceso se ejecutan explícitamente; ver preparación a continuación.
 
 ## Preparar acceso
 
@@ -69,7 +69,11 @@ API en `http://127.0.0.1:4000`; web en `http://127.0.0.1:3000`. También pueden 
 - `/health/live` comprueba que la API responde, aun sin BD.
 - `/health/ready` devuelve 200 con PostgreSQL disponible, o 503 sin exponer credenciales.
 - La web consulta la API desde su servidor y muestra disponibilidad o error real.
-- `/acceso` permite login, usuarios/roles, dispositivos y auditoría según permisos. Tokens en cookie HttpOnly, no en localStorage.
+- `/acceso`: login, usuarios/roles, dispositivos y auditoría; cookie HttpOnly.
+- `/academia`: configuración, planes, entrenadores, clases, alumnos e inscripciones.
+- `/operacion`: cajas, cobros, imágenes privadas, verificación, recibos/cierres PDF y asistencia manual.
+- `/inscripcion`: solicitud online pública, requiere aprobación y pago.
+- `/portal`: cuenta del alumno, carnet QR, mensualidades, recibos y avisos.
 
 Para ejecutar compilados: `npm run build`, después `npm run start:api` y `npm run start:web` en terminales separadas. Los scripts de raíz cargan `.env`; los servidores escuchan loopback por defecto. No hay despliegue público configurado.
 
@@ -100,11 +104,11 @@ npm run smoke
 npm run smoke:access
 ```
 
-`check`: lint, tipos de los tres componentes, 13 pruebas automáticas, build API/web y exportación Android Hermes. No necesita BD conectada. `test:postgres`: pruebas de PostgreSQL y acceso con fixtures propios. Requiere API_TEST_DATABASE_URL local con BD `_test` y rol de pruebas con CREATEDB; crea/elimina únicamente esquemas/bases efímeros. No usa la conexión operativa como fallback. `smoke`: API compilada + PostgreSQL real + página web de producción; comprueba también la caída de API. Ejecutar después del build y con PostgreSQL disponible.
+`check`: lint, tipos de los tres componentes, 17 pruebas automáticas, build API/web y exportación Android Hermes. No necesita BD conectada. `test:postgres`: pruebas de PostgreSQL y acceso con fixtures propios. Requiere API_TEST_DATABASE_URL local con BD `_test` y rol de pruebas con CREATEDB; crea/elimina únicamente esquemas/bases efímeros. No usa la conexión operativa como fallback. `smoke`: API compilada + PostgreSQL real + página web de producción; comprueba también la caída de API. Ejecutar después del build y con PostgreSQL disponible.
 
 También existen `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` y `npm run build:mobile`. `build:mobile` genera un bundle en `apps/mobile/dist`, no un APK. `npm run smoke:access` verifica BFF y administración en navegador real headless con BD efímera; necesita Edge (Windows) o Chrome (Linux). El workflow ejecuta checks/integración/smokes y un job de compilación Kotlin Android; no despliega servicios.
 
-Las pruebas SQLite usan archivos temporales aislados. SQLite sigue conteniendo solo diagnóstico; las claves, sesión y permisos firmados se guardan en SecureStore. No hay cola ni datos comerciales. Resultados históricos de base: [v0.1.0](docs/06-verificacion-base.md); acceso: [v0.2.0](docs/08-verificacion-acceso.md).
+Las pruebas SQLite usan archivos temporales aislados. SQLite sigue conteniendo solo diagnóstico; las claves, sesión y permisos firmados se guardan en SecureStore. Los módulos comerciales operan online contra PostgreSQL; la cola comercial Android aún no existe. Resultados históricos de base: [v0.1.0](docs/06-verificacion-base.md); acceso: [v0.2.0](docs/08-verificacion-acceso.md).
 
 ## Documentación
 
@@ -121,4 +125,12 @@ Las reglas de offline de negocio siguen siendo: un único celular designado hast
 
 ## Siguiente funcionalidad
 
-Planes/horarios y alumnos/inscripciones, después cobros/cajas y asistencia/sincronización de negocio, mediante specs antes del código sensible. La spec 002 implementa acceso/ámbito/permisos y autorización del dispositivo. Los detalles no resueltos se cierran en cada spec; no adelantar SUNAT, multimedia ni mensajería externa.
+La operación online de specs 003/004 está implementada. Continúa la spec 005 para cola/sincronización, conciliación, automatización del respaldo y calificación Android. La spec 002 implementa acceso/ámbito/permisos y autorización del dispositivo. Los detalles no resueltos se cierran en cada spec; no adelantar SUNAT, multimedia ni mensajería externa.
+
+## Operación online v0.3.0
+
+[Contratos, demo, evidencia y pendientes](docs/09-operacion-online.md). La demo comercial es opcional y usa fecha base fija `2026-10-01` (DEMO_BASE_DATE configurable antes de la primera carga). Dos academias con plan, entrenador, clases, dos alumnos y solicitudes aprobada/pendiente; repetir conserva cambios. DNI 90000001/90000002 ficticios, sin consulta externa. La demo de academia todavía no cobra ni crea cuentas de alumnos automáticamente: esos estados se obtienen recorriendo aprobación/cobro desde la UI.
+
+Android incluye pantallas de operación online, cámara QR, galería/cámara para identificación/comprobantes y compartir PDFs. La compilación y los tipos no prueban permisos/cámara/compartición en un teléfono físico. Los nuevos módulos nativos deben instalarse en un build propio; no se promete funcionamiento de hardware por exportar Hermes.
+
+Respaldo cifrado: `npm run backup:key`, `npm run backup:create` y `npm run backup:verify -- RUTA_DEL_ARCHIVO`; ver límites, claves y restauración aislada en docs/09.
