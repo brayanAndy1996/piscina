@@ -11,12 +11,12 @@ export interface Actor {
 interface UserRow extends Actor { password_hash: string; active: boolean; failed_attempts: number; locked_until: Date | null; }
 interface Tenant { id: string; offline_device_id: string | null; offline_expires_at: Date | null; }
 export class AccessService {
- constructor(readonly db: Sequelize, readonly key: KeyObject, readonly now: () => number = Date.now) {}
+ constructor(readonly db: Sequelize, readonly key: KeyObject, readonly now: () => number = Date.now, readonly mutationTransaction?: Transaction) {}
  async rows<T extends object>(sql: string, values: Values = {}, transaction?: Transaction): Promise<T[]> {
-  return this.db.query<T>(sql, { replacements: values, type: QueryTypes.SELECT, transaction });
+  return this.db.query<T>(sql, { replacements: values, type: QueryTypes.SELECT, transaction:transaction??this.mutationTransaction });
  }
  async run(sql: string, values: Values = {}, transaction?: Transaction) {
-  await this.db.query(sql, { replacements: values, transaction });
+  await this.db.query(sql, { replacements: values, transaction:transaction??this.mutationTransaction });
  }
  async audit(tenant: string, actor: string | null, event: string, details: object, transaction?: Transaction) {
   await this.run('INSERT INTO access_audit(id,tenant_id,actor_id,event,details,created_at) VALUES (:id,:tenant,:actor,:event,CAST(:details AS jsonb),:at)',
@@ -83,6 +83,7 @@ export class AccessService {
   return actor;
  }
  async mutate<T>(token: string, permission: string | undefined, action: string, details: object, fn: (actor: Actor, tx: Transaction) => Promise<T>, allowTemporary=false): Promise<T> {
+  if(this.mutationTransaction){const actor=await this.actor(token,permission,allowTemporary,this.mutationTransaction);return fn(actor,this.mutationTransaction);}
   const first = await this.actor(token, permission, allowTemporary);
   try {
    return await this.db.transaction(async (tx) => {
@@ -208,19 +209,19 @@ export class AccessService {
   });
  }
  async offlineAccess(token:string,id:string,input:{challengeId:string;signature:string}) {
-  uuid(id);
-  return this.mutate(token,'offline.use','access.offline_sync',{id},async(a,tx)=>{
+  uuid(id);return this.mutate(token,'offline.use','access.offline_sync',{id},(a,tx)=>this.issueOffline(a,tx,id,input));
+ }
+ async issueOffline(a:Actor,tx:Transaction,id:string,input:{challengeId:string;signature:string},extra?:{business:true;lastSequence:number}) {
    const publicKey=await this.consume(a,input.challengeId,input.signature,'lease',tx);
    const device=(await this.rows<{id:string}>('SELECT id FROM access_devices WHERE tenant_id=:tenant AND id=:id AND public_key=:key',{tenant:a.tenant_id,id,key:publicKey},tx))[0];
    const tenant=(await this.rows<Tenant>('SELECT * FROM access_tenants WHERE id=:tenant',{tenant:a.tenant_id},tx))[0]!;
    if(!device||tenant.offline_device_id!==id) throw new AccessError(403,'DEVICE_NOT_DESIGNATED','Este celular no está autorizado para acceso offline.');
    const issuedAt=this.now(),expiresAt=issuedAt+24*3600_000,grantId=randomUUID();
-   const claims={v:1,tenantId:a.tenant_id,userId:a.id,deviceId:id,publicKey,permissions:a.permissions,securityVersion:a.version,issuedAt,expiresAt,grantId};
+   const claims={v:1,tenantId:a.tenant_id,userId:a.id,deviceId:id,publicKey,permissions:a.permissions,securityVersion:a.version,issuedAt,expiresAt,grantId,...extra};
    const payload=JSON.stringify(claims),signature=signPayload(this.key,payload);
-   await this.run('UPDATE access_tenants SET offline_expires_at=:expires WHERE id=:tenant',{tenant:a.tenant_id,expires:new Date(expiresAt).toISOString()},tx);
+   await this.run('UPDATE access_tenants SET offline_expires_at=GREATEST(offline_expires_at,CAST(:expires AS timestamptz)) WHERE id=:tenant',{tenant:a.tenant_id,expires:new Date(expiresAt).toISOString()},tx);
    await this.audit(a.tenant_id,a.id,'access.offline_synced',{deviceId:id,grantId,expiresAt},tx);
    return {payload,signature,serverPublicKey:publicKeyHex(this.key)};
-  });
  }
  async auditList(token:string) {
   const a=await this.actor(token,'audit.read');

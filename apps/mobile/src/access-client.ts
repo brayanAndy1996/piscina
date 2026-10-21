@@ -8,7 +8,7 @@ import { evaluateOffline,type SignedGrant,type AccessAnchor } from './offline-po
 export interface SessionUser {id:string;tenant_id:string;tenant_slug:string;username:string;display_name:string;role:string;permissions:string[];must_change:boolean;version:number;}
 export interface Session {token:string;user:SessionUser;}
 export interface Device {id:string;name:string;public_key:string;designated:boolean;offline_expires_at:string|null;}
-interface StoredGrant {grant:SignedGrant;anchor:AccessAnchor;deviceId:string;}
+export interface StoredGrant {grant:SignedGrant;anchor:AccessAnchor;deviceId:string;}
 export class ClientError extends Error {constructor(message:string,readonly status=0){super(message);}}
 const options={keychainAccessible:SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY};
 export async function accessApi<T>(path:string,token?:string,body?:object,method=body?'POST':'GET'):Promise<T> {
@@ -25,13 +25,13 @@ export async function accessApi<T>(path:string,token?:string,body?:object,method
 export async function readSession():Promise<Session|null>{const text=await SecureStore.getItemAsync('piscina.session',options);return text?JSON.parse(text):null;}
 export async function saveSession(session:Session){await SecureStore.setItemAsync('piscina.session',JSON.stringify(session),options);}
 export async function clearAccess(){await SecureStore.deleteItemAsync('piscina.offline',options);await SecureStore.deleteItemAsync('piscina.session',options);}
-async function deviceKeys(){
+export async function deviceKeys(){
  let secret=await SecureStore.getItemAsync('piscina.device.seed',options);
  if(!secret){secret=bytesToHex(await Crypto.getRandomBytesAsync(32));await SecureStore.setItemAsync('piscina.device.seed',secret,options);}
  return {secret:hexToBytes(secret),publicKey:bytesToHex(ed25519.getPublicKey(hexToBytes(secret)))};
 }
 export async function savedDevice(session:Session){return SecureStore.getItemAsync('piscina.device.'+session.user.tenant_id,options);}
-async function signedChallenge(session:Session,purpose:string){
+export async function signedChallenge(session:Session,purpose:string){
  const key=await deviceKeys();
  const challenge=await accessApi<{id:string;message:string}>('devices/challenge',session.token,{publicKey:key.publicKey,purpose});
  return {challengeId:challenge.id,signature:bytesToHex(ed25519.sign(new TextEncoder().encode(challenge.message),key.secret))};
@@ -59,5 +59,8 @@ export async function offlineStatus(session:Session){
  const key=await deviceKeys();
  return evaluateOffline(stored.grant,{serverPublicKey:process.env.EXPO_PUBLIC_OFFLINE_PUBLIC_KEY??'',tenantId:session.user.tenant_id,userId:session.user.id,deviceId:stored.deviceId,publicKey:key.publicKey,securityVersion:session.user.version},stored.anchor,await deviceClock());
 }
+
+export async function readGrant():Promise<StoredGrant|null>{const raw=await SecureStore.getItemAsync('piscina.offline',options);return raw?JSON.parse(raw):null;}
+export async function saveGrant(stored:StoredGrant){await SecureStore.setItemAsync('piscina.offline',JSON.stringify(stored),options);}
 
 export function resourceUrl(path:string){const configured=process.env.EXPO_PUBLIC_API_URL;if(!configured)throw new ClientError('Configura la URL de API.');const url=new URL(path,configured.endsWith('/')?configured:configured+'/');if(url.username||url.password||!['http:','https:'].includes(url.protocol)||(!__DEV__&&url.protocol!=='https:'))throw new ClientError('La API requiere HTTPS.');return url.toString();}

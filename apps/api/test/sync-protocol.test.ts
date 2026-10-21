@@ -1,0 +1,7 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {generateKeyPairSync,sign,randomUUID} from 'node:crypto';import {publicKeyHex,signPayload} from '../src/access/crypto.js';import {canonical} from '../src/academy/rules.js';import {verifyOperation} from '../src/sync/protocol.js';
+test('operación offline exige firma de nube y equipo, ámbito y ventana de captura',()=>{
+ const server=generateKeyPairSync('ed25519').privateKey,device=generateKeyPairSync('ed25519').privateKey,now=Date.parse('2026-10-21T15:00:00Z');const payload=JSON.stringify({v:1,business:true,tenantId:'tenant-a',userId:'user-a',deviceId:randomUUID(),publicKey:publicKeyHex(device),permissions:['offline.use'],securityVersion:1,issuedAt:now-3600000,expiresAt:now+82800000,grantId:randomUUID()});const body={sequence:1,action:'student.save',input:{operationId:randomUUID(),data:{}},capturedAt:now,grant:{payload,signature:signPayload(server,payload)},basis:{}};const operation={...body,signature:sign(null,Buffer.from(canonical(body)),device).toString('hex')};
+ assert.equal(verifyOperation(operation,'tenant-a','user-a',server,now).deviceId,JSON.parse(payload).deviceId);
+ assert.throws(()=>verifyOperation({...operation,signature:'00'.repeat(64)},'tenant-a','user-a',server,now));
+ assert.throws(()=>verifyOperation(operation,'otro','user-a',server,now));assert.throws(()=>verifyOperation({...operation,capturedAt:now+90000000},'tenant-a','user-a',server,now));
+});

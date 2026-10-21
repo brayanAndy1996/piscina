@@ -1,10 +1,11 @@
+import {syncBusiness,businessHistory,uploadPending} from './business-client';
 import OperationScreen from './OperationScreen';
 import StudentPortal from './StudentPortal';
 import AcademyScreen from './AcademyScreen';
 import UserAdmin from './UserAdmin';
 import { useEffect,useRef,useState } from 'react';
 import { AppState,Button,ScrollView,StyleSheet,Text,TextInput,View } from 'react-native';
-import { accessApi,clearAccess,ClientError,offlineStatus,readSession,registerDevice,savedDevice,saveSession,syncAccess,type Session,type Device,type SessionUser } from './access-client';
+import { accessApi,clearAccess,ClientError,offlineStatus,readSession,registerDevice,savedDevice,saveSession,type Session,type Device,type SessionUser } from './access-client';
 
 export default function AccessScreen(){
  const [session,setSession]=useState<Session|null>(null),[academy,setAcademy]=useState(''),[username,setUsername]=useState(''),[password,setPassword]=useState(''),[newPassword,setNewPassword]=useState('');
@@ -23,9 +24,10 @@ export default function AccessScreen(){
  <Text style={styles.title}>{session.user.display_name}</Text><Text>{session.user.tenant_slug} · {session.user.role}</Text><Text>Permisos: {session.user.permissions.join(', ')||'Perfil propio'}</Text><Text accessibilityRole="header">{session.user.must_change?'Debes cambiar la contraseña temporal':'Cambiar contraseña'}</Text><TextInput accessibilityLabel="Contraseña actual" placeholder="Contraseña actual" style={styles.input} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password"/><TextInput accessibilityLabel="Nueva contraseña" placeholder="Nueva contraseña (12–128 caracteres)" style={styles.input} value={newPassword} onChangeText={setNewPassword} secureTextEntry autoComplete="new-password"/><Button disabled={busy} title="Cambiar contraseña" onPress={()=>{void act(changePassword);}}/>
  {!session.user.must_change&&session.user.permissions.includes('offline.use')&&<View style={styles.group}><Text accessibilityRole="header" style={styles.title}>Celular offline</Text><Text>Este equipo: {deviceId??'no registrado'}</Text><TextInput accessibilityLabel="Nombre del celular" style={styles.input} value={deviceName} onChangeText={setDeviceName}/><Button disabled={busy} title="Registrar este celular" onPress={()=>{void act(async()=>{const id=await registerDevice(session,deviceName);setDeviceId(id);setMessage('Celular registrado. Administración debe designarlo antes de sincronizar acceso.');});}}/>
  {deviceId&&session.user.permissions.includes('devices.manage')&&<Button disabled={busy} title="Designar este celular" onPress={()=>{void act(async()=>{const registered=await accessApi<Device[]>('devices',session.token);await accessApi('devices/'+deviceId+'/designate',session.token,{expectedDeviceId:registered.find(d=>d.designated)?.id??null},'POST');setMessage('Celular designado. Sincroniza acceso para obtener autorización.');});}}/>}
- {deviceId&&<Button disabled={busy} title="Sincronizar acceso (24 horas)" onPress={()=>{void act(async()=>{const result=await syncAccess(session,deviceId);setOffline(result.reason);setMessage('Permiso de acceso guardado y verificado. Los módulos de negocio aún no están disponibles.');});}}/>}
- <Text accessibilityLiveRegion="polite">{offline}</Text><Text>La autorización de acceso no significa que alumnos, cobros o cola de negocio estén implementados.</Text>
+ {deviceId&&<Button disabled={busy} title="Sincronizar datos y pendientes (24 horas)" onPress={()=>{void act(async()=>{const result=await syncBusiness(session,deviceId);setOffline(result.reason);setMessage(result.reason);});}}/>}
+ <Button title="Ver cola y últimos resultados" disabled={busy} onPress={()=>void act(async()=>{const history=await businessHistory(session);setMessage('Pendientes: '+history.pending+' · Últimos resultados: '+history.rows.map(r=>r.sequence+': '+r.status+(r.status==='REJECTED'?' '+r.result:'')).join(' | '));})}/><Text accessibilityLiveRegion="polite">{offline}</Text><Text>Antes de desconectarte, sincroniza una copia completa. Los pendientes se conservan al cerrar sesión; deben sincronizarse con el mismo operador.</Text>
  <Button disabled={busy} title="Consultar celulares de la academia" onPress={()=>{void act(async()=>{setDevices(await accessApi<Device[]>('devices',session.token));});}}/>{devices.map(d=><Text key={d.id}>{d.name}: {d.designated?'designado':'no designado'}</Text>)}</View>}
+ {!session.user.must_change&&deviceId&&<Button title="Enviar pendientes de mi operador (recuperación online)" disabled={busy} onPress={()=>void act(async()=>setMessage(await uploadPending(session)))}/>}
  {!session.user.must_change&&session.user.permissions.includes('users.manage')&&<UserAdmin session={session} onSignedOut={async()=>{await clearAccess();setSession(null);setOffline('Inicia sesión para recuperar acceso.');}}/>}
  {!session.user.must_change&&(session.user.permissions.includes('academy.read')||session.user.permissions.includes('assigned.read'))&&<AcademyScreen session={session}/>}
  {!session.user.must_change&&session.user.permissions.includes('cash.write')&&<OperationScreen session={session}/>}

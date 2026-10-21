@@ -1,8 +1,8 @@
 # Academia de natación
 
-Operación online v0.3.0, 2026-10-21. Repositorio: [brayanAndy1996/piscina](https://github.com/brayanAndy1996/piscina).
+Operación y sincronización Android v0.4.0, 2026-10-21. Repositorio: [brayanAndy1996/piscina](https://github.com/brayanAndy1996/piscina).
 
-Backend Node.js/Fastify con Sequelize/PostgreSQL, web Next.js y aplicación Android React Native/Expo independientes. Incluye usuarios/roles, sesiones revocables, auditoría, pantallas web/Android y autorización firmada del único celular offline. Incluye configuración, planes, entrenadores, clases/aforo, alumnos/apoderados, solicitudes públicas, aprobación/renovación, cotización proporcional, cajas, cobros completos/verificación, PDFs internos, carnet QR, asistencia y portal del alumno. **La primera entrega completa sigue pendiente: cola/sincronización comercial offline, automatización del respaldo en hosting y validación física Android aún no terminados.**
+Backend Node.js/Fastify con Sequelize/PostgreSQL, web Next.js y aplicación Android React Native/Expo independientes. Incluye usuarios/roles, sesiones revocables, auditoría, pantallas web/Android y autorización firmada del único celular offline. Incluye configuración, planes, entrenadores, clases/aforo, alumnos/apoderados, solicitudes públicas, aprobación/renovación, cotización proporcional, cajas, cobros completos/verificación, PDFs internos, carnet QR, asistencia y portal del alumno. Incluye cola comercial cifrada, sincronización firmada, incidencias y bloqueo de cierre hasta conciliación administrativa. **La entrega productiva sigue pendiente de validación física Android, configuración del hosting y respaldo automático, además del flujo privado de adjuntos del solicitante online.** Ver [operación offline y conciliación](docs/10-offline-conciliacion.md).
 
 ## Requisitos
 
@@ -125,9 +125,9 @@ Las reglas de offline de negocio siguen siendo: un único celular designado hast
 
 ## Siguiente funcionalidad
 
-La operación online de specs 003/004 está implementada. Continúa la spec 005 para cola/sincronización, conciliación, automatización del respaldo y calificación Android. La spec 002 implementa acceso/ámbito/permisos y autorización del dispositivo. Los detalles no resueltos se cierran en cada spec; no adelantar SUNAT, multimedia ni mensajería externa.
+La operación online de specs 003/004 está implementada. La spec 005 incorpora cola/sincronización y conciliación. Continúan la validación física Android, el autoservicio privado de adjuntos online y la preparación del hosting/respaldo automático. La spec 002 implementa acceso/ámbito/permisos y autorización del dispositivo. Los detalles no resueltos se cierran en cada spec; no adelantar SUNAT, multimedia ni mensajería externa.
 
-## Operación online v0.3.0
+## Operación y sincronización Android v0.4.0
 
 [Contratos, demo, evidencia y pendientes](docs/09-operacion-online.md). La demo comercial es opcional y usa fecha base fija `2026-10-01` (DEMO_BASE_DATE configurable antes de la primera carga). Dos academias con plan, entrenador, clases, dos alumnos y solicitudes aprobada/pendiente; repetir conserva cambios. DNI 90000001/90000002 ficticios, sin consulta externa. La demo de academia todavía no cobra ni crea cuentas de alumnos automáticamente: esos estados se obtienen recorriendo aprobación/cobro desde la UI.
 

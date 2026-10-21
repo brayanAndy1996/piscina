@@ -1,5 +1,6 @@
 import { readConfig } from '../config.js';
 import { createDatabase } from '../database.js';
+import {migrateSync} from '../sync/migrations.js';
 import {migrateOperations} from '../operations/migrations.js';
 import { migrateAcademy } from '../academy/migrations.js';
 import { migrateAccess } from './migrations.js';
@@ -11,7 +12,7 @@ async function main() {
  const db=createDatabase(readConfig());
  try {
   const command=process.argv[2];
-  if(command==='migrate') { await migrateAccess(db); await migrateAcademy(db);await migrateOperations(db); console.log('Migraciones de acceso aplicadas; no se crearon usuarios ni demo.'); return; }
+  if(command==='migrate') { await migrateAccess(db); await migrateAcademy(db);await migrateOperations(db);await migrateSync(db); console.log('Migraciones de acceso aplicadas; no se crearon usuarios ni demo.'); return; }
   const service=new AccessService(db,signingKey(process.env.API_OFFLINE_PRIVATE_KEY??''));
   if(command==='bootstrap') {
    const result=await service.bootstrap({slug:process.env.BOOTSTRAP_ACADEMY??'',name:process.env.BOOTSTRAP_ACADEMY_NAME??'',username:process.env.BOOTSTRAP_USERNAME??'',displayName:process.env.BOOTSTRAP_NAME??'',password:process.env.BOOTSTRAP_PASSWORD??''});

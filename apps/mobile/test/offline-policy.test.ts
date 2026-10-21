@@ -23,6 +23,7 @@ test('24h exactas, reinicio, retroceso de reloj y ancla ajena bloquean',()=>{
  assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:10000+86399999,wallMs:20000+86399999}).authorized,true);
  assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:9999,wallMs:19999}).authorized,false);
  assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:10000+86400000,wallMs:20000+86400000}).authorized,false);
+ assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:10000+86400000,wallMs:20000+86400000}).readable,true);
  assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-b',elapsedMs:11000,wallMs:21000}).authorized,false);
  assert.equal(evaluateOffline(valid,expected,anchor,{bootId:'boot-a',elapsedMs:11000,wallMs:0}).authorized,false);
  assert.equal(evaluateOffline(valid,expected,{...anchor,grantId:'otro'},{bootId:'boot-a',elapsedMs:11000,wallMs:21000}).authorized,false);

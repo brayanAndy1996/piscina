@@ -33,6 +33,7 @@ export const operationForms:Record<string,{title:string;path:string;fields:Field
  reopen:{title:'Reabrir caja (administrador)',path:'cash/reopen',fields:[{key:'cashboxId',label:'Caja cerrada',kind:'select',source:'cashboxes'},{key:'reason',label:'Motivo'}]},
  payment:{title:'Registrar cobro completo',path:'payments',fields:[{key:'enrollmentId',label:'Inscripción',kind:'select',source:'enrollments'},{key:'method',label:'Método',kind:'select',options:[{value:'CASH',label:'Efectivo'},{value:'YAPE',label:'Yape'},{value:'TRANSFER',label:'Transferencia'}]},{key:'amountCents',label:'Importe completo S/',kind:'money'},{key:'reference',label:'Número de operación (Yape/transferencia)',optional:true}]},
  attendance:{title:'Asistencia manual',path:'attendance',fields:[{key:'studentId',label:'Alumno',kind:'select',source:'students'},{key:'classId',label:'Clase de hoy',kind:'select',source:'classes'}]},
+ schedule:{title:'Cambiar horario con motivo',path:'academy/enrollments/schedule',fields:[{key:'enrollmentId',label:'Inscripción',kind:'select',source:'enrollments'},{key:'classIds',label:'Nuevas clases (días distintos)',kind:'multi',source:'classes'},{key:'startDate',label:'Fecha inicial de inscripción',kind:'date'},{key:'reason',label:'Motivo de cambio de horario'}]},
  adjust:{title:'Ajustar mensualidad (administrador)',path:'enrollments/adjust',fields:[{key:'enrollmentId',label:'Inscripción',kind:'select',source:'enrollments'},{key:'totalCents',label:'Total S/',kind:'money'},{key:'classes',label:'Clases asignadas',kind:'number'},{key:'reason',label:'Motivo de ajuste'}]},
  reset:{title:'Restablecer acceso de alumno',path:'students/reset',fields:[{key:'studentId',label:'Alumno',kind:'select',source:'students'},{key:'reason',label:'Motivo de restablecimiento'}]},
  rotate:{title:'Reemplazar QR',path:'cards/rotate',fields:[{key:'studentId',label:'Alumno',kind:'select',source:'students'},{key:'reason',label:'Motivo de reemplazo'}]},
@@ -40,7 +41,7 @@ export const operationForms:Record<string,{title:string;path:string;fields:Field
 };
 export function operationBody(kind:string,data:Row,lists:Record<string,Row[]>,proofId:string|null){
  let row:Row|undefined;const input:Row={data};if(kind==='close'||kind==='reopen'){row=lists.cashboxes?.find(r=>r.id===data.cashboxId);delete data.cashboxId;input.id=row?.id;input.version=row?.version;}
- if(kind==='adjust'){row=lists.enrollments?.find(r=>r.id===data.enrollmentId);delete data.enrollmentId;input.id=row?.id;input.version=row?.version;}
+ if(kind==='adjust'||kind==='schedule'){row=lists.enrollments?.find(r=>r.id===data.enrollmentId);delete data.enrollmentId;input.id=row?.id;input.version=row?.version;}
  if(kind==='reset'||kind==='rotate'){input.id=data.studentId;delete data.studentId;}
  if(data.reason){input.reason=data.reason;delete data.reason;}if(kind==='payment')data.proofId=proofId;
  if(kind==='attendance')data.method='MANUAL';if(kind==='notice'&&!data.studentId)data.studentId=null;return input;

@@ -1,3 +1,4 @@
+import {migrateSync} from '../src/sync/migrations.js';
 import assert from 'node:assert/strict';
 import {before,after,test} from 'node:test';
 import {randomUUID,generateKeyPairSync} from 'node:crypto';
@@ -15,7 +16,7 @@ import {PrivateFiles} from '../src/operations/files.js';
 const cfg=readTestConfig(),root=createDatabase(cfg),schema='operations_test_'+randomUUID().replaceAll('-','');let db:Sequelize,access:AccessService,academy:AcademyService,ops:OperationsService,files:PrivateFiles,token:string,other:string,tenant:string,planId:string,classId:string,studentId:string,enrollmentId:string,cashId:string;let clock=Date.parse('2026-10-05T13:15:00Z');const password='PruebaOperaciones2026!';
 const cmd=(data:object,extra:object={})=>({operationId:randomUUID(),data,...extra});
 async function pupil(dni:string){const s=await academy.saveStudent(token,cmd({dni,name:'Alumno ficticio '+dni,birth:'2000-01-01',level:'BASICO',contact:{phone:'000000000',email:'',address:'Ficticia',schoolGrade:''},health:{emergencyName:'Contacto',emergencyPhone:'000000000'},guardian:null,consents:{data:true,liability:true}}));const e=await academy.enroll(token,cmd({studentId:s.id,planId,classIds:[classId],startDate:'2026-10-01'}));return {student:s.id,enrollment:e.id};}
-before(async()=>{await root.query(`CREATE SCHEMA "${schema}"`);db=new Sequelize(cfg.databaseUrl,{dialect:'postgres',logging:false,dialectOptions:{options:`-c search_path=${schema}`}});await migrateAccess(db);await migrateAcademy(db);await migrateOperations(db);await migrateOperations(db);access=new AccessService(db,generateKeyPairSync('ed25519').privateKey,()=>clock);academy=new AcademyService(access);ops=new OperationsService(academy);files=new PrivateFiles(academy);
+before(async()=>{await root.query(`CREATE SCHEMA "${schema}"`);db=new Sequelize(cfg.databaseUrl,{dialect:'postgres',logging:false,dialectOptions:{options:`-c search_path=${schema}`}});await migrateAccess(db);await migrateAcademy(db);await migrateOperations(db);await migrateOperations(db);await migrateSync(db);access=new AccessService(db,generateKeyPairSync('ed25519').privateKey,()=>clock);academy=new AcademyService(access);ops=new OperationsService(academy);files=new PrivateFiles(academy);
  const o=await access.bootstrap({slug:'ops-test',name:'Academia prueba',username:'admin',displayName:'Propietario',password});tenant=o.tenantId;token=(await access.login({academy:'ops-test',username:'admin',password})).token;await access.bootstrap({slug:'other-test',name:'Otra academia',username:'admin',displayName:'Otro',password});other=(await access.login({academy:'other-test',username:'admin',password})).token;
  planId=(await academy.savePlan(token,cmd({name:'Plan',priceCents:10000,daysPerWeek:1,monthlyClasses:4,durationMinutes:60,allowedWeekdays:[1,3],allowedHours:[8,9],levels:['BASICO'],validFrom:'2026-01-01',validTo:'2027-12-31',active:true}))).id;const trainer=(await academy.saveTrainer(token,cmd({name:'Entrenador',phone:'000000000',userId:null,active:true}))).id;classId=(await academy.saveClass(token,cmd({trainerId:trainer,weekday:1,hour:8,level:'BASICO',capacity:20,active:true}))).id;const p=await pupil('74000001');studentId=p.student;enrollmentId=p.enrollment;
 });
@@ -33,7 +34,7 @@ test('pago exige aprobación, monto completo y caja propia; replay no duplica',a
  await assert.rejects(academy.decision(token,cmd({decision:'REJECTED'},{id:enrollmentId,version:3,reason:'Intento'})),{code:'ALREADY_PAID'});
 });
 test('DNI temporal solo alumno, portal aislado, carnet y PDF auténtico',async()=>{
- const login=await access.login({academy:'ops-test',username:'74000001',password:'74000001'});assert.equal(login.user.must_change,true);await assert.rejects(ops.portal(login.token),{code:'PASSWORD_CHANGE_REQUIRED'});await access.changePassword(login.token,'74000001','ClaveAlumno2026!');const current=await access.login({academy:'ops-test',username:'74000001',password:'ClaveAlumno2026!'});const portal=await ops.portal(current.token);assert.equal(portal.student.id,studentId);assert.equal(portal.receipts.length,1);assert.match(portal.card!.image,/^data:image\/png;base64,/);
+ const login=await access.login({academy:'ops-test',username:'74000001',password:'74000001'});assert.equal(login.user.must_change,true);await assert.rejects(ops.portal(login.token),{code:'PASSWORD_CHANGE_REQUIRED'});await access.changePassword(login.token,'74000001','ClaveAlumno2026!');const current=await access.login({academy:'ops-test',username:'74000001',password:'ClaveAlumno2026!'});const portal=await ops.portal(current.token);assert.equal(portal.student.id,studentId);assert.equal(portal.receipts.length,1);assert.equal((await ops.cardPdf(current.token,studentId)).subarray(0,5).toString(),'%PDF-');await assert.rejects(ops.cardPdf(other,studentId),{code:'NOT_FOUND'});assert.match(portal.card!.image,/^data:image\/png;base64,/);
  await assert.rejects(ops.portal(token),{code:'FORBIDDEN'});const receipt=(portal.receipts[0] as {id:string}).id;assert.equal((await ops.receiptPdf(current.token,receipt)).subarray(0,5).toString(),'%PDF-');await assert.rejects(ops.receipt(other,receipt),{code:'NOT_FOUND'});
  await assert.rejects(access.createUser(token,{username:'badpassword',displayName:'Usuario',role:'SECRETARIA',password:'12345678'}),{code:'INVALID_PASSWORD'});
  const previous=portal.card!.code;await ops.rotateCard(token,cmd({},{id:studentId,reason:'Reemplazo'}));assert.notEqual((await ops.portal(current.token)).card!.code,previous);
@@ -56,4 +57,12 @@ test('cierre cuadra efectivo, diferencia exige motivo y no permite cobrar cerrad
 test('reset de alumno no puede restablecer una cuenta promovida a administrador',async()=>{
  const s=(await access.rows<{user_id:string}>('SELECT user_id FROM academy_students WHERE tenant_id=:tenant AND id=:id',{tenant,id:studentId}))[0]!;const user=(await access.rows<{version:number}>('SELECT version FROM access_users WHERE tenant_id=:tenant AND id=:id',{tenant,id:s.user_id}))[0]!;
  await access.changeUser(token,s.user_id,{displayName:'Alumno promovido',role:'ADMIN',active:true,version:user.version});await assert.rejects(ops.resetStudent(token,cmd({},{id:studentId,reason:'Intento de reset indirecto'})),{code:'NOT_FOUND'});
+});
+
+test('cambio de horario pagado conserva importe y cuota original con motivo auditado',async()=>{
+ const c=(await access.rows<{trainer_id:string}>('SELECT trainer_id FROM academy_classes WHERE tenant_id=:tenant AND id=:id',{tenant,id:classId}))[0]!;
+ const otherClass=(await academy.saveClass(token,cmd({trainerId:c.trainer_id,weekday:3,hour:8,level:'BASICO',capacity:20,active:true}))).id;
+ await academy.schedule(token,cmd({classIds:[otherClass],startDate:'2026-10-01'},{id:enrollmentId,version:3,reason:'Cambio solicitado y validado'}));
+ const row=(await access.rows<{terms:{totalCents:number;classes:number};version:number}>('SELECT terms,version FROM academy_enrollments WHERE tenant_id=:tenant AND id=:id',{tenant,id:enrollmentId}))[0]!;assert.equal(row.terms.totalCents,10000);assert.equal(row.terms.classes,4);assert.equal(row.version,4);
+ assert.match(JSON.stringify(await access.auditList(token)),/Cambio solicitado y validado/);
 });

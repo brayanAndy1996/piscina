@@ -29,3 +29,5 @@ export function ageAt(birth:string,today:string){dateOnly(birth);dateOnly(today)
 export function cashExpected(opening:number,cash:number,income:number,expense:number){for(const v of [opening,cash,income,expense])integer(v,0,1000000000);const expected=opening+cash+income-expense;if(expected<0||!Number.isSafeInteger(expected))throw new Error('Efectivo insuficiente.');return expected;}
 
 export function canonical(value:unknown):string {const clean:unknown=JSON.parse(JSON.stringify(value));const encode=(v:unknown):string=>Array.isArray(v)?'['+v.map(encode).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+encode((v as Record<string,unknown>)[k])).join(',')+'}':JSON.stringify(v);return encode(clean);}
+
+export function membershipState(month:string,paid:boolean,today:string,expiringDays=5){if(!paid)return 'PENDIENTE_PAGO';if(month<today.slice(0,7))return 'VENCIDO';const last=new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7)),0)).getUTCDate();return month===today.slice(0,7)&&last-Number(today.slice(8))<=expiringDays?'POR_VENCER':'AL_DIA';}

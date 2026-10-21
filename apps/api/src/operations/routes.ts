@@ -18,6 +18,7 @@ export function operationsRoutes(app:FastifyInstance,service:OperationsService){
  app.post('/operations/notices',r=>service.notice(token(r),r.body));
  for(const kind of ['cashboxes','payments','attendance'])app.get<{Querystring:{month?:string}}>('/operations/'+kind,r=>service.list(token(r),kind,r.query.month??new Date().toISOString().slice(0,7)));
  app.get<{Querystring:{month?:string}}>('/operations/report',r=>service.report(token(r),r.query.month??new Date().toISOString().slice(0,7)));
+ app.get<{Params:{id:string}}>('/operations/cards/:id/pdf',async(r,reply)=>reply.type('application/pdf').header('Content-Disposition','inline; filename="carnet.pdf"').send(await service.cardPdf(token(r),r.params.id)));
  app.get('/portal',r=>service.portal(token(r)));
  app.get<{Params:{id:string}}>('/operations/receipts/:id',r=>service.receipt(token(r),r.params.id));
  app.get<{Params:{id:string}}>('/operations/receipts/:id/pdf',async(r,reply)=>reply.type('application/pdf').header('Content-Disposition','inline; filename="comprobante.pdf"').send(await service.receiptPdf(token(r),r.params.id)));

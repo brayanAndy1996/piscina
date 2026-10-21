@@ -1,3 +1,4 @@
+import {migrateSync} from '../apps/api/src/sync/migrations.js';
 import {migrateOperations} from '../apps/api/src/operations/migrations.js';
 import {AcademyService} from '../apps/api/src/academy/service.js';
 import {limaDate} from '../apps/api/src/academy/rules.js';
@@ -26,7 +27,7 @@ async function main(){
  const key=generateKeyPairSync('ed25519').privateKey;
  let api:ChildProcess|undefined,web:ChildProcess|undefined;
  try{
-  await migrateAccess(db);await migrateAcademy(db);await migrateOperations(db);
+  await migrateAccess(db);await migrateAcademy(db);await migrateOperations(db);await migrateSync(db);
   const service=new AccessService(db,key);
   await service.bootstrap({slug:'web-prueba',name:'Academia web ficticia',username:'admin',displayName:'Propietario',password:'WebPrueba2026!'});
   const fixtureToken=(await service.login({academy:'web-prueba',username:'admin',password:'WebPrueba2026!'})).token;

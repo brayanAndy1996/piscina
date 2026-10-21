@@ -1,6 +1,6 @@
 # Acuerdos y alcance de entrega
 
-Fecha: 2026-10-21. Fuente: decisiones del fundador en la conversación de planificación. Estado: alcance acordado; acceso y autorización de dispositivo v0.2.0 implementados, módulos operativos pendientes. Complementa el [documento funcional v2.1](03-documentacion-funcional.md).
+Fecha: 2026-10-21. Fuente: decisiones del fundador en la conversación de planificación. Estado: alcance acordado; acceso, operación online y sincronización comercial v0.4.0 implementados; validación física Android y preparación productiva pendientes. Complementa el [documento funcional v2.1](03-documentacion-funcional.md).
 
 ## Producto y operación
 
@@ -70,3 +70,7 @@ Web: solicitudes online, portal y administración básica. Android: operación o
 ## Estado y próximos pasos
 
 Existe acceso v0.2.0 con usuarios/permisos, auditoría y autorización del único equipo offline, además del diagnóstico API/web/Android y SQLite técnica; versiones/lockfile en ADR. Ver [acceso](07-acceso-dispositivo.md). No hay esquema definitivo de negocio ni protocolo de sincronización operativa. Definir progresivamente specs y criterios de aceptación, migraciones, contratos, casos de conflicto y pruebas. No confundir alcance acordado con funcionalidad terminada.
+
+## Conciliación de cobros descartados — decisión confirmada
+
+Bloquear el cierre del cobrador hasta que ADMIN registre la solución ya aplicada y confirme la conciliación del dinero. No presumir ingreso ni devolución. El rechazo y la resolución quedan en auditoría; después de sincronizar el cobrador revisa y solicita un nuevo cierre. Ver [protocolo y límites implementados](10-offline-conciliacion.md).

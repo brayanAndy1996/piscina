@@ -32,13 +32,13 @@ La solicitud pública nueva no tiene cuenta aún: la imagen de pago se carga asi
 
 ## Preparar y verificar
 
-Instalación y clave/propietario como README. `npm run db:migrate` aplica 001_access, 002_academy y 003_operations, también amplía permisos de academias existentes. Arranque no migra ni siembra. `npm run db:seed:demo` solo en BD `_demo`, sin tenants normales ni tablas ajenas; después de migrar. Fecha base por defecto 2026-10-01. No repetir una fecha distinta esperando reemplazar datos: la carga conserva el escenario existente.
+Instalación y clave/propietario como README. `npm run db:migrate` aplica 001_access, 002_academy, 003_operations y 004_sync, también amplía permisos de academias existentes. Arranque no migra ni siembra. `npm run db:seed:demo` solo en BD `_demo`, sin tenants normales ni tablas ajenas; después de migrar. Fecha base por defecto 2026-10-01. No repetir una fecha distinta esperando reemplazar datos: la carga conserva el escenario existente.
 
 Evidencia local: TDD observado de calendario/proporcional/efectivo (fallos iniciales y posterior implementación), 17 unitarias; 23 pruebas con PostgreSQL real sin omitidas, incluidos último cupo y confirmación concurrentes, aislamiento, archivos saneados, parciales, caja/carnet/portal y PDFs. Tipos/lint, build Next/API y bundle Hermes de 713 módulos pasaron. Smoke en Edge headless pasó alta de alumno, solicitud, aprobación, caja, cobro, cambio obligatorio y portal QR; conserva pruebas BFF/CSRF/recuperación. PDFs de muestra renderizados e inspeccionados: una página legible sin recortes.
 
 ## Límites y siguiente bloque
 
-Offline comercial y cola durable/cifrada no implementados aún. UI comercial requiere internet; permiso de acceso de 002 no habilita estas escrituras offline. Conciliación de caja cuando un cobro offline no prevalece requiere decisión del fundador, preguntada durante implementación de 005. Respaldo cifrado y restauración de prueba aislada implementados; automatización/retención en hosting y hardware Android pendientes. Cámara/galería/compartir requieren validar permisos, reinicio, disco y red en teléfono físico. No afirmar entrega completa, despliegue cloud ni compatibilidad Android certificada.
+Offline comercial, cola cifrada y conciliación implementados en v0.4.0: ver [guía y límites](10-offline-conciliacion.md). El fundador confirmó bloqueo de cierre hasta conciliación administrativa. La evidencia de 17/23 pruebas arriba corresponde al hito online v0.3.0; el nuevo bloque amplía la verificación. Respaldo cifrado y restauración de prueba aislada implementados; automatización/retención en hosting y hardware Android pendientes. Cámara/galería/compartir requieren validar permisos, reinicio, disco y red en teléfono físico. No afirmar entrega completa, despliegue cloud ni compatibilidad Android certificada.
 
 ## Respaldo cifrado y recuperación
 

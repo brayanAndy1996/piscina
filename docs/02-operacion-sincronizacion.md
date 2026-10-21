@@ -1,6 +1,6 @@
 # Operación móvil y sincronización
 
-Fecha: 2026-10-21. Estado: decisiones de comportamiento acordadas y propuesta técnica; requiere specs antes de implementar.
+Fecha: 2026-10-21. Estado: protocolo comercial v0.4.0 implementado según specs 002/005; calificación física pendiente.
 
 ## Responsabilidades
 
@@ -18,7 +18,7 @@ La designación es por dispositivo, no por nombre de usuario. Dentro del equipo 
 
 No se necesita sincronización entre varios escritores offline; sí sincronización de la cola única con nube. La nube puede seguir recibiendo operaciones online de otros usuarios durante el corte del celular, por lo que siguen vigentes conflictos y sobrecupos aceptados.
 
-Antes de implementar, especificar autorización exclusiva, identificación de equipo, reinstalación, sustitución, revocación y pendientes. La designación no se transfiere automáticamente a otro celular durante un corte. Un reemplazo debe evitar que el equipo anterior siga autorizado y preservar/revisar su cola. La spec 002 implementa exclusividad de autorización y espera al vencimiento del permiso anterior antes de reemplazar; tratamiento de cola comercial sigue pendiente. Ver [acceso](07-acceso-dispositivo.md).
+Antes de implementar, especificar autorización exclusiva, identificación de equipo, reinstalación, sustitución, revocación y pendientes. La designación no se transfiere automáticamente a otro celular durante un corte. Un reemplazo debe evitar que el equipo anterior siga autorizado y preservar/revisar su cola. La spec 002 implementa exclusividad de autorización y espera al vencimiento del permiso anterior antes de reemplazar; cola comercial implementada según [operación offline](10-offline-conciliacion.md). Ver [acceso](07-acceso-dispositivo.md).
 
 El fallo o pérdida del único celular interrumpe la operación offline; el respaldo en nube no contiene operaciones todavía pendientes. Documentar recuperación y medidas de continuidad sin prometer recuperación de datos nunca enviados.
 
@@ -30,7 +30,7 @@ El fallo o pérdida del único celular interrumpe la operación offline; el resp
 4. Recibe confirmación durable, resultado o conflicto. Solo entonces marca el resultado local correspondiente; no borrar evidencia ante fallos.
 5. Descarga novedades y reconcilia el estado local, incluidos conflictos y regularizaciones. Expone última sincronización y pendientes.
 
-La cola sobrevive al cierre y reinicio. Reintentar no duplica efectos: usar identificador único por operación, deduplicación y transacciones del servidor. La elección de biblioteca/servicio de colas sigue pendiente; no se presupone Redis/BullMQ. No se promete sincronización inmediata con la aplicación cerrada; su comportamiento Android se validará.
+La cola sobrevive al cierre y reinicio. Reintentar no duplica efectos: usar identificador único por operación, deduplicación y transacciones del servidor. La cola implementada reside en SQLite SQLCipher; PostgreSQL conserva acuses e incidencias transaccionales. No requiere Redis/BullMQ. No se promete sincronización inmediata con la aplicación cerrada; su comportamiento Android se validará.
 
 ## Límite offline
 
@@ -46,7 +46,7 @@ Se aplica a operaciones incompatibles sobre un mismo dato o clave de negocio, no
 - Un reintento de la misma operación devuelve su resultado previo; no crea un segundo cobro o asistencia.
 - No hay dos escritores offline. Todavía puede haber una operación online incompatible con una operación del celular desconectado, o duplicados por error del operador. En altas del mismo DNI o asistencias del mismo alumno/día prevalece la primera válida aceptada; el otro intento queda auditado. Se conservan validaciones locales y la responsabilidad establecida en capacitación.
 - Dos inscripciones de alumnos diferentes que generan sobrecupo se conservan. Es una excepción comercial autorizada y no debe resolverse descartando una inscripción.
-- Un cobro no aplicado por conflicto conserva importe, método, actor, caja, referencia, comprobante y relación con la operación prevaleciente en auditoría. No convertirlo en ingreso aplicado ni borrar evidencia. El administrador debe poder revisarlo; su regularización contable y el impacto en cierre se especifican antes de implementar caja/sync.
+- Un cobro no aplicado por conflicto conserva importe, método, actor, caja, referencia, comprobante y relación con la operación prevaleciente en auditoría. No convertirlo en ingreso aplicado ni borrar evidencia. El administrador revisa y registra la conciliación. El cierre del cobrador queda bloqueado hasta esa resolución; no se infieren ingresos ni devoluciones.
 
 Auditar operación original y descartada, entidad, datos propuestos, actor/dispositivo/ámbito, recepción del servidor, motivo y operación prevaleciente. No registrar contraseñas, tokens de sesión ni secretos. No guardar indiscriminadamente datos médicos en eventos si no son necesarios.
 
@@ -58,4 +58,4 @@ La nube calcula inasistencias con datos recibidos y el portal muestra actualizac
 
 ## Verificación requerida al implementar
 
-TDD en reglas críticas, integración con PostgreSQL y SQLite reales de prueba y escenarios adversariales: cierre de app con pendientes, pérdida de conexión después del commit servidor, reintentos, conflicto entre celular offline y usuario online, orden de dependencias alumno/matrícula/pago/caja, sobrecupo conservado, pagos no aplicados auditados, límite exacto de 24 horas, permisos revocados y aislamiento entre empresas/locales. Añadir casos de bloqueo de escrituras offline en los demás celulares, exclusividad/sustitución del equipo, inscripción y asistencia inmediata en la misma base, y permisos/caja por usuario en ese celular. Probar cámara QR y persistencia/reinicio en Android real. Las pruebas de acceso, firma, límite temporal y exclusividad constan en [verificación v0.2.0](08-verificacion-acceso.md). Pruebas de cola/negocio/cámara y hardware siguen pendientes.
+TDD en reglas críticas, integración con PostgreSQL y SQLite reales de prueba y escenarios adversariales: cierre de app con pendientes, pérdida de conexión después del commit servidor, reintentos, conflicto entre celular offline y usuario online, orden de dependencias alumno/matrícula/pago/caja, sobrecupo conservado, pagos no aplicados auditados, límite exacto de 24 horas, permisos revocados y aislamiento entre empresas/locales. Añadir casos de bloqueo de escrituras offline en los demás celulares, exclusividad/sustitución del equipo, inscripción y asistencia inmediata en la misma base, y permisos/caja por usuario en ese celular. Probar cámara QR y persistencia/reinicio en Android real. Las pruebas de acceso, firma, límite temporal y exclusividad constan en [verificación v0.2.0](08-verificacion-acceso.md). Pruebas de cola/negocio con SQLite y PostgreSQL reales implementadas; la cámara y el ciclo offline se califican todavía en Android físico. Ver [verificación y límites](10-offline-conciliacion.md).

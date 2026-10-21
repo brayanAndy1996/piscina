@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {remainingDates,quote,cashExpected} from '../src/academy/rules.js';
+import {remainingDates,quote,cashExpected,membershipState} from '../src/academy/rules.js';
 test('calendario mensual inclusivo, bisiesto y tope del plan',()=>{
  assert.deepEqual(remainingDates('1996-02-29',[4],1),['1996-02-29']);
  assert.deepEqual(remainingDates('2028-02-28',[1,2],12),['2028-02-28','2028-02-29']);
@@ -17,3 +17,5 @@ test('proporcional exacto, IGV incluido y redondeo hacia arriba al sol',()=>{
 });
 
 test('caja suma solo efectivo y detecta egresos imposibles',()=>{assert.equal(cashExpected(10000,4200,500,1200),13500);assert.throws(()=>cashExpected(0,0,0,100));assert.throws(()=>cashExpected(-1,0,0,0));});
+
+test('mensualidad identifica vencimiento por calendario Lima',()=>{assert.equal(membershipState('2026-10',true,'2026-10-25',5),'AL_DIA');assert.equal(membershipState('2026-10',true,'2026-10-26',5),'POR_VENCER');assert.equal(membershipState('2026-09',true,'2026-10-01'),'VENCIDO');assert.equal(membershipState('2026-10',false,'2026-10-01'),'PENDIENTE_PAGO');});

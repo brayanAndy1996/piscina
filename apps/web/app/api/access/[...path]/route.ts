@@ -3,7 +3,7 @@ export const dynamic='force-dynamic';
 const allowed=/^(auth\/(login|logout|me|password)|users(\/[0-9a-f-]+(\/reset-password)?)?|roles|devices(\/[0-9a-f-]+\/designate)?|audit)$/;
 async function proxy(request:NextRequest,context:{params:Promise<{path:string[]}>}) {
  const path=(await context.params).path.join('/');
- if(!/^(portal|operations\/(cash(\/(open|close|movement|reopen|[0-9a-f-]+(\/pdf)?))?|files(\/[0-9a-f-]+)?|students\/[0-9a-f-]+\/files|cashboxes|payments(\/verify)?|enrollments\/adjust|students\/reset|cards\/rotate|attendance|notices|report|receipts\/[0-9a-f-]+(\/pdf)?))$/.test(path)&&!allowed.test(path)&&!/^academy\/(settings|plans|trainers|classes|students(\/[0-9a-f-]+)?|assigned|enrollments(\/(decision|schedule))?)$/.test(path)&&!/^public\/[a-z0-9][a-z0-9._-]{2,63}\/(catalog|applications)$/.test(path)) return NextResponse.json({error:'Ruta no disponible.'},{status:404});
+ if(!/^sync\/(incidents|reconcile)$/.test(path)&&!/^(portal|operations\/(cash(\/(open|close|movement|reopen|[0-9a-f-]+(\/pdf)?))?|files(\/[0-9a-f-]+)?|students\/[0-9a-f-]+\/files|cashboxes|payments(\/verify)?|enrollments\/adjust|students\/reset|cards\/(rotate|[0-9a-f-]+\/pdf)|attendance|notices|report|receipts\/[0-9a-f-]+(\/pdf)?))$/.test(path)&&!allowed.test(path)&&!/^academy\/(settings|plans|trainers|classes|students(\/[0-9a-f-]+)?|assigned|enrollments(\/(decision|schedule))?)$/.test(path)&&!/^public\/[a-z0-9][a-z0-9._-]{2,63}\/(catalog|applications)$/.test(path)) return NextResponse.json({error:'Ruta no disponible.'},{status:404});
  const configured=process.env.WEB_ORIGIN;
  let expectedOrigin:string;
  try {
