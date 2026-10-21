@@ -1,6 +1,6 @@
 # Acuerdos y alcance de entrega
 
-Fecha: 2026-10-21. Fuente: decisiones del fundador en la conversación de planificación. Estado: alcance acordado; no implementado. Complementa el [documento funcional v2.1](03-documentacion-funcional.md).
+Fecha: 2026-10-21. Fuente: decisiones del fundador en la conversación de planificación. Estado: alcance acordado; base técnica v0.1.0 iniciada, módulos operativos pendientes. Complementa el [documento funcional v2.1](03-documentacion-funcional.md).
 
 ## Producto y operación
 
@@ -69,4 +69,4 @@ Web: solicitudes online, portal y administración básica. Android: operación o
 
 ## Estado y próximos pasos
 
-No hay código, paquetes elegidos por versión, esquema definitivo, API ni protocolo ejecutable. Definir progresivamente specs y criterios de aceptación, migraciones, contratos, casos de conflicto y pruebas. No confundir alcance acordado con funcionalidad terminada.
+Existe base ejecutable v0.1.0 para diagnóstico API/web/Android y SQLite técnica; versiones/lockfile en ADR. No hay esquema definitivo de negocio ni protocolo de sincronización operativa. Definir progresivamente specs y criterios de aceptación, migraciones, contratos, casos de conflicto y pruebas. No confundir alcance acordado con funcionalidad terminada.

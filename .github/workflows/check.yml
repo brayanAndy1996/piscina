@@ -1,0 +1,41 @@
+name: Comprobaciones
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  base:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: piscina_test
+          POSTGRES_PASSWORD: piscina_test_ci
+          POSTGRES_DB: piscina_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U piscina_test -d piscina_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      EXPO_NO_TELEMETRY: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      API_DATABASE_URL: postgres://piscina_test:piscina_test_ci@127.0.0.1:5432/piscina_test
+      API_DATABASE_SSL: disable
+      API_URL: http://127.0.0.1:4000
+      EXPO_PUBLIC_API_URL: https://api.example.invalid
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:postgres
+      - run: npm run smoke

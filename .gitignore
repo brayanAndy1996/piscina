@@ -18,3 +18,10 @@ android/local.properties
 
 # Referencias internas de otros productos; no publicar en el repositorio publico
 docs/contexto/
+
+.tools/
+.expo/
+*.tsbuildinfo
+apps/mobile/android/
+apps/mobile/ios/
+!apps/mobile/.env.example

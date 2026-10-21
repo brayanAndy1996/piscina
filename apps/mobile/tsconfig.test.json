@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node", "react-native"
+    ],
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "test/**/*.ts",
+    "src/diagnostic-schema.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

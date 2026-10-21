@@ -10,4 +10,4 @@ La documentación funcional se reorganizó bajo `docs/` para incluirla en el con
 - [Stack](docs/decisiones/001-stack.md).
 - [Índice del proyecto](README.md).
 
-Estas decisiones sustituyen la versión 1.5 anterior. Estado: documentación actualizada; software no implementado.
+Estas decisiones sustituyen la versión 1.5 anterior. Estado: documentación actualizada; base técnica de diagnóstico v0.1.0 implementada; módulos operativos pendientes.

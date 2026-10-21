@@ -1,6 +1,6 @@
 # ADR 001 — Web, Android y nube
 
-Fecha: 2026-10-21. Estado: dirección de stack acordada; validación técnica y versiones pendientes. No habilita implementación sensible sin spec ni declara compatibilidad probada.
+Fecha: 2026-10-21. Estado: base ejecutable seleccionada y verificada a nivel de servidor/web y bundle Android. La validación nativa en dispositivo/APK sigue pendiente. No habilita funcionalidades sensibles sin spec.
 
 ## Requisitos y decisión
 
@@ -9,20 +9,32 @@ Personal exclusivamente con Android; online una persona registra asistencia y va
 | Capa | Elección | Encaje y límites |
 |---|---|---|
 | Lenguaje | TypeScript | Tipos y contratos documentados en los tres componentes. |
-| Web | Next.js/React | Solicitudes, portal y administración online; no se empaqueta como móvil. |
-| Móvil | React Native para Android | Interfaz independiente, cámara, lógica y almacenamiento local. |
-| Backend | Node.js | API de negocio y sincronización para ambos clientes; framework HTTP pendiente. |
-| ORM servidor | Sequelize | Persistencia PostgreSQL; no se instala dentro de React Native. |
+| Web | Next.js 16.4.2 / React 19.3.0 | Solicitudes, portal y administración online; no se empaqueta como móvil. |
+| Móvil | React Native 0.88.0 / Expo 58.0.16 | Interfaz independiente; Expo facilita herramientas nativas y SQLite. Cámara y negocio pendientes. |
+| Backend | Node.js 24.22.0 / Fastify 5.12.7 | Transporte HTTP y diagnóstico inicial; negocio/sync se implementan por specs. |
+| ORM servidor | Sequelize 6.37.8 / pg 8.23.1 | Persistencia PostgreSQL; no se instala dentro de React Native. |
 | BD nube | PostgreSQL | Transacciones, aislamiento y consolidación multiempresa por producto; verificar su diseño. |
-| BD móvil propuesta | SQLite | Base operativa y cola del único celular offline; biblioteca React Native y cifrado por evaluar. |
+| BD móvil | SQLite / expo-sqlite 58.0.13 | Inicialización y caché técnica; base operativa/cola y cifrado se especifican después. |
 
 La dirección móvil es una excepción explícita al alcance Electron/PC de la documentación general; no modifica el panel. La nube/sincronización son parte de esta primera entrega de natación, aunque otros productos sigan locales.
 
 ## Alternativas y pendientes
 
-React Native fue preferido explícitamente por el fundador frente a la propuesta Capacitor/PWA. No volver a seleccionar otra plataforma silenciosamente. Expo frente a React Native sin Expo sigue sin decidir. Tampoco se han elegido versiones, gestor de paquetes, drivers, librería de SQLite, autenticación, cifrado, almacenamiento de archivos, hosting ni canal de distribución Android.
+React Native fue preferido por el fundador frente a Capacitor/PWA. Expo no sustituye React Native: aporta CLI, build y módulos nativos. Se conserva UI independiente respecto de Next.js. Fastify mantiene una API pequeña sin generar un segundo backend de negocio en Next.js.
 
-Antes de implementar: verificar documentación oficial vigente y registrar versiones soportadas/compatibles de Node.js, Next.js, React Native/React, Sequelize, PostgreSQL, driver y biblioteca SQLite, SDK Android y herramientas de build. No heredar versiones del panel ni afirmar que un ORM asegura equivalencia entre PostgreSQL y SQLite.
+Versiones exactas en manifiestos/lockfile, consultadas el 2026-10-21. Node mínimo de este proyecto: 24.13, rama 24 LTS; validado con 24.22.0 y npm 11.3.0. El Node 24.1 del equipo no cumple Expo, por lo que las verificaciones usan un runtime local ignorado por Git, sin modificar el global. TypeScript 6.0.3 coincide con el template oficial Expo SDK58. ESLint 10.13.0 evita iniciar con la rama 9 ya sin soporte. PostgreSQL 17.5 es el servidor local probado; no prescribe desplegar esa revisión antigua en producción.
+
+Evidencia: `expo-template-blank-typescript@58.0.25` oficial declara React 19.3.0, RN 0.88.0, Expo ~58.0.16 y TS ~6.0.3; `expo install --check` encontró versiones coherentes con el SDK local, aunque advirtió que su validación offline es limitada. Se probaron tipos, SQL SQLite real, API/web compiladas, PostgreSQL real y bundle Hermes. No se ha probado Android nativo.
+
+Fuentes oficiales consultadas:
+
+- [Next.js: instalación](https://nextjs.org/docs/app/getting-started/installation).
+- [Expo SDK58](https://docs.expo.dev/versions/v58.0.0/) y [SQLite](https://docs.expo.dev/versions/v58.0.0/sdk/sqlite/).
+- [Fastify: soporte](https://fastify.dev/docs/latest/Reference/LTS/).
+- [Sequelize estable](https://sequelize.org/docs/v6/getting-started/).
+- [Node.js: versiones](https://nodejs.org/en/about/previous-releases).
+
+Pendientes de siguientes specs: autenticación, cifrado, datos de negocio, migraciones servidor, archivos, hosting y distribución Android. No trasladar versiones o implementaciones de otros productos.
 
 ## Pruebas técnicas pendientes
 
@@ -32,4 +44,4 @@ Antes de implementar: verificar documentación oficial vigente y registrar versi
 - Respaldo/recuperación, protección local, credenciales y pérdida del único dispositivo offline. Su fallo detiene la operación offline y la nube no recupera pendientes nunca enviados.
 - Medir respuesta de asistencia (objetivo funcional existente: menos de 2 segundos), volumen representativo, batería/almacenamiento y concurrencia. Versiones mínimas Android y equipos soportados pendientes de medición.
 
-No hay benchmark, build, dependencias instaladas ni compatibilidad certificada. Completar este ADR con evidencia antes de fijar la base ejecutable.
+La base ya tiene dependencias instaladas, lockfile y builds API/web/Android bundle. No hay benchmark de negocio, APK, cámara probada ni compatibilidad Android certificada. Véase la spec 001 y el registro de verificación para distinguir evidencia de trabajo pendiente.

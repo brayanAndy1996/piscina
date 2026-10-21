@@ -18,4 +18,4 @@ Fecha: 2026-10-21. Instrucciones autónomas para trabajar desde este repositorio
 
 Tipos, lint, build, pruebas según riesgo y smoke integrado. PostgreSQL y SQLite requieren pruebas específicas; uno no demuestra equivalencia con el otro. Para offline, probar cola persistente, reintentos, límite de 24 horas, exclusividad de dispositivo y conflictos con nube. Probar cámara y persistencia en Android real antes de certificar compatibilidad.
 
-No hay comandos ejecutables ni pruebas de aplicación todavía. Las herramientas y versiones se fijan en la spec inicial y el ADR.
+La base v0.1.0 tiene comandos/checks documentados en README, spec 001 y ADR. No confundir sus pruebas técnicas con verificación del MVP de negocio.

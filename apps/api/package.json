@@ -1,0 +1,17 @@
+{
+  "name": "@piscina/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "fastify": "5.12.7",
+    "@fastify/cors": "11.3.1",
+    "sequelize": "6.37.8",
+    "pg": "8.23.1"
+  }
+}

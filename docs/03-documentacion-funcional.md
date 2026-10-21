@@ -12,7 +12,7 @@
 
 ---
 
-> Acuerdos vigentes: [alcance de primera entrega](01-acuerdos-entregas.md), [operación y sincronización](02-operacion-sincronizacion.md) y [decisión de stack](decisiones/001-stack.md). Las historias de módulos posteriores conservan sus requisitos, pero su prioridad M no las incorpora al MVP. No hay código ejecutable todavía.
+> Acuerdos vigentes: [alcance de primera entrega](01-acuerdos-entregas.md), [operación y sincronización](02-operacion-sincronizacion.md) y [decisión de stack](decisiones/001-stack.md). Las historias de módulos posteriores conservan sus requisitos, pero su prioridad M no las incorpora al MVP. Existe base técnica de diagnóstico v0.1.0; funcionalidades operativas todavía pendientes.
 
 ## Índice
 
@@ -772,7 +772,7 @@ La nube consolida los datos. Las operaciones offline se guardan en el único cel
 
 ### 8.4 Stack
 
-TypeScript; Next.js para web; React Native para Android; Node.js, Sequelize y PostgreSQL para backend. SQLite local móvil mediante biblioteca compatible por elegir. No usar Sequelize como ORM dentro de React Native. Expo, framework HTTP, versiones, librería SQLite, gestor de paquetes y distribución Android se decidirán y validarán antes de implementar sus partes. Véase [ADR 001](decisiones/001-stack.md).
+TypeScript; Next.js para web; React Native para Android; Node.js, Sequelize y PostgreSQL para backend. SQLite local móvil mediante biblioteca compatible por elegir. No usar Sequelize como ORM dentro de React Native. La base seleccionó Expo, Fastify, expo-sqlite y npm, con versiones en ADR. Distribución Android y funcionamiento nativo en dispositivo aún por validar. Véase [ADR 001](decisiones/001-stack.md).
 
 ### 8.5 Facturación electrónica — última fase
 
@@ -970,7 +970,7 @@ El catálogo siguiente es el objetivo completo. La primera entrega incluye consu
 
 ### 11.3 Detalles por especificar, sin reabrir los acuerdos
 
-No hay implementación ni comandos ejecutables. Antes de cada funcionalidad se detallarán contratos, esquema, versiones compatibles, autenticación y permisos offline, control del límite de 24 horas, dependencias entre operaciones, conciliación de cobros en conflicto, regularización de asistencia y cierre de caja tras sincronizar. También numeración de tickets offline, recuperación de dispositivo, mínimos Android, respaldo local y reglas concretas de renovación. No se presume que estos mecanismos ya estén resueltos por aceptar el alcance.
+La base de diagnóstico tiene comandos ejecutables en README; no implementa negocio. Antes de cada funcionalidad se detallarán contratos, esquema, versiones compatibles, autenticación y permisos offline, control del límite de 24 horas, dependencias entre operaciones, conciliación de cobros en conflicto, regularización de asistencia y cierre de caja tras sincronizar. También numeración de tickets offline, recuperación de dispositivo, mínimos Android, respaldo local y reglas concretas de renovación. No se presume que estos mecanismos ya estén resueltos por aceptar el alcance.
 
 ### 11.4 Riesgos
 
