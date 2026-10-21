@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -36,7 +37,8 @@ async function main() {
   const webPort = await availablePort();
   const apiUrl = `http://127.0.0.1:${apiPort}`;
   const webUrl = `http://127.0.0.1:${webPort}`;
-  const env = { ...process.env, NODE_ENV: 'development', NEXT_TELEMETRY_DISABLED: '1', API_HOST: '127.0.0.1', API_PORT: String(apiPort), API_URL: apiUrl };
+  const offlineKey = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64');
+  const env = { ...process.env, API_OFFLINE_PRIVATE_KEY: offlineKey, NODE_ENV: 'development', NEXT_TELEMETRY_DISABLED: '1', API_HOST: '127.0.0.1', API_PORT: String(apiPort), API_URL: apiUrl };
   const api = spawn(process.execPath, ['apps/api/dist/main.js'], { env, stdio: 'ignore' });
   const web = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', 'apps/web', '--port', String(webPort), '--hostname', '127.0.0.1'], { env, stdio: 'ignore' });
   try {

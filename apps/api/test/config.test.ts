@@ -1,3 +1,4 @@
+import { readTestConfig } from '../test-support/config.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readConfig } from '../src/config.js';
@@ -25,4 +26,11 @@ test('producción requiere TLS en base y orígenes HTTPS', () => {
   assert.throws(() => readConfig({ ...valid, API_DATABASE_SSL: 'disable' }), /TLS/);
   assert.throws(() => readConfig(valid), /HTTPS/);
   assert.equal(readConfig({ ...valid, API_CORS_ORIGINS: 'https://academia.example' }).databaseSsl, true);
+});
+
+test('tests destructivos nunca usan la conexion operativa por omision',()=>{
+ assert.throws(()=>readTestConfig({API_DATABASE_URL:'postgres://user@localhost/piscina_real'}),/API_TEST_DATABASE_URL/);
+ assert.throws(()=>readTestConfig({API_TEST_DATABASE_URL:'postgres://user@localhost/piscina_real'}),/API_TEST_DATABASE_URL/);
+ assert.throws(()=>readTestConfig({API_TEST_DATABASE_URL:'postgres://user@remote.example/piscina_test'}),/API_TEST_DATABASE_URL/);
+ assert.ok(readTestConfig({API_TEST_DATABASE_URL:'postgres://user@localhost/piscina_test'}).databaseUrl.endsWith('piscina_test'));
 });

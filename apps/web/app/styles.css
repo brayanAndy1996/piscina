@@ -7,3 +7,11 @@ h2 { font-size: 1.25rem; }
 p { line-height: 1.6; }
 a { color: #005b8a; text-underline-offset: .2rem; }
 a:focus-visible { outline: 3px solid #005b8a; outline-offset: 4px; }
+
+form { display: grid; gap: .8rem; margin: 1rem 0; }
+label { display: grid; gap: .25rem; }
+input, select, button { font: inherit; padding: .55rem; max-width: 100%; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; }
+section, article { margin-top: 1rem; }
+article { border-top: 1px solid #a7b5c2; padding-top: .75rem; }

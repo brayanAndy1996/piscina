@@ -16,7 +16,8 @@ export default async function Home() {
   const state = await getApiState();
   return <main>
     <h1>Academia de natación</h1>
-    <p>Base técnica en desarrollo</p>
+    <p>Gestión de acceso disponible</p>
+    <p><a href="/acceso">Iniciar sesión y administrar acceso</a></p>
     <section aria-labelledby="connection-title">
       <h2 id="connection-title">Estado del servicio</h2>
       <p role="status">{state}</p>

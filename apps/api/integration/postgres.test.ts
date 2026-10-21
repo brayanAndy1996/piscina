@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildApp } from '../src/app.js';
-import { readConfig } from '../src/config.js';
+import { readTestConfig } from '../test-support/config.js';
 import { createDatabase } from '../src/database.js';
 
 test('Sequelize consulta PostgreSQL real; API queda lista sin crear tablas', async () => {
-  const config = readConfig();
+  const config = readTestConfig();
   const db = createDatabase(config);
   const app = buildApp({ database: db, corsOrigins: config.corsOrigins });
   try {
@@ -18,7 +18,7 @@ test('Sequelize consulta PostgreSQL real; API queda lista sin crear tablas', asy
 });
 
 test('conexión PostgreSQL rechazada produce 503 sin detalles internos', async () => {
-  const config = readConfig();
+  const config = readTestConfig();
   const url = new URL(config.databaseUrl);
   url.hostname = '127.0.0.1';
   url.port = '1';

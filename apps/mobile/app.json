@@ -2,16 +2,18 @@
   "expo": {
     "name": "Academia de natación",
     "slug": "piscina",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "platforms": [
       "android"
     ],
     "android": {
-      "package": "com.piscina.academia"
+      "package": "com.piscina.academia",
+      "allowBackup": false
     },
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-secure-store"
     ]
   }
 }

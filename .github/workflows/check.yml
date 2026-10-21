@@ -26,6 +26,7 @@ jobs:
       EXPO_NO_TELEMETRY: '1'
       NEXT_TELEMETRY_DISABLED: '1'
       API_DATABASE_URL: postgres://piscina_test:piscina_test_ci@127.0.0.1:5432/piscina_test
+      API_TEST_DATABASE_URL: postgres://piscina_test:piscina_test_ci@127.0.0.1:5432/piscina_test
       API_DATABASE_SSL: disable
       API_URL: http://127.0.0.1:4000
       EXPO_PUBLIC_API_URL: https://api.example.invalid
@@ -39,3 +40,25 @@ jobs:
       - run: npm run check
       - run: npm run test:postgres
       - run: npm run smoke
+      - run: npm run smoke:access
+  android-native:
+    runs-on: ubuntu-latest
+    env:
+      CI: 'true'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_API_URL: https://api.example.invalid
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - run: npx expo prebuild --platform android --no-install
+        working-directory: apps/mobile
+      - run: ./gradlew :app:compileDebugKotlin --no-daemon -PreactNativeArchitectures=arm64-v8a
+        working-directory: apps/mobile/android

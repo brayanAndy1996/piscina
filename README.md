@@ -1,8 +1,8 @@
 # Academia de natación
 
-Base ejecutable v0.1.0, 2026-10-21. Repositorio: [brayanAndy1996/piscina](https://github.com/brayanAndy1996/piscina).
+Acceso y dispositivo v0.2.0, 2026-10-21. Repositorio: [brayanAndy1996/piscina](https://github.com/brayanAndy1996/piscina).
 
-Backend Node.js/Fastify con Sequelize/PostgreSQL, web Next.js y aplicación Android React Native/Expo independientes. Ya existen diagnóstico de API/BD, pantalla web y pantalla móvil con caché SQLite técnica. **Todavía no hay usuarios, alumnos, cobros, asistencia ni sincronización de negocio.**
+Backend Node.js/Fastify con Sequelize/PostgreSQL, web Next.js y aplicación Android React Native/Expo independientes. Incluye usuarios/roles, sesiones revocables, auditoría, pantallas web/Android y autorización firmada del único celular offline. **Todavía no hay alumnos, cobros, asistencia ni sincronización de negocio.**
 
 ## Requisitos
 
@@ -41,7 +41,22 @@ Estos nombres coinciden con `.env.example`; no crean un usuario administrador de
 npm run db:check
 ```
 
-Este comando solo comprueba conexión, no crea/modifica tablas. No hay migraciones ni seeds comerciales todavía; se incorporarán con el primer esquema de negocio. La aplicación no ejecuta `sequelize.sync`, no carga demos ni crea usuarios al arrancar.
+Este comando solo comprueba conexión, no crea/modifica tablas. Existen migraciones y demo opcional de acceso; los datos comerciales de alumnos/cobros llegarán después. La aplicación no ejecuta `sequelize.sync`, no carga demos ni crea usuarios al arrancar. Las migraciones y demo de acceso se ejecutan explícitamente; ver preparación a continuación.
+
+## Preparar acceso
+
+Después de configurar `.env` y PostgreSQL:
+
+```powershell
+npm run keys:generate
+npm run db:migrate
+```
+
+La clave privada queda en `.env.keys` (ignorada por Git y sin sobrescribir). Copia solo la clave pública mostrada a `EXPO_PUBLIC_OFFLINE_PUBLIC_KEY` en `apps/mobile/.env`. Configura `WEB_ORIGIN=http://127.0.0.1:3000` para desarrollo; en producción debe ser el origen HTTPS público exacto.
+
+Completa los campos BOOTSTRAP_* de `.env` con la academia, usuario y contraseña propios; ejecuta `npm run users:bootstrap` y retira la contraseña de bootstrap del archivo. No hay administrador predeterminado. Para escenarios ficticios existe `npm run db:seed:demo`, únicamente tras migrar una BD dedicada `_demo`; no ejecutarlo sobre instalaciones reales.
+
+[Guía completa de acceso, demo, recuperación y contratos](docs/07-acceso-dispositivo.md).
 
 ## Ejecutar API y web
 
@@ -54,6 +69,7 @@ API en `http://127.0.0.1:4000`; web en `http://127.0.0.1:3000`. También pueden 
 - `/health/live` comprueba que la API responde, aun sin BD.
 - `/health/ready` devuelve 200 con PostgreSQL disponible, o 503 sin exponer credenciales.
 - La web consulta la API desde su servidor y muestra disponibilidad o error real.
+- `/acceso` permite login, usuarios/roles, dispositivos y auditoría según permisos. Tokens en cookie HttpOnly, no en localStorage.
 
 Para ejecutar compilados: `npm run build`, después `npm run start:api` y `npm run start:web` en terminales separadas. Los scripts de raíz cargan `.env`; los servidores escuchan loopback por defecto. No hay despliegue público configurado.
 
@@ -71,7 +87,7 @@ Para teléfono físico, poner `API_HOST=0.0.0.0` en `.env`, reiniciar API y usar
 npm run dev:mobile
 ```
 
-Esto inicia Metro por LAN; abre el proyecto con un cliente Expo compatible. La pantalla permite comprobar la API y conservar el último resultado técnico con fecha. Mostrar una caché no demuestra conexión actual ni autorización offline. El almacenamiento real en Android se debe verificar en equipo.
+Esto inicia Metro por LAN; abre el proyecto con un cliente Expo compatible. La pantalla principal permite login, cambio de contraseña, usuarios para administrador, registro/designación del equipo y sincronización de acceso firmado. Diagnóstico conserva su pantalla separada. Expo Go permite acceso online; **el permiso offline necesita el módulo de reloj propio y un build Android nativo**. SecureStore/reloj deben comprobarse en teléfono real antes de certificarlo.
 
 Con SDK/JDK configurados, `npm run android --workspace @piscina/mobile` genera/ejecuta el proyecto Android local de desarrollo. Este comando no fue probado aquí: no hay SDK Android ni celular conectado. No confundir Expo Go o el bundle JavaScript con un APK de producción; la operación offline distribuida se verificará con un build instalable.
 
@@ -81,13 +97,14 @@ Con SDK/JDK configurados, `npm run android --workspace @piscina/mobile` genera/e
 npm run check
 npm run test:postgres
 npm run smoke
+npm run smoke:access
 ```
 
-`check`: lint, tipos de los tres componentes, 6 pruebas automáticas, build API/web y exportación Android Hermes. No necesita BD conectada. `test:postgres`: 2 pruebas con la BD dedicada configurada, sin modificar tablas. `smoke`: API compilada + PostgreSQL real + página web de producción; comprueba también la caída de API. Ejecutar después del build y con PostgreSQL disponible.
+`check`: lint, tipos de los tres componentes, 13 pruebas automáticas, build API/web y exportación Android Hermes. No necesita BD conectada. `test:postgres`: pruebas de PostgreSQL y acceso con fixtures propios. Requiere API_TEST_DATABASE_URL local con BD `_test` y rol de pruebas con CREATEDB; crea/elimina únicamente esquemas/bases efímeros. No usa la conexión operativa como fallback. `smoke`: API compilada + PostgreSQL real + página web de producción; comprueba también la caída de API. Ejecutar después del build y con PostgreSQL disponible.
 
-También existen `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` y `npm run build:mobile`. `build:mobile` genera un bundle en `apps/mobile/dist`, no un APK. El workflow de GitHub ejecuta instalación limpia, checks, integración PostgreSQL y smoke; no despliega servicios.
+También existen `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` y `npm run build:mobile`. `build:mobile` genera un bundle en `apps/mobile/dist`, no un APK. `npm run smoke:access` verifica BFF y administración en navegador real headless con BD efímera; necesita Edge (Windows) o Chrome (Linux). El workflow ejecuta checks/integración/smokes y un job de compilación Kotlin Android; no despliega servicios.
 
-Las pruebas SQLite usan archivos temporales aislados. La inicialización técnica del móvil solo crea `diagnostic_cache`; no implementa cola, permisos o datos comerciales. Resultados y límites: [verificación de base](docs/06-verificacion-base.md).
+Las pruebas SQLite usan archivos temporales aislados. SQLite sigue conteniendo solo diagnóstico; las claves, sesión y permisos firmados se guardan en SecureStore. No hay cola ni datos comerciales. Resultados históricos de base: [v0.1.0](docs/06-verificacion-base.md); acceso: [v0.2.0](docs/08-verificacion-acceso.md).
 
 ## Documentación
 
@@ -98,9 +115,10 @@ Las pruebas SQLite usan archivos temporales aislados. La inicialización técnic
 - [Contrato de diagnóstico](docs/05-contratos-base.md).
 - [Stack y evidencia](docs/decisiones/001-stack.md).
 - [Spec 001](docs/specs/001-base-ejecutable.md).
+- [Acceso y dispositivo](docs/07-acceso-dispositivo.md) y [spec 002](docs/specs/002-acceso-dispositivo.md).
 
-Las reglas de offline de negocio siguen siendo: un único celular designado hasta 24 horas; demás equipos online; conflictos según primera operación válida aceptada por nube. No están implementadas en esta pantalla diagnóstica.
+Las reglas de offline de negocio siguen siendo: un único celular designado hasta 24 horas; demás equipos online; conflictos según primera operación válida aceptada por nube. El control de autorización de acceso está implementado; las operaciones y cola de negocio siguen pendientes.
 
 ## Siguiente funcionalidad
 
-Acceso, ámbitos/permisos y registro del dispositivo autorizado, mediante spec propia antes del código sensible. Después planes/horarios, alumnos/inscripciones, cobros/cajas y asistencia/sincronización. Los detalles no resueltos se cierran en cada spec; no adelantar SUNAT, multimedia ni mensajería externa.
+Planes/horarios y alumnos/inscripciones, después cobros/cajas y asistencia/sincronización de negocio, mediante specs antes del código sensible. La spec 002 implementa acceso/ámbito/permisos y autorización del dispositivo. Los detalles no resueltos se cierran en cada spec; no adelantar SUNAT, multimedia ni mensajería externa.

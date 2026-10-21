@@ -8,11 +8,11 @@
 | Ubicación | Piscina semiolímpica |
 | Versión del documento | 2.1 — único celular para toda la operación offline |
 | Fecha | 21/10/2026 |
-| Estado | Alcance de primera entrega acordado; specs técnicas e implementación pendientes |
+| Estado | Alcance acordado; acceso/dispositivo v0.2.0 implementados; módulos comerciales pendientes |
 
 ---
 
-> Acuerdos vigentes: [alcance de primera entrega](01-acuerdos-entregas.md), [operación y sincronización](02-operacion-sincronizacion.md) y [decisión de stack](decisiones/001-stack.md). Las historias de módulos posteriores conservan sus requisitos, pero su prioridad M no las incorpora al MVP. Existe base técnica de diagnóstico v0.1.0; funcionalidades operativas todavía pendientes.
+> Acuerdos vigentes: [alcance de primera entrega](01-acuerdos-entregas.md), [operación y sincronización](02-operacion-sincronizacion.md) y [decisión de stack](decisiones/001-stack.md). Las historias de módulos posteriores conservan sus requisitos, pero su prioridad M no las incorpora al MVP. Existe acceso/dispositivo v0.2.0 y diagnóstico técnico; funcionalidades comerciales todavía pendientes. Ver [acceso](07-acceso-dispositivo.md).
 
 ## Índice
 

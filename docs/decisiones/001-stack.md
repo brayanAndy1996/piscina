@@ -34,7 +34,7 @@ Fuentes oficiales consultadas:
 - [Sequelize estable](https://sequelize.org/docs/v6/getting-started/).
 - [Node.js: versiones](https://nodejs.org/en/about/previous-releases).
 
-Pendientes de siguientes specs: autenticación, cifrado, datos de negocio, migraciones servidor, archivos, hosting y distribución Android. No trasladar versiones o implementaciones de otros productos.
+Acceso y migración servidor implementados mediante spec 002. Pendientes de siguientes specs: cifrado de datos comerciales locales, datos de negocio, archivos, hosting y distribución Android. No trasladar versiones o implementaciones de otros productos.
 
 ## Pruebas técnicas pendientes
 
@@ -45,3 +45,11 @@ Pendientes de siguientes specs: autenticación, cifrado, datos de negocio, migra
 - Medir respuesta de asistencia (objetivo funcional existente: menos de 2 segundos), volumen representativo, batería/almacenamiento y concurrencia. Versiones mínimas Android y equipos soportados pendientes de medición.
 
 La base ya tiene dependencias instaladas, lockfile y builds API/web/Android bundle. No hay benchmark de negocio, APK, cámara probada ni compatibilidad Android certificada. Véase la spec 001 y el registro de verificación para distinguir evidencia de trabajo pendiente.
+
+## Ampliación de acceso v0.2.0 — 2026-10-21
+
+Sesiones opacas y scrypt mediante node:crypto en backend; firmas Ed25519 con la misma biblioteca nativa y @noble/curves 2.4.0 en móvil. Sin JWT de sesión ni contraseña guardada en cliente. @fastify/rate-limit 11.2.1 limita login por IP; despliegue con varias réplicas necesita almacenamiento compartido. Expo SecureStore 58.0.2 conserva sesión/semilla/permiso, Expo Crypto 58.0.7 genera aleatoriedad nativa. No se almacenan esos secretos en SQLite.
+
+El módulo Kotlin local piscina-clock usa elapsedRealtime (incluye suspensión) y BOOT_COUNT; no usar uptime que excluya suspensión ni reloj de pared como sustituto. Requiere compilación propia: Expo Go no incorpora este módulo. La autorización firmada se limita a 24 horas y bloquea sustitución del equipo hasta vencer el último permiso emitido. La cola y sincronización comerciales siguen pendientes. Playwright Core 1.64.1 verifica la UI mínima web con navegador instalado, sin distribuirlo con el producto.
+
+Pruebas y limitaciones actuales: [verificación de acceso](../08-verificacion-acceso.md). La compilación Kotlin en CI es una verificación distinta de instalación y suspensión en teléfono real.
