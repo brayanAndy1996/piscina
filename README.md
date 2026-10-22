@@ -2,6 +2,8 @@
 
 Operación y sincronización Android v0.4.0, 2026-10-21. Repositorio: [brayanAndy1996/piscina](https://github.com/brayanAndy1996/piscina).
 
+**Para descargar y probar en tu computadora y Android: [guía paso a paso de instalación local](docs/11-guia-local-web-android.md).**
+
 Backend Node.js/Fastify con Sequelize/PostgreSQL, web Next.js y aplicación Android React Native/Expo independientes. Incluye usuarios/roles, sesiones revocables, auditoría, pantallas web/Android y autorización firmada del único celular offline. Incluye configuración, planes, entrenadores, clases/aforo, alumnos/apoderados, solicitudes públicas, aprobación/renovación, cotización proporcional, cajas, cobros completos/verificación, PDFs internos, carnet QR, asistencia y portal del alumno. Incluye cola comercial cifrada, sincronización firmada, incidencias y bloqueo de cierre hasta conciliación administrativa. **La entrega productiva sigue pendiente de validación física Android, configuración del hosting y respaldo automático, además del flujo privado de adjuntos del solicitante online.** Ver [operación offline y conciliación](docs/10-offline-conciliacion.md).
 
 ## Requisitos
@@ -91,9 +93,9 @@ Para teléfono físico, poner `API_HOST=0.0.0.0` en `.env`, reiniciar API y usar
 npm run dev:mobile
 ```
 
-Esto inicia Metro por LAN; abre el proyecto con un cliente Expo compatible. La pantalla principal permite login, cambio de contraseña, usuarios para administrador, registro/designación del equipo y sincronización de acceso firmado. Diagnóstico conserva su pantalla separada. Expo Go permite acceso online; **el permiso offline necesita el módulo de reloj propio y un build Android nativo**. SecureStore/reloj deben comprobarse en teléfono real antes de certificarlo.
+Esto inicia Metro por LAN. La pantalla principal permite login, cambio de contraseña, usuarios para administrador, registro/designación del equipo, operaciones comerciales y sincronización completa de datos/pendientes. Diagnóstico conserva su pantalla separada. **La operación offline necesita el reloj propio, SQLCipher y un build Android nativo; Expo Go no los incluye.** Ver instrucciones de compilación y límites del APK debug en la [guía local](docs/11-guia-local-web-android.md).
 
-Con SDK/JDK configurados, `npm run android --workspace @piscina/mobile` genera/ejecuta el proyecto Android local de desarrollo. Este comando no fue probado aquí: no hay SDK Android ni celular conectado. No confundir Expo Go o el bundle JavaScript con un APK de producción; la operación offline distribuida se verificará con un build instalable.
+Con SDK/JDK configurados, `npm run android --workspace @piscina/mobile` genera/ejecuta el proyecto Android local de desarrollo. El ensamblado del APK completo pasó en CI; su instalación/ejecución en Windows y teléfono físico no se han probado aquí. El APK debug necesita Metro. Para una prueba autónoma se requiere JavaScript incorporado y API HTTPS, como explica la guía; no confundir el bundle JavaScript con un APK de producción.
 
 ## Comprobaciones
 
@@ -104,11 +106,11 @@ npm run smoke
 npm run smoke:access
 ```
 
-`check`: lint, tipos de los tres componentes, 17 pruebas automáticas, build API/web y exportación Android Hermes. No necesita BD conectada. `test:postgres`: pruebas de PostgreSQL y acceso con fixtures propios. Requiere API_TEST_DATABASE_URL local con BD `_test` y rol de pruebas con CREATEDB; crea/elimina únicamente esquemas/bases efímeros. No usa la conexión operativa como fallback. `smoke`: API compilada + PostgreSQL real + página web de producción; comprueba también la caída de API. Ejecutar después del build y con PostgreSQL disponible.
+`check`: lint, tipos de los tres componentes, 22 pruebas automáticas, build API/web y exportación Android Hermes. No necesita BD conectada. `test:postgres`: 30 pruebas de PostgreSQL y acceso/sincronización con fixtures propios. Requiere API_TEST_DATABASE_URL local con BD `_test` y rol de pruebas con CREATEDB; crea/elimina únicamente esquemas/bases efímeros. No usa la conexión operativa como fallback. `smoke`: API compilada + PostgreSQL real + página web de producción; comprueba también la caída de API. Ejecutar después del build y con PostgreSQL disponible.
 
-También existen `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` y `npm run build:mobile`. `build:mobile` genera un bundle en `apps/mobile/dist`, no un APK. `npm run smoke:access` verifica BFF y administración en navegador real headless con BD efímera; necesita Edge (Windows) o Chrome (Linux). El workflow ejecuta checks/integración/smokes y un job de compilación Kotlin Android; no despliega servicios.
+También existen `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` y `npm run build:mobile`. `build:mobile` genera un bundle en `apps/mobile/dist`, no un APK. `npm run smoke:access` verifica BFF y administración en navegador real headless con BD efímera; necesita Edge (Windows) o Chrome (Linux). El workflow ejecuta checks/integración/smokes y ensambla un APK debug Android completo; no despliega servicios.
 
-Las pruebas SQLite usan archivos temporales aislados. SQLite sigue conteniendo solo diagnóstico; las claves, sesión y permisos firmados se guardan en SecureStore. Los módulos comerciales operan online contra PostgreSQL; la cola comercial Android aún no existe. Resultados históricos de base: [v0.1.0](docs/06-verificacion-base.md); acceso: [v0.2.0](docs/08-verificacion-acceso.md).
+Las pruebas SQLite usan archivos temporales aislados. La aplicación propia Android usa SQLCipher para la copia comercial y su cola; claves, sesión y permisos firmados se guardan en SecureStore. La web y los demás dispositivos operan online contra PostgreSQL. Ver [uso y límites offline](docs/10-offline-conciliacion.md). Resultados históricos de base: [v0.1.0](docs/06-verificacion-base.md); acceso: [v0.2.0](docs/08-verificacion-acceso.md).
 
 ## Documentación
 
@@ -121,7 +123,7 @@ Las pruebas SQLite usan archivos temporales aislados. SQLite sigue conteniendo s
 - [Spec 001](docs/specs/001-base-ejecutable.md).
 - [Acceso y dispositivo](docs/07-acceso-dispositivo.md) y [spec 002](docs/specs/002-acceso-dispositivo.md).
 
-Las reglas de offline de negocio siguen siendo: un único celular designado hasta 24 horas; demás equipos online; conflictos según primera operación válida aceptada por nube. El control de autorización de acceso está implementado; las operaciones y cola de negocio siguen pendientes.
+Las reglas de offline de negocio siguen siendo: un único celular designado hasta 24 horas; demás equipos online; conflictos según primera operación válida aceptada por nube. El control de autorización, las operaciones locales y la cola comercial están implementados; su validación en Android físico sigue pendiente.
 
 ## Siguiente funcionalidad
 
