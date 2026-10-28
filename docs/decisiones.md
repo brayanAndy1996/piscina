@@ -17,10 +17,13 @@ Estados: ✅ aprobada · ⏳ pendiente de confirmar.
 | D-07 | Campos que faltan en el modelo de datos | ✅ | 28/10/2026 |
 | D-08 | Se elimina WhatsApp; se amplía el panel del apoderado | ✅ | 28/10/2026 |
 | D-09 | La facturación electrónica SUNAT pasa al último módulo | ✅ | 28/10/2026 |
-| D-10 | Framework y librerías concretas de Node | ⏳ | — |
-| D-11 | Tolerancia para considerar tardanza | ⏳ | — |
-| D-12 | Escala de dominio por estilo | ⏳ | — |
-| D-13 | Fase del panel del apoderado | ⏳ | — |
+| D-10 | Framework y librerías: NestJS + Prisma | ✅ | 28/10/2026 |
+| D-11 | Tolerancia de tardanza: 10 minutos, configurable | ✅ | 28/10/2026 |
+| D-12 | Escala por estilo: Básico, Intermedio, Avanzado | ✅ | 28/10/2026 |
+| D-13 | El MVP incluye las Fases 1 y 2 | ✅ | 28/10/2026 |
+| D-14 | El panel del apoderado es la cuenta del alumno, en solo lectura | ✅ | 28/10/2026 |
+| P-01 | ¿El nivel de cada estilo es independiente del nivel general? | ⏳ | — |
+| P-02 | Límite de llegada: ¿hasta cuándo puede marcar asistencia? | ⏳ | — |
 
 ---
 
@@ -51,7 +54,8 @@ suma ni le resta nada. Un plan de S/ 100 se cobra S/ 100. Esto reemplaza a la RN
 2. Si la inscripción es a mitad de mes (RN-25):
    monto = precio_plan ÷ clases_por_mes × clases_restantes, **sin redondear todavía**.
 3. Si el administrador ajusta el monto, el monto ajustado reemplaza al calculado (motivo obligatorio y auditoría).
-4. Se aplica el código de descuento, si lo hay, sobre ese monto (HU-34). El monto nunca queda por debajo de cero.
+4. Se aplica el código de descuento, si lo hay, sobre ese monto (HU-34). Un descuento de monto fijo también es un
+   monto final, con IGV incluido. El monto nunca queda por debajo de cero.
 5. El total se **redondea hacia arriba al sol entero**. Se redondea una sola vez, al final.
 
 **Ejemplos:**
@@ -135,7 +139,7 @@ cuenta del alumno. Ahí se ven:
   - totales del mes.
 - **Progreso en natación:**
   - nivel actual (Básico, Intermedio o Avanzado);
-  - dominio de cada estilo (crol, espalda, pecho y mariposa), por ejemplo "Mariposa: alto", "Pecho: bajo";
+  - nivel de cada estilo (crol, espalda, pecho y mariposa), con la misma escala (D-12);
   - evolución mes a mes según las evaluaciones del entrenador (HU-21).
 
 Para eso, cada asistencia guarda si fue puntual o tarde comparando la hora de llegada con la hora de inicio de la clase
@@ -151,20 +155,49 @@ usar un proveedor OSE/PSE). La emisión irá detrás de una interfaz `EmisorComp
 proveedor sin tocar el resto del sistema. Los trámites (certificado digital, clave SOL y validación con el contador)
 pueden esperar hasta entonces.
 
-## Pendientes de confirmar (propuestas)
+## D-10. NestJS + Prisma
 
-- **D-10. Framework y librerías de Node.**
-  - Backend: **NestJS** con **Prisma** como ORM y para las migraciones.
-  - Autenticación: JWT en una cookie `httpOnly`, roles con guards de NestJS y contraseñas con argon2.
-  - Tareas programadas: `@nestjs/schedule`.
-  - Librerías: `qrcode` (QR), `pdfkit` (carnet, ticket y cierre de caja) y `exceljs` (reportes).
-  - Frontend: `html5-qrcode` para leer el QR.
-  - Repositorio: monorepo con npm workspaces (`backend/` y `frontend/`).
-- **D-11. Tolerancia para considerar tardanza.** Llega **puntual** si marca asistencia hasta 10 minutos después
-  de la hora de inicio de la clase, y **tarde** si marca después. El valor es configurable.
-- **D-12. Escala de dominio por estilo.** **Bajo, Medio o Alto** por estilo, más "Sin evaluar". El nivel del alumno
-  sigue siendo Básico, Intermedio o Avanzado, porque las clases se organizan por ese nivel.
-- **D-13. Fase del panel del apoderado.**
-  - En la Fase 1: la asistencia (puntual, tarde, faltas y horas) y el nivel actual, porque la asistencia ya es
-    parte del MVP.
-  - En la Fase 2: el dominio por estilo y la evolución, junto con las evaluaciones del entrenador (HU-21).
+**Decisión:**
+
+- **Backend:** NestJS (TypeScript), con Prisma como ORM y para las migraciones.
+- **Autenticación:** JWT en una cookie `httpOnly`, roles con guards de NestJS y contraseñas con argon2.
+- **Tareas programadas:** `@nestjs/schedule`, para el registro automático de faltas.
+- **Librerías:** `qrcode` (QR), `pdfkit` (carnet, ticket y cierre de caja) y `exceljs` (reportes). En el frontend,
+  `html5-qrcode` para leer el QR.
+- **Repositorio:** monorepo con npm workspaces (`backend/` y `frontend/`).
+
+## D-11. Tolerancia de tardanza
+
+**Decisión:** el alumno llega **puntual** si marca asistencia hasta 10 minutos después de la hora de inicio de su
+clase, y **tarde** si la marca después. Los 10 minutos se guardan en la tabla de configuración y el administrador
+puede cambiarlos.
+
+## D-12. Escala por estilo
+
+**Decisión:** el nivel de cada estilo (crol, espalda, pecho y mariposa) usa **la misma escala que el nivel del
+alumno: Básico, Intermedio o Avanzado**, más "Sin evaluar" mientras no tenga evaluación. Por ejemplo,
+"Mariposa: Básico". El entrenador lo registra en la evaluación mensual (HU-21), que reemplaza las columnas
+`tecnica_*` de la tabla `EVALUACION`.
+
+## D-13. El MVP incluye las Fases 1 y 2
+
+**Decisión:** el producto mínimo viable incluye **la Fase 1 y la Fase 2** (gestión académica). El orden de las
+fases se mantiene para el desarrollo, pero no se entrega a la academia sin la Fase 2.
+
+En el panel del apoderado:
+
+- en la **Fase 1** se construyen la asistencia (puntual, tarde, faltas y horas) y el nivel actual;
+- en la **Fase 2** se agregan el nivel por estilo y la evolución mes a mes, junto con las evaluaciones del entrenador.
+
+## D-14. Panel del apoderado en solo lectura
+
+**Decisión:** el panel del apoderado es **el mismo panel del alumno**, porque usan la misma cuenta (RN-29). Sirve
+solo para consultar cómo va el alumno: ahí no se puede modificar ningún dato (ni personales, ni médicos, ni de
+horario). La única acción permitida es cambiar la contraseña de la cuenta (HU-05, RNF-04).
+
+## Dudas abiertas
+
+- **P-01. ¿El nivel de cada estilo es independiente del nivel general?** Por ejemplo, ¿un alumno de nivel
+  Intermedio puede tener "Mariposa: Básico" y "Crol: Avanzado"?
+- **P-02. Límite de llegada.** Propuesta: el alumno puede marcar asistencia mientras dura su clase. Pasado ese
+  tiempo, ya no puede marcarla y queda como falta, salvo que la secretaria la registre manualmente con un motivo.

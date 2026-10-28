@@ -8,7 +8,6 @@ alumnos, facturación electrónica SUNAT y avisos de inasistencia por WhatsApp.
 
 - [`docs/Documentacion_Sistema_Academia_Natacion.pdf`](docs/Documentacion_Sistema_Academia_Natacion.pdf): documento de requerimientos v1.4 (fuente de verdad).
 - [`docs/requerimientos.md`](docs/requerimientos.md): el mismo contenido en texto, para buscar y consultar rápido.
-
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 
@@ -16,7 +15,7 @@ alumnos, facturación electrónica SUNAT y avisos de inasistencia por WhatsApp.
 
 | Capa | Opción |
 |---|---|
-| Backend | Node.js + TypeScript (NestJS + Prisma, por confirmar) |
+| Backend | Node.js + TypeScript con NestJS y Prisma |
 | Frontend | React + Vite + Tailwind CSS (responsive, instalable como PWA) |
 | Base de datos | PostgreSQL |
 | Archivos | S3 / Cloudflare R2 / disco local del VPS |
@@ -25,10 +24,12 @@ alumnos, facturación electrónica SUNAT y avisos de inasistencia por WhatsApp.
 
 ## Fases (ajustadas según `docs/decisiones.md`)
 
-1. **MVP:** usuarios y roles, planes, clases y aforo, inscripción con seguimiento de la solicitud, pagos con
+El producto mínimo viable (MVP) incluye las Fases 1 y 2 (D-13).
+
+1. **Operación básica:** usuarios y roles, planes, clases y aforo, inscripción con seguimiento de la solicitud, pagos con
    verificación, carnet QR, asistencia (puntual, tarde, falta), caja, mensualidades, cobro proporcional y panel del
    apoderado con su asistencia.
-2. **Gestión académica:** panel del entrenador, rendimiento y dominio por estilo en el panel del apoderado,
+2. **Gestión académica:** panel del entrenador, rendimiento y nivel por estilo en el panel del apoderado,
    multimedia, clases particulares, descuentos, recuperaciones, días de cierre, pagos a entrenadores y asistencia
    fuera de horario.
 3. **Inteligencia del negocio:** reportes exportables, dashboard, asistencia de profesores y auditoría avanzada.
