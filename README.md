@@ -11,6 +11,17 @@ alumnos, facturación electrónica SUNAT y avisos de inasistencia por WhatsApp.
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 
+## Forma de trabajo
+
+El proyecto se desarrolla con especificación primero (SDD), pruebas primero en la ruta crítica (TDD), pruebas
+adversariales y roles separados. Ver [`docs/metodologia.md`](docs/metodologia.md).
+
+- [`CLAUDE.md`](CLAUDE.md): instrucciones del orquestador, ruta crítica, arquitectura y convenciones.
+- [`.claude/agents/`](.claude/agents): los roles (especificador, adversarial, backend, frontend, test-writer,
+  revisor, tester y documentador).
+- [`specs/`](specs): una carpeta por historia (`spec.md`, `plan.md`, `tasks.md`), a partir de
+  `specs/_plantillas/`.
+
 ## Stack (ver D-01 y D-10 en `docs/decisiones.md`)
 
 | Capa | Opción |
