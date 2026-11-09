@@ -4,7 +4,7 @@ Decisiones tomadas con el cliente sobre los "Puntos por aclarar" del README y so
 posteriores al documento v1.4. Cuando una decisión contradice a `Documentacion_Sistema_Academia_Natacion.pdf`,
 **manda esta decisión**.
 
-Estados: ✅ aprobada · ⏳ pendiente de confirmar.
+Estados: ✅ aprobada · ⏳ pendiente de confirmar. No quedan dudas abiertas.
 
 | # | Tema | Estado | Fecha |
 |---|---|---|---|
@@ -22,8 +22,8 @@ Estados: ✅ aprobada · ⏳ pendiente de confirmar.
 | D-12 | Escala por estilo: Básico, Intermedio, Avanzado | ✅ | 28/10/2026 |
 | D-13 | El MVP incluye las Fases 1 y 2 | ✅ | 28/10/2026 |
 | D-14 | El panel del apoderado es la cuenta del alumno, en solo lectura | ✅ | 28/10/2026 |
-| P-01 | ¿El nivel de cada estilo es independiente del nivel general? | ⏳ | — |
-| P-02 | Límite de llegada: ¿hasta cuándo puede marcar asistencia? | ⏳ | — |
+| D-15 | El nivel de cada estilo es independiente del nivel general | ✅ | 09/11/2026 |
+| D-16 | La asistencia solo se marca mientras dura la clase | ✅ | 09/11/2026 |
 
 ---
 
@@ -195,9 +195,17 @@ En el panel del apoderado:
 solo para consultar cómo va el alumno: ahí no se puede modificar ningún dato (ni personales, ni médicos, ni de
 horario). La única acción permitida es cambiar la contraseña de la cuenta (HU-05, RNF-04).
 
-## Dudas abiertas
+## D-15. Nivel por estilo independiente del nivel general
 
-- **P-01. ¿El nivel de cada estilo es independiente del nivel general?** Por ejemplo, ¿un alumno de nivel
-  Intermedio puede tener "Mariposa: Básico" y "Crol: Avanzado"?
-- **P-02. Límite de llegada.** Propuesta: el alumno puede marcar asistencia mientras dura su clase. Pasado ese
-  tiempo, ya no puede marcarla y queda como falta, salvo que la secretaria la registre manualmente con un motivo.
+**Decisión:** el nivel de cada estilo **puede ser distinto** del nivel general del alumno. Por ejemplo, un alumno de
+nivel Intermedio puede tener "Mariposa: Básico" y "Crol: Avanzado". El nivel general es el que decide en qué clases
+puede inscribirse; el nivel por estilo solo describe su progreso.
+
+## D-16. La asistencia solo se marca mientras dura la clase
+
+**Decisión:** el alumno puede marcar su asistencia (por QR o de forma manual) **solo mientras dura su clase**:
+desde la hora de inicio hasta la hora de fin. Pasado ese tiempo ya no puede marcarla y queda como falta. Solo la
+secretaria o el administrador pueden registrarla después, de forma manual y con un motivo obligatorio que queda en
+auditoría.
+
+Dentro de la clase, la asistencia es **puntual** hasta los 10 minutos de tolerancia (D-11) y **tarde** después.
