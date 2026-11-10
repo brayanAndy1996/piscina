@@ -19,6 +19,8 @@ adversariales y roles separados. Ver [`docs/metodologia.md`](docs/metodologia.md
 - [`CLAUDE.md`](CLAUDE.md): instrucciones del orquestador, ruta crítica, arquitectura y convenciones.
 - [`.claude/agents/`](.claude/agents): los roles (especificador, adversarial, backend, frontend, test-writer,
   revisor, tester y documentador).
+- [`docs/arquitectura.md`](docs/arquitectura.md): arquitectura y estructura de carpetas.
+- [`specs/backlog.md`](specs/backlog.md): la lista ordenada de historias.
 - [`specs/`](specs): una carpeta por historia (`spec.md`, `plan.md`, `tasks.md`), a partir de
   `specs/_plantillas/`.
 

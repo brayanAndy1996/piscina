@@ -30,6 +30,14 @@ Estados: ✅ aprobada · ⏳ pendiente de confirmar. No quedan dudas abiertas.
 | D-20 | Foto del alumno: la sube él o la toma la secretaria | ✅ | 10/11/2026 |
 | D-21 | Hosting por decidir: el sistema debe ser portable | ✅ | 10/11/2026 |
 | D-22 | Identidad visual genérica por ahora | ✅ | 10/11/2026 |
+| D-23 | El sistema es para varias academias | ✅ | 10/11/2026 |
+| D-24 | La foto del alumno es opcional | ✅ | 10/11/2026 |
+| D-25 | Arquitectura y tecnologías | ✅ | 10/11/2026 |
+| D-26 | Desarrollo en la nube; pruebas del responsable en Windows | ✅ | 10/11/2026 |
+| D-27 | La academia se identifica con un nombre corto en la dirección | ✅ | 10/11/2026 |
+| D-28 | El DNI es único por academia | ✅ | 10/11/2026 |
+| D-29 | Rol Superadmin; sin cobro de suscripción en el MVP | ✅ | 10/11/2026 |
+| D-30 | Lista de historias y estructura de carpetas | ✅ | 10/11/2026 |
 
 ---
 
@@ -252,3 +260,84 @@ respaldos diarios (RNF-08) se definen junto con el hosting, antes de salir a pro
 **Decisión:** mientras no haya nombre comercial, logo ni colores definitivos, el sistema usa una identidad genérica
 ("Academia de Natación", sin logo). El nombre, el teléfono y el logo de la academia se leen de la configuración, para
 cambiarlos sin tocar el código.
+
+## D-23. Varias academias
+
+**Decisión:** AquaGestión se diseña para **varias academias** en una misma instalación. Cada academia tiene sus
+propios usuarios, alumnos, planes, clases, pagos, caja, configuración e identidad visual, y nunca ve los datos de
+otra.
+
+**Consecuencias:**
+
+- **El aislamiento entre academias pasa a ser el primer punto de la ruta crítica.**
+- Todas las tablas del negocio llevan `academia_id`. El aislamiento se aplica en dos capas: la API filtra siempre
+  por la academia del usuario, y PostgreSQL lo refuerza con seguridad a nivel de fila (RLS). Así, un error en una
+  consulta no puede mostrar datos de otra academia.
+- Toda la configuración es por academia: tolerancia, días "por vencer", régimen tributario, nombre, teléfono y logo.
+- Cuando llegue la facturación (D-09), cada academia emite con su propio RUC y certificado.
+
+## D-24. Foto opcional
+
+**Decisión:** la foto del alumno es **opcional** al inscribirse. Sin foto, el carnet muestra "Foto pendiente" y la
+secretaria puede agregarla después (D-20).
+
+## D-25. Arquitectura y tecnologías
+
+**Decisión:** un solo sistema organizado por módulos (no microservicios), con la aplicación web y la API en el
+mismo dominio (`/` y `/api`).
+
+- **Repositorio:** monorepo con npm workspaces: `backend/`, `frontend/` y `packages/contratos/` (esquemas zod y
+  tipos compartidos por la API y la web).
+- **Backend:** NestJS con TypeScript estricto, Prisma y PostgreSQL 16; zod para validar y para documentar la API
+  (OpenAPI); `@node-rs/argon2`; JWT en cookie `httpOnly` con versión de token por usuario; `helmet` y
+  `@nestjs/throttler`; `date-fns` con `@date-fns/tz`; `Decimal` y `numeric(10,2)`; `sharp` para imágenes; `qrcode`,
+  `pdfkit` y `exceljs`; `@nestjs/schedule` con bloqueo en PostgreSQL; `pino` para los logs.
+- **Módulos del backend:** controlador (entrada y validación), servicio (caso de uso, transacción y auditoría) y
+  dominio (cálculos puros, sin base de datos).
+- **Frontend:** React, Vite, TypeScript y Tailwind CSS; React Router, TanStack Query, React Hook Form con los
+  esquemas compartidos, shadcn/ui y `html5-qrcode`.
+- **Pruebas y calidad:** Vitest en todo el repositorio, `supertest` contra PostgreSQL real, Playwright para E2E,
+  ESLint, Prettier, `husky` con `lint-staged` y GitHub Actions.
+- **Archivos y correo:** detrás de las interfaces `AlmacenArchivos` y `EnviadorCorreo` (D-19, D-21).
+
+## D-26. Desarrollo en la nube y pruebas en Windows
+
+**Decisión:** el desarrollo se hace en sesiones de Claude en la nube. El responsable trae los cambios a su PC con
+Windows para probarlos. Por eso:
+
+- **Base de datos:** en la nube se usa el PostgreSQL instalado en el contenedor (no hay Docker); en la PC, el de
+  `docker compose` (D-18). Ambos se configuran con la misma variable `DATABASE_URL` en `.env`.
+- **Preparación de cada sesión en la nube:** un script de inicio, escrito en Node, enciende PostgreSQL, crea la base
+  de desarrollo y la de pruebas, instala las dependencias y aplica las migraciones. Solo actúa en la nube; en la PC
+  no hace nada.
+- **Misma versión de Node** en la nube, en la integración continua y en la PC (`.nvmrc` y `engines`): Node 22 LTS.
+- **Finales de línea:** `.gitattributes` fija LF para que Windows no altere los archivos.
+- **Dependencias con binarios por sistema operativo** (Prisma, `sharp`, `@node-rs/argon2`): la integración continua
+  también instala y compila en Windows, para detectar a tiempo un `package-lock.json` que no funcione allí.
+- **La guía para levantar el sistema en local** se escribe para Windows: `git pull`, `npm ci`,
+  `docker compose up -d`, migraciones, datos de prueba y `npm run dev`.
+
+## D-27. Identificación de la academia en las páginas públicas
+
+**Decisión:** cada academia tiene un **nombre corto** único (por ejemplo, `delfines`) que va en la dirección de sus
+páginas públicas: `/a/delfines/inscripcion` y `/a/delfines/solicitud/{token}`. Los usuarios que ya iniciaron sesión
+no lo necesitan, porque su academia sale de su cuenta. Más adelante se puede pasar a subdominios
+(`delfines.aquagestion.pe`).
+
+## D-28. DNI único por academia
+
+**Decisión:** el DNI es único **dentro de cada academia** (ajusta la RN-03). Una persona puede ser alumna de dos
+academias, con una cuenta en cada una. Por eso el inicio de sesión de las academias también lleva su nombre corto
+(`/a/delfines/ingresar`), y el usuario del alumno sigue siendo su DNI (RN-02).
+
+## D-29. Superadmin
+
+**Decisión:** se agrega el rol **Superadmin**, el dueño de AquaGestión. Crea academias, crea a su primer
+administrador y puede suspenderlas. No ve los datos internos de ninguna academia (alumnos, pagos, caja). El cobro de
+una suscripción a las academias queda **fuera del MVP**: por ahora el Superadmin las da de alta a mano. Cómo inicia
+sesión el Superadmin lo define la especificación de la historia 001.
+
+## D-30. Lista de historias y estructura de carpetas
+
+**Decisión:** el orden de desarrollo está en [`specs/backlog.md`](../specs/backlog.md) y la estructura de carpetas,
+en [`docs/arquitectura.md`](arquitectura.md).
