@@ -17,7 +17,12 @@ Documentos de negocio, en este orden de prioridad:
 Ante cualquier duda de negocio, esos documentos mandan sobre la memoria o la intuición. Lo que no esté en ellos es
 una pregunta abierta para el responsable, no una regla que se inventa.
 
-La metodología completa está en [`docs/metodologia.md`](docs/metodologia.md).
+Además:
+
+- [`specs/backlog.md`](specs/backlog.md): la lista ordenada de historias. El orquestador toma de ahí la siguiente.
+- [`docs/arquitectura.md`](docs/arquitectura.md): vista general, aislamiento entre academias, estructura de carpetas y
+  cómo se trabaja en la nube y en Windows.
+- [`docs/metodologia.md`](docs/metodologia.md): la metodología completa.
 
 ## Tu rol en la sesión principal: orquestador
 
@@ -89,7 +94,8 @@ Funciones donde un error cuesta dinero, problemas legales, filtración de datos 
   una asistencia por día; marcado solo mientras dura la clase; puntual hasta los 10 minutos configurables y tarde
   después; cada asistencia descuenta una clase; registro de faltas (RN-06, RN-14 a RN-16, HU-13 a HU-15, D-11,
   D-16).
-- **Permisos y datos sensibles:** cada rol solo hace lo que permite la matriz de permisos (sección 2.1 de los requerimientos); el entrenador solo
+- **Permisos y datos sensibles:** cada rol solo hace lo que permite la matriz de permisos (sección 2.1 de los
+  requerimientos); el Superadmin administra las academias pero no ve sus datos internos (D-29); el entrenador solo
   ve a sus alumnos; los datos médicos y de menores son sensibles (Ley 29733); el panel del alumno y del apoderado
   muestra solo a ese alumno y en solo lectura; la multimedia solo la ven el alumno, el administrador y el
   entrenador que la subió; auditoría de caja, pagos, cambios de horario y ajustes (RN-18 a RN-22, RNF-05, RNF-06,
@@ -176,7 +182,9 @@ Además de la lista general de su rol:
 
 ## Git
 
-- La rama principal solo tiene lo aprobado; cada historia se trabaja en su propia rama y entra por PR.
+- La rama principal solo tiene lo aprobado; cada historia se trabaja en su propia rama y entra por PR. Si la sesión
+  en la nube solo permite hacer push a la rama que tiene asignada, la historia se trabaja en esa rama.
+- Al unir una historia a `main`, se marca como ✅ en `specs/backlog.md`.
 - Commits frecuentes, descriptivos y en español, con las líneas de atribución que indique la sesión. Si el trabajo
   es largo, commits de respaldo ("… (en curso)").
 - Nunca reescribir historia publicada (`--force`) ni saltarse hooks.

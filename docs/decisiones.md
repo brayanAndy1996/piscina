@@ -4,7 +4,7 @@ Decisiones tomadas con el cliente sobre los "Puntos por aclarar" del README y so
 posteriores al documento v1.4. Cuando una decisión contradice a `Documentacion_Sistema_Academia_Natacion.pdf`,
 **manda esta decisión**.
 
-Estados: ✅ aprobada · ⏳ pendiente de confirmar.
+Estados: ✅ aprobada · ⏳ pendiente de confirmar. No quedan dudas abiertas.
 
 | # | Tema | Estado | Fecha |
 |---|---|---|---|
@@ -34,9 +34,10 @@ Estados: ✅ aprobada · ⏳ pendiente de confirmar.
 | D-24 | La foto del alumno es opcional | ✅ | 10/11/2026 |
 | D-25 | Arquitectura y tecnologías | ✅ | 10/11/2026 |
 | D-26 | Desarrollo en la nube; pruebas del responsable en Windows | ✅ | 10/11/2026 |
-| P-03 | Cómo se identifica la academia en las páginas públicas | ⏳ | — |
-| P-04 | DNI único por academia o en toda la plataforma | ⏳ | — |
-| P-05 | Administración de la plataforma y cobro a las academias | ⏳ | — |
+| D-27 | La academia se identifica con un nombre corto en la dirección | ✅ | 10/11/2026 |
+| D-28 | El DNI es único por academia | ✅ | 10/11/2026 |
+| D-29 | Rol Superadmin; sin cobro de suscripción en el MVP | ✅ | 10/11/2026 |
+| D-30 | Lista de historias y estructura de carpetas | ✅ | 10/11/2026 |
 
 ---
 
@@ -316,15 +317,27 @@ Windows para probarlos. Por eso:
 - **La guía para levantar el sistema en local** se escribe para Windows: `git pull`, `npm ci`,
   `docker compose up -d`, migraciones, datos de prueba y `npm run dev`.
 
-## Preguntas abiertas
+## D-27. Identificación de la academia en las páginas públicas
 
-- **P-03. Cómo se identifica la academia en las páginas públicas** (inscripción y seguimiento de la solicitud).
-  Propuesta: con un identificador corto en la dirección, por ejemplo `/a/delfines/inscripcion`. Los usuarios que
-  inician sesión no lo necesitan, porque su academia sale de su cuenta. Más adelante se puede pasar a subdominios
-  (`delfines.aquagestion.pe`), que exigen certificados comodín.
-- **P-04. ¿El DNI es único por academia o en toda la plataforma?** Propuesta: **por academia**. Una persona puede
-  ser alumna de dos academias, con una cuenta en cada una. Por eso el inicio de sesión también va por academia
-  (`/a/delfines/ingresar`), y el usuario sigue siendo el DNI (RN-02, RN-03).
-- **P-05. ¿Quién administra la plataforma?** Propuesta: un rol nuevo, **Superadmin** (el dueño de AquaGestión), que
-  crea academias, crea a su primer administrador y puede suspenderlas. No ve los datos internos de ninguna academia.
-  El cobro de una suscripción a cada academia queda **fuera del MVP**: por ahora el Superadmin las da de alta a mano.
+**Decisión:** cada academia tiene un **nombre corto** único (por ejemplo, `delfines`) que va en la dirección de sus
+páginas públicas: `/a/delfines/inscripcion` y `/a/delfines/solicitud/{token}`. Los usuarios que ya iniciaron sesión
+no lo necesitan, porque su academia sale de su cuenta. Más adelante se puede pasar a subdominios
+(`delfines.aquagestion.pe`).
+
+## D-28. DNI único por academia
+
+**Decisión:** el DNI es único **dentro de cada academia** (ajusta la RN-03). Una persona puede ser alumna de dos
+academias, con una cuenta en cada una. Por eso el inicio de sesión de las academias también lleva su nombre corto
+(`/a/delfines/ingresar`), y el usuario del alumno sigue siendo su DNI (RN-02).
+
+## D-29. Superadmin
+
+**Decisión:** se agrega el rol **Superadmin**, el dueño de AquaGestión. Crea academias, crea a su primer
+administrador y puede suspenderlas. No ve los datos internos de ninguna academia (alumnos, pagos, caja). El cobro de
+una suscripción a las academias queda **fuera del MVP**: por ahora el Superadmin las da de alta a mano. Cómo inicia
+sesión el Superadmin lo define la especificación de la historia 001.
+
+## D-30. Lista de historias y estructura de carpetas
+
+**Decisión:** el orden de desarrollo está en [`specs/backlog.md`](../specs/backlog.md) y la estructura de carpetas,
+en [`docs/arquitectura.md`](arquitectura.md).
