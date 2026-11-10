@@ -238,8 +238,7 @@ con el código y el enlace que ve al terminar el formulario.
 ## D-20. Foto del alumno para el carnet
 
 **Decisión:** la foto la puede subir el cliente en el formulario de inscripción o la puede tomar la secretaria en
-recepción, con la cámara de la PC o subiendo una imagen. La foto es opcional al inscribirse; sin foto, el carnet
-muestra un aviso de "foto pendiente" y la secretaria puede agregarla después.
+recepción, con la cámara de la PC o subiendo una imagen.
 
 ## D-21. Hosting por decidir
 
