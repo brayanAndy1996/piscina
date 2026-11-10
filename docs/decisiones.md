@@ -24,6 +24,12 @@ Estados: ✅ aprobada · ⏳ pendiente de confirmar. No quedan dudas abiertas.
 | D-14 | El panel del apoderado es la cuenta del alumno, en solo lectura | ✅ | 28/10/2026 |
 | D-15 | El nivel de cada estilo es independiente del nivel general | ✅ | 09/11/2026 |
 | D-16 | La asistencia solo se marca mientras dura la clase | ✅ | 09/11/2026 |
+| D-17 | Cada historia crea sus propias tablas | ✅ | 10/11/2026 |
+| D-18 | PostgreSQL local con Docker | ✅ | 10/11/2026 |
+| D-19 | Sin proveedor de correo por ahora: envío simulado | ✅ | 10/11/2026 |
+| D-20 | Foto del alumno: la sube él o la toma la secretaria | ✅ | 10/11/2026 |
+| D-21 | Hosting por decidir: el sistema debe ser portable | ✅ | 10/11/2026 |
+| D-22 | Identidad visual genérica por ahora | ✅ | 10/11/2026 |
 
 ---
 
@@ -209,3 +215,41 @@ secretaria o el administrador pueden registrarla después, de forma manual y con
 auditoría.
 
 Dentro de la clase, la asistencia es **puntual** hasta los 10 minutos de tolerancia (D-11) y **tarde** después.
+
+## D-17. Cada historia crea sus propias tablas
+
+**Decisión:** el modelo de datos no se crea completo al inicio. La historia `000-esqueleto` crea solo lo transversal
+(usuarios, auditoría y configuración). Cada historia agrega sus tablas y columnas en la sección "Cambios al modelo de
+datos" de su `spec.md`, con su propia migración. El modelo de la sección 9 del documento, ajustado por estas
+decisiones, sirve de referencia.
+
+## D-18. PostgreSQL local con Docker
+
+**Decisión:** el responsable tiene Docker. En local, PostgreSQL se levanta con `docker compose`; el backend y el
+frontend corren directamente con Node en Windows. La guía para levantar el sistema en local se escribe para Windows.
+
+## D-19. Sin proveedor de correo por ahora
+
+**Decisión:** todavía no hay proveedor de correo. Los envíos (por ejemplo, el enlace de seguimiento de D-05) pasan
+por una interfaz `EnviadorCorreo`, con una implementación que solo registra el mensaje en el log. Cuando haya
+proveedor, se agrega su implementación sin tocar el resto del sistema. Mientras tanto, el cliente sigue su solicitud
+con el código y el enlace que ve al terminar el formulario.
+
+## D-20. Foto del alumno para el carnet
+
+**Decisión:** la foto la puede subir el cliente en el formulario de inscripción o la puede tomar la secretaria en
+recepción, con la cámara de la PC o subiendo una imagen. La foto es opcional al inscribirse; sin foto, el carnet
+muestra un aviso de "foto pendiente" y la secretaria puede agregarla después.
+
+## D-21. Hosting por decidir
+
+**Decisión:** todavía no se decide dónde se publicará el sistema. Mientras tanto, el sistema debe poder publicarse
+en cualquier proveedor: toda la configuración va en variables de entorno y los archivos (comprobantes, fotos,
+videos) pasan por una interfaz `AlmacenArchivos`, con disco local en desarrollo. El proveedor de archivos y los
+respaldos diarios (RNF-08) se definen junto con el hosting, antes de salir a producción.
+
+## D-22. Identidad visual genérica
+
+**Decisión:** mientras no haya nombre comercial, logo ni colores definitivos, el sistema usa una identidad genérica
+("Academia de Natación", sin logo). El nombre, el teléfono y el logo de la academia se leen de la configuración, para
+cambiarlos sin tocar el código.
