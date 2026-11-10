@@ -1,8 +1,8 @@
 # AquaGestión
 
-Sistema web de gestión para academias de natación en Perú, pensado para varias academias en una misma instalación (piscina semiolímpica de 25 m): inscripción en línea,
-cobros y caja, verificación de pagos por Yape o transferencia, carnet digital con QR, asistencia, mensualidades,
-rendimiento de los alumnos y un panel de consulta para alumnos y apoderados.
+Sistema web de gestión para academias de natación en Perú, pensado para varias academias en una misma instalación
+(D-23): inscripción en línea, cobros y caja, verificación de pagos por Yape o transferencia, carnet digital con QR,
+asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta para alumnos y apoderados.
 
 Documentos de negocio, en este orden de prioridad:
 
