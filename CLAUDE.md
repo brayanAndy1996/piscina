@@ -1,6 +1,6 @@
 # AquaGestión
 
-Sistema web de gestión para una academia de natación en Perú (piscina semiolímpica de 25 m): inscripción en línea,
+Sistema web de gestión para academias de natación en Perú, pensado para varias academias en una misma instalación (piscina semiolímpica de 25 m): inscripción en línea,
 cobros y caja, verificación de pagos por Yape o transferencia, carnet digital con QR, asistencia, mensualidades,
 rendimiento de los alumnos y un panel de consulta para alumnos y apoderados.
 
@@ -70,6 +70,9 @@ necesarias.
 
 Funciones donde un error cuesta dinero, problemas legales, filtración de datos o la confianza de la academia:
 
+- **Aislamiento entre academias:** el sistema atiende a varias academias (D-23). Ningún usuario, consulta, archivo,
+  tarea programada o enlace público puede leer ni modificar datos de otra academia. Se aplica en la API y se refuerza
+  con seguridad a nivel de fila (RLS) en PostgreSQL.
 - **Cálculo del cobro:** monto proporcional por inscripción a mitad de mes, ajuste del administrador, código de
   descuento y redondeo hacia arriba al sol entero, una sola vez y al final. Los precios ya incluyen IGV (RN-25,
   HU-34, D-03).
@@ -109,24 +112,37 @@ Además de la lista general de su rol:
 - **Aforo:** inscripciones, renovaciones, recuperaciones y cambios de horario simultáneos sobre el último cupo.
 - **Pagos:** el mismo número de operación con espacios, ceros o mayúsculas distintas; aprobar dos veces; aprobar un
   pago rechazado; cobrar con la caja de otro día.
+- **Aislamiento entre academias:** pedir o modificar datos de otra academia cambiando un id, un identificador de
+  academia en la dirección, un token de seguimiento o un QR; listados, reportes, archivos y tareas programadas que
+  mezclen academias; consultas que se salten la seguridad a nivel de fila.
 - **Aislamiento entre alumnos:** un alumno o apoderado que pide datos, asistencia, evaluaciones o multimedia de otro
   alumno cambiando el id; un entrenador que pide la ficha de un alumno que no es suyo.
 - **Enlace de seguimiento y QR:** tokens adivinables, enumerables o reutilizados después de regenerar el QR.
 
 ## Arquitectura y convenciones
 
-- **Stack (D-01, D-10):**
-  - Backend: Node.js con TypeScript, NestJS y Prisma, sobre PostgreSQL.
-  - Frontend: React, Vite, TypeScript y Tailwind CSS.
-  - Librerías: `qrcode`, `pdfkit` y `exceljs` en el backend; `html5-qrcode` en el frontend.
-  - Autenticación: JWT en una cookie `httpOnly`, roles con guards de NestJS y contraseñas con argon2.
-  - Tareas programadas: `@nestjs/schedule`.
+- **Stack (D-01, D-10, D-25):**
+  - Un solo sistema organizado por módulos; la web y la API en el mismo dominio (`/` y `/api`).
+  - Backend: Node.js 22 LTS con TypeScript estricto, NestJS y Prisma, sobre PostgreSQL 16.
+  - Contratos: esquemas zod en `packages/contratos/`, compartidos por la API y la web; OpenAPI generado desde ellos.
+  - Autenticación: JWT en una cookie `httpOnly` con versión de token por usuario, roles con guards de NestJS y
+    contraseñas con `@node-rs/argon2`; `helmet` y `@nestjs/throttler`.
+  - Librerías: `date-fns` con `@date-fns/tz`, `sharp`, `qrcode`, `pdfkit`, `exceljs`, `pino` y `@nestjs/schedule`.
+  - Frontend: React, Vite, TypeScript y Tailwind CSS; React Router, TanStack Query, React Hook Form, shadcn/ui y
+    `html5-qrcode`.
+  - Archivos y correo detrás de las interfaces `AlmacenArchivos` y `EnviadorCorreo` (D-19, D-21).
+- **Módulos del backend:** controlador (entrada y validación), servicio (caso de uso, transacción y auditoría) y
+  dominio (cálculos puros, sin base de datos, fáciles de probar).
 - **Estructura:** monorepo con npm workspaces. La crea la historia `000-esqueleto`:
   - `backend/`: API de NestJS; `backend/prisma/` tiene el esquema y las migraciones.
   - `frontend/`: aplicación web de React.
+  - `packages/contratos/`: esquemas y tipos compartidos.
+  - `e2e/`: pruebas de Playwright.
+  - `scripts/`: scripts del proyecto, escritos en Node.
   - `specs/`: una carpeta por historia, más `specs/_plantillas/`.
-  - `docs/`: requerimientos, decisiones y metodología.
+  - `docs/`: requerimientos, decisiones, metodología y guías.
 - **Reglas que no se negocian:**
+  - Toda tabla del negocio lleva `academia_id`, y toda consulta corre con la academia del usuario (D-23).
   - Los montos usan `Decimal` en la base y en el código, nunca `number` con coma flotante.
   - Las fechas y horas de negocio se calculan en la zona **America/Lima**, sin depender de la zona del servidor.
   - Las escrituras de cobro, verificación y asistencia son idempotentes: un doble clic o un reintento no duplica
@@ -140,11 +156,15 @@ Además de la lista general de su rol:
 - **Multiplataforma:** el responsable usa **Windows**. Los scripts del proyecto funcionan en Windows, Mac y Linux
   (sin `cp`, `rm` ni `mkdir -p` de Unix; se usa Node o herramientas como `cross-env`). La configuración local va
   en `.env`, nunca editando archivos versionados.
+- **Desarrollo en la nube (D-26):** las sesiones de Claude trabajan en la nube, con el PostgreSQL del contenedor. El
+  responsable prueba en su PC con Windows y PostgreSQL en Docker. Lo que funciona en la nube debe funcionar igual en
+  Windows: misma versión de Node, finales de línea LF y la integración continua también en Windows.
 - **Repositorio público:** nunca subir credenciales, certificados, archivos `.env` ni datos reales. Los datos de
   prueba y de ejemplo son inventados.
 
 ## Pruebas
 
+- **Herramientas:** Vitest en todo el repositorio, `supertest` para la API y Playwright para E2E.
 - **Unitarias** para el dominio puro: cálculo del cobro, ventana de asistencia (puntual, tarde o fuera de la
   clase), estados de la mensualidad.
 - **Integración** de la API contra un PostgreSQL real, sin simular la base de datos, para todo lo crítico: permisos,
