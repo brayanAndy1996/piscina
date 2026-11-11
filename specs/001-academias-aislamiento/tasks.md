@@ -14,6 +14,9 @@ el backend las sigue en T5 (P-1), T6 (P-11), T7 (P-3, P-10), T8 (P-9), T10 (P-2)
 Tras la ronda 1 del ataque adversarial se agregaron los criterios 72 a 79 (sección J de `spec.md`); sus tareas son
 T26 a T34, antes del cierre.
 
+Tras la ronda 2 se agregaron los criterios 80 a 91 (sección K de `spec.md`); sus tareas son T35 a T46, antes del
+cierre.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -84,7 +87,8 @@ T26 a T34, antes del cierre.
       "Pruebas protegidas (001), ataque ronda N: … (en rojo)"), backend (corrección), y nueva ronda hasta que no haya
       fallas
 - [ ] T22 · revisor · Revisión contra la especificación y `CLAUDE.md`: criterios de revisión (28, 62, 64, 65), que
-      ningún módulo use Prisma fuera de `BaseDatos`, que ninguna clave o secreto real quede en el repositorio,
+      ningún módulo use Prisma fuera de `BaseDatos`, que ninguna clave o secreto real quede en el repositorio (y que
+      ningún secreto de prueba válido en producción esté escrito en él, criterio 91),
       scripts compatibles con Windows
 - [ ] T23 · tester · Suite completa (`npm test`), `lint`, `typecheck`, `format:check`, `build` y, si hay navegador,
       `npm run e2e`
@@ -111,6 +115,35 @@ aceptados quedaron en "Riesgos aceptados".
       producción y lista de secretos públicos con su prueba (criterios 78, 79)
 - [ ] T33 · orquestador · `git diff` desde el commit de T27: T28 a T32 no tocaron pruebas protegidas
 - [ ] T34 · adversarial · Ronda 2 sobre todo lo anterior, en especial 72 a 79; si hay fallas, se repite el ciclo
+
+## Ataque adversarial, ronda 2 (11/11/2026)
+
+Fallas F1 a F6, O1, O2, O4, O5 y O6 de la ronda 2; criterios 80 a 91 de `spec.md` (sección K). O3 quedó en
+"Riesgos aceptados". Detalle técnico en la sección 14 del plan.
+
+- [ ] T35 · test-writer · Pruebas protegidas en rojo de los criterios 80 a 90 (archivos en "Protegidas del ataque
+      ronda 2" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación; y criterio 91:
+      reemplazar en las pruebas los secretos fijos que cumplen el criterio 79 por secretos generados con
+      `randomBytes`, empezando por `backend/test/integracion/plataforma/sesion.test.ts`. Commit: "Pruebas protegidas
+      (001), ataque ronda 2: rol, temporales, lint, cliente, textos, codificación y comandos (en rojo)"
+- [ ] T36 · tester · Confirmar que T35 falla por la razón esperada (rol inseguro aceptado, `CREATE TEMP` permitido,
+      formas de SQL o importaciones que pasan el lint, cliente accesible, texto en blanco o longitud UTF-16 aceptados,
+      415 en lugar de 400, contexto de academia en `enPlataforma`) y no por errores de las pruebas. Las de integración
+      de 80 y 81 que se omiten en la nube se confirman en la CI
+- [ ] T37 · backend · Comprobación completa del rol en `BaseDatos` con la función pura `problemasDelRol` (criterio
+      80)
+- [ ] T38 · backend · `scripts/lib/rol-app.mjs`, `asegurarRolApp`/`crearBases` con la lista completa y la revocación
+      de `TEMPORARY`, y el paso del rol del hook de sesión (criterios 81, 82)
+- [ ] T39 · backend · Migración `<marca>_endurecer_rol_app` (criterio 82)
+- [ ] T40 · backend · Normalización del SQL y reglas nuevas en `eslint/regla-sql-sesion.mjs` (criterios 83, 84)
+- [ ] T41 · backend · `eslint/regla-acceso-base.mjs`, `eslint-disable` sin efecto sobre las reglas protegidas y
+      `#prisma` en `BaseDatos` (criterios 85, 86)
+- [ ] T42 · backend · `texto.ts`: visibles sin ignorables ni U+2800 y longitudes por puntos de código; uso en
+      `plataforma.ts`, `academias.ts`, `superadmin-datos.ts` y la semilla (criterios 87, 88)
+- [ ] T43 · backend · Middleware de `Content-Encoding` y traducción de los errores de descompresión (criterio 89)
+- [ ] T44 · backend · `enPlataforma` fija los dos valores de contexto (criterio 90)
+- [ ] T45 · orquestador · `git diff` desde el commit de T36: T37 a T44 no tocaron pruebas protegidas
+- [ ] T46 · adversarial · Ronda 3 sobre todo lo anterior, en especial 80 a 91; si hay fallas, se repite el ciclo
 
 ## Cierre
 

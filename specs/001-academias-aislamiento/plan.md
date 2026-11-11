@@ -13,12 +13,14 @@ piscina/
 ├── package.json                         + plataforma:superadmin, env:completar
 ├── .env.example                         + DATABASE_URL_APP, JWT_SECRETO, SUPERADMIN_*, DATABASE_POOL_MAX (comentada)
 ├── eslint.config.mjs                    + regla de importaciones de Prisma (criterio 28) y del SQL de sesión (73)
-├── eslint/regla-sql-sesion.mjs          nuevo, ataque ronda 1 (criterio 73)
+├── eslint/regla-sql-sesion.mjs          nuevo, ataque ronda 1 (criterio 73); ronda 2: normalización (83, 84)
+├── eslint/regla-acceso-base.mjs         nuevo, ataque ronda 2: import(), require, pg y @prisma (criterio 85)
 ├── .github/workflows/ci.yml             + DATABASE_URL_APP y JWT_SECRETO en Linux (y en el E2E)
-├── .claude/hooks/preparar-sesion.mjs    + creación del rol aquagestion_app (criterio 8)
+├── .claude/hooks/preparar-sesion.mjs    + creación del rol aquagestion_app (criterio 8); ronda 2: atributos (81)
 ├── scripts/
 │   ├── lib/entorno.mjs                  + leerUrlApp(), urlAppSobre(base)
-│   ├── crear-bases.mjs                  + asegurarRolApp() (criterio 6)
+│   ├── lib/rol-app.mjs                  nuevo, ataque ronda 2: consulta y evaluación del rol (criterio 81)
+│   ├── crear-bases.mjs                  + asegurarRolApp() (criterio 6); ronda 2: lista completa y TEMPORARY (81, 82)
 │   ├── completar-env.mjs                nuevo (criterio 63)
 │   └── test/…                           pruebas de lo anterior; actualización de migraciones.test.mjs (criterio 65)
 ├── packages/contratos/src/
@@ -29,6 +31,7 @@ piscina/
 │   ├── package.json                     + @node-rs/argon2, @nestjs/jwt (o jsonwebtoken), @nestjs/throttler, cookie-parser
 │   ├── prisma/schema.prisma             modelos Academia, Superadmin, Auditoria, AuditoriaPlataforma, Configuracion
 │   ├── prisma/migrations/<marca>_academias_aislamiento/migration.sql
+│   ├── prisma/migrations/<marca>_endurecer_rol_app/migration.sql   nuevo, ataque ronda 2 (criterio 82)
 │   ├── prisma/seed.ts                   academias de ejemplo y superadmin de desarrollo (criterio 61)
 │   ├── src/infraestructura/entorno/     + DATABASE_URL_APP, JWT_SECRETO, DATABASE_POOL_MAX (criterio 5)
 │   ├── src/infraestructura/prisma/      BaseDatos, PrismaService interno, errores, verificación del rol
@@ -508,6 +511,108 @@ La reutiliza 002 para los usuarios de academia.
   paralelismo (spec 000).
 - Las pruebas que usan la hora fijan `RELOJ` con `RelojFijo` (`ajustar`). El límite de `@nestjs/throttler` usa su
   propio reloj: cada prueba crea su aplicación y por eso arranca con el contador en cero.
+- **Protegidas del ataque ronda 2 (test-writer)** _(criterios 80 a 91)_:
+  - `aislamiento/rol-inseguro-ronda2.test.ts` (80, integración; cada caso se omite con aviso si el usuario de
+    pruebas no puede crear roles) y `backend/src/infraestructura/prisma/rol-seguro.test.ts` (80, unitaria de la
+    función que decide);
+  - `scripts/test/integracion/rol-app-ronda2.test.mjs` (81, se omite con aviso en la nube) y una prueba unitaria de
+    la función del hook que evalúa la fila del rol (81);
+  - `aislamiento/temporales.test.ts` (82): catálogo y `CREATE TEMP` como app, también dentro de `BaseDatos`;
+  - `eslint/regla-sql-sesion-ronda2.test.mjs` (83, 84) y `eslint/regla-acceso-base.test.mjs` (85);
+  - `aislamiento/base-datos-privado.test.ts` (86);
+  - `packages/contratos/src/texto-ronda2.test.ts` (87, 88) y casos en `academias/textos.test.ts`,
+    `plataforma/sesion.test.ts` y `plataforma/superadmin-comando.test.ts` (87, 88), más un caso de la semilla (88);
+  - `plataforma/codificacion.test.ts` (89), con cuerpos `gzip`, `deflate`, corruptos, de más de 100 KB
+    descomprimidos y codificaciones no admitidas, y su conteo en el límite;
+  - `cli/contexto-comandos.test.ts` (90);
+  - 91: el test-writer cambia los secretos fijos que cumplen el criterio 79 por secretos generados al ejecutar
+    (`randomBytes`), empezando por `plataforma/sesion.test.ts`; lo verifica el revisor.
+
+### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
+
+- **Comprobación del rol en la API (criterio 80).** `verificarRol()` amplía su consulta (orientativa) y separa la
+  decisión en una función pura `problemasDelRol(fila): string[]` (por ejemplo en
+  `infraestructura/prisma/rol-seguro.ts`), con prueba unitaria:
+
+  ```sql
+  SELECT r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
+         EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid) AS es_miembro,
+         pg_catalog.pg_has_role(r.oid, 'pg_database_owner', 'MEMBER') AS dueno_de_la_base,
+         pg_catalog.has_database_privilege(r.oid, pg_catalog.current_database(), 'CREATE') AS crea_en_base,
+         pg_catalog.has_database_privilege(r.oid, pg_catalog.current_database(), 'TEMPORARY') AS temporales,
+         pg_catalog.has_schema_privilege(r.oid, 'public', 'CREATE') AS crea_en_public,
+         (EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'public' AND c.relowner = r.oid)
+          OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                      WHERE n.nspname = 'public' AND p.proowner = r.oid)
+          OR EXISTS (SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                      WHERE n.nspname = 'public' AND t.typowner = r.oid)
+          OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname = 'public' AND n.nspowner = r.oid))
+           AS es_dueno
+    FROM pg_catalog.pg_roles r WHERE r.rolname = current_user;
+  ```
+
+  Cualquier verdadero (o ninguna fila) → `ErrorRolBaseDatosInseguro`, memorizado como hoy. El mensaje del log puede
+  listar las condiciones encontradas, nunca la URL.
+- **`db:crear` y el hook (criterio 81).** `scripts/lib/rol-app.mjs` (sin dependencias, para que el hook también lo
+  pueda importar) con la lista de atributos prohibidos y una función pura que evalúa la fila de `pg_roles` y devuelve
+  los problemas con su corrección (`ALTER ROLE aquagestion_app NOREPLICATION;`, `REVOKE … FROM aquagestion_app;`…).
+  `asegurarRolApp`: si el rol existe, comprueba atributos y membresías explícitas; luego `crearBases`, para la base
+  de desarrollo y la de pruebas, revoca `TEMPORARY` a `PUBLIC` (criterio 82) y comprueba `pg_database.datdba`,
+  `has_database_privilege(…, 'CREATE' | 'TEMPORARY')` y, conectado a cada base, `CREATE` sobre `public` y la
+  propiedad de objetos de `public`. El hook consulta con `psql -tA` los cinco atributos y las membresías de
+  `aquagestion_app` y falla el paso si alguno está activo.
+- **Migración `<marca>_endurecer_rol_app` (criterio 82)**, idempotente (orientativa):
+
+  ```sql
+  DO $$ BEGIN
+    EXECUTE pg_catalog.format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', pg_catalog.current_database());
+    EXECUTE pg_catalog.format('REVOKE CREATE, TEMPORARY ON DATABASE %I FROM aquagestion_app', pg_catalog.current_database());
+  END $$;
+  REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+  ```
+
+  `CONNECT` sigue llegando por `PUBLIC`. El dueño de la base conserva sus privilegios. `db:crear` ejecuta las mismas
+  revocaciones de base desde la conexión a `postgres` (los privilegios de base son del catálogo común).
+- **Regla del SQL (criterios 83 y 84).** En `eslint/regla-sql-sesion.mjs`, una función `normalizarSql(texto)` (con
+  prueba propia) que, en este orden: quita comentarios; convierte `$etiqueta$…$etiqueta$` y los prefijos `E`, `U&`,
+  `N` en `'…'`; une `'a' || 'b'`; quita comillas dobles de identificadores (incluido `U&"…"`); quita espacios
+  alrededor de `.`; pasa a minúsculas. Sobre el resultado:
+  - `set_config`: se reconoce la llamada (`(pg_catalog\.)?set_config\s*\(`), se separan sus tres argumentos
+    respetando paréntesis y comillas, y se exige primer argumento `'app.…'` literal y tercer argumento exactamente
+    `true`; fuera de `prisma/` y `cli/`, cualquier llamada es error;
+  - sentencias: se parte el texto por `;` (fuera de literales) y se mira el inicio de cada sentencia (`set`,
+    `reset`, `commit`, `end`, `rollback`, `abort`, `savepoint`, `release`, `begin`, `start transaction`), así
+    `UPDATE … SET` y `CASE … END` no cuentan;
+  - en cualquier parte: `alter (role|user|database|system)`, `create (global |local )?temp(orary)?`,
+    `into temp(orary)?`, `discard`, `update (pg_catalog\.)?pg_settings`, `(un)?listen`, `notify`, `pg_notify\(`.
+
+  Las expresiones son orientativas; mandan los ejemplos de los criterios.
+- **Acceso a la base (criterios 85 y 86).** Regla propia `eslint/regla-acceso-base.mjs` (o `no-restricted-syntax`
+  más `no-restricted-imports`) que visita `ImportDeclaration` (valores), `ExportNamedDeclaration`/`ExportAllDeclaration`
+  con `source`, `ImportExpression`, `CallExpression` de `require` y `TSImportEqualsDeclaration`, con la lista de
+  módulos del criterio 85, y rechaza `import()`/`require()` con argumento no literal y `createRequire`. Para que un
+  `eslint-disable` no las apague: `linterOptions.noInlineConfig: true` en un bloque de configuración para
+  `backend/src/**` fuera de `prisma/` y `cli/`, o el plugin `@eslint-community/eslint-plugin-eslint-comments` con
+  `no-restricted-disable` y `no-unlimited-disable` como error; lo elige el backend según lo que pase la prueba.
+  `BaseDatos`: `readonly #prisma: PrismaService;` asignado en el constructor (no como parámetro con `private`), y
+  ningún método ni getter lo devuelve.
+- **Textos (criterios 87 y 88)** en `packages/contratos/src/texto.ts`:
+  - visibles: `/[\p{L}\p{N}\p{P}\p{S}]/u` y no `/[\p{Default_Ignorable_Code_Point}⠀]/u`;
+  - longitud: una ayuda `longitudEnPuntos(min, max)` (`[...t].length`) que reemplaza `.min()`/`.max()` de zod en
+    `correo`, `clave`, `nombre`, `motivo` y `nombreCorto`;
+  - `backend/src/cli/superadmin-datos.ts` deja de contar con `.length` y valida con esos esquemas; la semilla usa la
+    misma validación antes de escribir.
+- **`Content-Encoding` (criterio 89).** Nuevo middleware entre el de tipo de contenido (paso 4 de la sección 6) y el
+  lector JSON (paso 5): con cuerpo, el valor recortado y en minúsculas debe ser `identity`, `gzip` o `deflate` (un
+  solo valor); si no, 400 como en el criterio 74. El lector JSON queda con `inflate: true` y `limit: '100kb'`, que
+  `body-parser` aplica a los bytes ya descomprimidos; sus errores de descompresión se traducen a 400 y el de tamaño a
+  413 en el filtro. Si la versión instalada de `body-parser` admite `br`, el middleware lo rechaza antes.
+- **Contexto de los comandos (criterio 90).** `enPlataforma` ejecuta
+  `SELECT set_config('app.academia_id', '', true), set_config('app.plataforma', 'si', true)` como primera sentencia.
+- **Secretos de prueba (criterio 91).** Los genera el test-writer con `randomBytes(32).toString('base64url')` al
+  cargar el archivo de prueba; el revisor busca literales de 32 o más caracteres sin espacios cerca de `secreto` o
+  `JWT_SECRETO` en las pruebas.
 
 ## Decisiones
 
@@ -534,11 +639,21 @@ La reutiliza 002 para los usuarios de academia.
 | Límite de inicio de sesión en un middleware antes del lector del cuerpo (criterio 75) | `ThrottlerGuard` en el controlador | El guard corre después del lector: los 400 y 413 de Express no cuentan |
 | `NODE_ENV` de una lista cerrada exacta (criterio 78) | Recortar y pasar a minúsculas | Un valor mal escrito debe detener el arranque, no aceptarse en silencio |
 | Reglas de texto con propiedades Unicode en contratos (criterios 76 y 77) | Lista de caracteres permitidos | Rechazaría nombres con tildes, ñ u otros alfabetos |
+| Rechazar el rol inseguro con la lista completa en la API, `db:crear` y el hook (ataque ronda 2, criterios 80 y 81) | Corregir el rol con `ALTER ROLE` desde `db:crear` | Escondería un servidor mal configurado y exige privilegios que el dueño no tiene en la nube |
+| Revocar `TEMPORARY` a `PUBLIC` en una migración nueva y en `db:crear` (criterio 82) | Revocarlo solo a `aquagestion_app`; editar la migración ya aplicada | El privilegio llega por `PUBLIC`; editar una migración aplicada rompe su suma de control |
+| Normalizar el SQL y exigir formas cerradas en el lint (criterios 83 y 84) | Analizador completo de SQL | Dependencia pesada; la garantía real es el criterio 72 |
+| Cliente en un campo `#prisma` (criterio 86) | `private` de TypeScript | En ejecución sería una propiedad pública |
+| `\p{Default_Ignorable_Code_Point}` y U+2800 fuera de los visibles (criterio 87) | Lista de caracteres sueltos | Se queda corta ante el siguiente carácter en blanco |
+| Longitudes por puntos de código (criterio 88) | `.length` (UTF-16) | El comando y la API aceptaban textos distintos |
+| `Content-Encoding` `identity`, `gzip` o `deflate`; el resto 400 (criterio 89) | 415; admitir `br` | Un solo formato de error de entrada; ningún cliente comprime cuerpos |
 
 ## Migraciones
 
 - `backend/prisma/migrations/<marca>_academias_aislamiento/migration.sql`: comprobación del rol, tablas, `CHECK`,
   índices, funciones, RLS forzada, políticas y privilegios (sección 2 del diseño).
+- `backend/prisma/migrations/<marca>_endurecer_rol_app/migration.sql` _(ataque ronda 2, criterio 82)_: revoca
+  `TEMPORARY` sobre la base a `PUBLIC` y `CREATE`/`TEMPORARY` a `aquagestion_app`, y `CREATE` sobre `public` a
+  `PUBLIC`; idempotente. Es una migración nueva para no cambiar la suma de control de la ya aplicada en la nube.
 - No toca la migración inicial de 000.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
@@ -571,5 +686,12 @@ La reutiliza 002 para los usuarios de academia.
   no se puede lograr sin cambiar las utilidades protegidas, el backend se detiene e informa.
 - **Lint por texto** _(ataque ronda 1)_: la regla del criterio 73 no ve SQL concatenado ni pasado en variables; la
   garantía real es el criterio 72.
+- **Pruebas de roles en la nube** _(ataque ronda 2)_: el usuario de pruebas de la nube no puede crear roles, así que
+  las pruebas de integración de los criterios 80 y 81 se omiten con aviso ahí y corren en la CI (y en Docker); la
+  unitaria de la función que decide corre en todas partes. El tester confirma el rojo de la integración en la CI.
+- **Revocar `TEMPORARY` en bases ajenas** _(ataque ronda 2)_: si la base del hosting la crea otro usuario, la
+  migración y `db:crear` fallan con un mensaje claro; la guía de despliegue lo documenta (D-21).
+- **`eslint-disable` que no apaga reglas** _(ataque ronda 2)_: `noInlineConfig` apaga también los `eslint-disable`
+  legítimos de esos archivos; si molesta, se usa el plugin de comentarios con la lista de reglas protegidas.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.

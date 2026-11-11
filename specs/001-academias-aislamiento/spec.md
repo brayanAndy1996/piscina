@@ -50,6 +50,19 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
     o invertido, deja una auditoría ilegible o una página pública engañosa.
   - 78 y 79: autenticación; una cookie sin `Secure` o un secreto de firma público permitirían robar o falsificar la
     sesión del Superadmin.
+- **K. Correcciones del ataque, ronda 2 (80 a 91):**
+  - 80 a 82: aislamiento entre academias (D-23); un rol con `REPLICATION`, dueño de la base o con tablas temporales
+    lee todas las academias, borra la auditoría o tapa una tabla protegida por RLS con otra sin RLS.
+  - 83 a 86: aislamiento; un SQL de sesión que escape al lint o un camino al cliente de Prisma fuera de `BaseDatos`
+    deja a un módulo fijar otra academia o consultar sin contexto.
+  - 87 y 88: entradas de autenticación y auditoría (RN-22), como 76 y 77; un nombre que se ve en blanco o una clave
+    más corta de lo permitido debilitan la auditoría y la contraseña del Superadmin.
+  - 89: autenticación y entradas, como 74 y 75; un código de error distinto rompe el formato común y el conteo del
+    límite.
+  - 90: aislamiento; los comandos y la semilla usan el dueño de las tablas, que en la nube pasa por RLS y podría
+    heredar el contexto de academia de la conexión.
+  - 91: autenticación, como 79; un secreto que está en el repositorio y que producción acepta permitiría falsificar
+    sesiones.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -531,6 +544,164 @@ reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
     `JWT_SECRETO` (y el resto del entorno válido), lanza `ErrorEntorno`. Así, si alguno de esos archivos cambia su
     secreto sin actualizar la lista, la prueba falla.
 
+### K. Correcciones del ataque adversarial, ronda 2
+
+Criterios agregados tras la ronda 2 del ataque (11/11/2026). Son decisiones técnicas de seguridad, no reglas de
+negocio nuevas, y no cambian el sentido de los criterios 1 a 79: los que amplían uno anterior lo dicen y se suman a
+él. Todos son _(crítico)_.
+
+80. **Rol inseguro: la lista completa en la API** _(ataque ronda 2, F1; complementa los criterios 1 y 4)_. Dada la
+    API con `DATABASE_URL_APP` apuntando a un rol que cumple **cualquiera** de estas condiciones, cuando se llama a
+    `conAcademia`, `comoPlataforma` o `resolverAcademia`, entonces rechazan con `ErrorRolBaseDatosInseguro` sin
+    ejecutar el trabajo, con las mismas respuestas 500 `ERROR_INTERNO` y el mismo registro en el log del criterio 4
+    (el mensaje puede nombrar la condición, nunca la URL ni la contraseña):
+    - superusuario, `BYPASSRLS`, `REPLICATION`, `CREATEROLE` o `CREATEDB`;
+    - miembro de cualquier otro rol, de forma explícita (`pg_auth_members`) o implícita por ser dueño de la base
+      (`pg_has_role(current_user, 'pg_database_owner', 'MEMBER')` verdadero);
+    - privilegio `CREATE` o `TEMPORARY` sobre la base actual (`has_database_privilege(current_user,
+      current_database(), …)`), venga de una concesión al rol o a `PUBLIC`;
+    - privilegio `CREATE` sobre el esquema `public`;
+    - dueño de cualquier objeto del esquema `public` (tabla, vista, vista materializada, secuencia, índice, tipo,
+      función o procedimiento) o del propio esquema.
+
+    Prueba: (a) unitaria de la función que decide con el resultado de la consulta del catálogo, con cada condición
+    sola, y con todas falsas (rol seguro); (b) de integración, con un rol creado por la prueba para cada condición
+    (`REPLICATION`, `CREATEROLE`, `CREATEDB`, miembro de `pg_read_all_data`, dueño de la base de pruebas sin ser dueño
+    de ninguna tabla, con `GRANT CREATE ON DATABASE`, con `GRANT TEMPORARY ON DATABASE`, con `GRANT CREATE ON SCHEMA
+    public`), donde el usuario de pruebas pueda crear roles (Docker y CI); en la nube se omite con aviso y sigue
+    valiendo el caso del criterio 4. _(crítico)_
+81. **Rol inseguro: `db:crear` y el hook** _(ataque ronda 2, F1; complementa los criterios 6 y 8)_. Dado que el rol
+    `aquagestion_app` ya existe y cumple alguna condición del criterio 80 (en `db:crear`, evaluadas sobre la base de
+    desarrollo y sobre la de pruebas, después de la revocación del criterio 82), cuando se ejecuta `npm run
+    db:crear`, entonces termina con código 1, con un mensaje que nombra la condición y cómo corregirla (por ejemplo,
+    `ALTER ROLE aquagestion_app NOREPLICATION;`), sin imprimir contraseñas ni modificar el rol. Cuando lo crea, lo
+    crea sin ninguna de ellas (criterio 6). Dada la nube, cuando el paso del rol del hook de sesión encuentra
+    `aquagestion_app` con superusuario, `BYPASSRLS`, `REPLICATION`, `CREATEROLE` o `CREATEDB`, o miembro de algún rol,
+    entonces el paso falla y lo informa, sin imprimir la contraseña; las condiciones que dependen de cada base las
+    comprueba `db:crear` a continuación. _(crítico; prueba de integración donde se puedan crear roles, Docker y CI, y
+    unitaria de la función del hook que evalúa la fila del rol)_
+82. **Sin tablas temporales para la app** _(ataque ronda 2, F4; complementa el criterio 1)_. Dadas las migraciones
+    aplicadas (en la base de desarrollo y en la de pruebas), entonces `PUBLIC` no tiene `TEMPORARY` sobre la base y
+    `aquagestion_app` tampoco, ni directo ni heredado
+    (`has_database_privilege('aquagestion_app', current_database(), 'TEMPORARY')` es falso); y como app, también
+    dentro de `conAcademia` y de `comoPlataforma`, `CREATE TEMP TABLE t (a int)`, `CREATE TEMPORARY TABLE superadmins
+    (id uuid)` y `SELECT 1 AS a INTO TEMP t` fallan con SQLSTATE `42501`. La revocación la hace una migración nueva
+    (no se edita la ya aplicada) y también `db:crear` sobre las bases que crea o encuentra; las dos son idempotentes y
+    no quitan `CONNECT`. Si `db:crear` no puede revocar (su usuario no es dueño de la base ni superusuario), termina
+    con código 1 y lo explica. _(crítico)_
+83. **Regla del SQL de sesión con formas equivalentes** _(ataque ronda 2, F2; complementa el criterio 73)_. Dado el
+    código de `backend/src/` (sin las pruebas), entonces, antes de aplicar las reglas de los criterios 73 y 84, la
+    regla normaliza cada texto SQL así: quita los comentarios (como hoy); trata las cadenas `E'…'`, `U&'…'`, `N'…'` y
+    las de dólar (`$$…$$`, `$etiqueta$…$etiqueta$`) como `'…'` con su contenido; une las concatenaciones de literales
+    (`'ap' || 'p.plataforma'` → `'app.plataforma'`); quita las comillas dobles de los identificadores
+    (`"app"."plataforma"` → `app.plataforma`, `"set_config"` → `set_config`, también `U&"…"`); quita los espacios y
+    saltos de línea alrededor de `.`; y compara sin distinguir mayúsculas. Con el texto normalizado, `npm run lint`
+    falla:
+    - fuera de `backend/src/infraestructura/prisma/`, si contiene `SET`, `SET LOCAL` o `SET SESSION` de `app.…`,
+      `ROLE` o `SESSION AUTHORIZATION`, o `RESET` de `app.…`, `ROLE`, `SESSION AUTHORIZATION` o `ALL`; por ejemplo
+      `SET "app.plataforma" TO 'si'`, `SET LOCAL "app"."plataforma" = 'si'`, `SET app . plataforma = 'si'`,
+      `RESET "app.academia_id"`, `SET LOCAL ROLE postgres` o `SET LOCAL SESSION AUTHORIZATION postgres`;
+    - fuera de `backend/src/infraestructura/prisma/`, si contiene una llamada a `set_config` (también
+      `pg_catalog.set_config` o `"set_config"`, con o sin espacios antes del paréntesis) en la que: el tercer argumento
+      no es exactamente la palabra `true` (se rechazan `false`, `'false'`, `'f'`, `'off'`, `'0'`, `false::boolean`,
+      `CAST(false AS boolean)`, un parámetro `$1` o un `${…}` de plantilla); el primer argumento no es un literal
+      simple `'…'` (un parámetro, un `${…}`, `concat(…)`, `format(…)` o una columna); o el primer literal no empieza
+      por `app.` (por ejemplo `'search_path'`, `'role'` o `'session_authorization'`);
+    - fuera de `backend/src/infraestructura/prisma/` y de `backend/src/cli/`, si contiene cualquier llamada a
+      `set_config`, en cualquiera de esas formas.
+
+    Siguen pasando, por ejemplo, `SELECT current_setting('app.academia_id', true)`, `UPDATE superadmins SET
+    intentos_fallidos = 0 WHERE id = $1` y, en `backend/src/cli/`, `SELECT set_config('app.plataforma', 'si', true)`.
+    Prueba con la clase `ESLint` y el `eslint.config.mjs` real: un ejemplo que falla por cada forma citada y los que
+    pasan. _(crítico; prueba de la regla de lint)_
+84. **Más sentencias de sesión y de transacción prohibidas** _(ataque ronda 2, O4 y O5; complementa el criterio 73)_.
+    Dado el código de `backend/src/` (sin las pruebas), fuera de `backend/src/infraestructura/prisma/`, entonces
+    `npm run lint` falla si un texto SQL normalizado (criterio 83) contiene:
+    - `ALTER ROLE`, `ALTER USER`, `ALTER DATABASE` o `ALTER SYSTEM`;
+    - como sentencia (al inicio del texto o después de `;`): `COMMIT`, `END`, `ROLLBACK` (también `ROLLBACK TO`),
+      `ABORT`, `SAVEPOINT`, `RELEASE`, `BEGIN` o `START TRANSACTION`;
+    - como sentencia, cualquier `SET` o `RESET`, sea de la variable que sea (incluidos `search_path`, `ROLE` y
+      `TRANSACTION`);
+    - `CREATE TEMP`, `CREATE TEMPORARY`, `CREATE GLOBAL TEMP…`, `CREATE LOCAL TEMP…`, `INTO TEMP` o `INTO TEMPORARY`;
+    - `DISCARD`; `UPDATE pg_settings` (también `pg_catalog.pg_settings`); `LISTEN`, `UNLISTEN`, `NOTIFY` o
+      `pg_notify(`.
+
+    Siguen pasando `SELECT CASE WHEN a THEN 1 ELSE 0 END FROM t`, `UPDATE academias SET estado = 'ACTIVA' …` y un
+    literal de datos como `'commit'` dentro de una consulta. Prueba como en el criterio 83. _(crítico; prueba de la
+    regla de lint)_
+85. **Ningún otro camino al cliente de la base** _(ataque ronda 2, F3; complementa el criterio 28)_. Dado el código de
+    `backend/src/` (sin las pruebas), fuera de `backend/src/infraestructura/prisma/` y de `backend/src/cli/`, entonces
+    `npm run lint` falla si un archivo llega a un valor de estos módulos: cualquier ruta que contenga
+    `generated/prisma`, el archivo de `PrismaService` (`prisma.service`), `pg` (y `pg/…`), `pg-pool`, `@prisma/client`,
+    `@prisma/adapter-pg` o cualquier otro `@prisma/…`; por cualquiera de estas vías: `import` de un valor (como hoy),
+    `export … from`, `import(…)` dinámico (con cadena o plantilla), `require(…)` o `import x = require(…)`. Además
+    falla con `import(…)` o `require(…)` cuyo argumento no es una cadena literal, y con `createRequire` (de `module` o
+    `node:module`). Un comentario `eslint-disable` (de línea, de bloque o de archivo, nombre o no reglas) no evita que
+    el lint falle por estas reglas ni por las del SQL (criterios 73, 83 y 84). `import type` e `import { type X }`
+    siguen permitidos. Prueba con la clase `ESLint` y el `eslint.config.mjs` real, con un ejemplo que falla por cada
+    vía y cada módulo (incluidos `import('../generated/prisma/client')`,
+    `` import(`../infraestructura/prisma/prisma.service`) ``, `require('pg')` precedido de
+    `// eslint-disable-next-line @typescript-eslint/no-require-imports`, `import pg from 'pg'`,
+    `import { PrismaPg } from '@prisma/adapter-pg'` e `import { PrismaClient } from '@prisma/client'`) y ejemplos que
+    pasan (los tipos, y lo mismo dentro de `infraestructura/prisma/` y `cli/`). _(crítico; prueba de la regla de lint)_
+86. **`BaseDatos` no entrega el cliente en tiempo de ejecución** _(ataque ronda 2, F3; complementa el criterio 28)_.
+    Dada la API de pruebas y `const b = app.get(BaseDatos)`, entonces ni `b['prisma']`, ni ningún valor de
+    `Reflect.ownKeys(b)` (propiedades propias, enumerables o no, y símbolos), ni ningún getter de su prototipo, ni las
+    propiedades propias de esos valores (un nivel más) es un objeto con alguna de las funciones `$transaction`,
+    `$queryRaw`, `$queryRawUnsafe`, `$executeRaw`, `$executeRawUnsafe` o `$connect`. `BaseDatos` guarda el cliente en
+    un campo privado real de JavaScript (`#…`), no en una propiedad con `private` de TypeScript. _(crítico)_
+87. **Caracteres que se ven en blanco no cuentan como visibles** _(ataque ronda 2, F5; complementa el criterio 77)_.
+    Dados `nombre` (crear academia), `motivo` (suspender y reactivar) y `SUPERADMIN_NOMBRE` (comando y semilla),
+    entonces, al contar los 3 caracteres visibles del criterio 77, no cuentan los caracteres con la propiedad
+    `\p{Default_Ignorable_Code_Point}` (entre ellos U+115F, U+1160, U+3164, U+FFA0, U+180E, U+17B4 y U+17B5) ni U+2800
+    (patrón Braille en blanco). Se rechazan con 400 `SOLICITUD_INVALIDA` que nombra el campo (en el comando, código 1),
+    sin crear, cambiar ni auditar nada, por ejemplo: `"ㅤㅤㅤ"` (U+3164), `"⠀⠀⠀"` (U+2800), `"ﾠﾠﾠ"` (U+FFA0),
+    `"ᅟᅠᅟ"`, `"឴឵឴"`, `"᠎᠎᠎"` y `"abㅤ"` (2 visibles). Se siguen
+    aceptando `"Academia Ñandú"`, `"Club 3"` y un nombre en hangul como `"수영 아카데미"`. _(crítico)_
+88. **Longitudes por puntos de código en todas partes** _(ataque ronda 2, F6; complementa los criterios 35, 42, 49 y
+    52)_. Dados los límites de longitud de esta historia (`correo` hasta 254; `clave` de 1 a 128 al iniciar sesión y
+    de 12 a 128 en el comando y la semilla; `nombre` de 3 a 100; `motivo` de 3 a 500; `nombreCorto` de 3 a 30),
+    entonces la API, la web (con los esquemas compartidos), el comando y la semilla los cuentan por puntos de código
+    (`[...texto].length`), no por unidades UTF-16 (`.length`), después del recorte que corresponda. Por ejemplo:
+    - una clave de 6 emojis (12 unidades UTF-16) hace terminar el comando con código 1 nombrando `SUPERADMIN_CLAVE`;
+    - una clave de 128 emojis la acepta el comando y con ella se inicia sesión (200); con 129 emojis, el comando
+      termina con código 1 y el inicio de sesión responde 400 sin contar un intento;
+    - un nombre de 51 emojis se acepta en el comando (`SUPERADMIN_NOMBRE`) y en la API (`nombre` de una academia); uno
+      de 101 emojis se rechaza en los dos.
+
+    La semilla valida `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE` con las mismas reglas que el
+    comando antes de escribir; si no cumplen, termina con código 1, nombra la variable y no escribe nada. _(crítico)_
+89. **`Content-Encoding` no admitido** _(ataque ronda 2, O2; complementa los criterios 74 y 75)_. Dada cualquier ruta
+    de `/api` con método `POST`, `PUT`, `PATCH` o `DELETE` y cuerpo (como en el criterio 74), entonces se admiten sin
+    `Content-Encoding` o con un único valor `identity`, `gzip` o `deflate` (sin distinguir mayúsculas, con espacios en
+    los extremos). Cualquier otro valor (`br`, `zstd`, `compress`, `x-gzip`, una lista como `gzip, identity`, o vacío)
+    responde **400 `SOLICITUD_INVALIDA`** con `detalles: { errores: [{ campo: "", mensaje }] }` y `Cache-Control:
+    no-store`, sin interpretar el cuerpo; ninguna respuesta de `/api` es 415. Un cuerpo `gzip` o `deflate` corrupto
+    responde 400 `SOLICITUD_INVALIDA`; el límite de 100 KB del criterio 75 se aplica al cuerpo **descomprimido**: uno
+    que, descomprimido, pasa de 102 400 bytes responde 413 `CARGA_EXCESIVA` aunque comprimido sea pequeño. En
+    `POST /api/plataforma/sesion`, todas estas respuestas cuentan para el límite por IP (criterio 75) y no calculan
+    ningún hash ni cuentan un intento; un JSON válido comprimido con `gzip` se atiende como sin comprimir. En las rutas
+    que exigen sesión, sin sesión válida sigue respondiendo 401 antes de mirar el cuerpo (P-7). _(crítico)_
+90. **Contexto completo también en los comandos y la semilla** _(ataque ronda 2, O6; complementa el criterio 72)_.
+    Dada una transacción de plataforma abierta por un comando o por la semilla (`enPlataforma` de
+    `backend/src/cli/conexion.ts`, o la que la reemplace), entonces su primera sentencia fija los dos valores con
+    `set_config(…, true)`: `app.academia_id` en `''` y `app.plataforma` en `si`. Prueba: con
+    `crearClienteDelDueno(url)` sobre la base de pruebas y la URL del dueño con
+    `?options=-c app.academia_id=<id de A> -c app.plataforma=no` (codificado), dentro de `enPlataforma`
+    `current_setting('app.academia_id', true)` es `''` y `current_setting('app.plataforma', true)` es `si`; y, si el
+    dueño no es superusuario (la nube), `auditoria` y `configuraciones` devuelven 0 filas. Toda transacción de
+    academia que agregue un comando en el futuro fija también los dos valores. Contrato para la prueba:
+    `crearClienteDelDueno(url: string): PrismaClient` y `enPlataforma(cliente, trabajo)` exportados de
+    `backend/src/cli/conexion.ts`. _(crítico)_
+91. **Ningún secreto de prueba válido en producción queda en el repositorio** _(ataque ronda 2, O1; complementa el
+    criterio 79)_. Dadas las pruebas del repositorio (`backend/test/`, `**/*.test.ts`, `**/*.test.mjs`, `e2e/`),
+    entonces todo secreto de firma que cumpla las reglas de producción del criterio 79 (fuera de la lista de secretos
+    públicos, 32 o más puntos de código, sin espacios y con 10 o más distintos), se use como `JWT_SECRETO` o para
+    firmar un token (por ejemplo, la opción `secreto` de `firmarTokenPlataforma`), se genera al ejecutar (por ejemplo,
+    `randomBytes(32).toString('base64url')`) y no está escrito en el repositorio. Los secretos fijos que quedan son
+    los de la lista del criterio 79 o los que producción rechaza. Lo aplica el test-writer (por ejemplo, en
+    `backend/test/integracion/plataforma/sesion.test.ts`). _(crítico; verificación del revisor)_
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -554,6 +725,13 @@ reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
   aceptan _(ataque ronda 1)_.
 - **`NODE_ENV` mal escrito (`Production`, con espacios):** la API y la semilla no arrancan (criterio 78)
   _(ataque ronda 1)_.
+- **Rol de la app con `REPLICATION`, dueño de la base o con tablas temporales:** la API no atiende datos y
+  `db:crear` se detiene (criterios 80 y 81); `TEMPORARY` se revoca a `PUBLIC` (criterio 82) _(ataque ronda 2)_.
+- **Cuerpos comprimidos:** se admiten `gzip` y `deflate`; el límite de 100 KB vale para el cuerpo descomprimido;
+  cualquier otra codificación es 400 (criterio 89) _(ataque ronda 2)_.
+- **Textos de relleno (hangul de relleno, Braille en blanco) y emojis:** no cuentan como visibles (criterio 87); las
+  longitudes se cuentan por puntos de código en la API, la web, el comando y la semilla (criterio 88)
+  _(ataque ronda 2)_.
 - **Academia suspendida entre el inicio y el fin de una operación:** `conAcademia` comprueba el estado al empezar;
   una operación ya iniciada termina. Se acepta.
 - **Nombre corto con mayúsculas, espacios, letras turcas (`İ`) o cirílicas parecidas:** se normaliza y, si queda algo
@@ -663,7 +841,9 @@ class AuditoriaService {
 Todas las respuestas de `/api/plataforma/*` y `/api/a/*` llevan `Cache-Control: no-store`, también las de error
 (precisión P-8). Los cuerpos de entrada son JSON y sus esquemas son estrictos (un campo de más es 400). Un cuerpo con
 otro `Content-Type` responde 400 `SOLICITUD_INVALIDA` (criterio 74); los textos siguen los criterios 76 y 77
-_(ataque ronda 1)_.
+_(ataque ronda 1)_. `Content-Encoding` admitido: ninguno, `identity`, `gzip` o `deflate`; cualquier otro es 400, y el
+límite de 100 KB se aplica al cuerpo descomprimido (criterio 89). Las longitudes de los textos se cuentan por puntos
+de código (criterio 88) _(ataque ronda 2)_.
 
 | Método y ruta | Sesión | Entrada | Éxito | Errores |
 | --- | --- | --- | --- | --- |
@@ -947,6 +1127,15 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   que la variable exista en el servidor lo cubre la guía de despliegue, con el hosting (D-21).
 - **Límite por IP detrás de un proxy:** sin `trust proxy`, todas las peticiones pueden parecer de la misma IP. Se
   decide con el hosting (D-21).
+- **O3. Límite por IP en memoria y por dirección IPv6 completa** _(ataque ronda 2)_: el límite del criterio 41 cuenta
+  por dirección IPv6 completa (/128), así que quien tenga un bloque IPv6 puede repartir intentos entre muchas
+  direcciones; además vive en memoria de cada instancia: se reinicia al reiniciar la API y no se comparte entre
+  instancias. Se acepta porque lo acota el bloqueo de la cuenta tras 5 fallos (criterio 39), que está en la base y
+  vale para todas las IP e instancias. Se revisa con el hosting (D-21), junto con `trust proxy`.
+- **La regla de lint del SQL sigue siendo por texto** _(ataque ronda 2)_: aun con la normalización del criterio 83,
+  no ve SQL armado en tiempo de ejecución ni sentencias dentro de un `EXECUTE` anidado en un bloque `DO`. La garantía
+  sigue en el criterio 72 (cada transacción fija los dos valores), en el rol sin privilegios (criterios 1, 80 y 82) y
+  en el revisor.
 - **Clave de ejemplo del superadmin en `.env.example`:** es pública y solo sirve en desarrollo; la semilla no corre
   en producción y el comando del criterio 34 la reemplaza.
 - **Cookie sin `Secure` fuera de producción:** necesario para `http://localhost`; en producción va con `Secure`
@@ -1029,6 +1218,28 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
 - **Reglas de texto con propiedades Unicode** (`\p{Cc}`, `\p{Bidi_Control}`, `\p{L}`…) en esquemas compartidos
   (criterios 76 y 77). Alternativa descartada: una lista de caracteres permitidos (rechazaría nombres legítimos con
   tildes, ñ o de otros alfabetos).
+
+### Decisiones técnicas tras el ataque, ronda 2 (11/11/2026)
+
+- **El rol inseguro se rechaza con una lista completa, en la API, en `db:crear` y en el hook** (criterios 80 y 81),
+  sin corregirlo solo. Alternativa descartada: que `db:crear` ejecute `ALTER ROLE … NOREPLICATION …` por su cuenta
+  (escondería una configuración mal hecha del servidor y exige privilegios que el dueño no tiene en la nube).
+- **`TEMPORARY` se revoca a `PUBLIC`** en una migración nueva y en `db:crear` (criterio 82). Alternativas descartadas:
+  revocarlo solo a `aquagestion_app` (el privilegio le llega por `PUBLIC`) o quitar `pg_temp` del `search_path` (las
+  consultas de Prisma no califican el esquema y `pg_temp` se busca primero si no está explícito).
+- **La regla del SQL normaliza y exige formas cerradas** (criterios 83 y 84): tercer argumento de `set_config`
+  exactamente `true`, primer argumento literal que empieza por `app.`, y toda sentencia `SET` o `RESET` fuera de
+  `infraestructura/prisma/`. Alternativa descartada: un analizador completo de SQL (dependencia pesada; la garantía
+  real sigue siendo el criterio 72).
+- **El cliente de Prisma en un campo privado `#…`** (criterio 86). Alternativa descartada: `private` de TypeScript
+  (solo existe al compilar; en ejecución es una propiedad pública).
+- **Los caracteres ignorables por defecto y U+2800 no cuentan como visibles** (criterio 87). Alternativa descartada:
+  una lista de caracteres sueltos (se queda corta ante el siguiente que se vea en blanco).
+- **Longitudes por puntos de código** (criterio 88). Alternativa descartada: unidades UTF-16 (`.length`), que hacían
+  que el comando y la API aceptaran claves y nombres distintos.
+- **`Content-Encoding`: ninguno, `identity`, `gzip` o `deflate`; el resto 400** (criterio 89). Alternativas
+  descartadas: 415 (mismo motivo que el criterio 74) y admitir `br` (ningún cliente de AquaGestión comprime los
+  cuerpos de las peticiones; menos superficie).
 
 ## Preguntas abiertas
 
