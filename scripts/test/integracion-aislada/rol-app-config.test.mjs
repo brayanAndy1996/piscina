@@ -14,6 +14,7 @@ import { analizarUrlPostgres, USUARIO_APP } from '../../lib/entorno.mjs';
 import {
   borrarBases,
   ejecutarScript,
+  filtracionesDeLaClaveDelServidor,
   nombresTemporales,
   servidorDePruebas,
   urlAppDePruebas,
@@ -89,7 +90,10 @@ describe('criterio 103: db:crear rechaza un rol con valores por defecto propios'
       expect(resultado.estado, resultado.salida).toBe(1);
       expect(resultado.salida).toContain(`ALTER ROLE ${USUARIO_APP} IN DATABASE ${nombres.pruebas} RESET ALL;`);
       expect(resultado.salida).not.toContain(CLAVE_APP_QUE_NO_DEBE_SALIR);
-      expect(resultado.salida).not.toContain(servidor.clave);
+      expect(
+        filtracionesDeLaClaveDelServidor(resultado.salida, servidor),
+        'la salida muestra la contrasena del servidor',
+      ).toEqual([]);
     } finally {
       await comoLaApp
         .query(`ALTER ROLE "${USUARIO_APP}" IN DATABASE "${nombres.pruebas}" RESET ALL`)

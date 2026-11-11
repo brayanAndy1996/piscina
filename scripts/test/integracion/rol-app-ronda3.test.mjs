@@ -17,7 +17,15 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { asegurarRolApp } from '../../crear-bases.mjs';
 import { USUARIO_APP } from '../../lib/entorno.mjs';
-import { borrarBases, ejecutarScript, ejecutarSql, nombresTemporales, servidorDePruebas, urlDe } from './ayuda.mjs';
+import {
+  borrarBases,
+  ejecutarScript,
+  ejecutarSql,
+  filtracionesDeLaClaveDelServidor,
+  nombresTemporales,
+  servidorDePruebas,
+  urlDe,
+} from './ayuda.mjs';
 
 const servidor = servidorDePruebas();
 const CLAVE_APP_QUE_NO_DEBE_SALIR = 'clave-app-que-no-debe-salir-ronda3';
@@ -109,7 +117,10 @@ describe('criterio 102: db:crear rechaza privilegios de tabla de mas', () => {
     expect(resultado.salida).toContain(privilegio);
     if (correccion) expect(resultado.salida).toContain(correccion);
     expect(resultado.salida).not.toContain(CLAVE_APP_QUE_NO_DEBE_SALIR);
-    expect(resultado.salida).not.toContain(servidor.clave);
+    expect(
+      filtracionesDeLaClaveDelServidor(resultado.salida, servidor),
+      'la salida muestra la contrasena del servidor',
+    ).toEqual([]);
   }
 
   it('criterio 102 (control): con las tablas sin concesiones de mas, db:crear termina con codigo 0', async (contexto) => {
@@ -237,7 +248,10 @@ describe('criterio 104: la contrasena de los roles nunca viaja en claro', () => 
     expect(resultado.salida).toContain('DATABASE_URL_APP');
     expect(resultado.salida).not.toContain(clave);
     expect(resultado.salida).not.toContain(encodeURIComponent(clave));
-    expect(resultado.salida).not.toContain(servidor.clave);
+    expect(
+      filtracionesDeLaClaveDelServidor(resultado.salida, servidor),
+      'la salida muestra la contrasena del servidor',
+    ).toEqual([]);
   });
 
   it('criterio 104: una contrasena con un emoji tambien se rechaza sin mostrarla', async () => {

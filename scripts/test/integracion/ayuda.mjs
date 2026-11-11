@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { analizarUrlPostgres, cargarEnv } from '../../lib/entorno.mjs';
+import { analizarUrlPostgres, cargarEnv, USUARIO_APP } from '../../lib/entorno.mjs';
 
 export const carpetaScripts = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -112,6 +112,50 @@ export async function borrarBases(servidor, nombres) {
   } finally {
     await cliente.end();
   }
+}
+
+function escaparRegex(texto) {
+  return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Busca en la salida de un script señales de que mostró una contraseña, sin confundirla con los identificadores
+ * (rol, bases) cuyo nombre la contiene: la contraseña de desarrollo `aquagestion` es subcadena de `aquagestion_app`,
+ * así que un `not.toContain(clave)` ingenuo fallaría con la configuración por defecto. Devuelve la lista de señales
+ * encontradas (vacía si no hay filtración); se usa con `expect(filtracionesDeClave(...)).toEqual([])`.
+ *
+ * Señales que siempre se buscan (en claro y codificada como en una URL):
+ *  - `:<clave>@`, la parte de una URL de conexión donde va la contraseña;
+ *  - `PASSWORD '<clave>'` / `PASSWORD <clave>` y `password=<clave>` / `contraseña: <clave>`;
+ * Además, si la clave no es ella misma un nombre de usuario o de base (`conocidos`), se busca como palabra aislada
+ * (no precedida ni seguida de letras, dígitos o guion bajo, de modo que `aquagestion_app` no cuenta) y entre comillas.
+ * Si la clave coincide con un nombre conocido solo rigen las señales con contexto, porque un `aquagestion` suelto es
+ * indistinguible del nombre del usuario o de la base.
+ */
+export function filtracionesDeClave(salida, clave, conocidos = []) {
+  if (!clave) return [];
+  const hallazgos = [];
+  const variantes = [...new Set([clave, encodeURIComponent(clave)])];
+  for (const variante of variantes) {
+    const c = escaparRegex(variante);
+    const contextos = [
+      ['`:<clave>@`', new RegExp(`:${c}@`)],
+      ['PASSWORD con la clave', new RegExp(`PASSWORD\\s+'?${c}(?![\\w])`, 'i')],
+      ['password=<clave>', new RegExp(`(?:password|contrase(?:ñ|n)a|clave)\\s*[=:]\\s*['"]?${c}(?![\\w])`, 'i')],
+    ];
+    for (const [nombre, patron] of contextos) if (patron.test(salida)) hallazgos.push(nombre);
+    const esUnNombreConocido = conocidos.includes(clave);
+    if (!esUnNombreConocido) {
+      if (new RegExp(`(?<![\\w])${c}(?![\\w])`).test(salida)) hallazgos.push('la clave como palabra aislada');
+      if (new RegExp(`['"]${c}['"]`).test(salida)) hallazgos.push('la clave entre comillas');
+    }
+  }
+  return [...new Set(hallazgos)];
+}
+
+/** `filtracionesDeClave` para la contraseña del servidor de pruebas, con su usuario, su base y el rol de la app como nombres conocidos. */
+export function filtracionesDeLaClaveDelServidor(salida, servidor) {
+  return filtracionesDeClave(salida, servidor.clave, [servidor.usuario, servidor.base, USUARIO_APP]);
 }
 
 /** Ejecuta un script de la carpeta `scripts/` con Node, como lo haría `npm run`, con variables de entorno propias. */

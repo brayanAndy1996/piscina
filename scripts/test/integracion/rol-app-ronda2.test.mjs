@@ -24,6 +24,7 @@ import {
   ejecutarScript,
   ejecutarSql,
   existeBase,
+  filtracionesDeLaClaveDelServidor,
   nombresTemporales,
   servidorDePruebas,
   urlDe,
@@ -293,7 +294,10 @@ describe('db:crear con el rol aquagestion_app y las condiciones de cada base (cr
       expect(resultado.estado, resultado.salida).toBe(1);
       expect(resultado.salida).toMatch(condicion);
       expect(resultado.salida).not.toContain(CLAVE_APP_QUE_NO_DEBE_SALIR);
-      expect(resultado.salida).not.toContain(servidor.clave);
+      expect(
+        filtracionesDeLaClaveDelServidor(resultado.salida, servidor),
+        'la salida muestra la contrasena del servidor',
+      ).toEqual([]);
       expect(await atributosDe(USUARIO_APP)).toEqual(antes);
     }
 

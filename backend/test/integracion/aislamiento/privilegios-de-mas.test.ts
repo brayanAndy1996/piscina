@@ -16,6 +16,8 @@ import { cargarPrisma, crearDestinoDeRegistro, esperarHasta, obtenerBaseDatos } 
 // `scripts/test/integracion/rol-app-ronda3.test.mjs`.
 //
 // nestjs-pino crea un unico registrador por proceso: el registro se inspecciona en la primera aplicacion que crea este archivo.
+// Por eso el primer caso del archivo (el primero de `it.each`, TRUNCATE sobre auditoria) es el que crea la primera aplicacion y
+// captura el log; el caso de control, que crea una aplicacion con nivel `silent`, va despues.
 
 const APP = 'aquagestion_app';
 
@@ -149,20 +151,6 @@ describe('criterio 102: la API rechaza un rol con privilegios de tabla de mas', 
     }
   }
 
-  it('criterio 102 (control): con los privilegios del criterio 2 y nada mas, la comprobacion pasa', async () => {
-    const { ErrorRolBaseDatosInseguro } = await cargarPrisma();
-
-    await conApi(async (app) => {
-      const baseDatos = await obtenerBaseDatos(app);
-
-      await expect(baseDatos.comoPlataforma(() => Promise.resolve('si'))).resolves.toBe('si');
-      await expect(baseDatos.conAcademia(academia.id, () => Promise.resolve('si'))).resolves.toBe('si');
-      await expect(baseDatos.resolverAcademia(academia.nombreCorto)).resolves.not.toBeInstanceOf(
-        ErrorRolBaseDatosInseguro,
-      );
-    });
-  });
-
   it.each(CASOS.map((caso) => [caso.nombre, caso] as const))(
     'criterio 102: %s hace que conAcademia, comoPlataforma y resolverAcademia rechacen con ErrorRolBaseDatosInseguro',
     async (_nombre, caso) => {
@@ -194,6 +182,20 @@ describe('criterio 102: la API rechaza un rol con privilegios de tabla de mas', 
       }, capturarRegistro);
     },
   );
+
+  it('criterio 102 (control): con los privilegios del criterio 2 y nada mas, la comprobacion pasa', async () => {
+    const { ErrorRolBaseDatosInseguro } = await cargarPrisma();
+
+    await conApi(async (app) => {
+      const baseDatos = await obtenerBaseDatos(app);
+
+      await expect(baseDatos.comoPlataforma(() => Promise.resolve('si'))).resolves.toBe('si');
+      await expect(baseDatos.conAcademia(academia.id, () => Promise.resolve('si'))).resolves.toBe('si');
+      await expect(baseDatos.resolverAcademia(academia.nombreCorto)).resolves.not.toBeInstanceOf(
+        ErrorRolBaseDatosInseguro,
+      );
+    });
+  });
 
   it('criterio 102: POST /api/plataforma/sesion responde 500 ERROR_INTERNO con un privilegio de mas', async () => {
     const { default: request } = await import('supertest');
