@@ -656,7 +656,8 @@ negocio nuevas, y no cambian el sentido de los criterios 1 a 79: los que amplía
     literal de datos como `'commit'` dentro de una consulta. Prueba como en el criterio 83. _(crítico; prueba de la
     regla de lint)_
 85. **Ningún otro camino al cliente de la base** _(ataque ronda 2, F3; complementa el criterio 28)_ _(alcance ajustado
-    por los criterios 95 y 96, ataque ronda 3)_. Dado el código de
+    por los criterios 95 y 96, ataque ronda 3)_ _(alcance ajustado por el criterio 113; decisión del orquestador tras la
+    ronda 4, 11/11/2026)_. Dado el código de
     `backend/src/` (sin las pruebas), fuera de `backend/src/infraestructura/prisma/` y de `backend/src/cli/`, entonces
     `npm run lint` falla si un archivo llega a un valor de estos módulos: cualquier ruta que contenga
     `generated/prisma`, el archivo de `PrismaService` (`prisma.service`), `pg` (y `pg/…`), `pg-pool`, `@prisma/client`,
@@ -671,6 +672,28 @@ negocio nuevas, y no cambian el sentido de los criterios 1 a 79: los que amplía
     `// eslint-disable-next-line @typescript-eslint/no-require-imports`, `import pg from 'pg'`,
     `import { PrismaPg } from '@prisma/adapter-pg'` e `import { PrismaClient } from '@prisma/client'`) y ejemplos que
     pasan (los tipos, y lo mismo dentro de `infraestructura/prisma/` y `cli/`). _(crítico; prueba de la regla de lint)_
+
+    **Alcance en `cli/` ajustado por el criterio 113** _(decisión del orquestador tras la ronda 4, 11/11/2026)_. "Lo
+    mismo dentro de `cli/`" ya no significa que en `cli/` pase cualquier vía. Los dos criterios se contradecían y manda
+    el 113, que es posterior y más estricto: en `backend/src/cli/`, el cliente generado (`generated/prisma/*`) y
+    `@prisma/…` (`@prisma/client`, `@prisma/client/runtime/*`, `@prisma/adapter-*` y cualquier otro) solo se cargan con
+    una importación estática (`import … from '…'`), cuyos nombres sigue el criterio 113, y `Prisma` solo se usa como
+    `Prisma.<nombre fijo>` (también con alias o como `G.Prisma.<nombre fijo>`, con las prohibiciones del 92 y del 113).
+    Dejan de estar permitidos en `cli/`, y hacen fallar `npm run lint`, por ejemplo:
+    - `import('../generated/prisma/client')` y `` import(`../generated/prisma/client`) ``, `import('@prisma/client')`,
+      `import('@prisma/client/runtime/library')` e `import('@prisma/adapter-pg')`;
+    - `require('../generated/prisma/client')`, `require('@prisma/client')`, `require('@prisma/client/runtime/library')`
+      y `require('@prisma/adapter-pg')`;
+    - `import G = require('../generated/prisma/client')` e `import P = require('@prisma/client')` (y con cualquier otro
+      `@prisma/…`);
+    - `import * as Prisma from '../generated/prisma/client'; export const x = Prisma;` (el espacio de nombres exportado
+      como valor; criterio 113).
+
+    Siguen pasando en `cli/` las importaciones estáticas que el criterio 113 admite (`import { PrismaClient } from
+    '../generated/prisma/client'`, `import { PrismaPg } from '@prisma/adapter-pg'`, `import { Prisma as P } from …` con
+    `P.sql`, `import type …`). Para `pg` y `pg-pool` en `cli/` no cambia nada: el 113 no los menciona. Las pruebas del
+    criterio 85 que esperaban que esos casos pasaran en `cli/` se ajustan a esta precisión antes de corregir el código:
+    los pasan a la lista de los que fallan (o se cubren con la prueba del criterio 113).
 86. **`BaseDatos` no entrega el cliente en tiempo de ejecución** _(ataque ronda 2, F3; complementa el criterio 28)_.
     Dada la API de pruebas y `const b = app.get(BaseDatos)`, entonces ni `b['prisma']`, ni ningún valor de
     `Reflect.ownKeys(b)` (propiedades propias, enumerables o no, y símbolos), ni ningún getter de su prototipo, ni las
@@ -1086,7 +1109,8 @@ P-28. Todos son _(crítico)_.
      `SELECT public.app_academia_actual()`, `SELECT a.query_to_xml FROM t a` (una columna, sin paréntesis) y
      `SELECT count(t.id) FROM t`. Prueba como en el criterio 92. _(crítico; prueba de la regla de lint)_
 110. **Solo las pruebas quedan fuera de las reglas, y nadie las importa** _(ataque ronda 4, F4; **ajusta el alcance** de
-     los criterios 92 y 95 y de los `ignores` de las reglas de los criterios 28, 73, 83 a 85 y 92 a 95)_. Dado el código de
+     los criterios 92 y 95 y de los `ignores` de las reglas de los criterios 28, 73, 83 a 85 y 92 a 95)_ _(precisado por
+     decisión del orquestador tras la ronda 4, 11/11/2026: nombres con `.test.` que no son pruebas)_. Dado el código de
      `backend/src/`, entonces:
      - las reglas de esos criterios y del paso protegido (criterio 96) eximen solo los archivos cuyo nombre termina
        exactamente en `.test.ts`, `.test.mts`, `.test.cts`, `.test.js`, `.test.mjs` o `.test.cjs`, y los de `backend/test/`
@@ -1104,6 +1128,21 @@ P-28. Todos son _(crítico)_.
      `require('./ejemplo.service.test.ts')` o `import('../../../test/utilidades/base-datos')` falla; un
      `ejemplo.service.test.ts` sigue exento; y la prueba lee `tsconfig.build.json` y comprueba su `exclude`.
      _(crítico; prueba de la regla de lint y de configuración)_
+
+     **Precisión: nombres con `.test.` que no son pruebas** _(decisión del orquestador tras la ronda 4, 11/11/2026)_. Que
+     un archivo como `x.test.util.ts` o `x.test.d.ts` "ya no esté exento" no basta: en `cli/` `import pg from 'pg'` está
+     permitido, así que ese archivo no daría error y se compilaría pareciendo una prueba. Por eso, dentro de
+     `backend/src/` y de `packages/contratos/src/`, **es un error del paso protegido** (criterio 96; `npm run
+     lint:protegido`, dentro de `npm run lint`) cualquier archivo cuyo nombre contenga `.test.` y no termine
+     exactamente en `.test.ts`, `.test.mts`, `.test.cts`, `.test.js`, `.test.mjs` o `.test.cjs`, en cualquier carpeta y
+     sea cual sea su contenido. El paso termina con código 1 con un mensaje que nombra la ruta y pide renombrar el archivo
+     (quitar `.test.` del nombre o, si es una prueba, dejarlo como `*.test.<extensión>`). La comprobación no depende de
+     que ESLint revise ese tipo de archivo (también cuentan `x.test.d.ts`, `x.test.tsx`, `x.test.jsx` o `x.test.json`).
+
+     Prueba adicional: con la configuración del paso protegido, `backend/src/cli/atajo.test.util.ts` con
+     `import pg from 'pg'` falla con el mensaje de renombrar; también fallan `backend/src/cli/x.test.d.ts`,
+     `backend/src/modulos/ejemplo/x.test.tsx` y `packages/contratos/src/x.test.util.ts`, aunque estén vacíos; siguen
+     pasando `backend/src/cli/ejemplo.test.ts` y `packages/contratos/src/esquemas.test.ts`. _(crítico)_
 111. **Sin enlaces simbólicos en el código revisado** _(ataque ronda 4, F5; complementa los criterios 95 y 96)_. Dado el
      repositorio, entonces:
      - el paso protegido (`npm run lint:protegido`, dentro de `npm run lint`) falla con código 1, nombrando la ruta, si
@@ -1177,6 +1216,27 @@ P-28. Todos son _(crítico)_.
      cada forma del ataque (`import { Prisma as P }` con `P.raw`, `import * as G` con `G.Prisma.raw`, `const P = Prisma`,
      `const { sql: s } = Prisma`, `Prisma.empty.constructor`, `Reflect.get(Prisma, 'raw')`) y los que pasan. _(crítico;
      prueba de la regla de lint)_
+
+     _(Decisión del orquestador tras la ronda 4, 11/11/2026.)_ Ante la contradicción con el criterio 85 (que dejaba pasar
+     en `cli/` las vías dinámicas y `require` hacia el cliente generado y `@prisma/…`), **manda este criterio**: en `cli/`
+     solo se admiten las importaciones estáticas del cliente generado y de `@prisma/…` y el uso `Prisma.<nombre fijo>`.
+     La lista de casos que dejan de pasar está en el criterio 85.
+
+     **Precisión: cargas que no se pueden seguir** _(decisión del orquestador tras la ronda 4, 11/11/2026)_. "Importación
+     estática" incluye `import * as G` y la importación por defecto, con las restricciones de este criterio. Además, como
+     las reglas no pueden saber qué carga una ruta calculada, en `backend/src/cli/` `npm run lint` también falla con:
+     - `import(…)` cuyo argumento no es una cadena literal (una variable, una concatenación o una plantilla con
+       `${…}`), por ejemplo `import(ruta)` o `` import(`../generated/${x}/client`) ``;
+     - `require(…)` cuyo argumento no es una cadena literal, por ejemplo `require(ruta)` o `require('../' + x)`;
+     - `createRequire`, importado de `module` o de `node:module` (con nombre, con alias, como `<espacio>.createRequire`
+       de un `import * as` o de la importación por defecto) o usado de cualquier forma, y la función que devuelve, por
+       ejemplo `createRequire(import.meta.url)('../generated/prisma/client')` o `const r = createRequire(__filename); r('pg')`.
+
+     Prueba como en el criterio 92: un ejemplo que falla en `cli/` por cada forma (`import(ruta)`, `require(ruta)`,
+     `import { createRequire } from 'node:module'`, `import { createRequire as c } from 'module'`,
+     `import * as m from 'node:module'` con `m.createRequire(…)`), y siguen pasando en `cli/` `import pg from 'pg'` y
+     `import * as G from '../generated/prisma/client'` con `` G.Prisma.sql`SELECT 1` ``. _(crítico; prueba de la regla de
+     lint)_
 114. **Un punto autorizado para montos, errores de la base y fragmentos de SQL** _(ataque ronda 4, falsos positivos
      para las historias siguientes; complementa los criterios 85, 92 y 112)_. Dado
      `backend/src/infraestructura/prisma/index.ts`, entonces exporta (precisión P-25):
@@ -2116,6 +2176,20 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   quitarla del `index` (un módulo importaría el archivo o `dotenv` directamente).
 - **Comprobar `generated/` con `git ls-files` y el disco** (criterio 118). Alternativa descartada: solo acotar la
   exención (un archivo agregado con `git add -f` bajo `generated/prisma/` seguiría exento).
+
+### Decisiones técnicas del orquestador tras la ronda 4 (11/11/2026)
+
+- **Entre los criterios 85 y 113, manda el 113** (posterior y más estricto). En `cli/`, el cliente generado y
+  `@prisma/…` solo se cargan con importaciones estáticas y `Prisma` solo se usa como `Prisma.<nombre fijo>`; `import(…)`,
+  `require(…)`, `import x = require(…)` y el espacio de nombres usado como valor dejan de pasar (detalle en el criterio
+  85). Alternativa descartada: mantener las excepciones del 85 en `cli/` (una carga dinámica o con `require` es justo lo
+  que las reglas del 113 no pueden seguir, y abriría de nuevo `Prisma.raw`). "Importación estática" incluye
+  `import * as G` y la importación por defecto, con las restricciones del 113; en `cli/` también fallan `import(…)` y
+  `require(…)` con un argumento que no es literal, y `createRequire` (precisión del criterio 113).
+- **Todo nombre con `.test.` que no sea exactamente `*.test.{ts,mts,cts,js,mjs,cjs}` es un error del paso protegido**
+  en `backend/src/` y `packages/contratos/src/` (precisión del criterio 110). Alternativa descartada: solo quitarles la
+  exención (en `cli/` un `x.test.util.ts` con `import pg from 'pg'` no daría error y se compilaría pareciendo una
+  prueba).
 
 ## Preguntas abiertas
 
