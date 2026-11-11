@@ -1,0 +1,16 @@
+# Finales de línea LF en todos los sistemas (D-26): Windows no debe alterar los archivos.
+* text=auto eol=lf
+
+# Binarios: git no debe tocarlos.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary

@@ -1,0 +1,33 @@
+# Dependencias y compilación
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Configuración local y secretos: nunca se suben (solo .env.example)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Cliente de Prisma generado
+backend/src/generated/
+
+# Archivos subidos en desarrollo
+backend/almacenamiento/
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

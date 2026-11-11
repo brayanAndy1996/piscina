@@ -1,0 +1,23 @@
+# PostgreSQL 16 para desarrollo en tu PC. En la nube no se usa: ahí hay un PostgreSQL instalado en el contenedor.
+# Lee POSTGRES_PUERTO del archivo .env de esta carpeta (5432 por defecto).
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aquagestion
+      POSTGRES_PASSWORD: aquagestion
+      POSTGRES_DB: aquagestion
+    ports:
+      # Solo en 127.0.0.1: la contraseña de desarrollo es débil y no debe verse desde la red local.
+      - '127.0.0.1:${POSTGRES_PUERTO:-5432}:5432'
+    volumes:
+      - aquagestion-datos:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aquagestion -d aquagestion']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aquagestion-datos:

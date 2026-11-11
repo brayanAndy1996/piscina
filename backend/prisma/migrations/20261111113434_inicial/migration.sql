@@ -1,0 +1,1 @@
+-- Migración inicial: sin tablas (D-17, spec 000).
