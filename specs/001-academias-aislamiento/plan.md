@@ -23,7 +23,9 @@ piscina/
 │   ├── lib/entorno.mjs                  + leerUrlApp(), urlAppSobre(base)
 │   ├── lib/rol-app.mjs                  nuevo, ataque ronda 2: consulta y evaluación del rol (criterio 81);
 │   │                                    ronda 3: privilegios, valores por defecto y verificador SCRAM (102 a 104)
-│   ├── crear-bases.mjs                  + asegurarRolApp() (criterio 6); ronda 2: lista completa y TEMPORARY (81, 82)
+│   ├── lib/dependencias-backend.mjs     nuevo, ataque ronda 5: lista permitida y lista negra (criterios 127 a 129)
+│   ├── crear-bases.mjs                  + asegurarRolApp() (criterio 6); ronda 2: lista completa y TEMPORARY (81, 82);
+│   │                                    ronda 5: esquemas del rol (123)
 │   ├── completar-env.mjs                nuevo (criterio 63)
 │   └── test/…                           pruebas de lo anterior; actualización de migraciones.test.mjs (criterio 65)
 ├── packages/contratos/src/
@@ -31,7 +33,8 @@ piscina/
 │   ├── texto.ts                         nuevo, ataque ronda 1: reglas de texto (criterios 76, 77)
 │   └── error-api.ts                     + detallesValidacionSchema
 ├── backend/
-│   ├── package.json                     + @node-rs/argon2, @nestjs/jwt (o jsonwebtoken), @nestjs/throttler, cookie-parser
+│   ├── package.json                     + @node-rs/argon2, @nestjs/jwt (o jsonwebtoken), @nestjs/throttler, cookie-parser;
+│   │                                    ronda 5: + express (criterio 128)
 │   ├── prisma/schema.prisma             modelos Academia, Superadmin, Auditoria, AuditoriaPlataforma, Configuracion
 │   ├── prisma/migrations/<marca>_academias_aislamiento/migration.sql
 │   ├── prisma/migrations/<marca>_endurecer_rol_app/migration.sql   nuevo, ataque ronda 2 (criterio 82)
@@ -570,6 +573,20 @@ La reutiliza 002 para los usuarios de academia.
   - `backend/src/infraestructura/entorno/retirar-variables-ronda4.test.ts` (116);
   - adaptación de `eslint/regla-sql-plantillas.test.mjs` a los criterios 112 y 114 ("Impacto en especificaciones
     anteriores" de `spec.md`), en el mismo commit.
+- **Protegidas del ataque ronda 5 (test-writer)** _(criterios 120 a 129; nombres orientativos)_:
+  - `plataforma/sesion-restablecida.test.ts` (120), con el doble de `BaseDatos` que delega en uno real y ejecuta el
+    comando con `ejecutarComando`;
+  - `aislamiento/search-path.test.ts` (121, con el esquema `trampa`; las vías que exigen superusuario o `CREATE` en la
+    base se omiten con aviso) y casos de `enPlataforma` y del comando en `cli/contexto-comandos-ronda5.test.ts`;
+  - `aislamiento/cadenas-estandar.test.ts` (122);
+  - `backend/src/infraestructura/prisma/rol-seguro-ronda5.test.ts` (123, unitaria de `problemasDeEsquemas`),
+    `aislamiento/esquemas-rol.test.ts` (123, integración), `scripts/test/rol-app-ronda5.test.mjs` (unitaria de
+    `problemasDeEsquemasApp`) y `scripts/test/integracion/rol-app-ronda5.test.mjs` (123 y 125 en `db:crear`);
+  - `aislamiento/catalogo-objetos.test.ts` (124), `aislamiento/privilegios-vistas.test.ts` (125) y
+    `aislamiento/catalogo-unicidad.test.ts` (126);
+  - `scripts/test/dependencias-backend.test.mjs` (127, unitarias de P-30 con carpetas temporales);
+  - `eslint/regla-paquetes-declarados.test.mjs` (128), `eslint/regla-clientes-de-base.test.mjs` (129) y casos de la
+    regla de `cli/` en `eslint/regla-sql-sesion-ronda5.test.mjs` (121 y 122).
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -859,7 +876,9 @@ Sigue siendo una sola sentencia y un solo viaje. En `eslint/regla-sql-sesion.mjs
 `argumentosDeLlamada`: la coma dentro de `'iso, mdy'` está dentro de una cadena y ya no separa argumentos.
 `standard_conforming_strings` y `search_path` no se fijan: el SQL de la API va con parámetros (el primero no cambia su
 significado) y el rol no puede crear objetos en ningún esquema (criterios 80 y 82), así que un `search_path` distinto
-solo puede romper consultas (500), no desviarlas.
+solo puede romper consultas (500), no desviarlas. _(Reemplazado por los criterios 121 y 122, ataque ronda 5: el rol
+podía tener un esquema propio o con su nombre y otro rol podía crear tablas en un esquema que el `search_path` busca
+antes; ahora los dos se fijan. Ver sección 17.)_
 
 **Falla cerrada (criterio 108, P-27).**
 
@@ -955,6 +974,123 @@ comparaciones sobre `n`. `infraestructura/entorno/index.ts` deja de exportar `ca
 `./infraestructura/entorno/cargar-env`. Pasar a mayúsculas con `toUpperCase` puede borrar de más algún nombre raro
 (`ſ` pasa a `S`), nunca de menos: falla hacia el lado seguro.
 
+### 17. Correcciones del ataque, ronda 5 (criterios 120 a 129)
+
+Mismo principio que en la ronda 4: 120 a 126 refuerzan la garantía de la base (sesión, `search_path`, rol, catálogo);
+127 a 129 cierran caminos que un error del equipo podría abrir hacia otro cliente de la base. No hay migraciones nuevas.
+
+**Sesión con la clave vigente (criterio 120).** En `sesion-plataforma.service.ts`:
+
+- `iniciarSesion` pasa a `aceptarIntento(fila.id, ip, { claveHash: fila.clave_hash, versionToken: fila.version_token })`.
+- `aceptarIntento` agrega `clave_hash` a su `SELECT … FOR UPDATE` y, después de comprobar que la fila existe y antes de
+  cualquier `UPDATE`, devuelve `{ tipo: 'CAMBIADA' }` si `actual.clave_hash !== leida.claveHash` o
+  `Number(actual.version_token) !== Number(leida.versionToken)`. Fuera de la transacción: `warn` ("inicio de sesión de
+  plataforma rechazado: la clave o las sesiones cambiaron durante la verificación", sin la clave) y
+  `throw credencialesInvalidas()`. La comprobación va antes de la del bloqueo: si la clave cambió, el ingreso no vale
+  aunque la cuenta esté bloqueada; si no cambió, el bloqueo sigue como hoy (423).
+- Se comparan los dos: `plataforma:superadmin` cambia ambos, pero un cambio de clave que en el futuro no suba la versión
+  (por ejemplo, desde la web) también debe cortar el ingreso, y un cierre de sesión sube solo la versión.
+- `rechazarIntento` no cambia.
+- Prueba (orientativo): `ajustar: (b) => b.overrideProvider(BaseDatos).useFactory({ factory: (entorno, registro) =>
+  crearDoble(new BaseDatos(entorno, registro)), inject: [ENTORNO, PinoLogger] })`, donde el doble expone los cuatro
+  métodos del contrato, delega en el real y, con una marca armada por la prueba, cuenta las llamadas a `comoPlataforma` de
+  la petición y ejecuta `ejecutarComando('plataforma:superadmin', …)` (síncrono) antes de la segunda. Si construir el
+  `BaseDatos` real dentro del doble no es posible sin tocar utilidades protegidas, el test-writer se detiene e informa.
+
+**Primera sentencia (criterios 121 y 122).** `#fijarContexto` y `enPlataforma` quedan así (una sola sentencia y un solo
+viaje, como antes):
+
+```sql
+SELECT pg_catalog.set_config('search_path', 'pg_catalog, public, pg_temp', true),
+       pg_catalog.set_config('standard_conforming_strings', 'on', true),
+       pg_catalog.set_config('app.plataforma', ${p}, true), pg_catalog.set_config('app.academia_id', ${id}, true),
+       pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true),
+       pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true),
+       pg_catalog.set_config('bytea_output', 'hex', true)
+```
+
+- PostgreSQL resuelve los nombres de funciones al interpretar la sentencia, con el `search_path` que trae la conexión: lo
+  que protege es `pg_catalog.`, no el orden de las llamadas. Las siguientes sentencias de la transacción ya se
+  interpretan con el `search_path` fijo y con `standard_conforming_strings` en `on`.
+- `${p}` e `${id}` van como parámetros: `standard_conforming_strings` no los afecta. La sentencia no tiene `\`.
+- `current_setting('search_path')` devuelve `pg_catalog, public, pg_temp`; la prueba compara sin espacios.
+- `eslint/regla-sql-sesion.mjs`: `AJUSTES_FIJOS_PERMITIDOS` agrega `'search_path' → 'pg_catalog, public, pg_temp'` y
+  `'standard_conforming_strings' → 'on'` (texto normalizado, en minúsculas). Confirmar que una llamada
+  `pg_catalog.set_config(…)` llega a `esLlamadaPermitida` con los mismos argumentos que sin el esquema (el patrón ya la
+  detecta como llamada, criterio 83) y que la coma dentro de `'pg_catalog, public, pg_temp'` no separa argumentos
+  (como con `'iso, mdy'`).
+- **Por qué no `public.` en todo el SQL (decisión del criterio 121):** después de la primera sentencia, el `search_path`
+  no puede cambiar (lint, criterios 83 y 84), `pg_catalog` va primero (solo un superusuario crea objetos ahí) y `pg_temp`
+  va al final (la app no crea temporales, criterio 82). Calificar cada tabla en cada historia no agrega protección y el
+  lint no podría exigirlo de forma fiable. Las funciones `app_academia_actual()` y `app_es_plataforma()` (llamadas desde
+  las políticas, que guardan referencias ya resueltas) no necesitan su propio `SET search_path`, que además impediría que
+  PostgreSQL las incorpore a la consulta (más lento en tablas grandes).
+
+**Comprobación del rol (criterios 121, 123 y 125).**
+
+- `#comprobarRol` corre en `this.#prisma.$transaction(async (tx) => { await this.#fijarContexto(tx, { academiaId: '',
+  plataforma: false }); … })`, con `tx` directo (método privado). Califica con `pg_catalog.` lo que hoy va sin calificar:
+  `has_table_privilege`, `has_sequence_privilege`, `has_column_privilege` y `unnest`. `current_user` es una palabra
+  reservada, no una función que se pueda tapar. Cuesta un viaje más a la base, una vez por proceso.
+- Consulta nueva (orientativa) y `problemasDeEsquemas` (P-29) en `rol-seguro.ts`:
+
+  ```sql
+  SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspowner = r.oid) AS dueno_de_esquema,
+         EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n
+                  WHERE pg_catalog.has_schema_privilege(r.oid, n.oid, 'CREATE')) AS crea_en_esquema,
+         EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname = r.rolname) AS esquema_con_su_nombre
+    FROM pg_catalog.pg_roles r WHERE r.rolname = current_user
+  ```
+
+- `scripts/crear-bases.mjs` y `scripts/lib/rol-app.mjs`, por cada base: los nombres de los esquemas propios
+  (`nspowner`), los esquemas con `CREATE` (`has_schema_privilege('aquagestion_app', n.oid, 'CREATE')`, y si llega por
+  `PUBLIC`: `pg_catalog.aclexplode(n.nspacl)` con `grantee = 0` y `privilege_type = 'CREATE'`) y si existe el esquema
+  `aquagestion_app`; luego `problemasDeEsquemasApp`. Las consultas de `db:crear` también califican con `pg_catalog.`, y
+  la conexión del script fija `SET search_path = pg_catalog, public, pg_temp` al conectarse (los scripts no pasan por el
+  lint).
+- 125: la consulta de privilegios ya incluye `relkind` `'v'` y `'m'` en la API y en `db:crear`; se espera que pase sin
+  cambios. Si la prueba falla, se corrige la consulta.
+
+**Catálogo (criterios 124 y 126).** Consultas orientativas; las valida la parte de la prueba que crea objetos de
+ejemplo en una transacción que se revierte.
+
+- Vistas sin `security_invoker`: `relkind = 'v'` y sin una opción `security_invoker` con valor verdadero en
+  `pg_catalog.pg_options_to_table(c.reloptions)` (`true`, `on`, `1` o `yes`, sin distinguir mayúsculas).
+- Vistas materializadas y tablas foráneas: `relkind IN ('m', 'f')`.
+- Funciones: `pg_proc` de `public` con `prosecdef` y nombre fuera de la lista permitida (vacía); y con algún elemento de
+  `proconfig` que no empiece por `search_path=`.
+- Reglas: `pg_rewrite` unida a `pg_class` de `public` donde no se cumple `rulename = '_RETURN' AND relkind = 'v'`.
+- Tablas: `relkind IN ('r', 'p')`, `relname <> '_prisma_migrations'` y no (`relrowsecurity` y `relforcerowsecurity`).
+- Unicidad (126): por cada fila de `pg_index` con `indisunique OR indisexclusion` sobre una tabla de `public` con columna
+  `academia_id`, el número de esa columna debe estar entre las primeras `indnkeyatts` posiciones de `indkey`
+  (`(indkey::int2[])[0:indnkeyatts - 1]`; las de `INCLUDE` van después y no cuentan). Excepción: `indisprimary`, una sola
+  columna clave, que es `id` de tipo `uuid` con `pg_get_expr(adbin, adrelid) = 'gen_random_uuid()'` en `pg_attrdef`.
+
+**Dependencias (criterios 127 a 129).**
+
+- `scripts/lib/dependencias-backend.mjs` (P-30): la lista permitida es la de `backend/package.json` de hoy más
+  `express`. `scripts/comprobar-fuentes-protegidas.mjs` llama a `problemasDeDependencias(raiz)`.
+- Las reglas de los criterios 128 y 129 van en `eslint/regla-acceso-base.mjs` (mismo identificador de regla, mensajes
+  nuevos), para no cambiar la lista de reglas del paso protegido que comprueba la prueba del criterio 96. Reutilizan la
+  detección de vías de importación del criterio 85 y la de rutas a `node_modules/` del criterio 95, e importan
+  `nombreDePaquete` y `esClienteDeBaseProhibido` de `scripts/lib/dependencias-backend.mjs`. Los paquetes declarados se
+  leen una vez por ejecución de `<cwd>/backend/package.json` (con `realpath`, criterio 111). Módulos de Node:
+  `node:module` `isBuiltin(especificador)`.
+- `backend/package.json`: `express` con el mismo rango mayor que usa `@nestjs/platform-express` (confirmar con
+  `npm ls express`), para que npm no instale una segunda copia; se actualiza `package-lock.json`.
+
+**Rodeos de los falsos positivos aceptados (O7 de "Riesgos aceptados").**
+
+```ts
+// Un fragmento guardado en una variable: se interpola en una plantilla, no se pasa como argumento.
+const consulta = sql`SELECT … FROM auditoria WHERE academia_id = ${tx.academiaId}::uuid`;
+const filas = await tx.cliente.$queryRaw`${consulta}`;
+
+// ORDER BY elegido por el usuario: un mapa cerrado de fragmentos; la clave la valida antes un esquema zod (z.enum).
+const ORDEN = Object.freeze({ reciente: sql`ORDER BY fecha_hora DESC`, accion: sql`ORDER BY accion, fecha_hora DESC` });
+const filas2 = await tx.cliente.$queryRaw`SELECT … FROM auditoria ${ORDEN[orden]}`;
+```
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -1009,6 +1145,12 @@ comparaciones sobre `n`. `infraestructura/entorno/index.ts` deja de exportar `ca
 | Nombres de variables en mayúsculas (criterio 116) | Distinguir mayúsculas | En Windows `PgPassword` es `PGPASSWORD` |
 | `cargarEnvRaiz` fuera del `index` y `dotenv` prohibido (criterio 117) | Solo quitarla del `index` | Un módulo importaría el archivo o `dotenv` |
 | `git ls-files` y disco en `generated/` (criterio 118) | Solo acotar la exención | Un archivo forzado con `git add -f` seguiría exento |
+| Comparar `clave_hash` y `version_token` bajo `FOR UPDATE` antes de emitir la sesión (ataque ronda 5, criterio 120) | Calcular el hash con la fila bloqueada; firmar con la versión releída | Retiene una conexión por intento y serializa; emitiría sesión para una clave que ya no existe |
+| `search_path` fijo `pg_catalog, public, pg_temp` y `pg_catalog.` en la primera sentencia y en la comprobación del rol (criterio 121) | Calificar con `public.` todo el SQL; fijar solo `public` | Carga para todas las historias sin protección extra; `pg_temp` quedaría primero para las tablas |
+| `standard_conforming_strings = on` por transacción (criterio 122) | Prohibir `\` en las plantillas | Falsos positivos y no cubre la base ni el servidor |
+| Rechazar esquemas propios, con `CREATE` o con el nombre del rol (criterio 123) | Rechazar también `USAGE` en otros esquemas | Falsos positivos en hostings con esquemas de extensiones; lo neutraliza el criterio 121 |
+| Pruebas de catálogo con listas de excepciones vacías (criterios 124 y 126) | Revisar cada migración a mano | Se olvida; la prueba falla sola |
+| Lista permitida, solo paquetes declarados y lista negra (criterios 127 a 129) | Solo lista negra; solo la lista del backend | Siempre aparece un cliente nuevo; los paquetes de otros espacios de trabajo llegan a `node_modules` de la raíz |
 
 ## Migraciones
 
@@ -1021,6 +1163,9 @@ comparaciones sobre `n`. `infraestructura/entorno/index.ts` deja de exportar `ca
 - Ronda 3: sin migraciones nuevas. Los privilegios (criterio 102) y los valores por defecto del rol (103) se comprueban;
   no se cambian.
 - Ronda 4: sin migraciones nuevas. Los parámetros de formato (criterio 107) se fijan por transacción, no en la base.
+- Ronda 5: sin migraciones nuevas. `search_path` y `standard_conforming_strings` se fijan por transacción (criterios 121
+  y 122); los esquemas del rol se comprueban, no se cambian (123); las pruebas de catálogo (124 y 126) pasan con las
+  migraciones actuales.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -1088,5 +1233,17 @@ comparaciones sobre `n`. `infraestructura/entorno/index.ts` deja de exportar `ca
 - **Tipo de `ClienteTransaccion`** _(ataque ronda 4)_: la sobrecarga con `Fragmento` y las promesas nativas pueden
   romper la asignación desde `Prisma.TransactionClient` en `enPlataforma` (sección 16). Si toca una prueba protegida, el
   backend se detiene e informa.
+- **Esquemas en la base de pruebas de la nube** _(ataque ronda 5, criterios 121 y 123)_: las pruebas necesitan que el
+  dueño cree esquemas (`CREATE` sobre la base); si no puede, se omiten con aviso y corren en Docker y en la CI. Los casos
+  con `AUTHORIZATION aquagestion_app` exigen superusuario.
+- **Doble de `BaseDatos` para el criterio 120** _(ataque ronda 5)_: construir el `BaseDatos` real dentro del doble
+  depende de cómo Nest entrega `ENTORNO` y `PinoLogger`; si no se logra sin tocar utilidades protegidas, el test-writer
+  se detiene e informa.
+- **Hosting con `CREATE` sobre esquemas de extensiones para `PUBLIC`** _(ataque ronda 5, criterio 123)_: la API no
+  atendería datos y `db:crear` se detendría con la corrección (`REVOKE CREATE ON SCHEMA … FROM PUBLIC`). Se revisa con el
+  hosting (D-21).
+- **`express` declarado en el backend** _(ataque ronda 5, criterio 128)_: si el rango no coincide con el de
+  `@nestjs/platform-express`, npm instala dos copias y los tipos o los middlewares pueden no coincidir; confirmar con
+  `npm ls express` en la nube y en la CI de Windows.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.

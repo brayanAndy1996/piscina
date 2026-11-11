@@ -25,6 +25,10 @@ Tras la ronda 4 se agregaron los criterios 106 a 119 (sección M de `spec.md`) y
 tareas son T59 a T70, antes del cierre. Los criterios 92, 95, 96, 98, 99 y 100 y las precisiones P-21 y P-24 quedaron
 con el alcance ajustado o complementado.
 
+Tras la ronda 5 se agregaron los criterios 120 a 129 (sección N de `spec.md`) y las precisiones P-29 y P-30; sus
+tareas son T71 a T81, antes del cierre. Los criterios 80, 102 y 107 y la precisión P-28 quedaron complementados o con
+la excepción de `cli/` ampliada.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -245,6 +249,44 @@ claves JSON duplicadas y límite por IP en memoria y /128) y se agregaron la not
 - [ ] T69 · orquestador · `git diff` desde el commit de T60: T61 a T68 no tocaron pruebas protegidas
 - [ ] T70 · adversarial · Ronda 5 sobre todo lo anterior, en especial 106 a 119 (promesas del envoltorio, parámetros
       de sesión, punto autorizado y lint); si hay fallas, se repite el ciclo
+
+## Ataque adversarial, ronda 5 (11/11/2026)
+
+Fallas F1 a F3 y observaciones O1, O3 y O5 de la ronda 5 (sobre `b5ff3e9`); criterios 120 a 129 de `spec.md` (sección
+N) y precisiones P-29 y P-30. O2, O4, O6, O7 y O8 quedaron en "Riesgos aceptados". Detalle técnico en la sección 17 del
+plan.
+
+- [ ] T71 · test-writer · Pruebas protegidas en rojo de los criterios 120 a 129 (archivos en "Protegidas del ataque
+      ronda 5" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación. Comprobar que
+      ningún ejemplo que pasa en las protegidas de lint de las rondas 1 a 4 empieza a fallar por el criterio 128 (si
+      alguno cambiara, detenerse e informar). Commit: "Pruebas protegidas (001), ataque ronda 5: sesión con la clave
+      vigente, search_path, cadenas estándar, esquemas del rol, objetos que se saltan RLS, unicidad por academia y
+      dependencias (en rojo)" (criterios 120 a 129)
+- [ ] T72 · tester · Confirmar que T71 falla por la razón esperada (cookie emitida con la clave anterior, tablas o
+      funciones de `trampa` usadas, `standard_conforming_strings` en `off`, esquema propio o con `CREATE` aceptado,
+      funciones de detección inexistentes, regla de paquetes y lista negra inexistentes, `scripts/lib/dependencias-backend.mjs`
+      inexistente) y no por errores de las pruebas. Las que pasan ya en verde por diseño (124, 125 y 126 sobre las
+      migraciones actuales, y la parte de autodetección de esas consultas) se informan como tales. Las que exigen
+      superusuario o `CREATE` en la base se confirman en la CI de Linux o en Docker
+- [ ] T73 · backend · Sesión: `aceptarIntento` compara `clave_hash` y `version_token` bajo `FOR UPDATE` con los leídos
+      al verificar; si cambiaron, 401 sin escribir ni contar el intento (criterio 120)
+- [ ] T74 · backend · Primera sentencia de `#fijarContexto` y de `enPlataforma` con `pg_catalog.set_config`,
+      `search_path` y `standard_conforming_strings`; excepciones de `cli/` en `regla-sql-sesion.mjs`, también con
+      `pg_catalog.` (criterios 121, 122)
+- [ ] T75 · backend · Comprobación del rol en una transacción con la primera sentencia y con el catálogo calificado
+      con `pg_catalog.` (criterio 121); condiciones de esquemas con `problemasDeEsquemas` en la API (P-29) (criterio 123)
+- [ ] T76 · backend · `db:crear`: condiciones de esquemas con `problemasDeEsquemasApp` (P-29), consultas calificadas y
+      `search_path` fijo en la conexión del script; confirmar los casos de vistas y vistas materializadas (criterios 123,
+      125)
+- [ ] T77 · backend · Si las pruebas de catálogo de 124 o 126 fallan con las migraciones actuales, corregir lo que
+      señalen (sin editar migraciones aplicadas: una migración nueva) (criterios 124, 126)
+- [ ] T78 · backend · `scripts/lib/dependencias-backend.mjs` (P-30) y su llamada en
+      `scripts/comprobar-fuentes-protegidas.mjs`; `express` en `backend/package.json` y en la lista (criterio 127)
+- [ ] T79 · backend · Reglas de paquetes declarados y de la lista negra en `eslint/regla-acceso-base.mjs`, en el lint
+      normal y en el paso protegido (criterios 128, 129)
+- [ ] T80 · orquestador · `git diff` desde el commit de T72: T73 a T79 no tocaron pruebas protegidas
+- [ ] T81 · adversarial · Ronda 6 sobre todo lo anterior, en especial 120 a 129 (sesión durante un restablecimiento,
+      `search_path`, esquemas, objetos del catálogo y dependencias); si hay fallas, se repite el ciclo
 
 ## Cierre
 

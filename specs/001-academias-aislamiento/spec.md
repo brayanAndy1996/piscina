@@ -86,6 +86,16 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
     `number` para montos o abrir excepciones en las reglas.
   - 116 a 119: aislamiento; variables del dueño que quedan en el proceso en Windows, un `.env` que un módulo podría
     recargar, archivos sin revisar bajo `generated/` y archivos `.jsx` que `tsx` ejecuta.
+- **N. Correcciones del ataque, ronda 5 (120 a 129):**
+  - 120: autenticación (D-29); un inicio de sesión con la clave anterior que termina después de un restablecimiento
+    recibiría una sesión válida, y restablecer la clave dejaría de cortar el acceso.
+  - 121 a 123: aislamiento (D-23); un `search_path` o un esquema con el nombre del rol harían que la API leyera tablas
+    falsas (una academia suspendida operando, una clave del atacante aceptada), y una `\` con
+    `standard_conforming_strings` en `off` cambiaría el significado del SQL.
+  - 124 y 125: aislamiento; una vista sin `security_invoker`, una vista materializada, una función `SECURITY DEFINER` o
+    una regla de reescritura creadas por una migración devuelven datos de todas las academias.
+  - 126: aislamiento; una restricción única sin `academia_id` revelaría con un 409 que un dato existe en otra academia.
+  - 127 a 129: aislamiento; otro cliente de PostgreSQL abriría un pool propio fuera de `BaseDatos`.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -574,7 +584,8 @@ Criterios agregados tras la ronda 2 del ataque (11/11/2026). Son decisiones téc
 negocio nuevas, y no cambian el sentido de los criterios 1 a 79: los que amplían uno anterior lo dicen y se suman a
 él. Todos son _(crítico)_.
 
-80. **Rol inseguro: la lista completa en la API** _(ataque ronda 2, F1; complementa los criterios 1 y 4)_. Dada la
+80. **Rol inseguro: la lista completa en la API** _(ataque ronda 2, F1; complementa los criterios 1 y 4)_
+    _(complementado por el criterio 123, ataque ronda 5: esquemas propios, con `CREATE` o con el nombre del rol)_. Dada la
     API con `DATABASE_URL_APP` apuntando a un rol que cumple **cualquiera** de estas condiciones, cuando se llama a
     `conAcademia`, `comoPlataforma` o `resolverAcademia`, entonces rechazan con `ErrorRolBaseDatosInseguro` sin
     ejecutar el trabajo, con las mismas respuestas 500 `ERROR_INTERNO` y el mismo registro en el log del criterio 4
@@ -948,7 +959,8 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
      antes de `trabajo`. Lo mismo en `enPlataforma`: un cursor `WITH HOLD` declarado en una transacción no existe en la
      siguiente del mismo cliente (con `crearClienteDelDueno(url, { max: 1 })`, precisión P-23). El lint prohíbe
      declarar cursores en el código (criterio 94). _(crítico)_
-102. **Ningún privilegio de tabla de más** _(ataque ronda 3, O3; complementa los criterios 2, 80 y 81)_. Dada la
+102. **Ningún privilegio de tabla de más** _(ataque ronda 3, O3; complementa los criterios 2, 80 y 81)_
+     _(complementado por el criterio 125, ataque ronda 5: casos de vista y vista materializada)_. Dada la
      comprobación del rol (en la API, la del criterio 80; en `npm run db:crear`, sobre la base de desarrollo y la de
      pruebas), entonces calcula los privilegios efectivos de `aquagestion_app` (concedidos al rol o a `PUBLIC`) sobre
      cada tabla, tabla particionada, vista, vista materializada, tabla foránea y secuencia del esquema `public`: a
@@ -1040,7 +1052,8 @@ P-28. Todos son _(crítico)_.
      `auditoria` de A, rechaza y no devuelve filas; y un `$executeRaw` guardado y llamado después no escribe nada.
      _(crítico)_
 107. **Parámetros de formato fijos en cada transacción** _(ataque ronda 4, F2; complementa los criterios 72, 90 y 98;
-     **amplía** la excepción de `cli/` del criterio 98)_. Dado que el adaptador de Prisma interpreta el texto que
+     **amplía** la excepción de `cli/` del criterio 98)_ _(excepción de `cli/` ampliada por los criterios 121 y 122, ataque
+     ronda 5: `search_path`, `standard_conforming_strings` y la forma con `pg_catalog.`)_. Dado que el adaptador de Prisma interpreta el texto que
      devuelve PostgreSQL y que ese texto depende de la sesión, entonces toda transacción de `BaseDatos` (`conAcademia`,
      `comoPlataforma` y `resolverAcademia`) y de `enPlataforma` fija, local a la transacción (`set_config(…, true)`) y en
      la misma primera sentencia que fija el contexto y `TimeZone` (criterio 98), antes de `trabajo`:
@@ -1309,6 +1322,220 @@ P-28. Todos son _(crítico)_.
      Prueba: un `.jsx` de `backend/src/modulos/` con `import pg from 'pg'` y otro con
      `` tx.cliente.$queryRaw`SET ROLE postgres` `` hacen fallar el paso protegido. _(crítico)_
 
+### N. Correcciones del ataque adversarial, ronda 5
+
+Criterios agregados tras la ronda 5 del ataque (11/11/2026, sobre el commit `b5ff3e9`). Son decisiones técnicas de
+seguridad, no reglas de negocio nuevas. Donde un criterio complementa o amplía uno anterior lo dice, y el anterior queda
+marcado "(… ataque ronda 5)", sin borrar su texto. Contratos nuevos: precisiones P-29 y P-30. Todos son _(crítico)_.
+
+Esta ronda crea dos listas de excepciones, **hoy vacías**, que solo una especificación puede ampliar, con la
+justificación de cada elemento (como la lista del criterio 10):
+
+- **Funciones `SECURITY DEFINER` permitidas** (criterio 124): ninguna.
+- **Unicidad sin `academia_id` permitida** (criterio 126): ninguna.
+
+120. **La sesión solo se emite para la clave que sigue vigente** _(ataque ronda 5, F1; complementa los criterios 34, 36,
+     39 y 40)_. Dado que la clave se verifica fuera de la transacción que acepta el ingreso (el hash tarda decenas de
+     milisegundos; plan, sección 6), cuando se envía `POST /api/plataforma/sesion` con la clave correcta, entonces:
+     - la transacción que acepta el ingreso (la que pone `intentos_fallidos` en 0 y escribe `ultimo_acceso`) relee la fila
+       del superadmin bajo su bloqueo (`SELECT … FOR UPDATE`) y comprueba que `clave_hash` y `version_token` son
+       exactamente los que se leyeron para verificar la clave; el token se firma con esa `version_token`;
+     - si cualquiera de los dos cambió (por ejemplo, porque `npm run plataforma:superadmin` restableció la clave, o porque
+       un `DELETE /api/plataforma/sesion` cerró las sesiones, mientras se calculaba el hash), responde 401
+       `CREDENCIALES_INVALIDAS` con el mismo cuerpo del criterio 38, sin `Set-Cookie`, sin token y sin escribir nada en la
+       fila (ni `intentos_fallidos`, ni `bloqueado_hasta`, ni `ultimo_acceso`, ni `actualizado_en`): no cuenta como intento
+       fallido. El log técnico lo registra con nivel `warn`, sin la clave;
+     - el camino de la clave equivocada no cambia (criterios 39 y 40);
+     - una implementación que verifica la clave dentro de la misma transacción que bloqueó la fila desde la lectura también
+       cumple el criterio.
+
+     Garantía observable: ninguna cookie emitida a partir de la clave anterior a un restablecimiento sirve después de él
+     (`GET /api/plataforma/sesion` responde 401).
+
+     Prueba de integración determinista: un superadmin con clave K1 y la API de pruebas con `BaseDatos` reemplazado
+     (`ajustar`) por un doble que delega en un `BaseDatos` real y que, durante una petición de inicio de sesión, justo
+     antes de la **segunda** llamada a `comoPlataforma` (es decir, después de la que leyó la fila y de calcular el hash),
+     ejecuta el comando real `npm run plataforma:superadmin` (`ejecutarComando`) con el mismo correo y la clave K2.
+     Entonces, con K1: 401 `CREDENCIALES_INVALIDAS` sin `Set-Cookie`; leída como dueño con `pg`, la fila tiene
+     `intentos_fallidos` 0, `ultimo_acceso` igual al de antes (nulo si nunca entró) y la `version_token` que dejó el
+     comando; después, K2 entra (200) y K1 responde 401 (como cualquier clave equivocada). Si la implementación no hace
+     una segunda llamada, el doble ejecuta el comando después de la respuesta, y la prueba exige que, si fue 200, esa
+     cookie responda 401 en `GET /api/plataforma/sesion` tras el comando. Variante: en lugar del comando, el doble sube
+     `version_token` como dueño (`UPDATE superadmins SET version_token = version_token + 1`); con K1, que sigue siendo la
+     clave, responde 401 y no escribe nada. Sin intercalar nada, K1 entra (200), como hoy. Además, sin pausas: 8 inicios
+     de sesión con K1 a la vez (menos que el límite por IP del criterio 41), en paralelo con el comando que cambia a K2;
+     cuando todo termina, toda cookie obtenida responde 401 en `GET /api/plataforma/sesion`. _(crítico)_
+121. **`search_path` fijo en cada transacción** _(ataque ronda 5, F2 (a) y (c); complementa los criterios 72, 98 y 107;
+     **amplía** la excepción de `cli/` del criterio 107)_. Dado que el `search_path` de la conexión puede venir de
+     `options` en la URL, de `ALTER DATABASE … SET`, de `ALTER ROLE ALL … SET` o del servidor, y que el valor por defecto
+     (`"$user", public`) busca primero un esquema con el nombre del rol, entonces:
+     - toda transacción de `BaseDatos` (`conAcademia`, `comoPlataforma` y `resolverAcademia`) y de `enPlataforma` fija
+       `search_path` en `pg_catalog, public, pg_temp`, local a la transacción, en la misma primera sentencia que fija el
+       contexto y los parámetros de los criterios 98 y 107, antes de `trabajo`; dentro de `trabajo`,
+       `current_setting('search_path')` es ese valor (comparado sin espacios);
+     - esa primera sentencia llama a cada función calificada con `pg_catalog.` (`pg_catalog.set_config(…)`), porque
+       PostgreSQL la interpreta con el `search_path` que trae la conexión, antes de fijarlo; `CLOSE ALL` sigue después
+       (criterio 101);
+     - las consultas de la comprobación del rol (criterios 4, 80, 102, 103 y 123) corren dentro de una transacción que
+       empieza con esa misma primera sentencia, sin contexto, y califican con `pg_catalog.` toda función y tabla del
+       catálogo que usan (hoy `has_table_privilege`, `has_sequence_privilege`, `has_column_privilege` y `unnest` van sin
+       calificar);
+     - **decisión sobre calificar con `public.` (F2 (c)):** el SQL que corre después de la primera sentencia (las
+       consultas de `BaseDatos`, la llamada a `resolver_academia`, los servicios de 001 y los de las historias
+       siguientes) **no** necesita calificar con `public.` las tablas y funciones propias. El `search_path` queda fijo
+       para toda la transacción (el lint impide cambiarlo: criterios 83 y 84); `pg_catalog` va primero y solo un
+       superusuario crea objetos ahí; `pg_temp` va al final y la app no puede crear temporales (criterio 82); y los
+       delegados de Prisma ya califican con `"public"`. Calificar sí es necesario en lo que se interpreta **antes** de
+       fijar el `search_path` (la primera sentencia y la comprobación del rol, viñetas anteriores). `resolver_academia`
+       conserva su cláusula `SET search_path = pg_catalog, public, pg_temp` y sus nombres calificados (plan, sección 2);
+     - en `backend/src/cli/`, la regla del criterio 83 admite además exactamente
+       `set_config('search_path', 'pg_catalog, public, pg_temp', true)` (sin distinguir mayúsculas, como en el criterio
+       98), y todas las llamadas que admite en `cli/` (criterios 90, 98, 107, 121 y 122) pasan también con `pg_catalog.`
+       delante; cualquier otro valor o un tercer argumento distinto de `true` sigue fallando, y fuera de `cli/` y de
+       `infraestructura/prisma/` sigue prohibida toda llamada a `set_config`.
+
+     Prueba de integración (como la del criterio 107), con la API de pruebas en `DATABASE_POOL_MAX=1` y una API nueva por
+     vía. El dueño crea un esquema `trampa` (si no puede crear esquemas en la base de pruebas, la prueba se omite con
+     aviso), del que la app no es dueña ni tiene `CREATE`, con `GRANT USAGE ON SCHEMA trampa TO aquagestion_app`; dentro,
+     tablas `trampa.academias` y `trampa.superadmins` con las mismas columnas y filas falsas (la academia A, suspendida en
+     `public`, como `ACTIVA`; el correo del superadmin con el hash de una clave del atacante), con `SELECT` concedido a la
+     app; y funciones `trampa.set_config(text, text, boolean)` (devuelve su segundo argumento sin fijar nada) y
+     `trampa.has_table_privilege(name, oid, text)` (devuelve `false`). Vías de contaminación de `search_path` a
+     `trampa, pg_catalog, public` y a `"$user", trampa, pg_catalog, public`: (a) un `trabajo` anterior en la misma conexión
+     con `set_config('search_path', …, false)`; (b) `options` en `DATABASE_URL_APP`; (c) `ALTER DATABASE <base de
+     pruebas> SET search_path …` (si el dueño puede; si no, se omite con aviso); (d) `ALTER ROLE ALL [IN DATABASE …] SET
+     search_path …` (solo superusuario: se omite con aviso en la nube). Todo se restaura al final, también si la prueba
+     falla. Entonces:
+     - dentro de `trabajo`, `current_setting('search_path')` es el fijo y, en `conAcademia(B, …)`,
+       `current_setting('app.academia_id', true)` es el id de B (no se usó la `set_config` falsa);
+     - `conAcademia(A, …)` rechaza con `ErrorAcademiaSuspendida` y `GET /api/a/{nombre corto de A}` responde 403;
+     - `POST /api/plataforma/sesion` con la clave del atacante responde 401 y con la real, 200;
+     - con las vías (b) y (c) y además `GRANT TRUNCATE ON auditoria TO aquagestion_app`, una API nueva rechaza con
+       `ErrorRolBaseDatosInseguro` (no se usó la `has_table_privilege` falsa);
+     - en los comandos, con la URL del dueño con esas `options`, dentro de `enPlataforma` `current_setting('search_path')`
+       es el fijo, y `npm run plataforma:superadmin` crea el superadmin en `public.superadmins` y no en
+       `trampa.superadmins` (leídos como dueño con `pg`).
+
+     Y la prueba de la regla de lint (como en el criterio 92): en `cli/` pasan la llamada nueva y las de los criterios 98
+     y 107 con `pg_catalog.` delante; fallan `set_config('search_path', 'trampa, public', true)` y
+     `set_config('search_path', 'pg_catalog, public, pg_temp', false)`. _(crítico)_
+122. **`standard_conforming_strings` en `on` en cada transacción** _(ataque ronda 5, O3; complementa los criterios 107 y
+     121; **amplía** la excepción de `cli/` del criterio 107)_. Dado que con `standard_conforming_strings = off` una `\`
+     dentro de un literal SQL cambia de significado, y que el valor puede llegar por las mismas vías que los parámetros
+     del criterio 107, entonces toda transacción de `BaseDatos` y de `enPlataforma` fija `standard_conforming_strings` en
+     `on`, local a la transacción, en la misma primera sentencia (criterio 121); dentro de `trabajo`,
+     `current_setting('standard_conforming_strings')` es `on`. La primera sentencia no contiene `\`, así que se interpreta
+     igual con cualquier valor. En `backend/src/cli/`, la regla del criterio 83 admite además exactamente
+     `set_config('standard_conforming_strings', 'on', true)`, con o sin `pg_catalog.`; `'off'` sigue fallando. Prueba como
+     la del criterio 107, con las vías (a) a (e) en `off` (las que exigen superusuario se omiten con aviso en la nube):
+     dentro de `trabajo` y de `enPlataforma` el parámetro es `on`, y una consulta cuyo texto SQL es
+     `SELECT length('a\b') AS n` (una sola barra invertida en el texto que llega a PostgreSQL) devuelve 3. _(crítico)_
+123. **Ningún esquema propio, con `CREATE` o con el nombre del rol** _(ataque ronda 5, F2 (b); complementa los criterios
+     80, 81 y 103)_. Dada la comprobación del rol (en la API, la del criterio 80; en `npm run db:crear`, sobre la base de
+     desarrollo y la de pruebas), entonces también rechaza el rol si:
+     - es dueño de **cualquier** esquema de la base (`pg_namespace.nspowner`), no solo de `public`;
+     - tiene `CREATE` sobre cualquier esquema de la base (`has_schema_privilege(…, 'CREATE')`), concedido al rol o a
+       `PUBLIC`, incluidos los del sistema (ninguno lo concede por defecto, así que no hace falta exceptuarlos);
+     - existe en la base un esquema con su nombre (`aquagestion_app`), sea de quien sea: el `search_path` por defecto
+       (`"$user", public`) lo buscaría antes que `public`.
+
+     La API rechaza con `ErrorRolBaseDatosInseguro` como en el criterio 4 (el log nombra la condición y el esquema, nunca
+     la URL ni la contraseña); `db:crear` termina con código 1 con un mensaje que nombra el esquema, la condición y la
+     corrección (`REVOKE CREATE ON SCHEMA <esquema> FROM aquagestion_app;` o `… FROM PUBLIC;`,
+     `ALTER SCHEMA <esquema> OWNER TO <dueño>;`, o renombrar o eliminar el esquema `aquagestion_app`), sin modificar
+     nada. `USAGE` sobre otros esquemas no se rechaza (lo neutraliza el criterio 121; ver "Riesgos aceptados"). Con las
+     migraciones de esta historia y nada más, la comprobación pasa. Funciones que deciden: P-29, separadas de las de P-12,
+     P-13 y P-19, cuyas pruebas no cambian. Prueba unitaria de esas funciones (cada condición sola, y todas falsas) y de
+     integración, con una API nueva por caso y restaurando al final: el dueño crea `trampa` y concede
+     `GRANT CREATE ON SCHEMA trampa TO aquagestion_app` (un caso) o `… TO PUBLIC` (otro); el dueño crea un esquema
+     `aquagestion_app` sin conceder nada; y, solo con superusuario (Docker y CI; en la nube se omiten con aviso),
+     `CREATE SCHEMA aquagestion_app AUTHORIZATION aquagestion_app` y `CREATE SCHEMA otro AUTHORIZATION aquagestion_app`.
+     En cada caso `conAcademia`, `comoPlataforma` y `resolverAcademia` rechazan; en `db:crear`, al menos los casos de
+     `CREATE` concedido a la app y a `PUBLIC` y el del esquema con su nombre. _(crítico)_
+124. **Ningún objeto que se salte RLS** _(ataque ronda 5, F3; complementa los criterios 9 y 11)_. Dadas las migraciones
+     aplicadas en la base de pruebas, cuando se consulta el catálogo, entonces la prueba falla si en el esquema `public`
+     hay:
+     - una vista (`relkind = 'v'`) sin `security_invoker = true` en sus opciones (`reloptions`);
+     - una vista materializada (`'m'`) o una tabla foránea (`'f'`), sean como sean: no pasan por RLS;
+     - una función o procedimiento con `SECURITY DEFINER` (`pg_proc.prosecdef`), salvo los de la lista "Funciones
+       `SECURITY DEFINER` permitidas" (hoy vacía; `app_academia_actual`, `app_es_plataforma` y `resolver_academia` son
+       `SECURITY INVOKER`);
+     - una función o procedimiento con valores propios (`proconfig`) que fijen algo distinto de `search_path` (por
+       ejemplo `SET row_security = off`);
+     - una regla de reescritura (`pg_rewrite`) que no sea la `_RETURN` de una vista: las reglas se ejecutan con los
+       permisos del dueño de la tabla, que en Docker y en la CI es superusuario;
+     - una tabla o partición (`'r'` o `'p'`, incluidas las particiones, `relispartition`) distinta de `_prisma_migrations`
+       sin RLS activada y forzada (criterio 9).
+
+     La prueba comprueba también que sus consultas detectan cada caso: como dueño, dentro de una transacción que se
+     revierte al final, crea una vista sin `security_invoker` (detectada) y otra con `security_invoker = true` (no
+     detectada), una vista materializada, una función `SECURITY DEFINER`, una función `SECURITY INVOKER` con
+     `SET row_security = off`, una regla `DO INSTEAD NOTHING` sobre `configuraciones` y una tabla particionada con RLS
+     forzada cuya partición no la tiene; cada una aparece en el resultado de su consulta. Una historia que necesite una
+     excepción la agrega a la lista, con su justificación, en su especificación. _(crítico)_
+125. **Privilegios sobre vistas y vistas materializadas** _(ataque ronda 5, F3; complementa el criterio 102)_. Dado que la
+     comprobación del rol ya calcula los privilegios sobre vistas y vistas materializadas de `public` (criterio 102),
+     entonces la prueba lo fija con dos casos más, como los del criterio 102 (una API nueva por caso y restaurando al
+     final): `CREATE MATERIALIZED VIEW public.mv_prueba AS SELECT id, nombre FROM academias` con
+     `GRANT SELECT ON mv_prueba TO aquagestion_app`, y `CREATE VIEW public.v_prueba WITH (security_invoker = true) AS
+     SELECT id FROM academias` con `GRANT SELECT ON v_prueba TO aquagestion_app`. En cada caso `conAcademia`,
+     `comoPlataforma` y `resolverAcademia` rechazan con `ErrorRolBaseDatosInseguro`, y `db:crear` termina con código 1
+     nombrando el objeto y el privilegio, sin modificar nada. Ninguna historia concede privilegios sobre una vista
+     materializada (no pasa por RLS; criterio 124). _(crítico)_
+126. **Unicidad siempre dentro de la academia** _(ataque ronda 5, O5; complementa los criterios 11 y 12)_. Dado que una
+     restricción única global en una tabla de academia respondería 409 ante un valor que existe en otra academia (por
+     ejemplo, un `numero_operacion` de pagos, RN-28) y revelaría así datos de esa academia, entonces, en el esquema
+     `public`, toda llave primaria, restricción `UNIQUE`, índice único (también parcial) y restricción de exclusión de una
+     tabla con columna `academia_id` tiene `academia_id` entre sus columnas clave (no basta en `INCLUDE` ni dentro de una
+     expresión), con dos excepciones: la llave primaria formada solo por `id`, de tipo `uuid` y con valor por defecto
+     `gen_random_uuid()`; y las de la lista "Unicidad sin `academia_id` permitida" (hoy vacía). Prueba de catálogo que,
+     además, como dueño dentro de una transacción que se revierte, comprueba que detecta una tabla de ejemplo con
+     `numero_operacion text UNIQUE`, otra con `CREATE UNIQUE INDEX … (numero_operacion) INCLUDE (academia_id)`, otra con
+     llave primaria `(numero)` de texto y otra con llave primaria `id uuid` sin valor por defecto, y que no detecta
+     `UNIQUE (academia_id, numero_operacion)`. Las historias siguientes declaran así sus restricciones únicas (por
+     ejemplo, el DNI único por academia de D-28). _(crítico)_
+127. **Dependencias del backend de una lista permitida** _(ataque ronda 5, O1; complementa los criterios 85 y 96)_. Dado
+     el repositorio, entonces:
+     - `scripts/lib/dependencias-backend.mjs` (P-30) tiene la lista versionada de los paquetes que `backend/package.json`
+       puede declarar (`DEPENDENCIAS_BACKEND_PERMITIDAS`), con las dependencias de hoy más `express` (criterio 128);
+     - el paso protegido (`npm run lint:protegido`, dentro de `npm run lint`; la comprobación previa de P-28) termina con
+       código 1 si `backend/package.json` declara, en `dependencies`, `devDependencies`, `optionalDependencies`,
+       `peerDependencies`, `bundleDependencies` o `bundledDependencies`, un paquete que no está en la lista, nombrando el
+       paquete y el archivo de la lista. Agregar una dependencia al backend exige agregarla a la lista en el mismo cambio,
+       donde la ve la revisión;
+     - la lista no contiene ningún paquete de la lista negra del criterio 129.
+
+     Prueba unitaria de las funciones de P-30: con una carpeta temporal, un paquete fuera de la lista en cada sección se
+     informa y uno de la lista no; el `backend/package.json` real cumple; y la lista permitida y la lista negra no
+     comparten ningún paquete. _(crítico)_
+128. **El backend solo importa paquetes que declara** _(ataque ronda 5, O1; complementa los criterios 85, 95 y 127)_.
+     Dado que npm sube a `node_modules` de la raíz los paquetes de todos los espacios de trabajo, un paquete declarado en el
+     `package.json` de la raíz, de `frontend/`, de `e2e/` o de `scripts/` (o una dependencia de otro paquete) se puede
+     importar desde `backend/src/` sin pasar por la lista del criterio 127. Por eso, dado el código de `backend/src/` (sin
+     las pruebas, criterio 110), `npm run lint` (también el paso protegido) falla si un archivo importa un valor, por
+     cualquiera de las vías del criterio 85 (también `import 'x'` y `export … from`), con un especificador que no es
+     relativo ni absoluto (criterio 95) y que no es un módulo de Node (`node:…` o un nombre de `module.builtinModules`) ni
+     un paquete declarado en `backend/package.json` (en cualquier sección). El nombre del paquete es `@ámbito/nombre` o
+     `nombre`, sin la subruta. Así fallan también los alias (`#…`, `~/…`, `@/…`) mientras no se declaren (riesgo O2).
+     `import type` e `import { type X }` siguen permitidos. Pasan, por ejemplo, `import { Injectable } from
+     '@nestjs/common'`, `import { randomBytes } from 'node:crypto'`, `import { readFileSync } from 'fs'` y
+     `import { z } from 'zod'`; fallan `import postgres from 'postgres'`, `import x from 'pg-protocol'` (dependencia de
+     `pg`, no declarada), `require('knex')` e `import { y } from '#interno'`. Consecuencia: `backend/package.json` declara
+     `express`, que hoy se importa como valor sin estar declarado (llega como dependencia de `@nestjs/platform-express`).
+     Prueba de la regla como en el criterio 92. _(crítico; prueba de la regla de lint)_
+129. **Lista negra de clientes de base** _(ataque ronda 5, O1; complementa los criterios 85 y 95)_. Dado el código de
+     `backend/src/` (sin las pruebas), fuera de `backend/src/infraestructura/prisma/` y de `backend/src/cli/`, entonces
+     `npm run lint` (también el paso protegido) falla si un archivo importa, de valor o de tipo, por cualquiera de las vías
+     del criterio 85 y también como ruta a `node_modules/` (criterio 95), un paquete de la lista negra de clientes de base
+     (`CLIENTES_DE_BASE_PROHIBIDOS`, P-30), con o sin subruta: `postgres`; `knex`; `kysely` y `kysely-…`; `slonik`,
+     `slonik-…` y `@slonik/…`; `@neondatabase/…`; `@vercel/postgres` y `@vercel/postgres-…`; todo nombre que empiece por
+     `mysql` (`mysql`, `mysql2`); `sequelize` y `sequelize-…`; `typeorm` y `@typeorm/…`; `drizzle-orm` (también
+     `drizzle-orm/node-postgres` y las demás subrutas) y `drizzle-…`; `pg-promise`; `pg-native`; `@databases/…`;
+     `@mikro-orm/…`; y `@electric-sql/pglite`. Es una segunda capa sobre el criterio 128, por si alguno llega a
+     declararse. Prueba de la regla como en el criterio 92: un ejemplo que falla por cada entrada de la lista (con
+     `import`; y para `postgres` y `@neondatabase/serverless`, también con `require`, `import()`, `import type` y la ruta a
+     `node_modules/`), y `import { Injectable } from '@nestjs/common'` pasa. _(crítico; prueba de la regla de lint)_
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -1368,6 +1595,18 @@ P-28. Todos son _(crítico)_.
   API ni a los comandos (criterio 107); sí a herramientas externas como `psql`, que no son parte del sistema.
 - **Lista vacía en un filtro** _(ataque ronda 4)_: `join([])` lanza `TypeError` (P-25); quien filtra por una lista que
   puede venir vacía usa `= ANY(${lista}::uuid[])`, que con un arreglo vacío no devuelve filas.
+- **Restablecer la clave mientras alguien inicia sesión con la anterior** _(ataque ronda 5)_: si el restablecimiento
+  confirma antes de que se acepte el ingreso, responde 401 sin contar el intento; si confirma después, la sesión emitida
+  ya no vale porque el comando sube `version_token` (criterios 34 y 120).
+- **Hosting con otro `search_path` o con un esquema con el nombre del rol** _(ataque ronda 5)_: el `search_path` no
+  afecta a la API ni a los comandos (criterio 121); un esquema `aquagestion_app`, uno propio del rol o uno donde pueda
+  crear detienen la API y `db:crear` (criterio 123).
+- **Una migración que crea una vista, una función o una restricción única** _(ataque ronda 5)_: la vista va con
+  `security_invoker = true`, la función como `SECURITY INVOKER` y la restricción con `academia_id`; si no, fallan las
+  pruebas de catálogo (criterios 124 y 126).
+- **Una dependencia nueva en el backend** _(ataque ronda 5)_: se agrega a `backend/package.json` y a la lista permitida
+  en el mismo cambio (criterio 127); un paquete que solo está en otro espacio de trabajo no se puede importar desde
+  `backend/src` (criterio 128).
 
 ## Reglas de negocio aplicables
 
@@ -1818,7 +2057,42 @@ hechas. No son reglas de negocio nuevas.
   `entradasAjenasEnGenerated(carpeta: string): string[]` (las entradas de `backend/src/generated/` que no son la carpeta
   `prisma`). `scripts/comprobar-fuentes-protegidas.mjs` las aplica a `backend/src` y `packages/contratos/src`, consulta
   `git ls-files -- backend/src/generated` y termina con código 1 nombrando cada ruta si encuentra algo. El script
-  `lint:protegido` lo ejecuta antes de ESLint.
+  `lint:protegido` lo ejecuta antes de ESLint. _(Complementado por P-30, ataque ronda 5: también comprueba las
+  dependencias del backend.)_
+
+_(contrato de la ronda 5 del ataque, 11/11/2026)_. Firmas que las pruebas protegidas de los criterios 120 a 129 dan por
+hechas. No son reglas de negocio nuevas.
+
+- **P-29. Esquemas del rol (criterio 123).** Funciones nuevas y separadas, para no cambiar las de P-12, P-13 y P-19:
+  - `backend/src/infraestructura/prisma/rol-seguro.ts` exporta
+    `problemasDeEsquemas(fila: { readonly dueno_de_esquema: boolean; readonly crea_en_esquema: boolean; readonly
+    esquema_con_su_nombre: boolean }): string[]`: un problema por cada campo distinto de `false` (falla cerrada, como
+    `problemasDelRol`), `[]` si los tres son `false`;
+  - `scripts/lib/rol-app.mjs` exporta `problemasDeEsquemasApp({ esquemasPropios, esquemasConCreate, esquemaConSuNombre })`,
+    con `esquemasPropios: string[]` (esquemas de los que el rol es dueño), `esquemasConCreate: { esquema: string;
+    dePublic: boolean }[]` (`dePublic` verdadero si el privilegio llega por `PUBLIC`) y `esquemaConSuNombre: boolean`:
+    `[]` si no hay nada; si no, un problema por esquema y condición que contiene el nombre del esquema y la corrección
+    (`REVOKE CREATE ON SCHEMA <esquema> FROM aquagestion_app;` o `… FROM PUBLIC;`; `ALTER SCHEMA <esquema> OWNER TO …;`;
+    renombrar o eliminar el esquema `aquagestion_app`).
+- **P-30. Dependencias del backend (criterios 127 a 129).** `scripts/lib/dependencias-backend.mjs` (solo `node:*`)
+  exporta:
+
+  ```ts
+  const DEPENDENCIAS_BACKEND_PERMITIDAS: readonly string[];   // criterio 127
+  const SECCIONES_DE_DEPENDENCIAS: readonly string[];          // dependencies, devDependencies, optionalDependencies,
+                                                               // peerDependencies, bundleDependencies, bundledDependencies
+  function dependenciasNoPermitidas(paquete: unknown, permitidas?: readonly string[]): string[]; // nombres fuera de la lista
+  function problemasDeDependencias(raiz: string): string[];   // lee <raiz>/backend/package.json; [] si cumple
+  function nombreDePaquete(especificador: string): string | null; // null si es relativo, absoluto, file: o de Node
+  const CLIENTES_DE_BASE_PROHIBIDOS: readonly (string | RegExp)[]; // criterio 129 (forma orientativa)
+  function esClienteDeBaseProhibido(nombreOEspecificador: string): boolean;
+  ```
+
+  `bundleDependencies` y `bundledDependencies` se leen si son un arreglo. `nombreDePaquete('@nestjs/common/x')` es
+  `@nestjs/common`, `nombreDePaquete('pg/lib/x')` es `pg` y `nombreDePaquete('#interno')` es `#interno`.
+  `scripts/comprobar-fuentes-protegidas.mjs` llama a `problemasDeDependencias` con la raíz del repositorio y termina con
+  código 1 si devuelve algo. Las reglas de lint de los criterios 128 y 129 usan `nombreDePaquete` y
+  `esClienteDeBaseProhibido` de este archivo.
 
 ## Cambios al modelo de datos
 
@@ -1918,6 +2192,23 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   - las historias siguientes: los montos usan el `Decimal` del punto autorizado, la operación duplicada se detecta con
     `esViolacionDeUnicidad` y los filtros de reportes se componen con `sql`, `join` y `vacio` o con
     `= ANY(${lista}::<tipo>[])` (criterio 114).
+- **Ronda 5 del ataque (criterios 120 a 129):**
+  - el plan (sección 16) decía que `standard_conforming_strings` y `search_path` no se fijaban; desde los criterios 121 y
+    122 se fijan en la primera sentencia, que pasa a llamar a `pg_catalog.set_config`. La excepción de `cli/` de los
+    criterios 98 y 107 se amplía (criterio 107 marcado);
+  - la comprobación del rol (criterios 80, 102 y 103) corre dentro de una transacción con la primera sentencia y con el
+    catálogo calificado (criterio 121), y agrega las condiciones de esquemas con una función nueva (criterio 123, P-29);
+    las funciones de P-12, P-13 y P-19 y sus pruebas no cambian;
+  - la comprobación previa del paso protegido (P-28) agrega las dependencias del backend (criterio 127, P-30);
+    `backend/package.json` declara `express` (criterio 128);
+  - las reglas de los criterios 128 y 129 se agregan al paso protegido sin cambiar la lista de reglas que comprueba la
+    prueba del criterio 96 (plan, sección 17). Si algún ejemplo que pasa en las protegidas de lint de las rondas 1 a 4
+    importa un paquete no declarado en `backend/package.json` y empieza a fallar por el criterio 128, el test-writer se
+    detiene e informa;
+  - las historias siguientes: toda restricción única de una tabla de academia incluye `academia_id` (criterio 126); las
+    vistas van con `security_invoker = true`, sin vistas materializadas, funciones `SECURITY DEFINER` ni reglas
+    (criterio 124); una dependencia nueva del backend se agrega a la lista permitida (criterio 127); el SQL de los módulos
+    no necesita calificar con `public.` (criterio 121).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -2005,6 +2296,35 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 - **Pruebas que no corren en todas partes** _(ataque ronda 4)_: los enlaces simbólicos en Windows sin modo de
   desarrollador (criterio 111) y la contaminación de `DateStyle` por `ALTER ROLE ALL` o `ALTER SYSTEM` sin superusuario
   (criterio 107, en la nube) se omiten con aviso; corren en la CI de Linux o en Docker.
+- **O2. Alias de rutas** _(ataque ronda 5)_: las reglas de acceso (criterios 95, 110 y 117) resuelven solo rutas
+  relativas y absolutas; un alias de `tsconfig` (`paths`) o de `package.json` (`imports`) que apuntara a `cli/` o a un
+  interno de `infraestructura/prisma/` no se resolvería. Se acepta: hoy no hay alias, agregar uno es un cambio de
+  configuración visible en la revisión, y el criterio 128 hace fallar todo especificador que no sea relativo, de Node o
+  de un paquete declarado, así que un alias falla mientras no se actualicen las reglas. Si se agrega uno, esa misma
+  historia actualiza las reglas para resolverlo.
+- **O4. Variables del hosting y código que corre antes de retirarlas** _(ataque ronda 5)_: `retirarVariablesSensibles`
+  (criterios 99 y 116) conoce `DATABASE_URL*`, `PG*` y `SUPERADMIN_CLAVE`, pero no los nombres que inyectan algunos
+  proveedores (`DIRECT_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `HEROKU_POSTGRESQL_*`); en Linux,
+  `/proc/self/environ` conserva el entorno inicial aunque se borre de `process.env`; y el código de nivel de módulo se
+  ejecuta al importarse, antes de que `main.ts` las retire. Se revisa con el hosting (D-21): la guía de despliegue no le
+  da a la API las variables del dueño.
+- **O6. Promesas sin `await`** _(ataque ronda 5)_: una consulta lanzada sin esperar dentro de `trabajo` (caso límite de
+  la ronda 4) la atrapa `@typescript-eslint/no-floating-promises` del lint normal (`recommendedTypeChecked`). No está en
+  el paso protegido, así que un `eslint-disable` la apaga a la vista del revisor.
+- **O7. Falsos positivos leves del lint** _(ataque ronda 5)_: un fragmento guardado en una variable y pasado como único
+  argumento (`tx.cliente.$queryRaw(consulta)`) y un `ORDER BY` elegido en tiempo de ejecución fallan el lint (criterios
+  92 y 112). Rodeos en el plan (sección 17): interpolar el fragmento en una plantilla (`` tx.cliente.$queryRaw`${consulta}` ``)
+  y elegir el orden de un mapa cerrado de fragmentos de `sql`.
+- **O8. Extensión en mayúsculas en Windows** _(ataque ronda 5)_: los patrones de `files` de ESLint distinguen mayúsculas,
+  así que un archivo `x.TS` de `backend/src` no se revisaría y en Windows `tsx` podría ejecutarlo. Se acepta: nadie del
+  equipo nombra así los archivos y la revisión lo ve.
+- **Ingreso correcto rechazado durante un cierre de sesión** _(ataque ronda 5)_: si otra sesión del superadmin se cierra
+  (sube `version_token`) mientras se calcula el hash de un ingreso correcto, ese ingreso responde 401 (criterio 120) y hay
+  que repetirlo. Se acepta: es raro y no deja entrar a nadie.
+- **`USAGE` de la app sobre otros esquemas** _(ataque ronda 5)_: la comprobación del rol no lo rechaza (criterio 123),
+  porque algunos hostings crean esquemas de extensiones con `USAGE` para `PUBLIC`. Lo neutraliza el `search_path` fijo
+  (criterio 121), y el lint rechaza las llamadas calificadas con otro esquema (criterio 109); un `SELECT … FROM
+  otro.tabla` escrito a propósito en un módulo no lo detecta el lint y lo ve el revisor.
 - **Clave de ejemplo del superadmin en `.env.example`:** es pública y solo sirve en desarrollo; la semilla no corre
   en producción y el comando del criterio 34 la reemplaza.
 - **Cookie sin `Secure` fuera de producción:** necesario para `http://localhost`; en producción va con `Secure`
@@ -2191,8 +2511,31 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   exención (en `cli/` un `x.test.util.ts` con `import pg from 'pg'` no daría error y se compilaría pareciendo una
   prueba).
 
+### Decisiones técnicas tras el ataque, ronda 5 (11/11/2026)
+
+- **Comparar `clave_hash` y `version_token` bajo el bloqueo de la fila antes de emitir la sesión** (criterio 120).
+  Alternativas descartadas: calcular el hash dentro de la transacción con la fila bloqueada (retiene una conexión del
+  pool decenas de milisegundos por intento y serializa los intentos, lo que facilita agotar el pool) y firmar con la
+  versión releída (emitiría una sesión para una clave que ya no existe).
+- **`search_path` fijo en `pg_catalog, public, pg_temp` en cada transacción, y `pg_catalog.` en lo que se interpreta
+  antes de fijarlo** (criterio 121). Alternativas descartadas: calificar con `public.` todo el SQL de los módulos (carga
+  para todas las historias, el lint no puede comprobarlo de forma fiable y, con el `search_path` fijo, no agrega
+  protección) y fijar solo `public` (equivale para las funciones, pero deja `pg_temp` primero para las tablas; al final
+  protege si `TEMPORARY` volviera a concederse).
+- **`standard_conforming_strings` en `on` por transacción** (criterio 122), como los parámetros del criterio 107.
+  Alternativa descartada: prohibir `\` en las plantillas por lint (falsos positivos en expresiones regulares de
+  PostgreSQL, y no cubre la base ni el servidor).
+- **Rechazar esquemas propios, con `CREATE` o con el nombre del rol** (criterio 123). Alternativa descartada: rechazar
+  también `USAGE` sobre otros esquemas (falsos positivos en hostings con esquemas de extensiones; el criterio 121 ya lo
+  neutraliza).
+- **Pruebas de catálogo con listas de excepciones hoy vacías** (criterios 124 y 126). Alternativa descartada: revisar
+  cada migración a mano (se olvida; la prueba falla sola en la historia que agrega el objeto).
+- **Lista permitida de dependencias, solo paquetes declarados y lista negra de clientes** (criterios 127 a 129).
+  Alternativas descartadas: solo la lista negra (siempre aparece un cliente nuevo) y solo la lista de `backend/package.json`
+  (un paquete declarado en otro espacio de trabajo llega igual a `node_modules` de la raíz).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 4 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 5 del ataque son decisiones técnicas y no abren preguntas de
 negocio.
