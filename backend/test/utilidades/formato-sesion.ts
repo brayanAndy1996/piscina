@@ -147,6 +147,18 @@ async function esperarAQueSeVea(valores: Parametros): Promise<void> {
   }, 5000);
 }
 
+/** ¿Alguno de los cuatro parametros trae un valor de los que usan estas pruebas para contaminar? */
+function estaContaminada(vistos: Parametros): boolean {
+  const unico = (nombre: keyof Parametros): boolean =>
+    vistos[nombre].toLowerCase() === CONTAMINADOS[nombre].toLowerCase();
+  return (
+    unico('IntervalStyle') ||
+    unico('extra_float_digits') ||
+    unico('bytea_output') ||
+    /^(sql|german)\b/i.test(vistos.DateStyle)
+  );
+}
+
 let valoresIniciales: Parametros | undefined;
 let puedeAlterarLaBase = false;
 let esSuper = false;
@@ -317,11 +329,24 @@ export function registrarPruebasDeFormato(claves: readonly ClaveDeVariante[]): v
   const elegidas = VARIANTES.filter((variante) => claves.includes(variante.clave));
   const necesitaPrivilegios = elegidas.some((variante) => variante.requiere !== undefined);
   beforeAll(async () => {
-    if (!necesitaPrivilegios) return;
     esSuper = await esSuperusuario();
-    // Si una ejecucion anterior murio a medias, se quitan primero los restos (antes de leer los valores de referencia).
-    await limpiarRestos();
+    // Si una ejecucion anterior murio a medias, la base, los roles o el servidor pueden conservar los valores contaminados: se
+    // quitan primero los restos (antes de leer los valores de referencia). Si no hay contaminacion previa, no se escribe nada.
+    const hayRestos = estaContaminada(await parametrosDeUnaConexionNueva());
+    if (necesitaPrivilegios || hayRestos) await limpiarRestos().catch(() => undefined);
+    if (hayRestos) {
+      await esperarCondicion(async () => !estaContaminada(await parametrosDeUnaConexionNueva()), 5000);
+    }
     valoresIniciales = await parametrosDeUnaConexionNueva();
+    if (estaContaminada(valoresIniciales)) {
+      throw new Error(
+        'La base de pruebas arranca con DateStyle, IntervalStyle, extra_float_digits o bytea_output contaminados por una ' +
+          `ejecucion anterior que murio a medias (${JSON.stringify(valoresIniciales)}) y esta prueba no pudo restaurarlos con los ` +
+          'privilegios del usuario de pruebas. Restauralos a mano como superusuario: ALTER DATABASE <base> RESET <parametro>; ' +
+          'ALTER ROLE ALL [IN DATABASE <base>] RESET <parametro>; ALTER SYSTEM RESET <parametro>; SELECT pg_reload_conf();',
+      );
+    }
+    if (!necesitaPrivilegios) return;
     try {
       await alterarDeLaBase(CONTAMINADOS);
       puedeAlterarLaBase = true;
