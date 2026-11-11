@@ -20,8 +20,9 @@ export class ErrorAcademiaSuspendida extends ErrorNegocio {
 }
 
 /**
- * El rol de `DATABASE_URL_APP` no es seguro (tiene atributos o privilegios que permiten saltarse RLS: ver `problemasDelRol`): la seguridad por academia no protegería nada, así que la API no atiende datos. Es un error del servidor (500
- * `ERROR_INTERNO`): el mensaje es solo para el registro técnico y nunca incluye la URL ni la contraseña.
+ * El rol de `DATABASE_URL_APP` no es seguro (tiene atributos o privilegios que permiten saltarse RLS: ver
+ * `problemasDelRol`): la seguridad por academia no protegería nada, así que la API no atiende datos. Es un error del
+ * servidor (500 `ERROR_INTERNO`): el mensaje es solo para el registro técnico y nunca incluye la URL ni la contraseña.
  */
 export class ErrorRolBaseDatosInseguro extends ErrorNegocio {
   constructor() {

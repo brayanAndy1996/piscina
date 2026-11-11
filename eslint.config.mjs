@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { configuracionAccesoBase } from './eslint/regla-acceso-base.mjs';
 import { configuracionPrisma } from './eslint/regla-prisma.mjs';
 import { configuracionReloj } from './eslint/regla-reloj.mjs';
 import { configuracionSqlSesion } from './eslint/regla-sql-sesion.mjs';
@@ -79,6 +80,10 @@ export default tseslint.config(
   // Regla de importaciones de Prisma: solo BaseDatos llega a la base.
   configuracionPrisma,
 
-  // Regla del SQL de sesión: solo BaseDatos cambia el contexto de PostgreSQL (criterio 73).
+  // Regla de acceso a la base: ningún otro camino al cliente de Prisma ni a pg (criterio 85).
+  ...configuracionAccesoBase,
+
+  // Regla del SQL de sesión: solo BaseDatos cambia el contexto de PostgreSQL (criterios 73, 83 y 84). Incluye
+  // `noInlineConfig` para los archivos donde se aplican estas reglas y las de acceso a la base (P-15).
   ...configuracionSqlSesion,
 );

@@ -46,6 +46,14 @@ export async function cargarUtilidadesEntorno() {
   return utilidadesEntorno;
 }
 
+let moduloRolApp = null;
+
+/** Carga scripts/lib/rol-app.mjs (import dinámico, una sola vez; no tiene dependencias externas). */
+export async function cargarEvaluacionRolApp() {
+  moduloRolApp ??= await import('../../scripts/lib/rol-app.mjs');
+  return moduloRolApp;
+}
+
 function utilidades() {
   if (!utilidadesEntorno) throw new Error('Las utilidades de entorno no se cargaron (falta cargarUtilidadesEntorno).');
   return utilidadesEntorno;
@@ -136,6 +144,42 @@ export function sentenciaExisteRol(usuario) {
     throw new Error('El usuario de DATABASE_URL debe tener solo minúsculas, dígitos y guiones bajos.');
   }
   return `SELECT 1 FROM pg_roles WHERE rolname = '${usuario}';\n`;
+}
+
+/**
+ * Sentencia que consulta los atributos y las membresías de un rol (el nombre debe ser válido). Con `psql -tA` devuelve
+ * una línea `super|bypassrls|replication|createrole|createdb|es_miembro|roles` o ninguna si el rol no existe.
+ */
+export function sentenciaAtributosRol(usuario) {
+  if (!esNombreValido(usuario)) {
+    throw new Error('El usuario de DATABASE_URL_APP debe tener solo minúsculas, dígitos y guiones bajos.');
+  }
+  return (
+    `SELECT r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb, ` +
+    `EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = r.oid), ` +
+    `array_to_string(ARRAY(SELECT o.rolname::text FROM pg_auth_members m JOIN pg_roles o ON o.oid = m.roleid ` +
+    `WHERE m.member = r.oid ORDER BY 1), ',') FROM pg_roles r WHERE r.rolname = '${usuario}';\n`
+  );
+}
+
+/** Convierte la línea de `sentenciaAtributosRol` en la fila que evalúa `problemasDelRolApp`; `null` si no hay línea. */
+export function filaDeAtributosRol(usuario, salida) {
+  const linea = String(salida)
+    .split(/\r?\n/)
+    .map((texto) => texto.trim())
+    .find((texto) => /^[tf]\|[tf]\|[tf]\|[tf]\|[tf]\|[tf]\|/.test(texto));
+  if (!linea) return null;
+  const [rolsuper, rolbypassrls, rolreplication, rolcreaterole, rolcreatedb, miembro, roles = ''] = linea.split('|');
+  return {
+    rolname: usuario,
+    rolsuper: rolsuper === 't',
+    rolbypassrls: rolbypassrls === 't',
+    rolreplication: rolreplication === 't',
+    rolcreaterole: rolcreaterole === 't',
+    rolcreatedb: rolcreatedb === 't',
+    es_miembro: miembro === 't',
+    roles: roles === '' ? [] : roles.split(','),
+  };
 }
 
 /** Huella sha256 (hexadecimal) del contenido de un archivo. */
@@ -384,6 +428,15 @@ export async function prepararSesion(raiz) {
           const consulta = ejecutarPsqlComoPostgres(sentenciaExisteRol(urlApp.usuario));
           if (!consulta.ok) throw new Error(resumirSalida(consulta.salida, claves));
           if (consulta.salida.split(/\r?\n/).some((linea) => linea.trim() === '1')) {
+            // Criterio 81: el rol existente no puede ser superusuario, BYPASSRLS, REPLICATION, CREATEROLE ni CREATEDB, ni
+            // miembro de otro rol. Las condiciones que dependen de cada base las comprueba `db:crear` a continuación.
+            const atributos = ejecutarPsqlComoPostgres(sentenciaAtributosRol(urlApp.usuario));
+            if (!atributos.ok) throw new Error(resumirSalida(atributos.salida, claves));
+            const fila = filaDeAtributosRol(urlApp.usuario, atributos.salida);
+            if (!fila) throw new Error(`no se pudieron leer los atributos del rol ${urlApp.usuario}`);
+            const { problemasDelRolApp } = await cargarEvaluacionRolApp();
+            const problemas = problemasDelRolApp(fila);
+            if (problemas.length > 0) throw new Error(`el rol ya existe pero no es seguro. ${problemas.join(' ')}`);
             bien('Rol de la aplicación', `${urlApp.usuario} ya existía`);
             rolAppListo = true;
           } else {

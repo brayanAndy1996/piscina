@@ -34,4 +34,4 @@ export {
   type RespuestaSesionPlataforma,
   type SuperadminSesion,
 } from './plataforma';
-export { sinControles, textoVisibleSchema, tieneControles, VISIBLES_MINIMOS } from './texto';
+export { contarVisibles, sinControles, textoVisibleSchema, tieneControles, VISIBLES_MINIMOS } from './texto';

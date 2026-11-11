@@ -1,11 +1,14 @@
 // Crea la base de desarrollo y la de pruebas si no existen, y el rol aquagestion_app (el que usa la API) si falta.
-// No toca las bases existentes, no borra nada y no cambia la contraseña de un rol que ya existe.
+// No borra nada y no cambia la contraseña ni los atributos de un rol que ya existe. En las bases que crea o encuentra
+// revoca TEMPORARY a PUBLIC y a aquagestion_app (criterio 82) y comprueba que el rol no tenga ninguna condición
+// insegura (criterios 80 y 81); si la tiene, termina con código 1 y dice cómo corregirla.
 // Uso: npm run db:crear
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { cargarEnv, esNombreValido, leerUrlApp, leerUrlsBases, USUARIO_APP } from './lib/entorno.mjs';
+import { problemasDelRolApp } from './lib/rol-app.mjs';
 
 const DUPLICATE_DATABASE = '42P04';
 const DUPLICATE_OBJECT = '42710';
@@ -32,7 +35,8 @@ function sentenciaCrearRolApp(usuario, clave) {
  * Se asegura de que exista el rol de la API (spec 001, criterio 6). `cliente` es una conexión de `pg` ya abierta con
  * el usuario de `DATABASE_URL`. Devuelve `{ creado }`.
  * - Si el rol existe con atributos seguros, no cambia nada (tampoco su contraseña).
- * - Si existe con SUPERUSER o BYPASSRLS, o falta y el usuario no puede crear roles, lanza un error que dice qué hacer.
+ * - Si existe con SUPERUSER, BYPASSRLS, REPLICATION, CREATEROLE o CREATEDB, o es miembro de algún rol, o falta y el
+ *   usuario no puede crear roles, lanza un error que dice qué hacer (y no modifica el rol).
  * Los mensajes no incluyen la contraseña.
  */
 export async function asegurarRolApp(cliente, { usuario, clave }) {
@@ -42,14 +46,25 @@ export async function asegurarRolApp(cliente, { usuario, clave }) {
   if (!clave) throw new Error('La URL de DATABASE_URL_APP debe incluir la contraseña del rol.');
   if (clave.includes('\0')) throw new Error('La contraseña de DATABASE_URL_APP no puede contener caracteres nulos.');
 
-  const { rows } = await cliente.query('SELECT rolsuper, rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = $1', [
-    usuario,
-  ]);
+  const { rows } = await cliente.query(
+    `SELECT r.rolname, r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
+            EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid) AS es_miembro,
+            ARRAY(SELECT o.rolname::text FROM pg_catalog.pg_auth_members m
+                    JOIN pg_catalog.pg_roles o ON o.oid = m.roleid WHERE m.member = r.oid ORDER BY 1) AS roles
+       FROM pg_catalog.pg_roles r WHERE r.rolname = $1`,
+    [usuario],
+  );
   if (rows.length > 0) {
-    if (rows[0].rolsuper || rows[0].rolbypassrls) {
+    const fila = rows[0];
+    const problemas = problemasDelRolApp(fila);
+    if (problemas.length > 0) {
+      const adicional =
+        fila.rolsuper || fila.rolbypassrls
+          ? [`Para quitar ambos a la vez: ALTER ROLE ${usuario} NOSUPERUSER NOBYPASSRLS;`]
+          : [];
       throw new Error(
-        `El rol ${usuario} existe pero es superusuario o tiene BYPASSRLS, y entonces la seguridad por academia no ` +
-          `protege nada. Corrígelo con un superusuario: ALTER ROLE ${usuario} NOSUPERUSER NOBYPASSRLS;`,
+        `El rol ${usuario} ya existe pero no es seguro, y entonces la seguridad por academia no protege nada ` +
+          `(spec 001, criterios 80 y 81). No se modificó nada.\n${[...problemas, ...adicional].map((p) => `- ${p}`).join('\n')}`,
       );
     }
     return { creado: false };
@@ -78,8 +93,101 @@ export async function asegurarRolApp(cliente, { usuario, clave }) {
   return { creado: true };
 }
 
+const citar = (identificador) => `"${identificador.replaceAll('"', '""')}"`;
+
 /**
- * Crea las bases que faltan. Se conecta a la base `postgres` del mismo servidor con las credenciales de DATABASE_URL.
+ * Revoca TEMPORARY a PUBLIC y al rol de la API sobre la base `base` (criterio 82). Idempotente; no quita CONNECT.
+ * `cliente` es la conexión a `postgres` con el usuario de DATABASE_URL. Si ese usuario no es el dueño de la base ni
+ * superusuario, PostgreSQL no revocaría nada (solo avisa), así que se comprueba antes y se lanza un error que lo explica.
+ */
+export async function revocarTemporales(cliente, { base, usuarioApp }) {
+  const { rows } = await cliente.query(
+    `SELECT pg_catalog.pg_has_role(current_user, d.datdba, 'USAGE') AS puede
+       FROM pg_catalog.pg_database d WHERE d.datname = $1`,
+    [base],
+  );
+  if (!rows[0]?.puede) {
+    throw new Error(
+      `El usuario de DATABASE_URL no es el propietario (dueño) de la base ${base} ni superusuario, y no puede revocar ` +
+        `TEMPORARY. Con el dueño o un superusuario ejecuta: REVOKE TEMPORARY ON DATABASE ${citar(base)} FROM PUBLIC; ` +
+        `REVOKE TEMPORARY ON DATABASE ${citar(base)} FROM ${usuarioApp};`,
+    );
+  }
+  await cliente.query(`REVOKE TEMPORARY ON DATABASE ${citar(base)} FROM PUBLIC`);
+  await cliente.query(`REVOKE TEMPORARY ON DATABASE ${citar(base)} FROM ${citar(usuarioApp)}`);
+}
+
+/**
+ * Condiciones inseguras de `usuarioApp` que dependen de la base `base` (criterio 81): dueño de la base, CREATE o TEMPORARY
+ * sobre la base, CREATE sobre `public` y propiedad de objetos de `public`. Se evalúan después de la revocación del
+ * criterio 82. `clientePostgres` está conectado a `postgres`; `abrirCliente(base)` abre una conexión a esa base.
+ * Devuelve la lista de problemas (vacía si no hay ninguno).
+ */
+export async function problemasDeLaBase(clientePostgres, abrirCliente, { base, usuarioApp }) {
+  const problemas = [];
+  const { rows } = await clientePostgres.query(
+    `SELECT d.datdba = r.oid AS es_duena,
+            pg_catalog.has_database_privilege(r.oid, d.oid, 'CREATE') AS crea,
+            pg_catalog.has_database_privilege(r.oid, d.oid, 'TEMPORARY') AS temporales
+       FROM pg_catalog.pg_database d, pg_catalog.pg_roles r WHERE d.datname = $1 AND r.rolname = $2`,
+    [base, usuarioApp],
+  );
+  const fila = rows[0];
+  if (!fila) return problemas;
+  if (fila.es_duena) {
+    problemas.push(
+      `El rol de la API es el dueño (propietario) de la base ${base}. Corrígelo con un superusuario: ` +
+        `ALTER DATABASE ${citar(base)} OWNER TO <el usuario de DATABASE_URL>;`,
+    );
+  }
+  if (fila.crea) {
+    problemas.push(
+      `El rol de la API tiene CREATE sobre la base ${base}. Corrígelo: ` +
+        `REVOKE CREATE ON DATABASE ${citar(base)} FROM <rol de la API>;`,
+    );
+  }
+  if (fila.temporales) {
+    problemas.push(
+      `El rol de la API sigue con TEMPORARY sobre la base ${base} (concedido a un rol del que es miembro). ` +
+        `Corrígelo revocando ese privilegio.`,
+    );
+  }
+  const clienteBase = await abrirCliente(base);
+  try {
+    const { rows: esquema } = await clienteBase.query(
+      `SELECT pg_catalog.has_schema_privilege(r.oid, 'public', 'CREATE') AS crea_en_public,
+              (EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = 'public' AND c.relowner = r.oid)
+               OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                           WHERE n.nspname = 'public' AND p.proowner = r.oid)
+               OR EXISTS (SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                           WHERE n.nspname = 'public' AND t.typowner = r.oid)
+               OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname = 'public' AND n.nspowner = r.oid))
+               AS es_duena_de_objetos
+         FROM pg_catalog.pg_roles r WHERE r.rolname = $1`,
+      [usuarioApp],
+    );
+    if (esquema[0]?.crea_en_public) {
+      problemas.push(
+        `El rol de la API tiene CREATE sobre el esquema public de la base ${base}. Corrígelo: ` +
+          `REVOKE CREATE ON SCHEMA public FROM <rol de la API>; (y de PUBLIC si lo hereda)`,
+      );
+    }
+    if (esquema[0]?.es_duena_de_objetos) {
+      problemas.push(
+        `El rol de la API es dueño (propietario) de objetos del esquema public de la base ${base} (tablas, ` +
+          `funciones, tipos o del propio esquema). Corrígelo: REASSIGN OWNED BY <rol de la API> TO <el usuario de ` +
+          `DATABASE_URL>; ejecutado en esa base.`,
+      );
+    }
+  } finally {
+    await clienteBase.end();
+  }
+  return problemas;
+}
+
+/**
+ * Crea las bases que faltan y deja el rol de la API sin TEMPORARY. Se conecta a la base `postgres` del mismo servidor con las credenciales de DATABASE_URL.
  * Devuelve `{ creadas, existentes, rolCreado }`: los nombres de las bases y si se creó el rol de la API.
  */
 export async function crearBases(env = process.env) {
@@ -117,6 +225,19 @@ export async function crearBases(env = process.env) {
     });
   }
 
+  const abrirCliente = async (base) => {
+    const conexion = new pg.Client({
+      host: desarrollo.host,
+      port: desarrollo.puerto,
+      user: desarrollo.usuario,
+      password: desarrollo.clave,
+      database: base,
+      connectionTimeoutMillis: 5000,
+    });
+    await conexion.connect();
+    return conexion;
+  };
+
   const creadas = [];
   const existentes = [];
   let rol;
@@ -135,6 +256,20 @@ export async function crearBases(env = process.env) {
         if (error && error.code === DUPLICATE_DATABASE) existentes.push(nombre);
         else throw error;
       }
+    }
+    // Criterios 81 y 82: primero se revoca TEMPORARY y después se evalúan las condiciones de cada base.
+    for (const nombre of nombres) {
+      await revocarTemporales(cliente, { base: nombre, usuarioApp: app.usuario });
+    }
+    const problemas = [];
+    for (const nombre of nombres) {
+      problemas.push(...(await problemasDeLaBase(cliente, abrirCliente, { base: nombre, usuarioApp: app.usuario })));
+    }
+    if (problemas.length > 0) {
+      throw new Error(
+        `El rol de la API no es seguro en las bases de desarrollo o de pruebas (spec 001, criterios 80 y 81). ` +
+          `No se modificó el rol.\n${problemas.map((p) => `- ${p}`).join('\n')}`,
+      );
     }
   } finally {
     await cliente.end();

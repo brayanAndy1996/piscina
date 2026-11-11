@@ -17,7 +17,21 @@ const VISIBLES_MINIMOS = 3;
  */
 const CONTROLES_O_SUSTITUTOS = /[\p{Cc}\p{Cs}]/u;
 const BIDI_O_SEPARADORES = /[\p{Bidi_Control}\u2028\u2029]/u;
-const VISIBLES = /[\p{L}\p{N}\p{P}\p{S}]/gu;
+const VISIBLES = /[\p{L}\p{N}\p{P}\p{S}]/u;
+/** Se ven en blanco aunque Unicode los llame letras o símbolos (criterio 87). */
+const EN_BLANCO = /[\p{Default_Ignorable_Code_Point}\u2800]/u;
+
+/** Longitud por puntos de código, no por unidades UTF-16: un emoji cuenta uno (criterio 88). */
+function longitudEnPuntos(texto: string): number {
+  return [...texto].length;
+}
+
+/** Cantidad de caracteres visibles, por puntos de código. */
+function contarVisibles(texto: string): number {
+  let cuenta = 0;
+  for (const caracter of texto) if (VISIBLES.test(caracter) && !EN_BLANCO.test(caracter)) cuenta += 1;
+  return cuenta;
+}
 
 /**
  * Mismo criterio que el correo de `iniciarSesionPlataformaSchema` (contratos): recortado, en minúsculas, de hasta 254
@@ -28,7 +42,7 @@ const correoSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .max(CORREO_MAXIMO)
+  .refine((valor) => longitudEnPuntos(valor) <= CORREO_MAXIMO)
   .refine((valor) => !CONTROLES_O_SUSTITUTOS.test(valor))
   .pipe(z.email());
 
@@ -77,7 +91,7 @@ export function leerDatosSuperadmin(env: Readonly<Record<string, string | undefi
     problemas.push('Falta la variable SUPERADMIN_NOMBRE.');
   } else {
     nombre = nombreCrudo.trim();
-    if (nombre.length < NOMBRE_MINIMO || nombre.length > NOMBRE_MAXIMO) {
+    if (longitudEnPuntos(nombre) < NOMBRE_MINIMO || longitudEnPuntos(nombre) > NOMBRE_MAXIMO) {
       problemas.push(`La variable SUPERADMIN_NOMBRE debe tener de ${NOMBRE_MINIMO} a ${NOMBRE_MAXIMO} caracteres.`);
     } else if (CONTROLES_O_SUSTITUTOS.test(nombre)) {
       problemas.push('La variable SUPERADMIN_NOMBRE no puede contener caracteres de control ni caracteres no válidos.');
@@ -85,7 +99,7 @@ export function leerDatosSuperadmin(env: Readonly<Record<string, string | undefi
       problemas.push(
         'La variable SUPERADMIN_NOMBRE no puede contener caracteres de dirección del texto ni separadores de línea.',
       );
-    } else if ((nombre.match(VISIBLES) ?? []).length < VISIBLES_MINIMOS) {
+    } else if (contarVisibles(nombre) < VISIBLES_MINIMOS) {
       problemas.push(
         `La variable SUPERADMIN_NOMBRE debe tener al menos ${VISIBLES_MINIMOS} caracteres visibles (letras, números o símbolos).`,
       );
@@ -95,7 +109,7 @@ export function leerDatosSuperadmin(env: Readonly<Record<string, string | undefi
   const clave = env['SUPERADMIN_CLAVE'] ?? '';
   if (clave === '') {
     problemas.push('Falta la variable SUPERADMIN_CLAVE.');
-  } else if (clave.length < CLAVE_MINIMA || clave.length > CLAVE_MAXIMA) {
+  } else if (longitudEnPuntos(clave) < CLAVE_MINIMA || longitudEnPuntos(clave) > CLAVE_MAXIMA) {
     problemas.push(`La variable SUPERADMIN_CLAVE debe tener de ${CLAVE_MINIMA} a ${CLAVE_MAXIMA} caracteres.`);
   } else if (CONTROLES_O_SUSTITUTOS.test(clave)) {
     problemas.push('La variable SUPERADMIN_CLAVE no puede contener caracteres de control.');

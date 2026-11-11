@@ -26,10 +26,15 @@ export function crearClienteDelDueno(url: string): PrismaClient {
   return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
 }
 
-/** Ejecuta `trabajo` en una transacción con `app.plataforma = 'si'` (local a la transacción). */
+/**
+ * Ejecuta `trabajo` en una transacción de plataforma. Igual que `BaseDatos`, la primera sentencia fija **los dos**
+ * valores de contexto con `set_config(…, true)` (locales a la transacción): `app.academia_id` vacío y `app.plataforma`
+ * en `si`, aunque la conexión traiga otros por la URL (`options`), por el rol o por la base (criterio 90). Toda
+ * transacción de academia que agregue un comando en el futuro fija también los dos valores.
+ */
 export function enPlataforma<T>(cliente: PrismaClient, trabajo: (tx: ClienteTransaccion) => Promise<T>): Promise<T> {
   return cliente.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.plataforma', 'si', true)`;
+    await tx.$queryRaw`SELECT set_config('app.academia_id', '', true), set_config('app.plataforma', 'si', true)`;
     return trabajo(tx);
   });
 }

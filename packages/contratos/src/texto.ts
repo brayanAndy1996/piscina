@@ -16,7 +16,23 @@ const CONTROLES_O_SUSTITUTOS = /[\p{Cc}\p{Cs}]/u;
 const BIDI_O_SEPARADORES = /[\p{Bidi_Control}\u2028\u2029]/u;
 
 /** Lo que se ve: letras, números, signos de puntuación y símbolos. No cuentan espacios, formato ni marcas combinantes. */
-const VISIBLES = /[\p{L}\p{N}\p{P}\p{S}]/gu;
+const VISIBLES = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
+/**
+ * Caracteres que son letras o símbolos para Unicode pero se ven en blanco (criterio 87): los de la propiedad
+ * `Default_Ignorable_Code_Point` (U+115F, U+1160, U+3164, U+FFA0, U+180E, U+17B4, U+17B5, entre otros) y el patrón Braille
+ * en blanco U+2800. No cuentan como visibles.
+ */
+const EN_BLANCO = /[\p{Default_Ignorable_Code_Point}\u2800]/u;
+
+/** Cantidad de caracteres visibles de un texto (por puntos de código). */
+export function contarVisibles(texto: string): number {
+  let cuenta = 0;
+  for (const caracter of texto) {
+    if (VISIBLES.test(caracter) && !EN_BLANCO.test(caracter)) cuenta += 1;
+  }
+  return cuenta;
+}
 
 /** Cantidad mínima de caracteres visibles de un texto de `textoVisibleSchema`. */
 export const VISIBLES_MINIMOS = 3;
@@ -57,7 +73,7 @@ export function textoVisibleSchema(opciones: { sujeto: string; min: number; max:
     .refine((valor) => !BIDI_O_SEPARADORES.test(valor), {
       message: `${sujeto} no puede contener caracteres de dirección del texto ni separadores de línea.`,
     })
-    .refine((valor) => (valor.match(VISIBLES) ?? []).length >= VISIBLES_MINIMOS, {
+    .refine((valor) => contarVisibles(valor) >= VISIBLES_MINIMOS, {
       message: `${sujeto} debe tener al menos ${VISIBLES_MINIMOS} caracteres visibles.`,
     });
 }
