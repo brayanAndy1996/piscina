@@ -325,7 +325,8 @@ describe.skipIf(esWindows)('hook de sesión en la nube con fallos (criterio 46)'
   it('con un host remoto y todo bien, el resumen final dice que no se gestionó la base', () => {
     escribirEnvExample('db.remota.example');
     fs.writeFileSync(path.join(proyecto, 'package-lock.json'), '{}\n');
-    comandoFalso('npm', 'mkdir -p node_modules\nexit 0');
+    fs.mkdirSync(path.join(proyecto, 'node_modules'));
+    comandoFalso('npm', 'exit 0');
     const resultado = ejecutarHook({ proyecto, remoto: 'true', path: binFalso });
     expect(resultado.codigo).toBe(0);
     const lineas = resultado.salida.trim().split('\n');
