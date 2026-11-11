@@ -7,6 +7,7 @@ import {
   MENSAJE_ROL_INSEGURO,
 } from './errores';
 import { PrismaService } from './prisma.service';
+import { problemasDelRol, type FilaRol } from './rol-seguro';
 import type {
   AcademiaResuelta,
   ClienteTransaccion,
@@ -20,13 +21,6 @@ const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 /** Tiempo máximo para obtener una conexión del pool y para que termine una transacción, en milisegundos. */
 const ESPERA_CONEXION_MS = 10_000;
 const DURACION_MAXIMA_MS = 15_000;
-
-interface FilaRol {
-  rolsuper: boolean;
-  rolbypassrls: boolean;
-  es_miembro: boolean;
-  es_dueno: boolean;
-}
 
 interface FilaAcademia {
   id: string;
@@ -51,18 +45,25 @@ interface FilaAcademia {
  *   sola transacción para todas.
  *
  * Seguridad: antes de la primera operación se comprueba que el rol de `DATABASE_URL_APP` no sea superusuario, no
- * tenga BYPASSRLS, no sea dueño de tablas ni miembro de otro rol; si lo es, todas las operaciones rechazan con
- * `ErrorRolBaseDatosInseguro` sin ejecutar el trabajo. La comprobación no se hace al arrancar para que la API arranque
+ * tenga BYPASSRLS, REPLICATION, CREATEROLE ni CREATEDB, no sea miembro de otro rol (ni dueño de la base), no pueda
+ * crear en la base ni en `public`, no tenga TEMPORARY y no sea dueño de objetos de `public` (`problemasDelRol`); si
+ * algo de eso se cumple, todas las operaciones rechazan con `ErrorRolBaseDatosInseguro` sin ejecutar el trabajo. La comprobación no se hace al arrancar para que la API arranque
  * con la base caída.
  */
 @Injectable()
 export class BaseDatos {
+  /**
+   * El cliente vive en un campo privado real de JavaScript (`#prisma`), no en una propiedad con `private` de
+   * TypeScript: en tiempo de ejecución no se puede alcanzar desde fuera de la clase (criterio 86).
+   */
+  readonly #prisma: PrismaService;
   private verificacion: Promise<void> | undefined;
 
   constructor(
-    private readonly prisma: PrismaService,
+    prisma: PrismaService,
     private readonly registro: PinoLogger,
   ) {
+    this.#prisma = prisma;
     this.registro.setContext(BaseDatos.name);
   }
 
@@ -114,7 +115,7 @@ export class BaseDatos {
    */
   async resolverAcademia(nombreCorto: string): Promise<AcademiaResuelta | null> {
     await this.verificarRol();
-    const filas = await this.prisma.$transaction(
+    const filas = await this.#prisma.$transaction(
       async (cliente) => {
         // Sin contexto: los dos valores en vacío, aunque la conexión traiga otros (criterio 72).
         await this.fijarContexto(cliente, { academiaId: '', plataforma: false });
@@ -130,7 +131,7 @@ export class BaseDatos {
 
   /** `SELECT 1`, para la salud de la API. No comprueba el rol: `GET /api/salud` conserva su contrato. */
   async comprobarConexion(): Promise<void> {
-    await this.prisma.$queryRaw`SELECT 1`;
+    await this.#prisma.$queryRaw`SELECT 1`;
   }
 
   /**
@@ -152,7 +153,7 @@ export class BaseDatos {
     opciones: OpcionesTransaccion,
     trabajo: (cliente: ClienteTransaccion) => Promise<T>,
   ): Promise<T> {
-    return this.prisma.$transaction(trabajo, {
+    return this.#prisma.$transaction(trabajo, {
       isolationLevel: opciones.aislamiento,
       maxWait: ESPERA_CONEXION_MS,
       timeout: DURACION_MAXIMA_MS,
@@ -172,20 +173,30 @@ export class BaseDatos {
   }
 
   private async comprobarRol(): Promise<void> {
-    const filas = await this.prisma.$queryRaw<FilaRol[]>`
-      SELECT r.rolsuper, r.rolbypassrls,
+    const filas = await this.#prisma.$queryRaw<FilaRol[]>`
+      SELECT r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
              EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid) AS es_miembro,
+             pg_catalog.pg_has_role(r.oid, 'pg_database_owner', 'MEMBER') AS dueno_de_la_base,
+             pg_catalog.has_database_privilege(r.oid, pg_catalog.current_database(), 'CREATE') AS crea_en_base,
+             pg_catalog.has_database_privilege(r.oid, pg_catalog.current_database(), 'TEMPORARY') AS temporales,
+             pg_catalog.has_schema_privilege(r.oid, 'public', 'CREATE') AS crea_en_public,
              (EXISTS (SELECT 1 FROM pg_catalog.pg_class c
                         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                        WHERE n.nspname = 'public' AND c.relowner = r.oid)
               OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
                            JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-                          WHERE n.nspname = 'public' AND p.proowner = r.oid)) AS es_dueno
+                          WHERE n.nspname = 'public' AND p.proowner = r.oid)
+              OR EXISTS (SELECT 1 FROM pg_catalog.pg_type t
+                           JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                          WHERE n.nspname = 'public' AND t.typowner = r.oid)
+              OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname = 'public' AND n.nspowner = r.oid))
+               AS es_dueno
         FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
     const rol = filas[0];
-    if (!rol || rol.rolsuper || rol.rolbypassrls || rol.es_miembro || rol.es_dueno) {
-      // El mensaje nombra la variable y nunca incluye la URL ni la contraseña.
-      this.registro.error(MENSAJE_ROL_INSEGURO);
+    const problemas = rol ? problemasDelRol(rol) : ['el rol de la conexión no aparece en el catálogo'];
+    if (problemas.length > 0) {
+      // El mensaje nombra la variable y las condiciones; nunca incluye la URL ni la contraseña.
+      this.registro.error(`${MENSAJE_ROL_INSEGURO} Condiciones: ${problemas.join('; ')}.`);
       throw new ErrorRolBaseDatosInseguro();
     }
   }
