@@ -49,7 +49,9 @@ describe('GET /api/salud con la base apagada', () => {
   beforeAll(async () => {
     const puerto = await puertoCerrado();
     // La API arranca igual: crear e inicializar la aplicación no necesita la base.
-    app = await crearAppDePruebas({ databaseUrl: `postgresql://usuario:clave@127.0.0.1:${puerto}/base_inexistente` });
+    app = await crearAppDePruebas({
+      variables: { DATABASE_URL_APP: `postgresql://usuario:clave@127.0.0.1:${puerto}/base_inexistente` },
+    });
   });
   afterAll(async () => {
     await app.close();

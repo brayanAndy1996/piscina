@@ -48,7 +48,7 @@ describe('aplicación completa (sin base de datos)', () => {
 
   beforeAll(async () => {
     app = await crearAppDePruebas({
-      databaseUrl: URL_SIN_USO,
+      variables: { DATABASE_URL_APP: URL_SIN_USO },
       controladores: [ControladorDePrueba],
       nivelRegistro: 'info',
       destinoRegistro: destino,
