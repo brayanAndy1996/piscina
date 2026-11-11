@@ -23,6 +23,11 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: { '/api': `http://127.0.0.1:${puertoApi}` },
     },
-    preview: { host: '127.0.0.1', port: puertoWeb, strictPort: true, proxy: { '/api': `http://127.0.0.1:${puertoApi}` } },
+    preview: {
+      host: '127.0.0.1',
+      port: puertoWeb,
+      strictPort: true,
+      proxy: { '/api': `http://127.0.0.1:${puertoApi}` },
+    },
   };
 });

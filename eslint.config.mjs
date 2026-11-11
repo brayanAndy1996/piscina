@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import { configuracionReloj } from './eslint/regla-reloj.mjs';
@@ -14,6 +15,7 @@ export default tseslint.config(
       'backend/prisma/migrations/**',
       'playwright-report/**',
       'test-results/**',
+      'frontend/dist/**',
     ],
   },
 
@@ -50,7 +52,22 @@ export default tseslint.config(
 
   {
     name: 'aquagestion/node',
-    files: ['backend/**/*.ts', 'packages/**/*.ts', 'scripts/**/*.mjs', 'eslint/**/*.mjs', '*.config.*'],
+    files: ['backend/**/*.ts', 'packages/**/*.ts', 'scripts/**/*.mjs', 'eslint/**/*.mjs', 'e2e/**/*.ts', '*.config.*'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+
+  // Web: navegador y reglas de hooks de React.
+  {
+    name: 'aquagestion/frontend',
+    files: ['frontend/**/*.{ts,tsx}'],
+    extends: [reactHooks.configs.flat['recommended-latest']],
+    languageOptions: { globals: { ...globals.browser } },
+  },
+
+  // Configuración de Vite del frontend: se ejecuta en Node.
+  {
+    name: 'aquagestion/frontend-config',
+    files: ['frontend/vite.config.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
 

@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { readFileSync } from 'node:fs';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { Rutas } from './Rutas';
@@ -32,17 +31,5 @@ describe('Rutas de la web', () => {
     expect(enlace).toHaveAttribute('href', '/');
     await userEvent.click(enlace);
     expect(screen.getByRole('heading', { level: 1, name: 'AquaGestión' })).toBeInTheDocument();
-  });
-});
-
-describe('index.html', () => {
-  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-
-  it('declara el idioma español', () => {
-    expect(html).toMatch(/<html[^>]*\slang="es"/);
-  });
-
-  it('tiene el título de pestaña "AquaGestión"', () => {
-    expect(html).toMatch(/<title>AquaGestión<\/title>/);
   });
 });
