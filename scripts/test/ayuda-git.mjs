@@ -8,12 +8,16 @@ import { fileURLToPath } from 'node:url';
 
 export const carpetaScripts = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Entorno para git y para los scripts hijos: sin configuración global, y sin variables de un hook en curso. */
-function entornoAislado() {
+/**
+ * Entorno para git y para los scripts hijos: sin configuración global, y sin variables de un hook en curso.
+ * `GIT_CONFIG_GLOBAL` apunta a un archivo vacío real y no a `os.devNull`: en Windows este es `\\.\nul` y git no puede
+ * leerlo como archivo de configuración.
+ */
+function entornoAislado(configuracionGlobal) {
   const entorno = { ...process.env };
   for (const clave of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_EDITOR']) delete entorno[clave];
   entorno.GIT_CONFIG_NOSYSTEM = '1';
-  entorno.GIT_CONFIG_GLOBAL = os.devNull;
+  entorno.GIT_CONFIG_GLOBAL = configuracionGlobal;
   return entorno;
 }
 
@@ -31,7 +35,13 @@ const CONFIGURACION = [
 /** Repositorio git temporal con utilidades para armar historias de commits. */
 export class RepoTemporal {
   constructor() {
-    this.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-git-'));
+    // Carpeta raíz temporal: contiene el repositorio y, aparte, la configuración global vacía (fuera del repositorio,
+    // para que `git add -A` no la agregue).
+    this.raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-git-'));
+    this.configuracionGlobal = path.join(this.raiz, 'gitconfig');
+    fs.writeFileSync(this.configuracionGlobal, '');
+    this.dir = path.join(this.raiz, 'repo');
+    fs.mkdirSync(this.dir);
     this.git('init', '-q', '-b', 'main');
   }
 
@@ -40,7 +50,7 @@ export class RepoTemporal {
     const resultado = spawnSync('git', [...CONFIGURACION, ...argumentos], {
       cwd: this.dir,
       encoding: 'utf8',
-      env: entornoAislado(),
+      env: entornoAislado(this.configuracionGlobal),
     });
     if (resultado.status !== 0) {
       throw new Error(`git ${argumentos.join(' ')} falló: ${resultado.stderr}${resultado.error ?? ''}`);
@@ -83,7 +93,7 @@ export class RepoTemporal {
     const resultado = spawnSync(process.execPath, [path.join(carpetaScripts, script), ...argumentos], {
       cwd: this.dir,
       encoding: 'utf8',
-      env: entornoAislado(),
+      env: entornoAislado(this.configuracionGlobal),
     });
     return {
       codigo: resultado.status,
@@ -99,6 +109,6 @@ export class RepoTemporal {
   }
 
   limpiar() {
-    fs.rmSync(this.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    fs.rmSync(this.raiz, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
