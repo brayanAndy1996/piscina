@@ -34,6 +34,8 @@
     "db:migrar:pruebas": "node scripts/prisma.mjs --pruebas migrate deploy",
     "db:migracion": "node scripts/prisma.mjs migrate dev",
     "db:semilla": "node scripts/prisma.mjs db seed",
+    "plataforma:superadmin": "npm run --silent superadmin -w @aquagestion/backend",
+    "env:completar": "node scripts/completar-env.mjs",
     "db:preparar": "node scripts/preparar-bases.mjs",
     "verificar:pruebas-protegidas": "node scripts/verificar-pruebas-protegidas.mjs",
     "verificar:sin-secretos": "node scripts/verificar-sin-secretos.mjs"

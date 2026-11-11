@@ -103,7 +103,8 @@ describe('db:preparar (scripts/preparar-bases.mjs)', () => {
       '== Migrando la base de desarrollo ==',
       '== Migrando la base de pruebas ==',
       '== Ejecutando la semilla ==',
-      'Sin datos de ejemplo todavía.',
+      'Academia de ejemplo creada: delfines',
+      'Academia de ejemplo creada: tiburones',
       'Bases de datos listas.',
     ];
     for (const marca of marcas) expect(posicion(marca), marca).toBeGreaterThanOrEqual(0);
@@ -117,6 +118,9 @@ describe('db:preparar (scripts/preparar-bases.mjs)', () => {
     const repetido = ejecutarScript(['preparar-bases.mjs'], variables);
     expect(repetido.estado).toBe(0);
     expect(repetido.salida).toMatch(/No pending migrations to apply/);
+    // La semilla de la historia 001 solo agrega lo que falta: repetirla no duplica las academias de ejemplo.
+    expect(repetido.salida).toContain('La academia de ejemplo ya existía: delfines');
+    expect(repetido.salida).not.toContain('Academia de ejemplo creada');
   });
 
   it('se detiene en el primer paso que falla e indica cómo reintentar', () => {

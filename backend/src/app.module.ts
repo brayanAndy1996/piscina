@@ -7,6 +7,7 @@ import { type Entorno, EntornoModule } from './infraestructura/entorno';
 import { PrismaModule } from './infraestructura/prisma';
 import { crearOpcionesRegistro } from './infraestructura/registro';
 import { RelojModule } from './infraestructura/reloj';
+import { AcademiasModule } from './modulos/academias';
 import { AuditoriaModule } from './modulos/auditoria';
 import { SaludModule } from './modulos/salud/salud.module';
 
@@ -35,9 +36,11 @@ export class AppModule {
         RelojModule,
         PrismaModule,
         AuditoriaModule,
+        AcademiasModule,
         SaludModule,
       ],
-      providers: [{ provide: APP_FILTER, useClass: FiltroErrores }],
+      // El filtro también es un proveedor normal: el middleware de `/api/plataforma` lo reutiliza para sus respuestas.
+      providers: [FiltroErrores, { provide: APP_FILTER, useExisting: FiltroErrores }],
     };
   }
 }

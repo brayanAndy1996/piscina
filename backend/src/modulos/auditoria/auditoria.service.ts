@@ -1,31 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { TransaccionAcademia, TransaccionPlataforma } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
-
-/** Lo que se registra de una acción crítica: quién, cuándo (lo pone el servicio) y qué (RN-22, RNF-06). */
-export interface EntradaAuditoria {
-  actorTipo: 'USUARIO' | 'SUPERADMIN' | 'SISTEMA';
-  /** Id de quien actuó; nulo con actor `SISTEMA`. */
-  actorId: string | null;
-  /** MAYÚSCULAS_CON_GUIONES_BAJOS, por ejemplo `ACADEMIA_SUSPENDIDA`. */
-  accion: string;
-  /** En singular, por ejemplo `academia`. */
-  entidad: string;
-  entidadId: string | null;
-  /** JSON con los nombres de campo de la API. Nunca objetos completos con datos sensibles (por ejemplo `clave_hash`). */
-  datosAntes?: unknown;
-  datosDespues?: unknown;
-  motivo?: string | null;
-  /** IP del cliente tal como la ve Express (`req.ip`). */
-  ip?: string | null;
-}
-
-function comoJson(valor: unknown): string | null {
-  if (valor === undefined || valor === null) return null;
-  const texto = JSON.stringify(valor);
-  if (texto === undefined) throw new Error('El dato de auditoría no se puede representar como JSON.');
-  return texto;
-}
+import { type EntradaAuditoria, insertarEnAuditoriaDeAcademia, insertarEnAuditoriaPlataforma } from './insercion';
 
 /**
  * Bitácora de las acciones críticas. Inserta con el cliente de la transacción de quien llama, así que el registro vive
@@ -41,27 +17,11 @@ export class AuditoriaService {
 
   /** Registra en `auditoria`, con `academia_id` igual a `tx.academiaId`. */
   async registrarEnAcademia(tx: TransaccionAcademia, entrada: EntradaAuditoria): Promise<void> {
-    await tx.cliente.$executeRaw`
-      INSERT INTO auditoria
-        (id, academia_id, fecha_hora, actor_tipo, actor_id, accion, entidad, entidad_id,
-         datos_antes, datos_despues, motivo, ip)
-      VALUES
-        (gen_random_uuid(), ${tx.academiaId}::uuid, ${this.reloj.ahora()}::timestamptz,
-         ${entrada.actorTipo}::tipo_actor, ${entrada.actorId}::uuid, ${entrada.accion}, ${entrada.entidad},
-         ${entrada.entidadId}, ${comoJson(entrada.datosAntes)}::jsonb, ${comoJson(entrada.datosDespues)}::jsonb,
-         ${entrada.motivo ?? null}, ${entrada.ip ?? null}::inet)`;
+    await insertarEnAuditoriaDeAcademia(tx.cliente, tx.academiaId, this.reloj.ahora(), entrada);
   }
 
   /** Registra en `auditoria_plataforma`, la bitácora de las acciones que no pertenecen a una academia. */
   async registrarEnPlataforma(tx: TransaccionPlataforma, entrada: EntradaAuditoria): Promise<void> {
-    await tx.cliente.$executeRaw`
-      INSERT INTO auditoria_plataforma
-        (id, fecha_hora, actor_tipo, actor_id, accion, entidad, entidad_id,
-         datos_antes, datos_despues, motivo, ip)
-      VALUES
-        (gen_random_uuid(), ${this.reloj.ahora()}::timestamptz,
-         ${entrada.actorTipo}::tipo_actor, ${entrada.actorId}::uuid, ${entrada.accion}, ${entrada.entidad},
-         ${entrada.entidadId}, ${comoJson(entrada.datosAntes)}::jsonb, ${comoJson(entrada.datosDespues)}::jsonb,
-         ${entrada.motivo ?? null}, ${entrada.ip ?? null}::inet)`;
+    await insertarEnAuditoriaPlataforma(tx.cliente, this.reloj.ahora(), entrada);
   }
 }

@@ -1,2 +1,3 @@
 export { AuditoriaModule } from './auditoria.module';
-export { AuditoriaService, type EntradaAuditoria } from './auditoria.service';
+export { AuditoriaService } from './auditoria.service';
+export type { EntradaAuditoria } from './insercion';
