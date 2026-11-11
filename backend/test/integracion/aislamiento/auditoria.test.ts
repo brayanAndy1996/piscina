@@ -35,7 +35,7 @@ describe('AuditoriaService', () => {
     B = await crearAcademiaDePrueba();
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   describe('criterio 29: registrarEnAcademia', () => {

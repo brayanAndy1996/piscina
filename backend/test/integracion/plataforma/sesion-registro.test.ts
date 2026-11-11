@@ -18,7 +18,7 @@ describe('criterio 46: la clave no aparece en el log', () => {
     app = await crearAppDePruebas({ nivelRegistro: 'trace', destinoRegistro: destino });
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it('criterio 46: ni con inicios de sesión correctos ni con fallidos ni con cuerpos inválidos', async () => {

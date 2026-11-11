@@ -57,7 +57,7 @@ describe('sesión del superadmin', () => {
     app = await crearApp();
   });
   afterEach(async () => {
-    await app.close();
+    await app?.close();
   });
 
   describe('criterio 36: iniciar sesión', () => {

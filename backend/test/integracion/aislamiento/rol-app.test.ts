@@ -208,7 +208,7 @@ describe('criterio 3: la API corre como aquagestion_app', () => {
   });
   beforeEach(limpiarBase);
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it('criterio 3: SELECT current_user dentro de conAcademia devuelve aquagestion_app', async () => {

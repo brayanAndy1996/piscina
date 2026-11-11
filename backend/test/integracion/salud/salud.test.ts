@@ -22,7 +22,7 @@ describe('GET /api/salud con la base de pruebas encendida', () => {
     app = await crearAppDePruebas();
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it('responde 200 con no-store y el cuerpo válido según respuestaSaludSchema', async () => {
@@ -54,7 +54,7 @@ describe('GET /api/salud con la base apagada', () => {
     });
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it('responde 503 en menos de 3 segundos, sin detalles de la conexión', async () => {

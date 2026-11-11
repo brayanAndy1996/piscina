@@ -69,7 +69,7 @@ describe('academias desde la plataforma', () => {
     cookie = cookieDeSesion(superadmin, AHORA);
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   describe('criterio 48: crear una academia', () => {

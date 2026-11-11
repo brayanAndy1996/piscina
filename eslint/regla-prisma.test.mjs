@@ -21,7 +21,17 @@ async function importacionesRestringidas(codigo, archivo) {
   const [resultado] = await eslint.lintText(codigo, { filePath: path.join(raiz, archivo) });
   const fatales = resultado.messages.filter((mensaje) => mensaje.fatal);
   expect(fatales, `error al analizar ${archivo}`).toEqual([]);
-  return resultado.messages.filter((mensaje) => /restricted-imports/.test(mensaje.ruleId ?? ''));
+  // Efecto observable: un error de ESLint sobre una de las líneas de importación cuyo texto mencione BaseDatos. No se
+  // fija el nombre de la regla, que la spec no define; solo se descartan las de variables sin uso, que también
+  // pueden nombrar lo importado.
+  const lineasDeImportacion = codigo.split('\n').length;
+  return resultado.messages.filter(
+    (mensaje) =>
+      mensaje.severity === 2 &&
+      mensaje.line <= lineasDeImportacion &&
+      /BaseDatos/.test(mensaje.message) &&
+      !/unused/.test(mensaje.ruleId ?? ''),
+  );
 }
 
 const MODULO = 'backend/src/modulos/ejemplo/ejemplo.service.ts';

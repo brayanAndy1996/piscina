@@ -57,7 +57,7 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
     ({ A, B } = await crearDatosDeAislamiento());
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
     await appHttp?.close();
   });
 
@@ -323,7 +323,7 @@ describe('criterio 23: ninguna conexión del pool conserva el contexto', () => {
     ({ A, B } = await crearDatosDeAislamiento());
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it('criterio 23: después de conAcademia(A), comoPlataforma lee app.academia_id vacío o nulo', async () => {

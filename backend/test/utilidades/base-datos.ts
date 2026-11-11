@@ -4,7 +4,10 @@ import path from 'node:path';
 import { parseEnv } from 'node:util';
 import pg from 'pg';
 
-/** Valor de `DATABASE_URL_APP` de `.env.example`: se usa si el entorno y el `.env` local todavía no lo definen. */
+/**
+ * Credencial de desarrollo inventada que tendrá `DATABASE_URL_APP` en `.env.example` (no es una credencial real): se
+ * usa si el entorno y el `.env` local todavía no la definen.
+ */
 export const URL_APP_POR_DEFECTO = 'postgresql://aquagestion_app:aquagestion_app@127.0.0.1:5432/aquagestion';
 
 /**

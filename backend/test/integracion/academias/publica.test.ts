@@ -31,7 +31,7 @@ describe('GET /api/a/{nombreCorto}: la academia por su nombre corto', () => {
     });
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   describe('criterio 58: academia activa', () => {

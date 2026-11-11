@@ -27,7 +27,7 @@ describe('criterio 4: falla cerrada con un rol inseguro (el dueño de las tablas
     academia = await crearAcademiaDePrueba({ nombreCorto: 'delfines' });
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it('criterio 4: el primer uso registra con nivel error un mensaje que nombra DATABASE_URL_APP', async () => {

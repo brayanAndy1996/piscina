@@ -4,7 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { JWT_SECRETO_PRUEBAS, crearAppDePruebas } from '../../utilidades/aplicacion';
 import { ejecutarComo, limpiarBase } from '../../utilidades/base-datos';
-import { ejecutarComando } from '../../utilidades/comandos';
+import { ejecutarComando, existeElScript } from '../../utilidades/comandos';
 import { leerAuditoriaPlataforma, leerSuperadmin } from '../../utilidades/datos';
 import {
   CLAVE_SUPERADMIN_PRUEBAS,
@@ -203,6 +203,15 @@ describe('npm run plataforma:superadmin', () => {
   });
 
   describe('criterio 35: entradas inválidas', () => {
+    // Sin el script, `npm` también termina con código 1: sin esta comprobación las pruebas de abajo podrían pasar
+    // por casualidad. La salida debe además nombrar la variable inválida, que `npm` por sí solo nunca imprime.
+    it('criterio 35: el script plataforma:superadmin existe en package.json', () => {
+      expect(
+        existeElScript('plataforma:superadmin'),
+        'Falta la funcionalidad de la 001: no existe el script plataforma:superadmin',
+      ).toBe(true);
+    });
+
     const VALIDAS = {
       SUPERADMIN_CORREO: 'dueno@aquagestion.test',
       SUPERADMIN_NOMBRE: 'Dueño de la plataforma',
