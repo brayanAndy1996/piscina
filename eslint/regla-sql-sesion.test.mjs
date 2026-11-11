@@ -7,6 +7,13 @@
 //   - ademas, fuera de backend/src/infraestructura/prisma/ y de backend/src/cli/: cualquier set_config('app.
 // Se prueba con el eslint.config.mjs real, por su efecto observable (un error de ESLint), sin fijar el nombre de la
 // regla, y sin informacion de tipos (los archivos de los ejemplos no estan en disco).
+//
+// ADAPTADO A LA RONDA 3 DEL ATAQUE (criterio 92, que reemplaza el alcance del 73): la regla del SQL de sesion ya no analiza
+// cadenas, plantillas sin etiqueta ni expresiones regulares; solo el texto de las plantillas etiquetadas con $queryRaw,
+// $executeRaw, Prisma.sql o sql. Los mismos textos SQL siguen probandose como plantillas etiquetadas (deben fallar) y, como
+// cadena o plantilla sin etiqueta, pasan a probarse como ejemplos que pasan. Un SQL prohibido pasado como cadena a
+// $queryRawUnsafe/$executeRawUnsafe falla por el criterio 92 (se nombra el metodo Unsafe). Cada cambio de sentido lleva un
+// comentario "(criterio 92)".
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
@@ -32,16 +39,44 @@ const MODULO = 'backend/src/modulos/ejemplo/ejemplo.service.ts';
 const PRISMA = 'backend/src/infraestructura/prisma/base-datos.ts';
 const CLI = 'backend/src/cli/superadmin.ts';
 
-/** Ejemplos de SQL en las cinco formas de texto: cadena, plantilla (sin y con ${}), $queryRaw y Prisma.sql. */
-function enTodasLasFormas(sql) {
+/**
+ * Ejemplos de SQL en las formas de texto que la regla analiza (criterio 92): plantillas etiquetadas con $queryRaw,
+ * $executeRaw, Prisma.sql y sql, con un ${} que la regla sustituye por un marcador. Y, para SQL prohibido, el mismo texto
+ * como cadena de $queryRawUnsafe, que falla por el criterio 92 (el nombre Unsafe).
+ */
+function enFormasAnalizadas(sql) {
+  return [
+    ['$queryRaw etiquetada', `export const leer = (cliente, id) => cliente.$queryRaw\`${sql} \${id}\`;`],
+    ['$executeRaw etiquetada', `export const leer = (cliente, id) => cliente.$executeRaw\`${sql} \${id}\`;`],
+    ['Prisma.sql etiquetada', `export const leer = (id) => Prisma.sql\`${sql} \${id}\`;`],
+    ['sql etiquetada', `export const leer = (id) => sql\`${sql} \${id}\`;`],
+  ];
+}
+
+/** El mismo texto como cadena de $queryRawUnsafe: falla por el criterio 92, sea cual sea el SQL. */
+function enUnsafe(sql) {
+  return `export const leer = (cliente) => cliente.$queryRawUnsafe(${JSON.stringify(sql)});`;
+}
+
+/**
+ * (criterio 92) Formas que la regla del SQL de sesion ya NO analiza: cadena y plantilla sin etiqueta (con y sin ${}). Antes
+ * de la ronda 3 eran rechazadas; ahora pasan.
+ */
+function enFormasNoAnalizadas(sql) {
   return [
     ['cadena', `export const consulta = ${JSON.stringify(sql)};`],
     ['plantilla sin ${}', `export const consulta = \`${sql}\`;`],
     ['plantilla con ${}', `export const consulta = (id) => \`${sql} \${id}\`;`],
-    ['$queryRaw etiquetada', `export const leer = (cliente, id) => cliente.$queryRaw\`${sql} \${id}\`;`],
-    ['Prisma.sql etiquetada', `export const leer = (id) => Prisma.sql\`${sql} \${id}\`;`],
   ];
 }
+
+/** Todas las formas (para los ejemplos que deben pasar en cualquiera de ellas). */
+function enTodasLasFormas(sql) {
+  return [...enFormasAnalizadas(sql), ...enFormasNoAnalizadas(sql)];
+}
+
+/** Un SQL como plantilla etiquetada con $queryRaw, sin interpolaciones. */
+const comoPlantilla = (sql) => `export const consulta = (cliente) => cliente.$queryRaw\`${sql}\`;`;
 
 /**
  * El ejemplo debe fallar el lint en un modulo normal y estar limpio en backend/src/infraestructura/prisma/: asi se sabe
@@ -74,20 +109,28 @@ const PROHIBIDAS_FUERA_DE_PRISMA = [
 describe('criterio 73: contexto de sesion fuera de infraestructura/prisma', () => {
   for (const [descripcion, sql] of PROHIBIDAS_FUERA_DE_PRISMA) {
     describe(descripcion, () => {
-      it.each(enTodasLasFormas(sql))('criterio 73: un modulo con %s falla el lint', async (_forma, codigo) => {
+      it.each(enFormasAnalizadas(sql))('criterio 73: un modulo con %s falla el lint', async (_forma, codigo) => {
         await esRechazadoSoloFueraDePrisma(codigo);
       });
 
-      it('criterio 73: el mismo texto no falla dentro de backend/src/infraestructura/prisma/', async () => {
-        const codigo = `export const consulta = ${JSON.stringify(sql)};`;
+      // (criterio 92) Antes, tambien fallaban la cadena y las plantillas sin etiqueta (cinco formas); ahora solo se analizan las
+      // plantillas etiquetadas, y un SQL pasado como cadena a $queryRawUnsafe falla por el nombre Unsafe.
+      it('criterio 92: el mismo texto como cadena de $queryRawUnsafe falla el lint, y no en backend/src/infraestructura/prisma/', async () => {
+        await esRechazadoSoloFueraDePrisma(enUnsafe(sql));
+      });
 
-        expect(await errores(codigo, PRISMA)).toEqual([]);
+      it('criterio 92: el mismo texto como cadena o plantilla sin etiqueta ya no es SQL para el lint y pasa', async () => {
+        for (const [forma, codigo] of enFormasNoAnalizadas(sql)) {
+          expect(await errores(codigo, MODULO), `forma ${forma}: ${codigo}`).toEqual([]);
+        }
+      });
+
+      it('criterio 73: el mismo texto no falla dentro de backend/src/infraestructura/prisma/', async () => {
+        expect(await errores(comoPlantilla(sql), PRISMA)).toEqual([]);
       });
 
       it('criterio 73: el mismo texto tampoco se salva en backend/src/cli/', async () => {
-        const codigo = `export const consulta = ${JSON.stringify(sql)};`;
-
-        expect((await errores(codigo, CLI)).length).toBeGreaterThan(0);
+        expect((await errores(comoPlantilla(sql), CLI)).length).toBeGreaterThan(0);
       });
 
       it.each([
@@ -95,9 +138,7 @@ describe('criterio 73: contexto de sesion fuera de infraestructura/prisma', () =
         ['las pruebas de integracion', 'backend/test/integracion/ejemplo.test.ts'],
         ['las utilidades de prueba', 'backend/test/utilidades/ejemplo.ts'],
       ])('criterio 73: el mismo texto no falla en %s', async (_nombre, archivo) => {
-        const codigo = `export const consulta = ${JSON.stringify(sql)};`;
-
-        expect(await errores(codigo, archivo)).toEqual([]);
+        expect(await errores(comoPlantilla(sql), archivo)).toEqual([]);
       });
     });
   }
@@ -107,15 +148,18 @@ describe('criterio 73: contexto de sesion fuera de infraestructura/prisma', () =
 describe("criterio 73: set_config('app. fuera de infraestructura/prisma y de cli", () => {
   const LOCAL = "SELECT set_config('app.academia_id', $1, true)";
 
-  it.each(enTodasLasFormas(LOCAL))('criterio 73: un modulo con %s (con true) falla el lint', async (_forma, codigo) => {
-    await esRechazadoSoloFueraDePrisma(codigo);
-  });
+  it.each(enFormasAnalizadas(LOCAL))(
+    'criterio 73: un modulo con %s (con true) falla el lint',
+    async (_forma, codigo) => {
+      await esRechazadoSoloFueraDePrisma(codigo);
+    },
+  );
 
   it.each([
     ['con SET_CONFIG, APP. y TRUE en mayusculas', `SELECT SET_CONFIG('APP.plataforma', 'si', TRUE)`],
     ['en una consulta con otras columnas', `SELECT 1 AS n, set_config('app.plataforma', 'si', true)`],
   ])('criterio 73: un modulo %s falla el lint', async (_nombre, sql) => {
-    await esRechazadoSoloFueraDePrisma(`export const consulta = ${JSON.stringify(sql)};`);
+    await esRechazadoSoloFueraDePrisma(comoPlantilla(sql));
   });
 
   it.each([
@@ -125,7 +169,7 @@ describe("criterio 73: set_config('app. fuera de infraestructura/prisma y de cli
     ['las pruebas de integracion', 'backend/test/integracion/ejemplo.test.ts'],
     ['las utilidades de prueba', 'backend/test/utilidades/ejemplo.ts'],
   ])('criterio 73: set_config(..., true) se permite en %s', async (_nombre, archivo) => {
-    expect(await errores(`export const consulta = ${JSON.stringify(LOCAL)};`, archivo)).toEqual([]);
+    expect(await errores(comoPlantilla(LOCAL), archivo)).toEqual([]);
   });
 });
 
@@ -173,12 +217,27 @@ describe('criterio 73: plantillas con ${}', () => {
       'Prisma.sql con el valor interpolado y false',
       "export const f = (id) => Prisma.sql`SELECT set_config('search_path', ${id}, false)`;",
     ],
-    ['una plantilla con SET ROLE y un nombre interpolado', 'export const f = (rol) => `SET ROLE ${rol}`;'],
+    // (criterio 92) Antes eran plantillas sin etiqueta (`SET ROLE ${rol}` y `SELECT set_config('app.academia_id', ${id}, true)`);
+    // ahora el mismo SQL se prueba dentro de una plantilla etiquetada, la unica que se analiza.
     [
-      'una plantilla con set_config true y nombre interpolado dentro de app.',
-      "export const f = (id) => `SELECT set_config('app.academia_id', ${id}, true)`;",
+      'una plantilla $queryRaw con SET ROLE y un nombre interpolado',
+      'export const f = (cliente, rol) => cliente.$queryRaw`SET ROLE ${rol}`;',
+    ],
+    [
+      'una plantilla Prisma.sql con set_config true y nombre interpolado dentro de app.',
+      "export const f = (id) => Prisma.sql`SELECT set_config('app.academia_id', ${id}, true)`;",
     ],
   ])('criterio 73: un modulo con %s falla el lint', async (_nombre, codigo) => {
     await esRechazadoSoloFueraDePrisma(codigo);
+  });
+
+  it.each([
+    ['SET ROLE y un nombre interpolado', 'export const f = (rol) => `SET ROLE ${rol}`;'],
+    [
+      'set_config true y nombre interpolado dentro de app.',
+      "export const f = (id) => `SELECT set_config('app.academia_id', ${id}, true)`;",
+    ],
+  ])('criterio 92: una plantilla SIN etiqueta con %s ya no es SQL para el lint y pasa', async (_nombre, codigo) => {
+    expect(await errores(codigo, MODULO)).toEqual([]);
   });
 });

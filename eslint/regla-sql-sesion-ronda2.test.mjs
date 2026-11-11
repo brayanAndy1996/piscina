@@ -14,11 +14,20 @@
 //    falle por estas reglas ni por las del criterio 73.
 // Se prueba con el eslint.config.mjs real, por su efecto observable (un error de ESLint), sin fijar el nombre de la regla
 // y sin informacion de tipos (los archivos de los ejemplos no estan en disco).
+//
+// ADAPTADO A LA RONDA 3 DEL ATAQUE (criterios 92 y 96):
+//  - 92: las reglas del SQL de sesion solo se aplican al texto de las plantillas etiquetadas con $queryRaw, $executeRaw,
+//    Prisma.sql o sql. Los mismos textos SQL se siguen probando (deben fallar) dentro de esas plantillas; como cadena o plantilla
+//    sin etiqueta pasan a probarse como ejemplos que pasan.
+//  - 96: con eslint.config.mjs un comentario eslint-disable vuelve a apagar la regla que nombra; que ningun comentario evita el
+//    fallo se comprueba con el paso protegido (eslint.protegido.config.mjs, sin comentarios en linea).
+// Cada cambio de sentido lleva un comentario con el criterio que lo justifica.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import tseslint from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
+import { obtenerEslintProtegido } from './ayuda-lint-ronda3.mjs';
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -39,26 +48,43 @@ const MODULO = 'backend/src/modulos/ejemplo/ejemplo.service.ts';
 const PRISMA = 'backend/src/infraestructura/prisma/base-datos.ts';
 const CLI = 'backend/src/cli/superadmin.ts';
 
-/** Ejemplos de SQL en las cinco formas de texto: cadena, plantilla (sin y con ${}), $queryRaw y Prisma.sql. */
-function enTodasLasFormas(sql) {
+/**
+ * Ejemplos de SQL en las formas de texto que la regla analiza (criterio 92): plantillas etiquetadas con $queryRaw,
+ * $executeRaw, Prisma.sql y sql, con un ${} que la regla sustituye por un marcador.
+ */
+function enFormasAnalizadas(sql) {
+  return [
+    ['$queryRaw etiquetada', `export const leer = (cliente, id) => cliente.$queryRaw\`${sql} \${id}\`;`],
+    ['$executeRaw etiquetada', `export const leer = (cliente, id) => cliente.$executeRaw\`${sql} \${id}\`;`],
+    ['Prisma.sql etiquetada', `export const leer = (id) => Prisma.sql\`${sql} \${id}\`;`],
+    ['sql etiquetada', `export const leer = (id) => sql\`${sql} \${id}\`;`],
+  ];
+}
+
+/** (criterio 92) Formas que la regla ya NO analiza: cadena y plantilla sin etiqueta (con y sin ${}). */
+function enFormasNoAnalizadas(sql) {
   return [
     ['cadena', `export const consulta = ${JSON.stringify(sql)};`],
     ['plantilla sin ${}', `export const consulta = \`${sql}\`;`],
     ['plantilla con ${}', `export const consulta = (id) => \`${sql} \${id}\`;`],
-    ['$queryRaw etiquetada', `export const leer = (cliente, id) => cliente.$queryRaw\`${sql} \${id}\`;`],
-    ['Prisma.sql etiquetada', `export const leer = (id) => Prisma.sql\`${sql} \${id}\`;`],
   ];
 }
 
-const comoCadena = (sql) => `export const consulta = ${JSON.stringify(sql)};`;
+/** Todas las formas (para los ejemplos que deben pasar en cualquiera de ellas). */
+function enTodasLasFormas(sql) {
+  return [...enFormasAnalizadas(sql), ...enFormasNoAnalizadas(sql)];
+}
+
+/** Un SQL como plantilla etiquetada con $queryRaw, sin interpolaciones (para prisma/, cli/ y las pruebas). */
+const comoPlantilla = (sql) => `export const consulta = (cliente) => cliente.$queryRaw\`${sql}\`;`;
 
 /** Rechazado en un modulo normal y en cli/, y libre en prisma/ (asi el error es de la regla y no del ejemplo). */
 async function esRechazadoFueraDePrisma(sql) {
-  expect(await errores(comoCadena(sql), PRISMA), `el ejemplo tiene otros errores de lint: ${sql}`).toEqual([]);
-  for (const [forma, codigo] of enTodasLasFormas(sql)) {
+  expect(await errores(comoPlantilla(sql), PRISMA), `el ejemplo tiene otros errores de lint: ${sql}`).toEqual([]);
+  for (const [forma, codigo] of enFormasAnalizadas(sql)) {
     expect((await errores(codigo, MODULO)).length, `el lint no rechazo (${forma}): ${sql}`).toBeGreaterThan(0);
   }
-  expect((await errores(comoCadena(sql), CLI)).length, `el lint no rechazo en cli/: ${sql}`).toBeGreaterThan(0);
+  expect((await errores(comoPlantilla(sql), CLI)).length, `el lint no rechazo en cli/: ${sql}`).toBeGreaterThan(0);
 }
 
 /** Rechazado en un modulo normal y en cli/ por sus reglas de set_config; libre en prisma/. Misma comprobacion. */
@@ -66,9 +92,9 @@ const esRechazadoEnModuloYCli = esRechazadoFueraDePrisma;
 
 /** Rechazado en un modulo normal, pero permitido en cli/ y en prisma/ (por ejemplo un set_config(..., true) valido). */
 async function esRechazadoSoloEnModulo(sql) {
-  expect(await errores(comoCadena(sql), PRISMA), `prisma/: ${sql}`).toEqual([]);
-  expect(await errores(comoCadena(sql), CLI), `cli/ debia permitirlo: ${sql}`).toEqual([]);
-  for (const [forma, codigo] of enTodasLasFormas(sql)) {
+  expect(await errores(comoPlantilla(sql), PRISMA), `prisma/: ${sql}`).toEqual([]);
+  expect(await errores(comoPlantilla(sql), CLI), `cli/ debia permitirlo: ${sql}`).toEqual([]);
+  for (const [forma, codigo] of enFormasAnalizadas(sql)) {
     expect((await errores(codigo, MODULO)).length, `el lint no rechazo (${forma}): ${sql}`).toBeGreaterThan(0);
   }
 }
@@ -78,8 +104,37 @@ async function pasaElLint(sql) {
   for (const [forma, codigo] of enTodasLasFormas(sql)) {
     expect(await errores(codigo, MODULO), `forma ${forma}: ${sql}`).toEqual([]);
   }
-  expect(await errores(comoCadena(sql), CLI), `cli/: ${sql}`).toEqual([]);
+  expect(await errores(comoPlantilla(sql), CLI), `cli/: ${sql}`).toEqual([]);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Criterio 92 (alcance ajustado): lo que ya no se analiza
+// ---------------------------------------------------------------------------------------------------------------------
+
+describe('criterio 92: los textos de los criterios 83 y 84 fuera de una plantilla etiquetada ya no son SQL para el lint', () => {
+  // Cambio de sentido: en la ronda 2 estos mismos textos, como cadena o plantilla sin etiqueta, hacian fallar el lint.
+  it.each([
+    ['SET con el nombre entre comillas dobles', `SET "app.plataforma" TO 'si'`],
+    ['SET LOCAL ROLE', 'SET LOCAL ROLE postgres'],
+    ['RESET SESSION AUTHORIZATION', 'RESET SESSION AUTHORIZATION'],
+    ['set_config con false', "SELECT set_config('app.plataforma', 'si', false)"],
+    ['set_config con un primer argumento que no es app.*', "SELECT set_config('search_path', 'public', true)"],
+    ['ALTER ROLE', 'ALTER ROLE aquagestion_app SUPERUSER'],
+    ['COMMIT', 'COMMIT'],
+    ['END', 'END'],
+    ['ROLLBACK', 'ROLLBACK'],
+    ['SET search_path', 'SET search_path = public'],
+    ['CREATE TEMP', 'CREATE TEMP TABLE t (a int)'],
+    ['DISCARD ALL', 'DISCARD ALL'],
+    ['LISTEN', 'LISTEN canal'],
+    ['pg_notify(', "SELECT pg_notify('canal', 'hola')"],
+  ])('criterio 92: %s como cadena o plantilla sin etiqueta pasa el lint', async (_descripcion, sql) => {
+    for (const [forma, codigo] of enFormasNoAnalizadas(sql)) {
+      expect(await errores(codigo, MODULO), `forma ${forma}: ${sql}`).toEqual([]);
+      expect(await errores(codigo, CLI), `cli/, forma ${forma}: ${sql}`).toEqual([]);
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Criterio 83
@@ -130,8 +185,9 @@ describe('criterio 83: set_config con tercer argumento distinto de true (tambien
     await esRechazadoEnModuloYCli(sql);
   });
 
+  // (criterio 92) Antes era una plantilla sin etiqueta; ahora el mismo SQL va en una plantilla etiquetada con Prisma.sql.
   it('criterio 83: un ${…} de plantilla como tercer argumento falla el lint (fuera de prisma/)', async () => {
-    const codigo = "export const f = (valor) => `SELECT set_config('app.plataforma', 'si', ${valor})`;";
+    const codigo = "export const f = (valor) => Prisma.sql`SELECT set_config('app.plataforma', 'si', ${valor})`;";
 
     expect(await errores(codigo, PRISMA)).toEqual([]);
     expect((await errores(codigo, MODULO)).length).toBeGreaterThan(0);
@@ -170,8 +226,9 @@ describe('criterio 83: set_config con un primer argumento que no es un literal s
     await esRechazadoEnModuloYCli(sql);
   });
 
+  // (criterio 92) Antes era una plantilla sin etiqueta; ahora el mismo SQL va en una plantilla etiquetada con Prisma.sql.
   it('criterio 83: un ${…} de plantilla como primer argumento falla el lint (fuera de prisma/)', async () => {
-    const codigo = "export const f = (nombre) => `SELECT set_config(${nombre}, 'si', true)`;";
+    const codigo = "export const f = (nombre) => Prisma.sql`SELECT set_config(${nombre}, 'si', true)`;";
 
     expect(await errores(codigo, PRISMA)).toEqual([]);
     expect((await errores(codigo, MODULO)).length).toBeGreaterThan(0);
@@ -210,7 +267,7 @@ describe('criterio 83: lo que sigue pasando', () => {
   });
 
   it("criterio 83: SELECT set_config('app.plataforma', 'si', true) pasa en cli/", async () => {
-    expect(await errores(comoCadena("SELECT set_config('app.plataforma', 'si', true)"), CLI)).toEqual([]);
+    expect(await errores(comoPlantilla("SELECT set_config('app.plataforma', 'si', true)"), CLI)).toEqual([]);
   });
 });
 
@@ -332,7 +389,7 @@ describe('criterio 83 y 84: las reglas no se aplican en infraestructura/prisma/ 
     ['ALTER ROLE', 'ALTER ROLE x SUPERUSER'],
     ['set_config con false', "SELECT set_config('search_path', 'x', false)"],
   ])('criterio 84: %s no falla dentro de backend/src/infraestructura/prisma/', async (_descripcion, sql) => {
-    expect(await errores(comoCadena(sql), PRISMA)).toEqual([]);
+    expect(await errores(comoPlantilla(sql), PRISMA)).toEqual([]);
   });
 
   it.each([
@@ -341,16 +398,21 @@ describe('criterio 83 y 84: las reglas no se aplican en infraestructura/prisma/ 
     ['las utilidades de prueba', 'backend/test/utilidades/ejemplo.ts'],
   ])('criterio 84: los mismos textos no fallan en %s', async (_nombre, archivo) => {
     for (const sql of ['SET LOCAL ROLE postgres', 'COMMIT', 'CREATE TEMP TABLE t (a int)', 'ALTER ROLE x SUPERUSER']) {
-      expect(await errores(comoCadena(sql), archivo), sql).toEqual([]);
+      expect(await errores(comoPlantilla(sql), archivo), sql).toEqual([]);
     }
   });
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
-// eslint-disable no evita el fallo (criterios 73, 83 y 84)
+// eslint-disable y las reglas de los criterios 73, 83 y 84 (criterio 96, ataque ronda 3)
 // ---------------------------------------------------------------------------------------------------------------------
 
-describe('criterios 73, 83 y 84: un comentario eslint-disable no evita el fallo', () => {
+// (criterio 96) Antes, estas pruebas comprobaban con eslint.config.mjs que NINGUN comentario eslint-disable evitaba el fallo
+// (linterOptions.noInlineConfig). Eso cambio: con la configuracion principal el comentario vuelve a apagar la regla que
+// nombra; que no se puede apagar con comentarios se comprueba con el paso protegido (eslint.protegido.config.mjs con
+// allowInlineConfig: false, que es lo que hace `--no-inline-config`). Los ejemplos son los mismos, ahora como plantillas
+// etiquetadas con $queryRaw (criterio 92).
+describe('criterios 73, 83 y 84: un comentario eslint-disable no evita el fallo en el paso protegido (criterio 96)', () => {
   const EJEMPLOS = [
     ['criterio 73: SET ROLE', 'SET ROLE postgres'],
     ["criterio 73: set_config('app.…', …, false)", "SELECT set_config('app.plataforma', 'si', false)"],
@@ -361,15 +423,23 @@ describe('criterios 73, 83 y 84: un comentario eslint-disable no evita el fallo'
     ['criterio 84: ALTER ROLE', 'ALTER ROLE aquagestion_app SUPERUSER'],
   ];
 
+  /** Errores de ESLint (severidad 2) del paso protegido para el codigo en el archivo indicado. */
+  async function erroresProtegidos(codigo, archivo) {
+    const [resultado] = await obtenerEslintProtegido().lintText(codigo, { filePath: path.join(raiz, archivo) });
+    const fatales = resultado.messages.filter((mensaje) => mensaje.fatal);
+    expect(fatales, `error al analizar ${archivo}`).toEqual([]);
+    return resultado.messages.filter((mensaje) => mensaje.severity === 2);
+  }
+
   /** Identificadores de las reglas que fallan con el ejemplo sin ningun comentario. */
   async function reglasQueFallan(codigo) {
-    const mensajes = await errores(codigo, MODULO);
+    const mensajes = await erroresProtegidos(codigo, MODULO);
     expect(mensajes.length, `el ejemplo sin comentarios debia fallar: ${codigo}`).toBeGreaterThan(0);
     return [...new Set(mensajes.map((mensaje) => mensaje.ruleId).filter(Boolean))];
   }
 
   it.each(EJEMPLOS)('%s: sigue fallando con cualquier forma de eslint-disable', async (_nombre, sql) => {
-    const linea = comoCadena(sql);
+    const linea = comoPlantilla(sql);
     const reglas = await reglasQueFallan(linea);
     const lista = reglas.join(', ');
     const variantes = [
@@ -380,11 +450,29 @@ describe('criterios 73, 83 y 84: un comentario eslint-disable no evita el fallo'
       ['eslint-disable de bloque, de archivo, sin nombres', `/* eslint-disable */\n${linea}`],
       ['eslint-disable de bloque, de archivo, con los nombres', `/* eslint-disable ${lista} */\n${linea}`],
       ['eslint-disable-next-line de bloque', `/* eslint-disable-next-line */\n${linea}`],
+      [
+        '/* eslint regla: off */ con los nombres',
+        `/* eslint ${reglas.map((r) => `${r}: "off"`).join(', ')} */\n${linea}`,
+      ],
     ];
 
     for (const [forma, codigo] of variantes) {
-      const restantes = (await errores(codigo, MODULO)).filter((mensaje) => reglas.includes(mensaje.ruleId));
+      const restantes = (await erroresProtegidos(codigo, MODULO)).filter((mensaje) => reglas.includes(mensaje.ruleId));
       expect(restantes.length, `${forma}: el comentario apago la regla en: ${codigo}`).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('criterio 96: con eslint.config.mjs un comentario eslint-disable vuelve a apagar la regla que nombra', () => {
+  // Cambio de sentido respecto de la ronda 2 (P-15): antes, con eslint.config.mjs, el comentario no tenia efecto.
+  it('criterio 96: // eslint-disable-next-line con el nombre de la regla del SQL de sesion apaga ese error', async () => {
+    const linea = comoPlantilla('SET ROLE postgres');
+    const reglas = [...new Set((await errores(linea, MODULO)).map((mensaje) => mensaje.ruleId).filter(Boolean))];
+    expect(reglas.length, 'el ejemplo sin comentarios debia fallar').toBeGreaterThan(0);
+
+    const conComentario = `// eslint-disable-next-line ${reglas.join(', ')}\n${linea}`;
+    const restantes = (await errores(conComentario, MODULO)).filter((mensaje) => reglas.includes(mensaje.ruleId));
+
+    expect(restantes).toEqual([]);
   });
 });

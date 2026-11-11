@@ -5,13 +5,22 @@
 // `@prisma/client`, `@prisma/adapter-pg` o cualquier otro `@prisma/...`; por cualquiera de estas vias: `import` de un
 // valor, `export ... from`, `import(...)` dinamico (con cadena o plantilla), `require(...)` o `import x = require(...)`.
 // Ademas falla con `import(...)` o `require(...)` cuyo argumento no es una cadena literal, y con `createRequire` (de
-// `module` o `node:module`). Un comentario eslint-disable no evita el fallo. `import type` e `import { type X }` siguen
-// permitidos. Se prueba con el eslint.config.mjs real y sin informacion de tipos.
+// `module` o `node:module`). `import type` e `import { type X }` siguen permitidos. Se prueba con el eslint.config.mjs real
+// y sin informacion de tipos.
+//
+// ADAPTADO A LA RONDA 3 DEL ATAQUE:
+//  - criterio 96 (reemplaza la frase "Un comentario eslint-disable no evita el fallo" y la precision P-15): con
+//    eslint.config.mjs un comentario eslint-disable vuelve a apagar la regla que nombra; que ningun comentario evita el fallo se
+//    comprueba con el paso protegido (eslint.protegido.config.mjs, sin comentarios en linea).
+//  - criterio 95: desde backend/src/cli/ un import que se resuelve a un archivo interno de infraestructura/prisma/ (como
+//    `../infraestructura/prisma/prisma.service`) ahora falla; los tres ejemplos de PrismaService usan una ruta con el mismo
+//    nombre que, desde cli/, no se resuelve a esa carpeta. El comportamiento nuevo se prueba en regla-acceso-base-ronda3.test.mjs.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import tseslint from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
+import { obtenerEslintProtegido } from './ayuda-lint-ronda3.mjs';
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -63,7 +72,9 @@ const MODULOS_PROHIBIDOS = [
   ['el cliente generado de Prisma', '../generated/prisma/client'],
   ['un archivo del cliente generado', '../../generated/prisma/enums'],
   ['una ruta que contiene generated/prisma', '../../src/generated/prisma'],
-  ['PrismaService', '../infraestructura/prisma/prisma.service'],
+  // (criterio 95) Antes: '../infraestructura/prisma/prisma.service', que desde cli/ ahora se resuelve a un interno de
+  // infraestructura/prisma/ y falla; con esta ruta el nombre prisma.service se sigue probando y cli/ queda limpio.
+  ['PrismaService', '../../infraestructura/prisma/prisma.service'],
   ['pg', 'pg'],
   ['un archivo de pg', 'pg/lib/client'],
   ['pg-pool', 'pg-pool'],
@@ -103,7 +114,8 @@ describe('criterio 85: export ... from', () => {
     ['export * as X from', "export * as Prisma from '@prisma/client';"],
     ['export * from pg', "export * from 'pg';"],
     ['export { default } from pg-pool', "export { default } from 'pg-pool';"],
-    ['export de PrismaService', "export { PrismaService } from '../infraestructura/prisma/prisma.service';"],
+    // (criterio 95) Ruta cambiada, por la misma razon que PrismaService en MODULOS_PROHIBIDOS.
+    ['export de PrismaService', "export { PrismaService } from '../../infraestructura/prisma/prisma.service';"],
   ])('criterio 85: %s falla el lint', async (_nombre, codigo) => {
     await esRechazadoSoloFueraDePrismaYCli(codigo);
   });
@@ -118,7 +130,8 @@ describe('criterio 85: import(...) dinamico', () => {
     ['con el cliente generado', "export const cargar = () => import('../generated/prisma/client');"],
     [
       'con una plantilla sin ${} hacia PrismaService',
-      'export const cargar = () => import(`../infraestructura/prisma/prisma.service`);',
+      // (criterio 95) Ruta cambiada, por la misma razon que PrismaService en MODULOS_PROHIBIDOS.
+      'export const cargar = () => import(`../../infraestructura/prisma/prisma.service`);',
     ],
     ['con una plantilla sin ${} hacia pg', 'export const cargar = () => import(`pg`);'],
     ['con await', "export async function cargar() {\n  const m = await import('@prisma/client');\n  return m;\n}"],
@@ -128,7 +141,7 @@ describe('criterio 85: import(...) dinamico', () => {
   });
 });
 
-describe('criterio 85: require(...) y import x = require(...)', () => {
+describe('criterio 85: require(...) y import x = require(...), y comentarios eslint-disable (criterio 96)', () => {
   it.each(MODULOS_PROHIBIDOS)('criterio 85: require("%s") falla el lint', async (_nombre, ruta) => {
     await esRechazadoSoloFueraDePrismaYCli(`export const m = require('${ruta}');`);
   });
@@ -160,10 +173,14 @@ describe('criterio 85: require(...) y import x = require(...)', () => {
       'import dinamico con eslint-disable-next-line',
       "// eslint-disable-next-line\nexport const cargar = () => import('../generated/prisma/client');",
     ],
-  ])('criterio 85: %s sigue fallando el lint', async (_nombre, codigo) => {
-    expect((await erroresDeAcceso(codigo, MODULO)).length, `el comentario apago la regla: ${codigo}`).toBeGreaterThan(
-      0,
-    );
+  ])('criterio 96: %s sigue fallando el paso protegido', async (_nombre, codigo) => {
+    // (criterio 96) Antes se probaba con eslint.config.mjs; ahora, con el paso protegido (allowInlineConfig: false).
+    const [resultado] = await obtenerEslintProtegido().lintText(codigo, { filePath: path.join(raiz, MODULO) });
+    const fatales = resultado.messages.filter((mensaje) => mensaje.fatal);
+    expect(fatales, `error al analizar: ${codigo}`).toEqual([]);
+    const errores = resultado.messages.filter((mensaje) => mensaje.severity === 2);
+
+    expect(errores.length, `el comentario apago la regla: ${codigo}`).toBeGreaterThan(0);
   });
 });
 
