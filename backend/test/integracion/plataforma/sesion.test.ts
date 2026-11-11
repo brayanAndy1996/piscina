@@ -23,6 +23,8 @@ import {
 
 const AHORA = new Date('2026-11-11T15:00:00.000Z'); // 10:00 en America/Lima
 const QUINCE_MINUTOS = 15 * 60 * 1000;
+/** Secreto robusto (criterio 79: 32 o más caracteres, sin espacios, 10 o más distintos) solo para pruebas con NODE_ENV=production. */
+const JWT_SECRETO_PRODUCCION_PRUEBAS = 'Zk4pW8sRq2LnV7xTb1Hc9YdFm6JeA3uG0oXiN5';
 
 interface ErrorCuerpo {
   codigo: string;
@@ -89,7 +91,8 @@ describe('sesión del superadmin', () => {
 
     it('criterio 36: con NODE_ENV=production la cookie lleva Secure', async () => {
       await app.close();
-      app = await crearApp({ NODE_ENV: 'production' });
+      // En producción rige el criterio 79: el secreto público de las pruebas no arranca; se usa uno robusto.
+      app = await crearApp({ NODE_ENV: 'production', JWT_SECRETO: JWT_SECRETO_PRODUCCION_PRUEBAS });
 
       const respuesta = await entrar();
 

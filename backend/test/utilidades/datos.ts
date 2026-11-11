@@ -53,8 +53,8 @@ export interface DatosDeAislamiento {
 }
 
 /**
- * "Hay datos" (spec 001, bloque B): dos academias A y B con filas en `auditoria` y `configuraciones` (2 y 3 de cada
- * una), un superadmin y dos filas en `auditoria_plataforma`. Debe llamarse después de `limpiarBase()`.
+ * "Hay datos" (spec 001, bloque B): dos academias A y B con filas en `auditoria` y `configuraciones` (A con 2 y 2 filas;
+ * B con 3 y 4), un superadmin y dos filas en `auditoria_plataforma`. Debe llamarse después de `limpiarBase()`.
  */
 export async function crearDatosDeAislamiento(): Promise<DatosDeAislamiento> {
   const A = await crearAcademiaDePrueba({ nombreCorto: 'academia-a', nombre: 'Academia A' });
