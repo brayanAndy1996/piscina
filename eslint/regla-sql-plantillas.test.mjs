@@ -12,6 +12,9 @@
 //     de `generated/prisma` o de `@prisma/...` (con cualquier alias). `Prisma.Sql` como tipo sigue permitido.
 // Pasan, entre otros: `stream.on('end', ...)`, `res.setHeader('Set-Cookie', ...)`, `const accion = 'commit'`, textos con
 // "reset" o "commit", `/SET ROLE/i` y String.raw`SET ROLE x`.
+// (Criterio 112, ataque ronda 4) Los ejemplos que pasan y usaban `Prisma.sql`, `sql` o `Prisma.join` sin importarlos ahora los
+// importan: en un modulo, `sql` y `join` del punto autorizado; en cli/, `Prisma` del cliente generado. No se quito ningun ejemplo
+// ni cambio el resultado de ninguno que falla.
 // Se prueba con las dos configuraciones (eslint.config.mjs y la del paso protegido, criterio 96), sin fijar el nombre de las
 // reglas. Un ejemplo "falla" si da error en un modulo y en cli/ y esta limpio en backend/src/infraestructura/prisma/ (asi el
 // error es de la regla y no de otra cosa del ejemplo).
@@ -231,9 +234,21 @@ describe.each(CONFIGURACIONES)('criterio 92 con %s', (_nombre, obtener) => {
         '$queryRaw como etiqueta con un tipo generico',
         'export const f = (tx) => tx.cliente.$queryRaw<{ n: number }[]>`SELECT 1 AS n`;',
       ],
-      ['$queryRaw con Prisma.sql', 'export const f = (cliente) => cliente.$queryRaw(Prisma.sql`SELECT 1`);'],
-      ['$executeRaw con sql', 'export const f = (cliente) => cliente.$executeRaw(sql`SELECT 1`);'],
-      ['Prisma.join con un solo argumento', 'export const f = (ids) => Prisma.sql`SELECT ${Prisma.join(ids)}`;'],
+      // (criterio 112) En un modulo no hay `Prisma` de valor: la plantilla etiquetada que se pasa como unico argumento usa la `sql`
+      // importada del punto autorizado (antes, `Prisma.sql` y `sql` se usaban sin importarlos), y `Prisma.join(ids)` pasa a
+      // `join(ids)` del mismo punto autorizado.
+      [
+        '$queryRaw con sql del punto autorizado (criterio 112; antes Prisma.sql)',
+        "import { sql } from '../../infraestructura/prisma';\nexport const f = (cliente) => cliente.$queryRaw(sql`SELECT 1`);",
+      ],
+      [
+        '$executeRaw con sql importada del punto autorizado (criterio 112)',
+        "import { sql } from '../../infraestructura/prisma';\nexport const f = (cliente) => cliente.$executeRaw(sql`SELECT 1`);",
+      ],
+      [
+        'join con un solo argumento, del punto autorizado (criterio 112; antes Prisma.join)',
+        "import { join, sql } from '../../infraestructura/prisma';\nexport const f = (ids) => sql`SELECT ${join(ids)}`;",
+      ],
       ['Prisma.sql como etiqueta', 'export const f = (id) => Prisma.sql`SELECT ${id}`;'],
       [
         'Prisma.Sql como tipo',
@@ -248,7 +263,11 @@ describe.each(CONFIGURACIONES)('criterio 92 con %s', (_nombre, obtener) => {
     });
 
     it.each([
-      ['$queryRaw con Prisma.sql', 'export const f = (cliente) => cliente.$queryRaw(Prisma.sql`SELECT 1`);'],
+      // (criterio 112) En cli/, `Prisma.sql` se acepta con `Prisma` importado del cliente generado.
+      [
+        '$queryRaw con Prisma.sql (criterio 112: con Prisma importado del cliente generado)',
+        "import { Prisma } from '../generated/prisma/client';\nexport const f = (cliente) => cliente.$queryRaw(Prisma.sql`SELECT 1`);",
+      ],
       [
         '$queryRaw como etiqueta',
         'export const f = (cliente, id) => cliente.$queryRaw`SELECT 1 WHERE id = ${id}::uuid`;',

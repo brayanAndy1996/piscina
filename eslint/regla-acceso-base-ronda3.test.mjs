@@ -74,13 +74,17 @@ describe.each(CONFIGURACIONES)('criterio 95 con %s', (_configuracion, obtener) =
           expect((await errores(obtener(), codigo, enModulos(ext))).length, codigo).toBeGreaterThan(0);
         });
 
-        it(`criterio 95: un archivo de prueba .${ext} no esta sujeto a estas reglas`, async () => {
-          const codigo = "const pg = require('pg');\nmodule.exports = pg;";
+        // (criterio 110, ataque ronda 4) Solo estan exentos los nombres que terminan exactamente en `.test.ts`, `.test.mts`,
+        // `.test.cts`, `.test.js`, `.test.mjs` o `.test.cjs`: un `.test.tsx` ya no esta exento (su resultado se prueba en
+        // eslint/regla-exenciones-ronda4.test.mjs). Este caso queda para las extensiones que siguen exentas.
+        if (ext !== 'tsx')
+          it(`criterio 95: un archivo de prueba .${ext} no esta sujeto a estas reglas`, async () => {
+            const codigo = "const pg = require('pg');\nmodule.exports = pg;";
 
-          expect(await errores(obtener(), codigo, `backend/src/modulos/ejemplo/ejemplo.service.test.${ext}`)).toEqual(
-            [],
-          );
-        });
+            expect(await errores(obtener(), codigo, `backend/src/modulos/ejemplo/ejemplo.service.test.${ext}`)).toEqual(
+              [],
+            );
+          });
       });
     }
   });
