@@ -87,10 +87,7 @@ const SEPARADORES: ReadonlyMap<string, string> = new Map([
 ]);
 
 /** Une valores o fragmentos con `', '` (`'coma'`, por defecto), `' AND '` (`'y'`) o `' OR '` (`'o'`). */
-export function join(
-  elementos: readonly (ValorSql | Fragmento)[],
-  separador: 'coma' | 'y' | 'o' = 'coma',
-): Fragmento {
+export function join(elementos: readonly (ValorSql | Fragmento)[], separador: 'coma' | 'y' | 'o' = 'coma'): Fragmento {
   if (!Array.isArray(elementos) || elementos.length === 0) {
     throw new TypeError('join necesita al menos un elemento.');
   }

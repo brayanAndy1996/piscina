@@ -14,7 +14,7 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/dist/**',
       '**/coverage/**',
-      'backend/src/generated/**',
+      'backend/src/generated/prisma/**',
       'backend/prisma/migrations/**',
       'playwright-report/**',
       'test-results/**',
@@ -48,9 +48,9 @@ export default tseslint.config(
   // Archivos JavaScript y de configuración: sin información de tipos.
   {
     name: 'aquagestion/javascript',
-    files: ['**/*.{js,mjs,cjs}'],
+    files: ['**/*.{js,jsx,mjs,cjs}'],
     extends: [tseslint.configs.disableTypeChecked],
-    languageOptions: { globals: { ...globals.node } },
+    languageOptions: { globals: { ...globals.node }, parserOptions: { ecmaFeatures: { jsx: true } } },
   },
 
   {

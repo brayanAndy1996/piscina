@@ -16,8 +16,15 @@
 // etiquetados), y no se usan `Prisma.raw`, `Prisma.Sql` como valor ni `Prisma.join` con separador. Las cadenas, las plantillas
 // sin etiqueta y las expresiones regulares no se analizan: no llegan a la base. Un comentario `eslint-disable` apaga estas
 // reglas en el lint normal, pero no en el paso protegido (`eslint.protegido.config.mjs` con `--no-inline-config`, criterio 96).
+// Ataque ronda 4: tampoco se llama a funciones que ejecutan SQL dado como texto (`query_to_xml`, `ts_stat`, `dblink…`, `crosstab…`,
+// `cron.…`) ni a funciones calificadas con un esquema que no sea `pg_catalog` ni `public` (criterio 109); la cláusula `SET` de un
+// `UPDATE`, de `ON CONFLICT DO UPDATE` o de `MERGE … UPDATE` no es `SET` de sesión (115); en `cli/` se admiten además los cuatro
+// parámetros de formato de la sesión con sus valores exactos (107); y se analiza toda plantilla con una etiqueta `sql`, de donde
+// venga, `.sql`, `.$queryRaw`, `.$executeRaw` o un alias de la `sql` del punto autorizado (112).
 // Se exporta por separado para poder probarla con ESLint.
 
+import { ARCHIVOS_DE_CODIGO, EXENCION_CLIENTE_GENERADO, EXENCION_PRUEBAS } from './archivos-de-codigo.mjs';
+import { analizarImportaciones, nombreDePropiedad, variableDe } from './ayuda-ambito.mjs';
 import { reglaFormasDeSql } from './regla-sql-formas.mjs';
 
 export const MENSAJE_SQL_SESION =
@@ -300,13 +307,15 @@ function normalizarConEstado(texto) {
             .replace(/ ?\. ?/g, '.'),
     )
     .join('');
+  // Antes de unir las concatenaciones se guarda una copia: `set_config` con un ajuste fijo exige el literal sin concatenar (107).
+  const sinUnir = normalizado.replace(/\s+/g, ' ').trim();
   // Une `'a' || 'b'` y las cadenas separadas solo por espacio ('a' 'b'), hasta que no quede ninguna. Dos cadenas pegadas
   // (`'it''s'`) son una sola con una comilla escapada: no se unen.
   const union = /'((?:[^']|'')*)'(?: ?\|\| ?| )'((?:[^']|'')*)'/;
   for (let vuelta = 0; vuelta < 1000 && union.test(normalizado); vuelta += 1) {
     normalizado = normalizado.replace(union, (_todo, a, b) => `'${a}${b}'`);
   }
-  return { texto: normalizado.replace(/\s+/g, ' ').trim(), uescapeInvalido: estado.uescapeInvalido };
+  return { texto: normalizado.replace(/\s+/g, ' ').trim(), sinUnir, uescapeInvalido: estado.uescapeInvalido };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -315,10 +324,6 @@ function normalizarConEstado(texto) {
 
 /** Formas que prohíben el contexto de sesión en cualquier parte del texto normalizado. */
 const PATRONES_EN_CUALQUIER_PARTE = [
-  /\bset\s+(?:local\s+|session\s+)?app\./,
-  /\bset\s+(?:local\s+|session\s+)?role\b/,
-  /\bset\s+(?:local\s+|session\s+)?session\s+authorization\b/,
-  /\bset\s+session\b/,
   /\balter\s+(?:role|user|database|system)\b/,
   /\balter\s+default\s+privileges\b/,
   /\bwith\s+hold\b/,
@@ -330,6 +335,32 @@ const PATRONES_EN_CUALQUIER_PARTE = [
   /\bupdate\s+(?:pg_catalog\.)?pg_settings\b/,
   /\b(?:pg_catalog\.)?pg_notify\s*\(/,
 ];
+
+/**
+ * Formas de `SET` de sesión que se buscan en cualquier parte de una sentencia (criterios 73 y 84). Pero si en la misma sentencia las
+ * precede la palabra `update` (fuera de una cadena), son la cláusula `SET` de un `UPDATE`, de `ON CONFLICT DO UPDATE` o de
+ * `MERGE … UPDATE`, que asigna columnas (criterio 115).
+ */
+const PATRONES_DE_SET_EN_CUALQUIER_PARTE = [
+  /\bset\s+(?:local\s+|session\s+)?app\./g,
+  /\bset\s+(?:local\s+|session\s+)?role\b/g,
+  /\bset\s+(?:local\s+|session\s+)?session\s+authorization\b/g,
+  /\bset\s+session\b/g,
+];
+
+// Funciones que ejecutan o leen SQL o tablas a partir de un texto o un nombre (criterio 109). Se aplican al texto normalizado sin el
+// contenido de las cadenas: una llamada no puede estar dentro de una cadena, y así una cadena como 'a.b(' no da un falso positivo.
+const IDENTIFICADOR_SQL = String.raw`[\p{L}_][\p{L}\p{N}_$]*`;
+const PATRON_FUNCION_DE_TEXTO = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_$.])(?:${IDENTIFICADOR_SQL}\.)*(?:query_to_xml(?:schema|_and_xmlschema)?|cursor_to_xml(?:schema)?|(?:table|schema|database)_to_xml(?:schema|_and_xmlschema)?|ts_stat|ts_rewrite|dblink[\p{L}\p{N}_$]*|crosstab[\p{L}\p{N}_$]*|connectby|pg_background[\p{L}\p{N}_$]*)\s*\(`,
+  'u',
+);
+// Toda llamada calificada con un esquema que no sea `pg_catalog` ni `public`: AquaGestión solo usa el esquema `public`, y una
+// extensión nueva no abre otro camino sin que se revise. No distingue una llamada de `INSERT INTO otro.tabla (…)`.
+const PATRON_ESQUEMA_AJENO = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_$.])(?!(?:pg_catalog|public)\.)${IDENTIFICADOR_SQL}(?:\.${IDENTIFICADOR_SQL})+\s*\(`,
+  'u',
+);
 
 /** Sentencias de transacción, de sesión y de notificación, al inicio de una sentencia. */
 const PATRONES_DE_SENTENCIA = [
@@ -345,6 +376,27 @@ const PATRON_RESET =
   /^reset\s+(?:all|session\s+authorization|[\p{L}_][\p{L}\p{N}_$]*(?:\.[\p{L}\p{N}_$]+)*)(?:\s*\?)*$/u;
 
 const PATRON_LLAMADA_SET_CONFIG = /(?:\bpg_catalog\.)?\bset_config\s*\(/g;
+
+/** El texto con el contenido de cada cadena `'…'` reemplazado por espacios (mismo largo, mismas posiciones). */
+function sinCadenas(normalizado) {
+  let resultado = '';
+  let enCadena = false;
+  for (let i = 0; i < normalizado.length; i += 1) {
+    const c = normalizado[i];
+    if (c === "'") {
+      if (enCadena && normalizado[i + 1] === "'") {
+        resultado += '  ';
+        i += 1;
+        continue;
+      }
+      enCadena = !enCadena;
+      resultado += c;
+    } else {
+      resultado += enCadena ? ' ' : c;
+    }
+  }
+  return resultado;
+}
 
 /** Parte el texto normalizado en sentencias por `;` fuera de las cadenas. */
 function sentenciasDe(normalizado) {
@@ -414,33 +466,60 @@ function llamadasASetConfig(normalizado) {
   );
 }
 
+/** Los parámetros que `BaseDatos` y `enPlataforma` fijan en cada transacción, con sus valores exactos (criterios 98 y 107). */
+const AJUSTES_FIJOS_PERMITIDOS = new Map([
+  ["'timezone'", "'utc'"],
+  ["'datestyle'", "'iso, mdy'"],
+  ["'intervalstyle'", "'postgres'"],
+  ["'extra_float_digits'", "'1'"],
+  ["'bytea_output'", "'hex'"],
+]);
+
 /**
- * ¿Es una llamada permitida a `set_config`? Primer argumento un literal `'app.…'` y tercero exactamente `true`; o, exactamente,
- * `set_config('timezone', 'utc', true)` (el texto ya está en minúsculas): lo usa `enPlataforma` en `cli/` (criterio 98). Fuera
- * de `cli/` y de `infraestructura/prisma/` la regla `set-config-app` prohíbe además toda llamada.
+ * ¿Es una llamada permitida a `set_config`? Tercer argumento exactamente `true` y, o bien un primer argumento literal `'app.…'`
+ * (puede estar armado con una concatenación de literales: `argumentos` es el texto con las concatenaciones unidas), o bien,
+ * exactamente, uno de los pares de `AJUSTES_FIJOS_PERMITIDOS` escritos como literales simples, sin concatenación
+ * (`argumentosSinUnir`). El texto ya está en minúsculas, así que no distingue mayúsculas: lo usa `enPlataforma` en `cli/`. Fuera de
+ * `cli/` y de `infraestructura/prisma/` la regla `set-config-app` prohíbe además toda llamada.
  */
-function esLlamadaPermitida(argumentos) {
+function esLlamadaPermitida(argumentos, argumentosSinUnir) {
   if (argumentos.length !== 3 || argumentos[2] !== 'true') return false;
-  return /^'app\.[^']*'$/.test(argumentos[0]) || (argumentos[0] === "'timezone'" && argumentos[1] === "'utc'");
+  if (/^'app\.[^']*'$/.test(argumentos[0])) return true;
+  return (
+    argumentosSinUnir.length === 3 &&
+    argumentosSinUnir[2] === 'true' &&
+    AJUSTES_FIJOS_PERMITIDOS.get(argumentosSinUnir[0]) === argumentosSinUnir[1]
+  );
 }
 
 function violaSentencia(sentencia) {
   if (/^reset\b/.test(sentencia)) return PATRON_RESET.test(sentencia);
-  return PATRONES_DE_SENTENCIA.some((patron) => patron.test(sentencia));
+  if (PATRONES_DE_SENTENCIA.some((patron) => patron.test(sentencia))) return true;
+  // Las formas de `SET` de sesión en cualquier parte de la sentencia cuentan salvo que las precida `update` fuera de una cadena
+  // (la cláusula `SET` de un UPDATE, ON CONFLICT DO UPDATE o MERGE … UPDATE; criterio 115).
+  const sinTexto = sinCadenas(sentencia);
+  return PATRONES_DE_SET_EN_CUALQUIER_PARTE.some((patron) =>
+    [...sentencia.matchAll(patron)].some((coincidencia) => !/\bupdate\b/.test(sinTexto.slice(0, coincidencia.index))),
+  );
 }
 
 /**
- * Analiza un texto SQL. Devuelve `{ sesion, setConfig }`: `sesion` si incumple las reglas de los criterios 73, 83, 84, 93 y 94
- * (válidas fuera de `infraestructura/prisma/`); `setConfig` si llama a `set_config` de cualquier forma (se prohíbe además
- * fuera de `cli/`).
+ * Analiza un texto SQL. Devuelve `{ sesion, setConfig }`: `sesion` si incumple las reglas de los criterios 73, 83, 84, 93, 94,
+ * 107, 109 y 115 (válidas fuera de `infraestructura/prisma/`); `setConfig` si llama a `set_config` de cualquier forma (se prohíbe
+ * además fuera de `cli/`).
  */
 export function analizarSql(texto) {
-  const { texto: normalizado, uescapeInvalido } = normalizarConEstado(texto);
+  const { texto: normalizado, sinUnir, uescapeInvalido } = normalizarConEstado(texto);
   const llamadas = llamadasASetConfig(normalizado);
+  const llamadasSinUnir = llamadasASetConfig(sinUnir);
+  const sinTexto = sinCadenas(normalizado);
   const sesion =
     uescapeInvalido ||
     PATRONES_EN_CUALQUIER_PARTE.some((patron) => patron.test(normalizado)) ||
-    llamadas.some((argumentos) => !esLlamadaPermitida(argumentos)) ||
+    PATRON_FUNCION_DE_TEXTO.test(sinTexto) ||
+    PATRON_ESQUEMA_AJENO.test(sinTexto) ||
+    llamadas.length !== llamadasSinUnir.length ||
+    llamadas.some((argumentos, i) => !esLlamadaPermitida(argumentos, llamadasSinUnir[i] ?? [])) ||
     sentenciasDe(normalizado).some((sentencia) => violaSentencia(sentencia));
   return { sesion, setConfig: llamadas.length > 0 };
 }
@@ -454,38 +533,31 @@ function textoDePlantilla(nodo) {
   return nodo.quasis.map((q) => q.value.cooked ?? q.value.raw).join('?');
 }
 
-/** Nombre de la propiedad de un acceso `a.b` o `a['b']` (con un literal); `null` si no se puede saber. */
-function nombreDePropiedad(acceso) {
-  const propiedad = acceso.property;
-  if (!acceso.computed) return propiedad.type === 'Identifier' ? propiedad.name : null;
-  if (propiedad.type === 'Literal' && typeof propiedad.value === 'string') return propiedad.value;
-  if (propiedad.type === 'TemplateLiteral' && propiedad.expressions.length === 0) {
-    return propiedad.quasis[0]?.value.cooked ?? null;
-  }
-  return null;
-}
-
 /**
- * ¿La etiqueta de una plantilla es una de las que llegan a la base (criterio 92)? `<expr>.$queryRaw`, `<expr>.$executeRaw`,
- * `Prisma.sql` o el identificador `sql`.
+ * ¿La etiqueta de una plantilla es una de las que llegan a la base (criterios 92 y 112)? `<expr>.$queryRaw`, `<expr>.$executeRaw`,
+ * cualquier propiedad `.sql` (`Prisma.sql`, `bd.sql`…), el identificador `sql` (venga de donde venga) o un alias de la `sql` del
+ * punto autorizado (`import { sql as s }`). Analizar de más no abre caminos.
  */
-function esEtiquetaDeSql(etiqueta) {
-  if (etiqueta.type === 'Identifier') return etiqueta.name === 'sql';
+function esEtiquetaDeSql(context, importaciones, etiqueta) {
+  if (etiqueta.type === 'Identifier') {
+    return etiqueta.name === 'sql' || importaciones().sqlImportada.has(variableDe(context, etiqueta));
+  }
   if (etiqueta.type !== 'MemberExpression') return false;
   const nombre = nombreDePropiedad(etiqueta);
-  if (nombre === '$queryRaw' || nombre === '$executeRaw') return true;
-  return nombre === 'sql' && etiqueta.object.type === 'Identifier' && etiqueta.object.name === 'Prisma';
+  return nombre === '$queryRaw' || nombre === '$executeRaw' || nombre === 'sql';
 }
 
 function crearRegla({ prohibido, mensaje }) {
   return {
     meta: { type: 'problem', schema: [], messages: { prohibido: '{{ mensaje }}' } },
     create(context) {
+      let importacionesCache;
+      const importaciones = () => (importacionesCache ??= analizarImportaciones(context));
       // Solo el texto de las plantillas etiquetadas que llegan a la base (criterio 92): no las cadenas, ni las plantillas sin
       // etiqueta, ni las expresiones regulares.
       return {
         TaggedTemplateExpression(nodo) {
-          if (!esEtiquetaDeSql(nodo.tag)) return;
+          if (!esEtiquetaDeSql(context, importaciones, nodo.tag)) return;
           if (prohibido(analizarSql(textoDePlantilla(nodo.quasi)))) {
             context.report({ node: nodo.quasi, messageId: 'prohibido', data: { mensaje } });
           }
@@ -504,14 +576,14 @@ export const pluginSqlSesion = {
   },
 };
 
-/** Archivos a los que se aplica la regla: todas las extensiones que `tsx` ejecuta (criterio 95). */
-export const archivosConReglaSqlSesion = ['backend/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}'];
+/** Archivos a los que se aplica la regla: todas las extensiones que `tsx` ejecuta, también `.jsx` (criterios 95 y 119). */
+export const archivosConReglaSqlSesion = ARCHIVOS_DE_CODIGO;
 
-/** Exentos: `BaseDatos` y las pruebas. */
+/** Exentos: `BaseDatos`, el cliente generado y las pruebas (solo `.test.<ts|mts|cts|js|mjs|cjs>`; criterios 110 y 118). */
 export const archivosExentosSqlSesion = [
   'backend/src/infraestructura/prisma/**',
-  'backend/src/generated/**',
-  '**/*.test.*',
+  EXENCION_CLIENTE_GENERADO,
+  EXENCION_PRUEBAS,
 ];
 
 /** Bloques de configuración plana listos para agregar a `eslint.config.mjs` y a la del paso protegido. */

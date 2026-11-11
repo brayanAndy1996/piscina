@@ -11,10 +11,20 @@
 //     respecto del archivo que importa;
 //   - fuera de `infraestructura/prisma/` (también en `cli/`), ninguna importación de un archivo de esa carpeta que no sea su
 //     `index` (se aceptan `…/infraestructura/prisma` y `…/infraestructura/prisma/index`, con o sin extensión).
+//   - ataque ronda 4: un archivo que no es prueba no importa un archivo de pruebas (criterio 110: nombre que termina en `.test` o
+//     `.test.<extensión>`, o ruta dentro de `backend/test/`); nada fuera de `main.ts`, `cli/` e `infraestructura/entorno/` importa
+//     `infraestructura/entorno/cargar-env` ni el paquete `dotenv` (criterio 117); las rutas del archivo, de la raíz y de lo
+//     importado se resuelven con `realpath` cuando existen, así que un enlace simbólico no evade las reglas (criterio 111); las
+//     exenciones son solo `.test.<ts|mts|cts|js|mjs|cjs>` y el cliente generado (criterios 110 y 118), y se cubre `.jsx` (119).
 // Un comentario `eslint-disable` apaga la regla en el lint normal, pero no en el paso protegido (criterio 96). Se exporta por
 // separado para poder probarla con ESLint.
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {
+  ARCHIVOS_DE_CODIGO,
+  EXENCION_CLIENTE_GENERADO,
+  EXENCION_PRUEBAS,
+  contextoDeArchivo,
+  resolverEspecificador,
+} from './archivos-de-codigo.mjs';
 
 export const MENSAJE_ACCESO_BASE =
   'Los módulos acceden a la base solo a través de BaseDatos (infraestructura/prisma): usa conAcademia o ' +
@@ -28,6 +38,14 @@ export const MENSAJE_CARGA_DINAMICA =
 export const MENSAJE_IMPORTA_CLI =
   'Nada fuera de backend/src/cli/ importa archivos de cli/: los comandos usan la conexión del dueño de las tablas y no ' +
   'forman parte de la API.';
+
+export const MENSAJE_IMPORTA_PRUEBAS =
+  'Un archivo que no es una prueba no importa archivos de pruebas (*.test.*) ni nada de backend/test/: el código de producción ' +
+  'no depende de las pruebas ni de sus utilidades.';
+
+export const MENSAJE_CARGA_ENV =
+  'Solo main.ts, cli/ e infraestructura/entorno/ cargan el .env (cargar-env o dotenv): los módulos reciben el entorno ya ' +
+  'validado, y no tienen que poder leer ni cambiar lo que se cargó.';
 
 export const MENSAJE_IMPORTA_INTERNOS_PRISMA =
   'Nada fuera de infraestructura/prisma/ importa sus archivos internos: usa solo su index ' +
@@ -80,37 +98,17 @@ function exportaValores(nodo) {
 // Rutas (criterio 95)
 // ---------------------------------------------------------------------------------------------------------------------
 
-const EXTENSIONES = /\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/;
+const EXTENSION_DE_CODIGO = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
-/** Ruta con `/` como separador y, en Windows, en minúsculas (el sistema de archivos no distingue mayúsculas). */
-function comparable(ruta) {
-  const posix = ruta.replaceAll('\\', '/');
-  return process.platform === 'win32' ? posix.toLowerCase() : posix;
-}
+/** Nombre de un archivo de pruebas: termina en `.test` o `.test.<extensión>` (criterio 110). */
+const ARCHIVO_DE_PRUEBAS = /\.test(?:\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs))?$/;
+
+/** El paquete `dotenv` o un archivo suyo (`dotenv/config`, `dotenv/lib/main.js`). */
+const esDotenv = (especificador) => especificador === 'dotenv' || especificador.startsWith('dotenv/');
 
 /** ¿`ruta` es la carpeta `carpeta` o está dentro de ella? Las dos ya en forma comparable. */
 function estaDentro(ruta, carpeta) {
   return ruta === carpeta || ruta.startsWith(`${carpeta}/`);
-}
-
-/**
- * Ruta absoluta (comparable) a la que apunta el especificador de un módulo relativo, absoluto o `file:`, resuelto respecto del
- * archivo que importa; `null` si es un paquete (`pg`, `@nestjs/common`…) o no se puede resolver.
- */
-function resolverEspecificador(especificador, archivo) {
-  let ruta;
-  if (especificador.startsWith('file:')) {
-    try {
-      ruta = fileURLToPath(especificador);
-    } catch {
-      return null;
-    }
-  } else if (/^(?:\.{1,2}(?:[\\/]|$)|[\\/]|[a-zA-Z]:[\\/])/.test(especificador)) {
-    ruta = path.resolve(path.dirname(archivo), especificador);
-  } else {
-    return null;
-  }
-  return comparable(path.normalize(ruta));
 }
 
 const reglaAccesoBase = {
@@ -120,31 +118,61 @@ const reglaAccesoBase = {
     messages: { acceso: '{{ mensaje }}' },
   },
   create(context) {
-    const archivo = path.resolve(context.cwd, context.filename);
-    const raiz = comparable(path.resolve(context.cwd));
+    // Las rutas del archivo y de la raíz pasan por `realpath` (criterio 111): un enlace no cambia en qué carpeta "está" un archivo.
+    const { archivoComparable, raiz, carpetas: carpetasDeResolucion } = contextoDeArchivo(context);
     const carpetaCli = `${raiz}/backend/src/cli`;
     const carpetaPrisma = `${raiz}/backend/src/infraestructura/prisma`;
-    const archivoComparable = comparable(archivo);
+    const carpetaEntorno = `${raiz}/backend/src/infraestructura/entorno`;
+    const carpetaPruebas = `${raiz}/backend/test`;
+    const archivoCargarEnv = `${carpetaEntorno}/cargar-env`;
     const enCli = estaDentro(archivoComparable, carpetaCli);
     const enPrisma = estaDentro(archivoComparable, carpetaPrisma);
+    const enEntorno = estaDentro(archivoComparable, carpetaEntorno);
+    const esPrincipal = archivoComparable === `${raiz}/backend/src/main.ts`;
     // El acceso a la base solo se exige a los módulos: `infraestructura/prisma/` y `cli/` sí llegan a Prisma y a pg.
     const revisaModulos = !enCli && !enPrisma;
 
     const informar = (nodo, mensaje = MENSAJE_ACCESO_BASE) =>
       context.report({ node: nodo, messageId: 'acceso', data: { mensaje } });
 
-    /** Criterio 95: importaciones de `cli/` y de los internos de `infraestructura/prisma/` (de valor o de tipo). */
+    /**
+     * Criterios 95, 110 y 117: importaciones de `cli/`, de los internos de `infraestructura/prisma/`, de archivos de pruebas, de
+     * `cargar-env` y de `dotenv` (de valor o de tipo, por cualquiera de las vías).
+     */
     function revisarDestino(nodo, especificador) {
-      const destino = resolverEspecificador(especificador, archivo);
-      if (destino === null) return;
-      if (!enCli && estaDentro(destino, carpetaCli)) {
-        informar(nodo, MENSAJE_IMPORTA_CLI);
+      if (!esPrincipal && !enCli && !enEntorno && esDotenv(especificador)) {
+        informar(nodo, MENSAJE_CARGA_ENV);
         return;
       }
-      if (!enPrisma && estaDentro(destino, carpetaPrisma)) {
-        const sinExtension = destino.replace(EXTENSIONES, '');
-        if (sinExtension !== carpetaPrisma && sinExtension !== `${carpetaPrisma}/index`) {
-          informar(nodo, MENSAJE_IMPORTA_INTERNOS_PRISMA);
+      const destinos = resolverEspecificador(especificador, carpetasDeResolucion);
+      if (destinos.length === 0) {
+        // Un paquete o una ruta que no se resuelve: solo el nombre puede delatar un archivo de pruebas.
+        if (ARCHIVO_DE_PRUEBAS.test(especificador)) informar(nodo, MENSAJE_IMPORTA_PRUEBAS);
+        return;
+      }
+      for (const destino of destinos) {
+        const sinExtension = destino.replace(EXTENSION_DE_CODIGO, '');
+        if (
+          ARCHIVO_DE_PRUEBAS.test(destino) ||
+          ARCHIVO_DE_PRUEBAS.test(sinExtension) ||
+          estaDentro(destino, carpetaPruebas)
+        ) {
+          informar(nodo, MENSAJE_IMPORTA_PRUEBAS);
+          return;
+        }
+        if (!esPrincipal && !enCli && !enEntorno && sinExtension === archivoCargarEnv) {
+          informar(nodo, MENSAJE_CARGA_ENV);
+          return;
+        }
+        if (!enCli && estaDentro(destino, carpetaCli)) {
+          informar(nodo, MENSAJE_IMPORTA_CLI);
+          return;
+        }
+        if (!enPrisma && estaDentro(destino, carpetaPrisma)) {
+          if (sinExtension !== carpetaPrisma && sinExtension !== `${carpetaPrisma}/index`) {
+            informar(nodo, MENSAJE_IMPORTA_INTERNOS_PRISMA);
+            return;
+          }
         }
       }
     }
@@ -222,11 +250,11 @@ export const pluginAccesoBase = {
   rules: { 'sin-cliente-de-la-base': reglaAccesoBase },
 };
 
-/** Archivos a los que se aplica la regla: todas las extensiones que `tsx` ejecuta (criterio 95). */
-export const archivosConReglaAccesoBase = ['backend/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}'];
+/** Archivos a los que se aplica la regla: todas las extensiones que `tsx` ejecuta, también `.jsx` (criterios 95 y 119). */
+export const archivosConReglaAccesoBase = ARCHIVOS_DE_CODIGO;
 
-/** Exentos: el cliente generado y las pruebas. Dentro de la regla, `cli/` y `infraestructura/prisma/` se tratan aparte. */
-export const archivosExentosAccesoBase = ['backend/src/generated/**', '**/*.test.*'];
+/** Exentos: el cliente generado y las pruebas (solo `.test.<ts|mts|cts|js|mjs|cjs>`; criterios 110 y 118). */
+export const archivosExentosAccesoBase = [EXENCION_CLIENTE_GENERADO, EXENCION_PRUEBAS];
 
 /** Bloque de configuración plana listo para agregar a `eslint.config.mjs` y a la del paso protegido. */
 export const configuracionAccesoBase = [

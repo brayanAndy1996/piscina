@@ -25,7 +25,7 @@
     "prelint": "npm run build -w @aquagestion/contratos",
     "e2e": "npm run build -w @aquagestion/contratos && npm run test -w @aquagestion/e2e",
     "lint": "eslint . --max-warnings 0 && npm run lint:protegido",
-    "lint:protegido": "eslint --no-inline-config --config eslint.protegido.config.mjs --max-warnings 0 backend/src",
+    "lint:protegido": "node scripts/comprobar-fuentes-protegidas.mjs && eslint --no-inline-config --config eslint.protegido.config.mjs --max-warnings 0 backend/src",
     "pretypecheck": "npm run build -w @aquagestion/contratos",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier --write .",

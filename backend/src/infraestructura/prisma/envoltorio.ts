@@ -10,8 +10,9 @@ import type { ClienteTransaccion } from './tipos';
  * literal congelado: sin prototipo propio (`Function.prototype` y `Object.prototype`), sin claves que empiecen por `_` y sin
  * ninguna referencia que lleve de vuelta al cliente (`$parent`, `_originalClient`, `$transaction`…).
  *
- * Cada función es `async` y devuelve una `Promise` nativa: la `PrismaPromise` (con `requestTransaction`, que permite
- * reubicar la consulta en otra conexión) nunca sale de aquí. La consulta se envía al llamar a la función (se llama a `then`
+ * Cada función devuelve una `Promise` nativa (son flechas comunes, no `async`: su prototipo debe seguir siendo
+ * `Function.prototype`): la `PrismaPromise` (con `requestTransaction`, que permite reubicar la consulta en otra conexión)
+ * nunca sale de aquí. La consulta se envía al llamar a la función (se llama a `then`
  * en ese momento, sin esperar a quien llama) y corre en la conexión y en la transacción de `trabajo`. Cuando `trabajo` termina,
  * con éxito o con error, `terminar()` apaga el envoltorio: una función guardada y llamada después rechaza sin tocar la base.
  */
@@ -56,6 +57,19 @@ function enviar<T>(consulta: PromiseLike<T>): Promise<T> {
   });
 }
 
+/**
+ * Ejecuta `accion` ahora y devuelve siempre una promesa nativa: un error lanzado dentro (validación, envoltorio apagado) se
+ * convierte en un rechazo. Las funciones del envoltorio son flechas comunes y no `async`: su prototipo es `Function.prototype`
+ * (criterio 100) y lo que devuelven, `Promise.prototype` (criterio 106).
+ */
+function siempreUnaPromesa(accion: () => Promise<unknown>): Promise<unknown> {
+  try {
+    return accion();
+  } catch (error) {
+    return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
 export interface EnvoltorioDeTransaccion {
   /** Lo que recibe `trabajo`: congelado y activo hasta que se llama a `terminar`. */
   readonly cliente: ClienteTransaccion;
@@ -70,22 +84,25 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
   };
   const delegados = tx as unknown as Record<string, Record<string, FuncionDeDelegado>>;
 
-  const crudo = (metodo: MetodoCrudo) => async (...argumentos: unknown[]) => {
-    exigirActiva();
-    const [primero, ...valores] = argumentos;
-    // Forma de etiqueta: los fragmentos del punto autorizado se cambian por su Sql; los demás valores van como parámetros.
-    if (sonPartesDePlantilla(primero, valores.length)) {
-      const convertidos = valores.map((valor) => aSql(valor) ?? valor);
-      return enviar(tx[metodo](primero, ...convertidos));
-    }
-    // Forma de llamada: exactamente un fragmento o un Sql de Prisma.
-    if (argumentos.length === 1) {
-      const fragmento = aSql(primero);
-      if (fragmento) return enviar(tx[metodo](fragmento));
-      if (primero instanceof Prisma.Sql) return enviar(tx[metodo](primero));
-    }
-    throw new TypeError(MENSAJE_CONSULTA_NO_VALIDA);
-  };
+  const crudo =
+    (metodo: MetodoCrudo) =>
+    (...argumentos: unknown[]): Promise<unknown> =>
+      siempreUnaPromesa(() => {
+        exigirActiva();
+        const [primero, ...valores] = argumentos;
+        // Forma de etiqueta: los fragmentos del punto autorizado se cambian por su Sql; los demás valores van como parámetros.
+        if (sonPartesDePlantilla(primero, valores.length)) {
+          const convertidos = valores.map((valor) => aSql(valor) ?? valor);
+          return enviar(tx[metodo](primero, ...convertidos));
+        }
+        // Forma de llamada: exactamente un fragmento o un Sql de Prisma.
+        if (argumentos.length === 1) {
+          const fragmento = aSql(primero);
+          if (fragmento) return enviar(tx[metodo](fragmento));
+          if (primero instanceof Prisma.Sql) return enviar(tx[metodo](primero));
+        }
+        throw new TypeError(MENSAJE_CONSULTA_NO_VALIDA);
+      });
 
   const envoltorio: Record<string, unknown> = {
     $queryRaw: crudo('$queryRaw'),
@@ -95,13 +112,14 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
     const nombre = nombreDelDelegado(modelo);
     const delegado: Partial<Delegado> = {};
     for (const operacion of OPERACIONES) {
-      delegado[operacion] = async (...argumentos: unknown[]) => {
-        exigirActiva();
-        const real = delegados[nombre];
-        const funcion = real?.[operacion];
-        if (typeof funcion !== 'function') throw new TypeError(`La operación ${nombre}.${operacion} no existe.`);
-        return enviar(funcion.apply(real, argumentos) as PromiseLike<unknown>);
-      };
+      delegado[operacion] = (...argumentos: unknown[]): Promise<unknown> =>
+        siempreUnaPromesa(() => {
+          exigirActiva();
+          const real = delegados[nombre];
+          const funcion = real?.[operacion];
+          if (typeof funcion !== 'function') throw new TypeError(`La operación ${nombre}.${operacion} no existe.`);
+          return enviar(funcion.apply(real, argumentos) as PromiseLike<unknown>);
+        });
     }
     envoltorio[nombre] = Object.freeze(delegado);
   }
