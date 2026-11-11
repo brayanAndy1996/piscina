@@ -1,6 +1,6 @@
 /**
  * Retira de `env` las variables con las que otro código podría conectarse como el dueño de las tablas (spec 001,
- * criterio 99, precisión P-21): toda clave que empiece por `DATABASE_URL` salvo `DATABASE_URL_APP` (la conexión del dueño y la
+ * criterio 99, precisión P-21; sin distinguir mayúsculas, criterio 116): toda clave que empiece por `DATABASE_URL` salvo `DATABASE_URL_APP` (la conexión del dueño y la
  * de las pruebas), toda clave que empiece por `PG` (las que `pg` toma como valores por defecto de conexión: `PGUSER`,
  * `PGPASSWORD`, `PGHOST`…) y `SUPERADMIN_CLAVE`. No toca las demás. Modifica el objeto recibido.
  *
@@ -11,10 +11,13 @@
  */
 export function retirarVariablesSensibles(env: Record<string, string | undefined>): void {
   for (const nombre of Object.keys(env)) {
+    // En Windows `process.env` no distingue mayúsculas (`PgPassword` y `PGPASSWORD` son la misma variable): se compara en
+    // mayúsculas (criterio 116). `toUpperCase` puede borrar de más algún nombre raro, nunca de menos.
+    const mayusculas = nombre.toUpperCase();
     const sensible =
-      (nombre.startsWith('DATABASE_URL') && nombre !== 'DATABASE_URL_APP') ||
-      nombre.startsWith('PG') ||
-      nombre === 'SUPERADMIN_CLAVE';
+      (mayusculas.startsWith('DATABASE_URL') && mayusculas !== 'DATABASE_URL_APP') ||
+      mayusculas.startsWith('PG') ||
+      mayusculas === 'SUPERADMIN_CLAVE';
     if (sensible) delete env[nombre];
   }
 }

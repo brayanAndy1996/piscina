@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 import { ErrorNegocio } from '../../comun/errores';
+import { fechaDeBaseONula } from '../../comun/fechas';
 import { BaseDatos } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import {
@@ -40,6 +41,7 @@ interface FilaSuperadmin {
   version_token: number;
   intentos_fallidos: number;
   bloqueado_hasta: Date | null;
+  ultimo_acceso: Date | null;
 }
 
 interface FilaSesion {
@@ -97,12 +99,10 @@ export class SesionPlataformaService {
       this.registro.warn({ ip }, 'Inicio de sesión de plataforma rechazado: credenciales inválidas');
       throw credencialesInvalidas();
     }
-    if (
-      estaBloqueado(
-        { intentosFallidos: fila.intentos_fallidos, bloqueadoHasta: fila.bloqueado_hasta },
-        this.reloj.ahora(),
-      )
-    ) {
+    // Falla cerrada (criterio 108): una fecha inválida de la fila no autoriza nada; el filtro responde 500 `ERROR_INTERNO`.
+    const bloqueadoHasta = fechaDeBaseONula(fila.bloqueado_hasta);
+    fechaDeBaseONula(fila.ultimo_acceso);
+    if (estaBloqueado({ intentosFallidos: fila.intentos_fallidos, bloqueadoHasta }, this.reloj.ahora())) {
       this.registro.warn({ superadminId: fila.id, ip }, 'Inicio de sesión de plataforma rechazado: cuenta bloqueada');
       throw cuentaBloqueada();
     }
@@ -169,7 +169,8 @@ export class SesionPlataformaService {
     const filas = await this.baseDatos.comoPlataforma(
       (tx) =>
         tx.cliente.$queryRaw<FilaSuperadmin[]>`
-        SELECT id::text AS id, correo, nombre, clave_hash, version_token, intentos_fallidos, bloqueado_hasta
+        SELECT id::text AS id, correo, nombre, clave_hash, version_token, intentos_fallidos, bloqueado_hasta,
+               ultimo_acceso
           FROM superadmins WHERE correo = ${correo}`,
     );
     return filas[0];
@@ -184,7 +185,7 @@ export class SesionPlataformaService {
       const actual = filas[0];
       if (!actual) return { tipo: 'DESAPARECIDO' };
       const evaluacion = evaluarIntentoFallido(
-        { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: actual.bloqueado_hasta },
+        { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: fechaDeBaseONula(actual.bloqueado_hasta) },
         ahora,
       );
       if (evaluacion.tipo === 'YA_BLOQUEADA') return { tipo: 'BLOQUEADA' };
@@ -218,9 +219,8 @@ export class SesionPlataformaService {
           FROM superadmins WHERE id = ${id}::uuid FOR UPDATE`;
       const actual = filas[0];
       if (!actual) return { tipo: 'DESAPARECIDO' };
-      if (
-        estaBloqueado({ intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: actual.bloqueado_hasta }, ahora)
-      ) {
+      const bloqueadoHasta = fechaDeBaseONula(actual.bloqueado_hasta);
+      if (estaBloqueado({ intentosFallidos: actual.intentos_fallidos, bloqueadoHasta }, ahora)) {
         return { tipo: 'BLOQUEADA' };
       }
       await tx.cliente.$executeRaw`

@@ -43,13 +43,15 @@ export function crearClienteDelDueno(url: string, opciones: OpcionesClienteDelDu
  * Ejecuta `trabajo` en una transacción de plataforma. Igual que `BaseDatos`, la primera sentencia fija **los dos**
  * valores de contexto con `set_config(…, true)` (locales a la transacción): `app.academia_id` vacío y `app.plataforma`
  * en `si`, aunque la conexión traiga otros por la URL (`options`), por el rol o por la base (criterio 90), y la zona horaria
- * en `UTC` (criterio 98: el adaptador de Prisma envía las fechas sin desfase). A continuación cierra todo cursor que haya
+ * en `UTC` (criterio 98: el adaptador de Prisma envía las fechas sin desfase) y los parámetros de formato `DateStyle`,
+ * `IntervalStyle`, `extra_float_digits` y `bytea_output` (criterio 107: el adaptador interpreta el texto que devuelve
+ * PostgreSQL y ese texto depende de la sesión). A continuación cierra todo cursor que haya
  * sobrevivido en la conexión (`CLOSE ALL`, criterio 101). Toda transacción de academia que agregue un comando en el futuro
  * fija también los dos valores.
  */
 export function enPlataforma<T>(cliente: PrismaClient, trabajo: (tx: ClienteTransaccion) => Promise<T>): Promise<T> {
   return cliente.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.academia_id', '', true), set_config('app.plataforma', 'si', true), set_config('TimeZone', 'UTC', true)`;
+    await tx.$queryRaw`SELECT set_config('app.academia_id', '', true), set_config('app.plataforma', 'si', true), set_config('TimeZone', 'UTC', true), set_config('DateStyle', 'ISO, MDY', true), set_config('IntervalStyle', 'postgres', true), set_config('extra_float_digits', '1', true), set_config('bytea_output', 'hex', true)`;
     await cerrarCursores(tx);
     return trabajo(tx);
   });

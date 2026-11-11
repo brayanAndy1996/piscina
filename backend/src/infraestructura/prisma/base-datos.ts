@@ -149,9 +149,10 @@ export class BaseDatos implements OnModuleDestroy {
 
   /**
    * Primera sentencia de toda transacción: fija **los dos** valores de contexto con `set_config(..., true)` (locales a
-   * la transacción) y la zona horaria en `UTC`, sin importar lo que traiga la conexión del pool: valores de sesión de un
-   * módulo, `options` de la URL o valores por defecto del rol o de la base (criterios 72 y 98). Una sola sentencia, para no
-   * gastar un viaje extra. Sin academia, `academiaId` va vacío; sin plataforma, `app.plataforma` va vacío. Después cierra
+   * la transacción), la zona horaria en `UTC` y los parámetros de formato que el adaptador de Prisma interpreta
+   * (`DateStyle`, `IntervalStyle`, `extra_float_digits` y `bytea_output`), sin importar lo que traiga la conexión del pool:
+   * valores de sesión de un módulo, `options` de la URL o valores por defecto del rol, de la base o del servidor (criterios 72,
+   * 98 y 107). Una sola sentencia, para no gastar un viaje extra. Sin academia, `academiaId` va vacío; sin plataforma, `app.plataforma` va vacío. Después cierra
    * todo cursor que haya sobrevivido (`CLOSE ALL`, criterio 101): se ejecuta aparte porque `CLOSE` no se puede combinar con
    * un `SELECT` en el protocolo extendido.
    */
@@ -162,11 +163,16 @@ export class BaseDatos implements OnModuleDestroy {
     const plataforma = contexto.plataforma ? 'si' : '';
     await tx.$queryRaw`
       SELECT set_config('app.plataforma', ${plataforma}, true), set_config('app.academia_id', ${contexto.academiaId}, true),
-             set_config('TimeZone', 'UTC', true)`;
+             set_config('TimeZone', 'UTC', true), set_config('DateStyle', 'ISO, MDY', true),
+             set_config('IntervalStyle', 'postgres', true), set_config('extra_float_digits', '1', true),
+             set_config('bytea_output', 'hex', true)`;
     await cerrarCursores(tx);
   }
 
-  /** Abre la transacción, fija el contexto y entrega a `trabajo` el envoltorio (nunca el cliente de la transacción). */
+  /**
+   * Abre la transacción, fija el contexto y entrega a `trabajo` el envoltorio (nunca el cliente de la transacción). Al
+   * terminar `trabajo`, con éxito o con error, el envoltorio deja de aceptar llamadas (criterio 106).
+   */
   #transaccion<T>(
     opciones: OpcionesTransaccion,
     contexto: { readonly academiaId: string; readonly plataforma: boolean },
@@ -175,7 +181,12 @@ export class BaseDatos implements OnModuleDestroy {
     return this.#prisma.$transaction(
       async (tx) => {
         await this.#fijarContexto(tx, contexto);
-        return trabajo(envolver(tx));
+        const { cliente, terminar } = envolver(tx);
+        try {
+          return await trabajo(cliente);
+        } finally {
+          terminar();
+        }
       },
       {
         isolationLevel: opciones.aislamiento,

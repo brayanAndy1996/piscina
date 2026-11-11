@@ -18,9 +18,17 @@ export interface EstadoBloqueo {
   readonly bloqueadoHasta: Date | null;
 }
 
-/** La cuenta está bloqueada mientras `bloqueadoHasta` sea posterior a `ahora`; cumplido el plazo, ya no. */
+const esFechaValida = (fecha: unknown): fecha is Date => fecha instanceof Date && !Number.isNaN(fecha.getTime());
+
+/**
+ * La cuenta está bloqueada mientras `bloqueadoHasta` sea posterior a `ahora`; cumplido el plazo, ya no. Falla cerrada (criterio
+ * 108): si `ahora` no es una fecha válida, o `bloqueadoHasta` no es nulo y no es una fecha válida, la cuenta está bloqueada.
+ */
 export function estaBloqueado(estado: EstadoBloqueo, ahora: Date): boolean {
-  return estado.bloqueadoHasta !== null && estado.bloqueadoHasta.getTime() > ahora.getTime();
+  if (!esFechaValida(ahora)) return true;
+  if (estado.bloqueadoHasta === null) return false;
+  if (!esFechaValida(estado.bloqueadoHasta)) return true;
+  return estado.bloqueadoHasta.getTime() > ahora.getTime();
 }
 
 export type ResultadoIntentoFallido =

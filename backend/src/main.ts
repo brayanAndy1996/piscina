@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { crearApp } from './crear-app';
-import { cargarEnvRaiz, ErrorEntorno, retirarVariablesSensibles, validarEntorno } from './infraestructura/entorno';
+import { ErrorEntorno, retirarVariablesSensibles, validarEntorno } from './infraestructura/entorno';
+import { cargarEnvRaiz } from './infraestructura/entorno/cargar-env';
 
 async function arrancar(): Promise<void> {
   cargarEnvRaiz();

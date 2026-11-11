@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { AcademiaResumen, CrearAcademia } from '@aquagestion/contratos';
 import { ErrorNegocio } from '../../comun/errores';
+import { fechaDeBase, fechaDeBaseONula } from '../../comun/fechas';
 import { BaseDatos, type TransaccionPlataforma } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { AuditoriaService } from '../auditoria';
@@ -16,14 +17,17 @@ interface FilaAcademia {
   creada_en: Date;
 }
 
+/** Falla cerrado (criterio 108): una fecha leída de la base que no es válida lanza un error interno, no se responde. */
 function aResumen(fila: FilaAcademia): AcademiaResumen {
+  const creadaEn = fechaDeBase(fila.creada_en);
+  const suspendidaEn = fechaDeBaseONula(fila.suspendida_en);
   return {
     id: fila.id,
     nombre: fila.nombre,
     nombreCorto: fila.nombre_corto,
     estado: fila.estado,
-    creadaEn: new Date(fila.creada_en).toISOString(),
-    suspendidaEn: fila.suspendida_en ? new Date(fila.suspendida_en).toISOString() : null,
+    creadaEn: creadaEn.toISOString(),
+    suspendidaEn: suspendidaEn ? suspendidaEn.toISOString() : null,
     motivoSuspension: fila.motivo_suspension,
   };
 }
