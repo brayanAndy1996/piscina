@@ -121,6 +121,13 @@ es haber ejecutado `set_config('app.academia_id', '<id de A>', true)` en ella; "
 filas de al menos dos academias, A y B, en `auditoria` y `configuraciones`, al menos un superadmin y al menos una
 fila en `auditoria_plataforma`.
 
+_Precisión (precisión tras las pruebas de la ronda 1, 11/11/2026):_ en las pruebas, "hay datos" lo prepara
+`crearDatosDeAislamiento()` (utilidades de prueba) sobre una base limpia, y crea **exactamente** 2 academias (A y B),
+1 superadmin, 2 filas de A en `auditoria` y 2 en `configuraciones`, 3 filas de B en `auditoria` y 4 en
+`configuraciones`, y 2 filas en `auditoria_plataforma`. Los conteos de A y B son distintos a propósito, para que una
+unión de las dos se note; las pruebas pueden comparar con esos conteos exactos (por ejemplo, `academias` en contexto
+de plataforma devuelve 2 filas y `superadmins`, 1).
+
 9. Dado el esquema `public`, entonces toda tabla salvo `_prisma_migrations` tiene la seguridad a nivel de fila
    activada **y forzada** (`relrowsecurity` y `relforcerowsecurity`). _(crítico)_
 10. Dado el esquema `public`, entonces las únicas tablas sin columna `academia_id` son `academias`, `superadmins`,
@@ -398,6 +405,10 @@ reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
     el dueño de la base de pruebas puede ejecutar `ALTER DATABASE … SET app.plataforma = 'si'`, se comprueba también
     con ese valor por defecto y se restaura al final; si no puede, esa variante se omite con aviso. El criterio 23
     sigue valiendo tal cual. _(crítico)_
+
+    _Precisión (precisión tras las pruebas de la ronda 1, 11/11/2026):_ la variante con valores por defecto de la base
+    (c) fija **ambos** valores, `ALTER DATABASE … SET app.plataforma = 'si'` y `ALTER DATABASE … SET app.academia_id =
+    '<id de A>'`, como las formas (a) y (b), y restaura los dos al final (`RESET`).
 73. **Regla de lint contra el contexto de sesión** _(ataque ronda 1, F1)_. Dado el código de `backend/src/` (sin
     contar las pruebas: `*.test.ts` y `backend/test/`), entonces `npm run lint` falla si un texto SQL (cadena,
     plantilla o plantilla etiquetada como `` $queryRaw`…` `` o `` Prisma.sql`…` ``; en las plantillas se analiza el
@@ -407,8 +418,19 @@ reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
     - además, fuera de `backend/src/infraestructura/prisma/` y de `backend/src/cli/`: cualquier `set_config('app.`
       (solo `BaseDatos` fija el contexto de la API; el comando del superadmin fija el suyo con `true`).
 
-    La prueba de la regla usa la clase `Linter`, como la del criterio 28, con un ejemplo que falla y otro que pasa por
-    cada caso. _(crítico; prueba de la regla de lint)_
+    La prueba de la regla usa la clase `ESLint` con el `eslint.config.mjs` real, como la del criterio 28
+    (`eslint/regla-prisma.test.mjs`), con un ejemplo que falla y otro que pasa por cada caso. _(crítico; prueba de la
+    regla de lint)_
+
+    _Precisiones (precisión tras las pruebas de la ronda 1, 11/11/2026):_
+    - la regla tolera espacios (incluidos saltos de línea) y mayúsculas en la forma de la llamada y de las sentencias:
+      `set_config( 'app.academia_id' , $1 , FALSE )` o `SET  LOCAL  App.plataforma` cuentan igual que su forma
+      compacta en minúsculas;
+    - el texto dentro de comentarios SQL (`-- …` hasta el fin de la línea y `/* … */`) no cuenta: un texto SQL cuyo
+      único `set_config(…, false)` o `SET ROLE` está comentado pasa la regla; los comentarios de JavaScript tampoco se
+      analizan;
+    - corrige la discrepancia anterior: decía la clase `Linter`, pero la prueba del criterio 28 usa `ESLint` con la
+      configuración real, que es lo que vale para ambas.
 74. **Solo cuerpos JSON** _(ataque ronda 1, F2)_. Dada cualquier ruta de `/api` con método `POST`, `PUT`, `PATCH` o
     `DELETE`, cuando la petición trae cuerpo (`Content-Length` mayor que 0 o `Transfer-Encoding`) y su `Content-Type`
     no es `application/json` (el tipo sin distinguir mayúsculas, con `charset=utf-8` opcional), por ejemplo
@@ -426,6 +448,12 @@ reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
     En las rutas de `/api/plataforma` que exigen sesión, una petición sin sesión válida sigue respondiendo 401
     `NO_AUTENTICADO` antes de mirar el cuerpo (P-7). Se elige 400 y no 415 para conservar el código del criterio 42 y
     un solo formato para los errores de entrada. _(crítico)_
+
+    _Precisión (precisión tras las pruebas de la ronda 1, 11/11/2026):_ el tipo `application/json` se reconoce sin
+    distinguir mayúsculas (`Application/JSON`), con o sin espacios antes y después del `;`
+    (`application/json;charset=utf-8`, `application/json ; charset=utf-8`). El parámetro `charset` es opcional y, si
+    está, solo puede ser `utf-8`, también sin distinguir mayúsculas (`charset=UTF-8`); cualquier otro `charset`
+    (`latin1`, `utf8`, `utf-16`) o cualquier otro tipo es 400 como arriba.
 75. **Toda petición de inicio de sesión cuenta para el límite** _(ataque ronda 1, F3)_. Dadas peticiones
     `POST /api/plataforma/sesion` desde la misma IP en 60 segundos, entonces todas cuentan para el límite del
     criterio 41 sea cual sea su resultado: JSON mal formado (400), cuerpo demasiado grande (413 `CARGA_EXCESIVA`),
@@ -435,6 +463,12 @@ reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
     sean válidas y con la clave correcta, sin contar como intento fallido ni emitir cookie. Prueba: 12 peticiones con
     JSON mal formado (las 10 primeras 400, la 11.ª y la 12.ª 429) y después una válida con la clave correcta: 429.
     Lo mismo mezclando 413, formularios y variantes de la ruta. _(crítico)_
+
+    _Precisiones (precisión tras las pruebas de la ronda 1, 11/11/2026):_
+    - el límite de tamaño del cuerpo JSON es de **100 KB** (102 400 bytes, el valor por defecto actual del lector JSON
+      de Express); un cuerpo mayor responde 413 `CARGA_EXCESIVA` con el formato de error común, sin interpretarlo;
+    - comparten el mismo contador `/api/plataforma/sesion` con barra final (`/api/plataforma/sesion/`), con mayúsculas
+      (`/api/Plataforma/SESION`) y con cadena de consulta (`/api/plataforma/sesion?x=1`), y sus combinaciones.
 76. **Caracteres de control en las entradas** _(ataque ronda 1, O1)_. Dado cualquier texto de una entrada de la API
     (en esta historia: `correo`, `clave`, `nombre`, `nombreCorto` y `motivo`), cuando contiene, después del recorte que
     ya hace su campo, el carácter nulo `\u0000` u otro carácter de control (`\p{Cc}`: U+0000 a U+001F y U+007F a
@@ -459,6 +493,13 @@ reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
     por ejemplo, `"​​​​"`, `"a​b"` (2 visibles), `"Delfines‮"`, `"⁦Delfines⁩"`
     y `"Del\uD800fines"`; se aceptan `"Academia Ñandú"` y `"Club 3"`. El valor se guarda tal como llega, después del
     recorte. _(crítico)_
+
+    _Precisión de los criterios 76 y 77 (precisión tras las pruebas de la ronda 1, 11/11/2026):_ "el recorte" de
+    `nombre`, `motivo` y `correo` (y de `SUPERADMIN_NOMBRE` y `SUPERADMIN_CORREO` en el comando) es exactamente
+    `String.prototype.trim()` de JavaScript, aplicado **antes** de validar longitud, controles y caracteres visibles.
+    Por eso un tabulador o un salto de línea en los extremos se quita y no es error, pero U+0085 (NEL), que `trim()` no
+    quita, sigue en el texto y se rechaza como carácter de control (`\p{Cc}`) aunque esté en un extremo. `clave` no se
+    recorta (criterio 76).
 78. **`NODE_ENV` de una lista cerrada** _(ataque ronda 1, O4)_. Dado `NODE_ENV`, entonces, si no está definida, la API
     y la semilla se comportan fuera de producción, como hoy; si está definida (aunque sea vacía), debe ser exactamente
     `development`, `test` o `production`, sin recorte ni cambio de mayúsculas. Con cualquier otro valor (`Production`,
@@ -482,6 +523,13 @@ reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
     distintos y fuera de la lista se acepta (por ejemplo, 43 caracteres base64url aleatorios). Fuera de producción
     rige solo el criterio 5. La lista de secretos públicos es una constante del backend; una prueba unitaria comprueba
     que contiene los valores actuales de esos tres archivos. _(crítico; prueba unitaria de `validarEntorno`)_
+
+    _Precisión (precisión tras las pruebas de la ronda 1, 11/11/2026):_ esa comprobación es **por efecto**, no por el
+    nombre ni la forma de la constante: la prueba lee el secreto de cada uno de los tres archivos donde aparece
+    (`JWT_SECRETO` de `.env.example`, `JWT_SECRETO_PRUEBAS` de `backend/test/utilidades/aplicacion.ts` y el de respaldo
+    de `e2e/playwright.config.ts`) y comprueba que `validarEntorno`, con `NODE_ENV=production` y ese valor como
+    `JWT_SECRETO` (y el resto del entorno válido), lanza `ErrorEntorno`. Así, si alguno de esos archivos cambia su
+    secreto sin actualizar la lista, la prueba falla.
 
 ## Casos límite
 
@@ -660,7 +708,8 @@ precisión P-7. Normalización de `{nombreCorto}`: precisión P-4.
 `CREDENCIALES_INVALIDAS` (401), `CUENTA_BLOQUEADA` (423), `ACADEMIA_NO_ENCONTRADA` (404), `ACADEMIA_SUSPENDIDA`
 (403), `NOMBRE_CORTO_EN_USO` (409), `ACADEMIA_YA_SUSPENDIDA` (409), `ACADEMIA_YA_ACTIVA` (409). Se mantienen los de
 000 (`SOLICITUD_INVALIDA`, `NO_AUTENTICADO`, `NO_ENCONTRADO`, `DEMASIADAS_SOLICITUDES`, `ERROR_INTERNO`). Las pruebas
-comprueban el código y el estado, no el texto del mensaje.
+comprueban el código y el estado, no el texto del mensaje. `CARGA_EXCESIVA` (413) es el que ya devuelve el filtro de
+errores para un cuerpo de más de 100 KB (criterio 75; precisión tras las pruebas de la ronda 1, 11/11/2026).
 
 ### Comandos de la raíz
 
@@ -701,6 +750,16 @@ export function crearAcademiaDePrueba(datos?: { nombre?: string; nombreCorto?: s
 export function crearSuperadminDePrueba(datos?: { correo?: string; nombre?: string; clave?: string }): Promise<{ id: string; correo: string; nombre: string; clave: string }>;
 export function iniciarSesionPlataforma(app: INestApplication, credenciales: { correo: string; clave: string }): Promise<string>; // valor para la cabecera Cookie
 export function firmarTokenPlataforma(claims: Record<string, unknown>, opciones?: { secreto?: string; algoritmo?: 'HS256' | 'none' }): string;
+
+// datos.ts (precisión tras las pruebas de la ronda 1, 11/11/2026; ver el bloque B)
+export interface DatosDeAislamiento {
+  A: { id: string; nombre: string; nombreCorto: string };
+  B: { id: string; nombre: string; nombreCorto: string };
+  superadmin: { id: string; correo: string; nombre: string; clave: string };
+  filas: { auditoriaA: number; auditoriaB: number; configuracionesA: number; configuracionesB: number }; // 2, 3, 2 y 4
+}
+// Después de limpiarBase(): exactamente 2 academias, 1 superadmin, 2 + 2 filas de A, 3 + 4 de B y 2 en auditoria_plataforma.
+export function crearDatosDeAislamiento(): Promise<DatosDeAislamiento>;
 
 // comandos.ts
 export function ejecutarComando(comando: 'plataforma:superadmin' | 'db:semilla', variables: Record<string, string | undefined>): { estado: number | null; salida: string };

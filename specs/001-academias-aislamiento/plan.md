@@ -231,8 +231,9 @@ las detecta como diferencia; se escriben siempre a mano en el SQL de la migraci�
     sola transacción para todas.
 - **Regla de lint (criterio 28):** `no-restricted-imports` con `allowTypeImports: true` para los patrones del
   cliente generado (`**/generated/prisma/**`) y de `PrismaService`, aplicada a `backend/src/**/*.ts` excepto
-  `backend/src/infraestructura/prisma/**`, `backend/src/cli/**` y las pruebas. Prueba con la clase `Linter`, como la
-  regla del reloj de 000.
+  `backend/src/infraestructura/prisma/**`, `backend/src/cli/**` y las pruebas. Prueba con la clase `ESLint` y el
+  `eslint.config.mjs` real (`eslint/regla-prisma.test.mjs`) _(precisión tras las pruebas de la ronda 1, 11/11/2026:
+  antes decía `Linter`, como la regla del reloj de 000)_.
 - **Regla de lint del SQL de sesión** _(ataque ronda 1, criterio 73)_: regla propia en `eslint/regla-sql-sesion.mjs`
   (con su `regla-sql-sesion.test.mjs`) que visita `Literal` de texto, `TemplateLiteral` y `TaggedTemplateExpression`;
   en las plantillas une los `quasis` con un marcador (por ejemplo `?`) y aplica, sin distinguir mayúsculas,
@@ -245,6 +246,11 @@ las detecta como diferencia; se escriben siempre a mano en el SQL de la migraci�
   Se aplica a `backend/src/**/*.ts` salvo `backend/src/infraestructura/prisma/**` y las pruebas (`**/*.test.ts`); la
   parte de `set_config('app.` excluye además `backend/src/cli/**`. Las expresiones son orientativas; lo que manda son
   los casos del criterio 73.
+
+  _Precisión tras las pruebas de la ronda 1 (11/11/2026):_ antes de aplicar las expresiones se quitan del texto los
+  comentarios SQL (`-- …` hasta el fin de la línea y `/* … */`), y las expresiones admiten espacios y saltos de línea
+  alrededor de paréntesis, comas y comillas (`set_config( 'app.academia_id' , $1 , FALSE )`), siempre sin distinguir
+  mayúsculas. La prueba (`eslint/regla-sql-sesion.test.mjs`) usa la clase `ESLint` con el `eslint.config.mjs` real.
 
 ### 4. Auditoría (`backend/src/modulos/auditoria/`)
 
@@ -313,7 +319,8 @@ La reutiliza 002 para los usuarios de academia.
   límite pasa a un middleware de Express que `instalarProteccionDePrefijos` (o `configurarApp`) instala **antes** del
   lector del cuerpo:
   - reconoce la ruta igual que el router de Express: método `POST` y `req.path` sin distinguir mayúsculas, con o sin
-    barra final (la expresión `RUTA_DE_SESION` ya existe);
+    barra final (la expresión `RUTA_DE_SESION` ya existe); `req.path` no incluye la cadena de consulta, así que
+    `/api/plataforma/sesion?x=1` comparte el contador _(precisión tras las pruebas de la ronda 1, 11/11/2026)_;
   - cuenta por `req.ip` con el almacenamiento de `@nestjs/throttler` (`ThrottlerStorage.increment`, con el mismo
     `LIMITE_INICIO_SESION`: 10 en 60 000 ms) o con un almacén propio en memoria, y responde 429
     `DEMASIADAS_SOLICITUDES` por el filtro (como `responderError`) sin llamar a `siguiente()`;
@@ -324,8 +331,10 @@ La reutiliza 002 para los usuarios de academia.
   3. sesión del prefijo `/api/plataforma` (P-7): sin sesión, 401 antes de mirar el cuerpo;
   4. tipo de contenido (criterio 74): `POST`, `PUT`, `PATCH` o `DELETE` con cuerpo (`Content-Length` > 0 o
      `Transfer-Encoding`) y un tipo distinto de `application/json` (`charset` ausente o `utf-8`) → 400
-     `SOLICITUD_INVALIDA` con `detalles: { errores: [{ campo: '', mensaje }] }`;
-  5. lector JSON (`express.json`, `strict: true`).
+     `SOLICITUD_INVALIDA` con `detalles: { errores: [{ campo: '', mensaje }] }`; el tipo y el `charset` se comparan
+     sin distinguir mayúsculas y con espacios opcionales alrededor del `;` _(precisión tras las pruebas de la ronda 1)_;
+  5. lector JSON (`express.json`, `strict: true`, `limit: '100kb'` explícito, el valor por defecto actual; un cuerpo
+     mayor da 413 `CARGA_EXCESIVA` por el filtro) _(precisión tras las pruebas de la ronda 1, 11/11/2026)_.
 
   Para que Nest no registre su lector `urlencoded`, se crea la aplicación con `bodyParser: false` y se registra solo
   el lector JSON en `configurarApp`, o se registran middlewares con los nombres `jsonParser` y `urlencodedParser`
