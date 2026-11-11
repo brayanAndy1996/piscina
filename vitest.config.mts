@@ -1,3 +1,4 @@
+import react from '@vitejs/plugin-react';
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
@@ -46,6 +47,17 @@ export default defineConfig({
           include: ['test/integracion/**/*.test.mjs'],
           fileParallelism: false,
           testTimeout: 60_000,
+        },
+      },
+      {
+        root: 'frontend',
+        plugins: [react()],
+        test: {
+          name: 'frontend',
+          environment: 'jsdom',
+          env: { TZ: 'UTC' },
+          include: ['src/**/*.test.{ts,tsx}'],
+          setupFiles: ['./src/pruebas-preparacion.ts'],
         },
       },
       {

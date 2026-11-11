@@ -1,0 +1,17 @@
+{
+  "name": "@aquagestion/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pruebas de extremo a extremo con Playwright (Chromium)",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --trace off",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.10"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0"
+  }
+}

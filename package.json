@@ -9,6 +9,8 @@
   "workspaces": [
     "packages/contratos",
     "backend",
+    "frontend",
+    "e2e",
     "scripts"
   ],
   "scripts": {
@@ -16,8 +18,9 @@
     "pretest": "npm run build -w @aquagestion/contratos",
     "test": "vitest run",
     "pretest:unit": "npm run build -w @aquagestion/contratos",
-    "test:unit": "vitest run --project contratos --project eslint --project scripts --project backend-unit",
+    "test:unit": "vitest run --project contratos --project eslint --project scripts --project frontend --project backend-unit",
     "prelint": "npm run build -w @aquagestion/contratos",
+    "e2e": "npm run build -w @aquagestion/contratos && npm run test -w @aquagestion/e2e",
     "lint": "eslint . --max-warnings 0",
     "pretypecheck": "npm run build -w @aquagestion/contratos",
     "typecheck": "npm run typecheck --workspaces --if-present",
