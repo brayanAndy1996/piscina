@@ -226,10 +226,16 @@ Dentro de la clase, la asistencia es **puntual** hasta los 10 minutos de toleran
 
 ## D-17. Cada historia crea sus propias tablas
 
-**Decisión:** el modelo de datos no se crea completo al inicio. La historia `000-esqueleto` crea solo lo transversal
-(usuarios, auditoría y configuración). Cada historia agrega sus tablas y columnas en la sección "Cambios al modelo de
+**Decisión:** el modelo de datos no se crea completo al inicio. La historia `000-esqueleto` no crea ninguna tabla:
+solo deja Prisma conectado con una migración inicial vacía. La auditoría y la configuración por academia las crea
+`001`, y los usuarios, `002`, porque todas llevan `academia_id` (D-23) y necesitan antes la tabla de academias y la
+seguridad a nivel de fila que crea `001`. Cada historia agrega sus tablas y columnas en la sección "Cambios al modelo de
 datos" de su `spec.md`, con su propia migración. El modelo de la sección 9 del documento, ajustado por estas
 decisiones, sirve de referencia.
+
+**Nota (ajuste del 11/11/2026, decisión del responsable):** el texto anterior decía que `000-esqueleto` crearía
+usuarios, auditoría y configuración. Se cambió porque esas tablas son por academia (D-23) y dependen de `001`. El
+resto de la decisión no cambia.
 
 ## D-18. PostgreSQL local con Docker
 
