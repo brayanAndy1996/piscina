@@ -145,27 +145,32 @@ describe('criterio 114: el punto autorizado funciona contra la base', () => {
 
     it("criterio 114: un valor 'x''; SET ROLE postgres; --' se guarda tal cual como parametro y no cambia el rol", async () => {
       const peligro = "x'; SET ROLE postgres; --";
+      // El texto va en `valor` (jsonb) y no en `clave`: la clave tiene el CHECK `configuraciones_clave_formato`
+      // (`^[a-z][a-z0-9_]{0,63}$`) y una clave con comillas o espacios no existe en la base.
+      const CLAVE = 'p114_peligro';
 
       const rol = await enB(async (c, B) => {
         await c.$executeRaw(
-          punto.sql`INSERT INTO configuraciones (academia_id, clave, valor) VALUES (${B}::uuid, ${peligro}, '{}'::jsonb)`,
+          punto.sql`INSERT INTO configuraciones (academia_id, clave, valor) VALUES (${B}::uuid, ${CLAVE}, jsonb_build_object('texto', ${peligro}::text))`,
         );
-        const guardada = await c.$queryRaw(punto.sql`SELECT clave FROM configuraciones WHERE clave = ${peligro}`);
+        const guardada = (await c.$queryRaw(
+          punto.sql`SELECT valor->>'texto' AS texto FROM configuraciones WHERE clave = ${CLAVE} AND valor->>'texto' = ${peligro}`,
+        )) as { texto: string }[];
         const actual = (await c.$queryRaw`SELECT current_user::text AS rol`) as { rol: string }[];
-        return { guardada: claves(guardada), rol: actual[0]?.rol };
+        return { guardada: guardada.map((fila) => fila.texto), rol: actual[0]?.rol };
       });
 
       expect(rol.guardada).toEqual([peligro]);
       expect(rol.rol).toBe('aquagestion_app');
       const { rows } = await ejecutarComo(
         'propietario',
-        'SELECT clave FROM configuraciones WHERE clave = $1',
-        [peligro],
+        "SELECT valor->>'texto' AS texto FROM configuraciones WHERE clave = $1",
+        [CLAVE],
         {
           academiaId: datos.B.id,
         },
       );
-      expect(rows).toEqual([{ clave: peligro }]);
+      expect(rows).toEqual([{ texto: peligro }]);
     });
 
     it('criterio 114: los valores se pasan como parametros: un Date, un Decimal, un bigint, un booleano y null llegan bien', async () => {

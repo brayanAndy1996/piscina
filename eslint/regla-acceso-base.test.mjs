@@ -8,6 +8,12 @@
 // `module` o `node:module`). `import type` e `import { type X }` siguen permitidos. Se prueba con el eslint.config.mjs real
 // y sin informacion de tipos.
 //
+// ALCANCE EN cli/ AJUSTADO POR EL CRITERIO 113 (decision del orquestador tras la ronda 4, 11/11/2026): entre los criterios 85 y
+// 113 manda el 113, mas estricto. En backend/src/cli/, el cliente generado (`generated/prisma/*`) y `@prisma/...` solo se cargan
+// con una importacion estatica; `import(...)`, `require(...)`, `import x = require(...)` y el espacio de nombres usado como
+// valor (`import * as Prisma ...; export const x = Prisma`) FALLAN tambien en cli/. Los casos que antes esperaban que pasaran
+// en cli/ ahora esperan que fallen (helper `esRechazadoFueraDePrisma`). `pg` y `pg-pool` en cli/ no cambian: siguen pasando.
+//
 // ADAPTADO A LA RONDA 3 DEL ATAQUE:
 //  - criterio 96 (reemplaza la frase "Un comentario eslint-disable no evita el fallo" y la precision P-15): con
 //    eslint.config.mjs un comentario eslint-disable vuelve a apagar la regla que nombra; que ningun comentario evita el fallo se
@@ -67,6 +73,28 @@ async function esRechazadoSoloFueraDePrismaYCli(codigo) {
   expect((await erroresDeAcceso(codigo, MODULO)).length, `el lint no rechazo: ${codigo}`).toBeGreaterThan(0);
 }
 
+/**
+ * (alcance ajustado por el criterio 113) Rechazado en un modulo normal Y en cli/, y libre de errores propios solo en
+ * infraestructura/prisma/. Es el caso de las cargas dinamicas, con `require` o con espacio de nombres como valor del cliente
+ * generado y de `@prisma/...`, que en cli/ solo se admiten como importacion estatica.
+ */
+async function esRechazadoFueraDePrisma(codigo) {
+  expect(await erroresDeAcceso(codigo, PRISMA), `prisma/ no debia fallar: ${codigo}`).toEqual([]);
+  expect(
+    (await erroresDeAcceso(codigo, CLI)).length,
+    `(criterio 113) el lint no rechazo en cli/: ${codigo}`,
+  ).toBeGreaterThan(0);
+  expect((await erroresDeAcceso(codigo, MODULO)).length, `el lint no rechazo: ${codigo}`).toBeGreaterThan(0);
+}
+
+/** Lo que el criterio 113 restringe en cli/: el cliente generado y `@prisma/...`. `pg`, `pg-pool` y PrismaService no. */
+const ALCANCE_113 = /generated\/prisma|@prisma\//;
+
+/** Segun el modulo que se carga: cliente generado o `@prisma/...` falla tambien en cli/ (113); el resto, como antes. */
+function esRechazadoSegunElAlcance(codigo) {
+  return ALCANCE_113.test(codigo) ? esRechazadoFueraDePrisma(codigo) : esRechazadoSoloFueraDePrismaYCli(codigo);
+}
+
 /** Modulos prohibidos: [descripcion, texto de la ruta]. */
 const MODULOS_PROHIBIDOS = [
   ['el cliente generado de Prisma', '../generated/prisma/client'],
@@ -91,7 +119,6 @@ describe('criterio 85: import de un valor', () => {
 
   it.each([
     ['import por defecto', "import pg from 'pg';\nexport const x = pg;"],
-    ['import de todo con *', "import * as Prisma from '../generated/prisma/client';\nexport const x = Prisma;"],
     ['import de PrismaClient', "import { PrismaClient } from '@prisma/client';\nexport const x = PrismaClient;"],
     ['import de PrismaPg', "import { PrismaPg } from '@prisma/adapter-pg';\nexport const x = PrismaPg;"],
     [
@@ -101,6 +128,11 @@ describe('criterio 85: import de un valor', () => {
     ['import de Pool de pg', "import { Pool } from 'pg';\nexport const x = Pool;"],
   ])('criterio 85: %s falla el lint', async (_nombre, codigo) => {
     await esRechazadoSoloFueraDePrismaYCli(codigo);
+  });
+
+  // (alcance ajustado por el criterio 113) Antes pasaba en cli/; ahora el espacio de nombres exportado como valor falla alli.
+  it('criterio 85 (alcance ajustado por el criterio 113): import de todo con * exportado como valor falla el lint, tambien en cli/', async () => {
+    await esRechazadoFueraDePrisma("import * as Prisma from '../generated/prisma/client';\nexport const x = Prisma;");
   });
 });
 
@@ -121,9 +153,9 @@ describe('criterio 85: export ... from', () => {
   });
 });
 
-describe('criterio 85: import(...) dinamico', () => {
+describe('criterio 85: import(...) dinamico (alcance en cli/ ajustado por el criterio 113: el cliente generado y @prisma/... fallan tambien alli)', () => {
   it.each(MODULOS_PROHIBIDOS)('criterio 85: import("%s") con cadena falla el lint', async (_nombre, ruta) => {
-    await esRechazadoSoloFueraDePrismaYCli(`export const cargar = () => import('${ruta}');`);
+    await esRechazadoSegunElAlcance(`export const cargar = () => import('${ruta}');`);
   });
 
   it.each([
@@ -137,17 +169,17 @@ describe('criterio 85: import(...) dinamico', () => {
     ['con await', "export async function cargar() {\n  const m = await import('@prisma/client');\n  return m;\n}"],
     ['con comillas dobles', 'export const cargar = () => import("@prisma/adapter-pg");'],
   ])('criterio 85: import() %s falla el lint', async (_nombre, codigo) => {
-    await esRechazadoSoloFueraDePrismaYCli(codigo);
+    await esRechazadoSegunElAlcance(codigo);
   });
 });
 
-describe('criterio 85: require(...) y import x = require(...), y comentarios eslint-disable (criterio 96)', () => {
+describe('criterio 85: require(...) y import x = require(...) (alcance en cli/ ajustado por el criterio 113), y comentarios eslint-disable (criterio 96)', () => {
   it.each(MODULOS_PROHIBIDOS)('criterio 85: require("%s") falla el lint', async (_nombre, ruta) => {
-    await esRechazadoSoloFueraDePrismaYCli(`export const m = require('${ruta}');`);
+    await esRechazadoSegunElAlcance(`export const m = require('${ruta}');`);
   });
 
   it.each(MODULOS_PROHIBIDOS)('criterio 85: import x = require("%s") falla el lint', async (_nombre, ruta) => {
-    await esRechazadoSoloFueraDePrismaYCli(`import algo = require('${ruta}');\nexport const x = algo;`);
+    await esRechazadoSegunElAlcance(`import algo = require('${ruta}');\nexport const x = algo;`);
   });
 
   it.each([
@@ -184,7 +216,8 @@ describe('criterio 85: require(...) y import x = require(...), y comentarios esl
   });
 });
 
-describe('criterio 85: import() y require() con un argumento que no es una cadena literal', () => {
+// (precision del criterio 113, 11/11/2026) Tambien fallan en cli/; solo infraestructura/prisma/ queda libre.
+describe('criterio 85: import() y require() con un argumento que no es una cadena literal (tambien en cli/, criterio 113)', () => {
   it.each([
     ['import(nombre)', 'export const cargar = (nombre) => import(nombre);'],
     ['import con una plantilla con ${}', 'export const cargar = (nombre) => import(`../${nombre}`);'],
@@ -194,11 +227,12 @@ describe('criterio 85: import() y require() con un argumento que no es una caden
     ['require con una plantilla con ${}', 'export const cargar = (nombre) => require(`./${nombre}`);'],
     ["require con una concatenacion 'p' + 'g'", "export const m = require('p' + 'g');"],
   ])('criterio 85: %s falla el lint', async (_nombre, codigo) => {
-    await esRechazadoSoloFueraDePrismaYCli(codigo);
+    await esRechazadoFueraDePrisma(codigo);
   });
 });
 
-describe('criterio 85: createRequire', () => {
+// (precision del criterio 113, 11/11/2026) createRequire y la funcion que devuelve fallan tambien en cli/.
+describe('criterio 85: createRequire (tambien en cli/, criterio 113)', () => {
   it.each([
     [
       "createRequire de 'module'",
@@ -221,7 +255,7 @@ describe('criterio 85: createRequire', () => {
       "import * as modulo from 'node:module';\nexport const requerir = modulo.createRequire(import.meta.url);",
     ],
   ])('criterio 85: %s falla el lint', async (_nombre, codigo) => {
-    await esRechazadoSoloFueraDePrismaYCli(codigo);
+    await esRechazadoFueraDePrisma(codigo);
   });
 });
 
@@ -256,18 +290,21 @@ describe('criterio 85: lo que sigue permitido', () => {
   it.each([
     ['la carpeta de Prisma de la infraestructura', PRISMA],
     ['los comandos', CLI],
-  ])('criterio 85: nada de lo anterior se aplica en %s', async (_nombre, archivo) => {
-    const codigo = [
-      "import pg from 'pg';",
-      "import { PrismaPg } from '@prisma/adapter-pg';",
-      "import { PrismaClient } from '../generated/prisma/client';",
-      "export * from '@prisma/client';",
-      'export const cargar = () => import(`./prisma.service`);',
-      'export const x = [pg, PrismaPg, PrismaClient];',
-    ].join('\n');
+  ])(
+    'criterio 85: nada de lo anterior se aplica en %s (solo importaciones estaticas del cliente y de @prisma/..., criterio 113)',
+    async (_nombre, archivo) => {
+      const codigo = [
+        "import pg from 'pg';",
+        "import { PrismaPg } from '@prisma/adapter-pg';",
+        "import { PrismaClient } from '../generated/prisma/client';",
+        "export * from '@prisma/client';",
+        'export const cargar = () => import(`./prisma.service`);',
+        'export const x = [pg, PrismaPg, PrismaClient];',
+      ].join('\n');
 
-    expect(await erroresDeAcceso(codigo, archivo)).toEqual([]);
-  });
+      expect(await erroresDeAcceso(codigo, archivo)).toEqual([]);
+    },
+  );
 
   it.each([
     ['una prueba dentro de backend/src', 'backend/src/modulos/ejemplo/ejemplo.service.test.ts'],

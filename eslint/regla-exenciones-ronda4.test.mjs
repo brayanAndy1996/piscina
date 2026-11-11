@@ -76,8 +76,9 @@ describe.each(CONFIGURACIONES)('criterios 110, 118 y 119 con %s', (_configuracio
       ['x-test.ts', 'backend/src/modulos/ejemplo/x-test.ts'],
       ['x.test-util.ts', 'backend/src/modulos/ejemplo/x.test-util.ts'],
       ['test.util.ts', 'backend/src/modulos/ejemplo/test.util.ts'],
-      ['x.test.util.ts en cli/', 'backend/src/cli/x.test.util.ts'],
-      ['x.test.d.ts en cli/', 'backend/src/cli/x.test.d.ts'],
+      // (precision del criterio 110, 11/11/2026) `x.test.util.ts` y `x.test.d.ts` en cli/ ya no se prueban aqui: en cli/ `import pg
+      // from 'pg'` esta permitido, asi que ESLint no da error por ellos. Su rechazo es un error del paso protegido (comprobacion
+      // previa de nombres), que se prueba en scripts/test/fuentes-protegidas-nombres-test.test.mjs.
     ])('criterio 110: %s ya no esta exento (import de pg falla el lint)', async (_nombre, archivo) => {
       expect((await errores(obtener(), IMPORTA_PG, archivo)).length, archivo).toBeGreaterThan(0);
     });

@@ -205,6 +205,113 @@ describe.each(CONFIGURACIONES)('criterio 113 con %s', (_configuracion, obtener) 
         'require del cliente generado desde una carpeta distinta',
         "export const g = require('../../generated/prisma/client');",
       ],
+      // Casos que el criterio 85 dejaba pasar en cli/ y que, por la decision del orquestador tras la ronda 4 (11/11/2026), ahora
+      // fallan (el 113 manda). Cada via con cada modulo de la lista de la especificacion.
+      ['import() de @prisma/client', "export const cargar = () => import('@prisma/client');"],
+      [
+        'import() de @prisma/client/runtime/library',
+        "export const cargar = () => import('@prisma/client/runtime/library');",
+      ],
+      ['import() de @prisma/adapter-pg', "export const cargar = () => import('@prisma/adapter-pg');"],
+      ['import() de otro @prisma/...', "export const cargar = () => import('@prisma/adapter-neon');"],
+      ['import() con comillas dobles', 'export const cargar = () => import("../generated/prisma/client");'],
+      ['require de @prisma/client/runtime/library', "export const g = require('@prisma/client/runtime/library');"],
+      ['require de @prisma/adapter-pg', "export const g = require('@prisma/adapter-pg');"],
+      ['require de otro @prisma/...', "export const g = require('@prisma/adapter-neon');"],
+      [
+        'require de @prisma/client precedido de eslint-disable-next-line',
+        "// eslint-disable-next-line @typescript-eslint/no-require-imports\nexport const g = require('@prisma/client');",
+      ],
+      ['import P = require() de @prisma/client', "import P = require('@prisma/client');\nexport const x = P;"],
+      ['import P = require() de @prisma/adapter-pg', "import P = require('@prisma/adapter-pg');\nexport const x = P;"],
+      [
+        'import P = require() de @prisma/client/runtime/library',
+        "import P = require('@prisma/client/runtime/library');\nexport const x = P;",
+      ],
+      [
+        'import * as Prisma exportado como valor (ejemplo de la especificacion)',
+        `import * as Prisma from ${CLIENTE};\nexport const x = Prisma;`,
+      ],
+    ])('criterio 113: %s falla el lint en cli/', async (_nombre, codigo) => {
+      await falla(codigo);
+    });
+  });
+
+  describe('criterio 113 (precision): import(), require() y createRequire que no se pueden seguir fallan en cli/', () => {
+    it.each([
+      ['import(ruta)', 'export const cargar = (ruta) => import(ruta);'],
+      ['import(ruta) con await', 'export const cargar = async (ruta) => (await import(ruta)).default;'],
+      [
+        'import con una plantilla con ${} (ejemplo de la especificacion)',
+        'export const cargar = (x) => import(`../generated/${x}/client`);',
+      ],
+      ['import con una concatenacion', "export const cargar = (x) => import('../' + x);"],
+      ['import con una llamada', 'export const cargar = (x) => import(x.toString());'],
+      [
+        'import con una constante',
+        "const ruta = '../generated/prisma/client';\nexport const cargar = () => import(ruta);",
+      ],
+      ['require(ruta)', 'export const cargar = (ruta) => require(ruta);'],
+      [
+        'require con una concatenacion (ejemplo de la especificacion)',
+        "export const cargar = (x) => require('../' + x);",
+      ],
+      ['require con una plantilla con ${}', 'export const cargar = (x) => require(`./${x}`);'],
+      ['require con una llamada', 'export const cargar = (x) => require(x.toString());'],
+      ['require con una constante', "const ruta = 'pg';\nexport const m = require(ruta);"],
+      [
+        "createRequire importado de 'node:module'",
+        "import { createRequire } from 'node:module';\nexport const requerir = createRequire(import.meta.url);",
+      ],
+      [
+        "createRequire importado de 'module'",
+        "import { createRequire } from 'module';\nexport const requerir = createRequire(import.meta.url);",
+      ],
+      [
+        "createRequire con alias importado de 'module' (ejemplo de la especificacion)",
+        "import { createRequire as c } from 'module';\nexport const requerir = c(import.meta.url);",
+      ],
+      [
+        "createRequire con alias importado de 'node:module'",
+        "import { createRequire as crear } from 'node:module';\nexport const requerir = crear(import.meta.url);",
+      ],
+      [
+        "createRequire de import * as m from 'node:module' (ejemplo de la especificacion)",
+        "import * as m from 'node:module';\nexport const requerir = m.createRequire(import.meta.url);",
+      ],
+      [
+        "createRequire de import * as m from 'module'",
+        "import * as m from 'module';\nexport const requerir = m.createRequire(import.meta.url);",
+      ],
+      [
+        'createRequire de la importacion por defecto',
+        "import modulo from 'node:module';\nexport const requerir = modulo.createRequire(import.meta.url);",
+      ],
+      [
+        'createRequire importado y no usado',
+        "import { createRequire } from 'node:module';\nexport const x = typeof createRequire;",
+      ],
+      ["createRequire reexportado con export { } from 'node:module'", "export { createRequire } from 'node:module';"],
+      [
+        'la funcion que devuelve createRequire llamada de inmediato (ejemplo de la especificacion)',
+        "import { createRequire } from 'node:module';\nexport const g = createRequire(import.meta.url)('../generated/prisma/client');",
+      ],
+      [
+        'la funcion que devuelve createRequire guardada y llamada (ejemplo de la especificacion)',
+        "import { createRequire } from 'node:module';\nconst r = createRequire(__filename);\nexport const pg = r('pg');",
+      ],
+      [
+        'la funcion que devuelve createRequire, con un alias y un espacio de nombres',
+        "import * as m from 'node:module';\nconst r = m.createRequire(import.meta.url);\nexport const g = r('@prisma/client');",
+      ],
+      [
+        'createRequire obtenido con require()',
+        "const { createRequire } = require('node:module');\nexport const r = createRequire(__filename);",
+      ],
+      [
+        'createRequire obtenido con import() dinamico',
+        "export const r = async () => (await import('node:module')).createRequire(__filename);",
+      ],
     ])('criterio 113: %s falla el lint en cli/', async (_nombre, codigo) => {
       await falla(codigo);
     });
@@ -280,6 +387,30 @@ describe.each(CONFIGURACIONES)('criterio 113 con %s', (_configuracion, obtener) 
       ],
       ['new Prisma.Decimal', `${IMPORTA_PRISMA}\nexport const x = new Prisma.Decimal('10.50');`],
       ['Prisma.ModelName con punto', `${IMPORTA_PRISMA}\nexport const x = Prisma.ModelName;`],
+      // Precision del criterio 113 (11/11/2026): lo que sigue pasando con las cargas que no se pueden seguir.
+      ['import pg from pg (ejemplo de la especificacion)', "import pg from 'pg';\nexport const x = pg;"],
+      ['import { Pool } from pg', "import { Pool } from 'pg';\nexport const x = Pool;"],
+      ['import pg-pool', "import Pool from 'pg-pool';\nexport const x = Pool;"],
+      [
+        'import * as G con G.Prisma.sql como etiqueta (ejemplo de la especificacion)',
+        `${IMPORTA_ESPACIO}\nexport const f = (cliente) => cliente.$queryRaw(G.Prisma.sql\`SELECT 1\`);`,
+      ],
+      ['import * as G con G.PrismaClient', `${IMPORTA_ESPACIO}\nexport const x = G.PrismaClient;`],
+      [
+        'import por defecto de pg junto con el cliente',
+        `import pg from 'pg';\nimport { PrismaClient } from ${CLIENTE};\nexport const x = [pg, PrismaClient];`,
+      ],
+      ['import() con una cadena literal de un modulo propio', "export const cargar = () => import('./otro-modulo');"],
+      [
+        'import() con una plantilla sin ${} de un modulo propio',
+        'export const cargar = () => import(`./otro-modulo`);',
+      ],
+      ['require() con una cadena literal de un modulo propio', "export const m = require('./otro-modulo');"],
+      [
+        'import de otro nombre de node:module',
+        "import { builtinModules } from 'node:module';\nexport const x = builtinModules;",
+      ],
+      ['import de node:fs', "import { readFileSync } from 'node:fs';\nexport const x = readFileSync;"],
       [
         'import de un enum del cliente generado',
         `import { EstadoAcademia } from '../generated/prisma/enums';\nexport const x = EstadoAcademia;`,

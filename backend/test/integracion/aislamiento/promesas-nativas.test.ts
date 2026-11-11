@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { ejecutarComo, limpiarBase, urlAppPruebas } from '../../utilidades/base-datos';
 import { crearDatosDeAislamiento, type DatosDeAislamiento } from '../../utilidades/datos';
-import { intentar, obtenerBaseDatosRonda3, urlConOpciones, type BaseDatosRonda3 } from '../../utilidades/ronda3';
+import {
+  intentar,
+  obtenerBaseDatosRonda3,
+  textoDelError,
+  urlConOpciones,
+  type BaseDatosRonda3,
+} from '../../utilidades/ronda3';
 import { problemasDePromesa } from '../../utilidades/ronda4';
 
 // Criterio 106 (ataque ronda 4, F1; complementa los criterios 21, 72 y 100): el envoltorio solo entrega promesas nativas que
@@ -148,8 +154,9 @@ describe('criterio 106: el envoltorio solo entrega promesas nativas que corren d
                 update: { valor: { otra: true } },
               }),
           ],
-          ['configuracion.delete', () => configuracion['delete']?.({ where: clave('p106_create') })],
-          ['configuracion.deleteMany', () => configuracion['deleteMany']?.({ where: { clave: 'p106_many' } })],
+          // `delete` y `deleteMany` no estan aqui: aquagestion_app no tiene DELETE sobre `configuraciones` (criterios 19 y 102),
+          // asi que fallarian con 42501 y abortarian la transaccion de todas las demas. Se prueban aparte, cada una en su propia
+          // transaccion (siguiente prueba).
           ['academia.findMany', () => academia['findMany']?.()],
           ['academia.findUnique', () => academia['findUnique']?.({ where: { id: B } })],
         ];
@@ -168,6 +175,51 @@ describe('criterio 106: el envoltorio solo entrega promesas nativas que corren d
 
       expect(fallas).toEqual([]);
     });
+
+    it.each([
+      ['configuracion.delete', 'delete'],
+      ['configuracion.deleteMany', 'deleteMany'],
+    ])(
+      'criterio 106: %s existe y devuelve una Promise nativa; la base la rechaza con 42501 (sin DELETE, criterios 19 y 102) en su propia transaccion',
+      async (_nombre, operacion) => {
+        const B = datos.B.id;
+        const argumentos =
+          operacion === 'delete'
+            ? { where: { academiaId_clave: { academiaId: B, clave: 'clave_b_1' } } }
+            : { where: { clave: 'clave_b_1' } };
+        let tipo: string | undefined;
+        let problemas: string[] = [];
+        let rechazo: unknown;
+
+        // Siempre se lanza al final: aunque la base dejara borrar, la transaccion se revierte y no arrastra a otras pruebas.
+        const final = await intentar(() =>
+          baseDatos.conAcademia(B, async (tx) => {
+            const configuracion = cliente(tx)['configuracion'] as Record<string, Operacion>;
+            tipo = typeof configuracion[operacion];
+            if (tipo !== 'function') return;
+            const promesa = configuracion[operacion]?.(argumentos);
+            problemas = problemasDePromesa(promesa);
+            rechazo = await intentar(async () => {
+              await (promesa as Promise<unknown>);
+            });
+            throw new Error('fin de la prueba: revertir');
+          }),
+        );
+
+        expect(tipo, `configuracion.${operacion} no existe en el envoltorio`).toBe('function');
+        expect(problemas).toEqual([]);
+        expect(rechazo, `${operacion} debia rechazar: aquagestion_app no tiene DELETE`).toBeInstanceOf(Error);
+        expect(textoDelError(rechazo)).toMatch(/42501|permission denied/i);
+        expect((final as Error).message).toBe('fin de la prueba: revertir');
+        const { rows } = await ejecutarComo(
+          'propietario',
+          "SELECT count(*)::int AS n FROM configuraciones WHERE clave = 'clave_b_1' AND academia_id = $1::uuid",
+          [B],
+          { academiaId: B },
+        );
+        expect(rows).toEqual([{ n: 1 }]);
+      },
+    );
 
     it('criterio 106: en comoPlataforma, $queryRaw, $executeRaw y las operaciones de lectura de los delegados devuelven una Promise nativa', async () => {
       const fallas: string[] = [];
