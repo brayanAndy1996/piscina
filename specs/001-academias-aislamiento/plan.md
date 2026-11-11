@@ -243,7 +243,7 @@ La reutiliza 002 para los usuarios de academia.
   6. Registra en el log (sin la clave) el resultado: `info` para el éxito, `warn` para fallos y bloqueos.
 - **La lógica del bloqueo como función pura** en `modulos/academias/dominio/bloqueo.ts`
   (`evaluarIntentoFallido(estado, ahora, reglas)`), con pruebas unitarias; reglas en una constante
-  `REGLAS_BLOQUEO_SUPERADMIN = { maximoIntentos: 5, minutosBloqueo: 15 }` (valores provisionales, pregunta 3).
+  `REGLAS_BLOQUEO_SUPERADMIN = { maximoIntentos: 5, minutosBloqueo: 15 }` (valores aprobados por el responsable, DR-3 de `spec.md`).
 - **Guard `SesionPlataformaGuard`:** lee solo la cookie (ignora `Authorization`), verifica el token, exige
   `tipo === 'plataforma'`, carga el superadmin en `comoPlataforma` y compara `ver` con `version_token`. Deja el
   superadmin en la petición (decorador `@SuperadminActual()`). Se aplica a todo el controlador de academias de la

@@ -11,7 +11,7 @@
 - **Ruta crítica:** sí, casi toda. Es el primer punto de la lista de `CLAUDE.md` (aislamiento entre academias) y toca
   además permisos del Superadmin (D-29) y autenticación. No son críticos: formato del nombre corto, semilla, `.env`,
   guía, formato de errores y web de la plataforma.
-- **Estado:** borrador
+- **Estado:** aprobada por el responsable (11/11/2026)
 
 ## Objetivo
 
@@ -311,8 +311,8 @@ fila en `auditoria_plataforma`.
 59. Dado un nombre corto que no existe o con formato inválido (por ejemplo `..`, `%25`, `a`, 31 caracteres, `dеlfines`
     con una "е" cirílica, `delfines%00`), entonces responde 404 `ACADEMIA_NO_ENCONTRADA`, con el mismo cuerpo en todos
     los casos. _(crítico)_
-60. Dada una academia suspendida, `GET /api/a/{nombreCorto}` responde 403 `ACADEMIA_SUSPENDIDA` (valor provisional,
-    pregunta abierta 4). _(crítico)_
+60. Dada una academia suspendida, `GET /api/a/{nombreCorto}` responde 403 `ACADEMIA_SUSPENDIDA` (decisión del
+    responsable DR-4). _(crítico)_
 
 ### H. Semilla, configuración local, errores y documentación
 
@@ -397,8 +397,8 @@ fila en `auditoria_plataforma`.
   doble capa: la API y RLS.
 - **D-27:** cada academia tiene un nombre corto único que va en la dirección de sus páginas públicas (`/a/{nombre}`).
 - **D-29:** el Superadmin crea academias y las suspende, y no ve sus datos internos (alumnos, pagos, caja). Sin cobro
-  de suscripción en el MVP. Cómo inicia sesión lo define esta especificación (criterios 33 a 47, sujeto a la
-  pregunta 2).
+  de suscripción en el MVP. Cómo inicia sesión lo define esta especificación (criterios 33 a 47, decisión del
+  responsable DR-2).
 - **D-17:** la auditoría y la configuración por academia se crean aquí; los usuarios, en 002.
 - **D-07:** la configuración es una tabla clave/valor; el bloqueo usa intentos fallidos, `bloqueado_hasta` y
   `ultimo_acceso` (aquí aplicados al Superadmin).
@@ -503,7 +503,7 @@ Bloqueo: 5 fallos seguidos, 15 minutos.
 ### Esquemas compartidos (`packages/contratos/src/`)
 
 - `academias.ts`:
-  - `PALABRAS_RESERVADAS` (provisional, pregunta 5): `a`, `admin`, `administrador`, `api`, `app`, `aquagestion`,
+  - `PALABRAS_RESERVADAS` (DR-5): `a`, `admin`, `administrador`, `api`, `app`, `aquagestion`,
     `assets`, `ayuda`, `ingresar`, `inscripcion`, `login`, `logout`, `plataforma`, `public`, `publico`, `root`,
     `salir`, `sistema`, `solicitud`, `soporte`, `static`, `superadmin`, `www`.
   - `nombreCortoSchema`: recorta, pasa a minúsculas y valida (criterio 49).
@@ -608,7 +608,7 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 - **`auditoria_plataforma`** (plataforma): las mismas columnas sin `academia_id`; índice `(fecha_hora desc)`.
 - **`configuraciones`** (por academia): `academia_id uuid not null` → `academias(id)`; `clave text not null` con
   `CHECK` `^[a-z][a-z0-9_]{0,63}$`; `valor jsonb not null`; `actualizado_en`. PK `(academia_id, clave)`. Sin claves
-  en esta historia (pregunta 8).
+  en esta historia (DR-8).
 - **Funciones** `app_academia_actual()`, `app_es_plataforma()` y `resolver_academia(text)`.
 - **RLS** activada y forzada en las cinco tablas, con estas políticas:
   - `academias`: leer si es plataforma o `id = app_academia_actual()`; crear y modificar solo en plataforma.
@@ -619,12 +619,12 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 ## Fuera de alcance
 
 - **Usuarios de academia, su inicio de sesión (`/a/{academia}/ingresar`), roles y matriz de permisos:** 002.
-- **Primer administrador de cada academia:** 002 (propuesta, pregunta 1).
+- **Primer administrador de cada academia:** 002 (DR-1).
 - **Claves y valores de configuración y su pantalla:** 003.
 - **Leer la auditoría desde una pantalla:** Fase 3 ("auditoría avanzada"); en 001 solo se escribe.
 - **Cambiar la contraseña del superadmin desde la web, recuperar la contraseña por correo y más de un rol de
   plataforma:** el comando del criterio 34 cubre el restablecimiento.
-- **Borrar academias o cambiar su nombre corto:** pregunta 10 y pregunta 5.
+- **Borrar academias o cambiar su nombre corto:** DR-10 y DR-5.
 - **Cobro de suscripción a las academias:** fuera del MVP (D-29).
 - **Limitador global de peticiones y `trust proxy`:** se deciden con el hosting (D-21) y con las entradas públicas
   de 005; aquí solo se limita el inicio de sesión.
@@ -647,16 +647,16 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 - **000, `crearAppDePruebas`:** la opción `databaseUrl` se reemplaza por `variables` (contrato de utilidades).
 - **002:** usa el aislamiento de 001 para `usuarios` (con `academia_id`, RLS y las convenciones de los criterios 10 a
   12); reutiliza argon2, el JWT con versión, la cookie, el bloqueo, el limitador y `resolverAcademia`; obtiene la
-  academia de la sesión y llama a `conAcademia`, que rechaza academias suspendidas. Si se acepta la pregunta 1, crea
-  también el primer administrador. Si el Superadmin necesita operar sobre una academia suspendida, 002 agrega esa
+  academia de la sesión y llama a `conAcademia`, que rechaza academias suspendidas. Crea también el primer administrador
+  (DR-1). Si el Superadmin necesita operar sobre una academia suspendida, 002 agrega esa
   opción a `conAcademia`.
 - **003:** define las claves de `configuraciones`; si la identidad visible de la academia (D-22) sale de la
   configuración, `GET /api/a/{nombreCorto}` puede tomar el nombre de ahí.
 - **Siguientes historias:** toda tabla nueva lleva `academia_id`, RLS forzada, políticas con
   `app_academia_actual()`, `UNIQUE (academia_id, id)`, llaves foráneas compuestas y los privilegios mínimos para
   `aquagestion_app`, concedidos en su migración (criterios 9 a 12, que fallan si no).
-- **`specs/backlog.md`:** si se aprueba la pregunta 1, la nota de 001 pierde "y su primer administrador" y la de 002
-  lo gana (lo hace el documentador).
+- **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
+  documentador, T24).
 
 ## Riesgos aceptados
 
@@ -667,7 +667,7 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   corto), el revisor y el adversarial.
 - **Saber si existe un correo de superadmin:** el 423 solo aparece en un correo que existe. Se acepta porque exige
   adivinar el correo y está limitado por IP; el Superadmin necesita saber que está bloqueado.
-- **Revelar que una academia está suspendida** en su página pública (403 en lugar de 404): pregunta 4.
+- **Revelar que una academia está suspendida** en su página pública (403 en lugar de 404): aceptado por el responsable (DR-4).
 - **Límite por IP detrás de un proxy:** sin `trust proxy`, todas las peticiones pueden parecer de la misma IP. Se
   decide con el hosting (D-21).
 - **Clave de ejemplo del superadmin en `.env.example`:** es pública y solo sirve en desarrollo; la semilla no corre
@@ -676,6 +676,43 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   (RNF-03: HTTPS obligatorio).
 
 ## Decisiones
+
+### Decisiones del responsable (11/11/2026)
+
+Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta. Se citan como DR-N.
+
+- **DR-1. Primer administrador de cada academia:** lo crea 002, junto con los usuarios y su inicio de sesión; 001 no
+  lo crea. El backlog se ajusta (T24).
+- **DR-2. Ingreso del Superadmin (D-29):** con correo y contraseña en `/plataforma/ingresar`, una página aparte de
+  las academias. La cuenta se crea, y la contraseña olvidada se restablece, con `npm run plataforma:superadmin`, que
+  solo puede ejecutar quien administra el servidor; no hay registro por la web. Como él elige su contraseña, no se le
+  obliga a cambiarla en el primer ingreso (criterios 33 a 47).
+- **DR-3. Valores de seguridad del Superadmin:** contraseña de 12 caracteres como mínimo; 5 intentos fallidos
+  seguidos lo bloquean 15 minutos; la sesión dura 8 horas; como máximo 10 intentos por minuto desde una misma IP.
+  Los de los usuarios de las academias se configuran en 002 y 003 (D-07) (criterios 35, 36, 39 y 41).
+- **DR-4. Suspender una academia:** se corta todo: sus usuarios no pueden entrar y sus sesiones dejan de valer (desde
+  002), sus páginas públicas muestran "Academia no disponible por el momento" y las tareas automáticas la saltan; los
+  datos se conservan; el Superadmin puede reactivarla; el motivo es obligatorio y queda en auditoría. La página
+  pública dice "no disponible" (403, revela que existe) y no "no existe" (criterios 25, 52 a 56 y 60).
+- **DR-5. Nombre corto:** de 3 a 30 caracteres; solo letras minúsculas sin tildes ni ñ, números y guiones; empieza con
+  letra; no puede ser una palabra reservada (lista en "Contrato"); se guarda en minúsculas aunque se escriba en
+  mayúsculas; **no se puede cambiar** después de crear la academia, porque rompería los enlaces ya enviados
+  (criterios 2, 49 y 50).
+- **DR-6. Datos al crear una academia:** solo el nombre y el nombre corto. Teléfono, logo y colores van en la
+  configuración (003, D-22); el RUC, con la facturación (D-09) (criterio 48).
+- **DR-7. Auditoría en 001:** se auditan la creación, suspensión y reactivación de academias, y el alta y
+  restablecimiento del Superadmin; los inicios de sesión van solo al log técnico. En 001 nadie ve la auditoría por
+  pantalla; más adelante el administrador de cada academia verá la de su academia (Fase 3) y el Superadmin, la de la
+  plataforma (criterio 32).
+- **DR-8. Configuración en 001:** ninguna clave; 001 solo crea la tabla y 003 define las claves y sus valores por
+  defecto (tolerancia de 10 minutos, 5 días "por vencer", días de prioridad, intentos y bloqueo).
+- **DR-9. Datos de ejemplo:** dos academias inventadas, "Academia de Natación Los Delfines" (`delfines`) y "Club de
+  Natación Tiburones" (`tiburones`), y un Superadmin de desarrollo con una contraseña de ejemplo pública que solo
+  funciona en desarrollo y en la nube (criterios 61 y 62).
+- **DR-10. Eliminar academias:** no en el MVP; solo suspenderlas. Borrarlas implicaría decidir qué pasa con pagos,
+  comprobantes y datos personales (Ley 29733) (criterios 19 y 57).
+
+### Decisiones de diseño
 
 - **Un rol de PostgreSQL propio para la API (`aquagestion_app`), sin privilegios, más `FORCE ROW LEVEL SECURITY`.**
   Alternativas descartadas: `SET ROLE` en cada transacción (si se olvida, la consulta corre como dueño y ve todo:
@@ -699,38 +736,5 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 
 ## Preguntas abiertas
 
-1. **¿Quién crea al primer administrador de cada academia, y cuándo?** El backlog lo pone en 001, pero la tabla de
-   usuarios es de 002 (D-17) y ese administrador no podría entrar hasta 002. **Propuesta:** pasarlo a 002, junto con
-   los usuarios y su inicio de sesión. **Provisional:** 001 no lo crea.
-2. **¿Cómo entra el Superadmin? (D-29 lo deja a esta especificación).** **Propuesta:** con correo y contraseña en
-   `/plataforma/ingresar`, una página aparte de las academias. La cuenta se crea, y la contraseña olvidada se
-   restablece, con un comando que solo puede ejecutar quien administra el servidor (`npm run
-   plataforma:superadmin`); no hay registro por la web. Como él elige su contraseña, no se le obliga a cambiarla en
-   el primer ingreso. **Provisional:** así (criterios 33 a 47).
-3. **Valores de seguridad del Superadmin.** **Propuesta:** contraseña de 12 caracteres como mínimo; 5 intentos
-   fallidos seguidos lo bloquean 15 minutos; la sesión dura 8 horas; como máximo 10 intentos por minuto desde una
-   misma conexión. Los de los usuarios de las academias se configuran en 002 y 003 (D-07). **Provisional:** esos
-   valores.
-4. **¿Qué significa suspender una academia?** **Propuesta:** se corta todo: sus usuarios no pueden entrar y sus
-   sesiones dejan de valer (desde 002), sus páginas públicas muestran "Academia no disponible por el momento" y las
-   tareas automáticas la saltan; los datos se conservan; el Superadmin puede reactivarla; el motivo es obligatorio y
-   queda en auditoría. La página pública dice "no disponible" (revela que existe) y no "no existe".
-   **Provisional:** así (criterios 25, 52 a 56 y 60).
-5. **Reglas del nombre corto.** **Propuesta:** de 3 a 30 caracteres; solo letras minúsculas sin tildes ni ñ, números y
-   guiones; empieza con letra; no puede ser una palabra reservada (`admin`, `api`, `plataforma`, `ingresar`,
-   `solicitud`… lista en "Contrato"); se escribe en minúsculas aunque se tipee en mayúsculas; **no se puede cambiar**
-   después de crear la academia, porque rompería los enlaces ya enviados. **Provisional:** así.
-6. **¿Qué datos se piden al crear una academia?** **Propuesta:** solo el nombre y el nombre corto. Teléfono, logo y
-   colores van en la configuración (003, D-22); el RUC, con la facturación (D-09). **Provisional:** así.
-7. **¿Qué se audita en 001 y quién lo ve?** **Propuesta:** se auditan la creación, suspensión y reactivación de
-   academias, y el alta y restablecimiento del Superadmin; los inicios de sesión van solo al log técnico. En 001 nadie
-   ve la auditoría por pantalla; más adelante el administrador de cada academia verá la de su academia (Fase 3) y el
-   Superadmin, la de la plataforma. **Provisional:** así.
-8. **¿Qué valores de configuración existen en 001?** **Propuesta:** ninguno; 001 solo crea la tabla y 003 define las
-   claves y sus valores por defecto (tolerancia de 10 minutos, 5 días "por vencer", días de prioridad, intentos y
-   bloqueo). **Provisional:** así.
-9. **Datos de ejemplo.** **Propuesta:** dos academias inventadas, "Academia de Natación Los Delfines" (`delfines`) y
-   "Club de Natación Tiburones" (`tiburones`), y un Superadmin de desarrollo con una contraseña de ejemplo pública
-   que solo funciona en tu PC y en la nube. **Provisional:** así.
-10. **¿Se puede eliminar una academia?** **Propuesta:** no en el MVP; solo suspenderla. Borrarla implicaría decidir
-    qué pasa con pagos, comprobantes y datos personales (Ley 29733). **Provisional:** no se puede.
+Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
+en "Decisiones").

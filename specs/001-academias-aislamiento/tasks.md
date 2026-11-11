@@ -4,8 +4,8 @@ Cada tarea indica su rol y los criterios de aceptación de [`spec.md`](spec.md) 
 las pruebas protegidas se escriben y se confirman en rojo antes de implementar (T1 a T3), y el ataque adversarial
 corre después de la implementación (T21).
 
-Antes de empezar: el responsable aprueba la especificación y responde las preguntas abiertas. Si alguna respuesta
-cambia un criterio, el especificador lo ajusta antes de T1.
+Especificación aprobada por el responsable el 11/11/2026, con las propuestas de todas las preguntas abiertas
+(DR-1 a DR-10 en "Decisiones" de `spec.md`); ningún criterio cambió. Se puede empezar por T1.
 
 ## Pruebas protegidas (en rojo)
 
@@ -83,8 +83,8 @@ cambia un criterio, el especificador lo ajusta antes de T1.
 
 ## Cierre
 
-- [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67), `README.md` (qué está construido) y, si el
-      responsable aprobó la pregunta 1, las notas de 001 y 002 en `specs/backlog.md`
+- [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67), `README.md` (qué está construido) y las notas
+      de 001 y 002 en `specs/backlog.md`: el primer administrador de cada academia pasa de 001 a 002 (DR-1)
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)
