@@ -81,7 +81,7 @@ export class BaseDatos {
     const id = academiaId.toLowerCase();
     await this.verificarRol();
     return this.transaccion(opciones, async (cliente) => {
-      await cliente.$queryRaw`SELECT set_config('app.academia_id', ${id}, true)`;
+      await this.fijarContexto(cliente, { academiaId: id, plataforma: false });
       // RLS deja ver solo la fila de la propia academia.
       const filas = await cliente.$queryRaw<{ estado: string }[]>`
         SELECT estado::text AS estado FROM academias WHERE id = ${id}::uuid`;
@@ -103,7 +103,7 @@ export class BaseDatos {
   ): Promise<T> {
     await this.verificarRol();
     return this.transaccion(opciones, async (cliente) => {
-      await cliente.$queryRaw`SELECT set_config('app.plataforma', 'si', true)`;
+      await this.fijarContexto(cliente, { academiaId: '', plataforma: true });
       return trabajo({ cliente });
     });
   }
@@ -115,9 +115,12 @@ export class BaseDatos {
   async resolverAcademia(nombreCorto: string): Promise<AcademiaResuelta | null> {
     await this.verificarRol();
     const filas = await this.prisma.$transaction(
-      (cliente) =>
-        cliente.$queryRaw<FilaAcademia[]>`
-          SELECT id::text AS id, nombre, nombre_corto, estado FROM resolver_academia(${nombreCorto})`,
+      async (cliente) => {
+        // Sin contexto: los dos valores en vacío, aunque la conexión traiga otros (criterio 72).
+        await this.fijarContexto(cliente, { academiaId: '', plataforma: false });
+        return cliente.$queryRaw<FilaAcademia[]>`
+          SELECT id::text AS id, nombre, nombre_corto, estado FROM resolver_academia(${nombreCorto})`;
+      },
       { maxWait: ESPERA_CONEXION_MS, timeout: DURACION_MAXIMA_MS },
     );
     const fila = filas[0];
@@ -128,6 +131,21 @@ export class BaseDatos {
   /** `SELECT 1`, para la salud de la API. No comprueba el rol: `GET /api/salud` conserva su contrato. */
   async comprobarConexion(): Promise<void> {
     await this.prisma.$queryRaw`SELECT 1`;
+  }
+
+  /**
+   * Primera sentencia de toda transacción: fija **los dos** valores de contexto con `set_config(..., true)` (locales a
+   * la transacción), sin importar lo que traiga la conexión del pool: valores de sesión de un módulo, `options` de la
+   * URL o valores por defecto del rol o de la base (criterio 72). Una sola sentencia, para no gastar un viaje extra.
+   * Sin academia, `academiaId` va vacío; sin plataforma, `app.plataforma` va vacío.
+   */
+  private async fijarContexto(
+    cliente: ClienteTransaccion,
+    contexto: { readonly academiaId: string; readonly plataforma: boolean },
+  ): Promise<void> {
+    const plataforma = contexto.plataforma ? 'si' : '';
+    await cliente.$queryRaw`
+      SELECT set_config('app.plataforma', ${plataforma}, true), set_config('app.academia_id', ${contexto.academiaId}, true)`;
   }
 
   private transaccion<T>(

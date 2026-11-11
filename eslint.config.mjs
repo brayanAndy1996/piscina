@@ -4,6 +4,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import { configuracionPrisma } from './eslint/regla-prisma.mjs';
 import { configuracionReloj } from './eslint/regla-reloj.mjs';
+import { configuracionSqlSesion } from './eslint/regla-sql-sesion.mjs';
 
 export default tseslint.config(
   {
@@ -77,4 +78,7 @@ export default tseslint.config(
 
   // Regla de importaciones de Prisma: solo BaseDatos llega a la base.
   configuracionPrisma,
+
+  // Regla del SQL de sesión: solo BaseDatos cambia el contexto de PostgreSQL (criterio 73).
+  ...configuracionSqlSesion,
 );
