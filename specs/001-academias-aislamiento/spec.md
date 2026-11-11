@@ -91,6 +91,8 @@ crítica), 61 a 67 (semilla, `.env`, CI, guía, errores) y 68 a 71 (web y E2E).
    - si el usuario de `DATABASE_URL_APP` no es `aquagestion_app`, o es el mismo de `DATABASE_URL`, termina con
      código 1.
 
+   Quién crea el rol en cada entorno (nube, Docker y CI): precisión P-11 del contrato.
+
    _(prueba obligatoria donde el usuario de la base pueda crear roles: CI y Docker; en la nube se omite con aviso)_
 7. Dado un servidor sin el rol `aquagestion_app`, cuando se aplican las migraciones de esta historia, entonces fallan
    con un mensaje que indica ejecutar `npm run db:crear` (orientativo: "Falta el rol aquagestion_app: ejecuta npm run
@@ -419,7 +421,7 @@ fila en `auditoria_plataforma`.
 - `app_academia_actual() returns uuid`: el valor de `app.academia_id`, o `NULL` si falta o está vacío.
 - `app_es_plataforma() returns boolean`: `true` solo si `app.plataforma` es exactamente `si`.
 - `resolver_academia(p_nombre_corto text) returns table (id uuid, nombre text, nombre_corto text, estado text)`:
-  criterio 20.
+  criterio 20. Cómo se implementa: precisión P-10.
 
 ### Roles de PostgreSQL y variables de entorno
 
@@ -433,7 +435,8 @@ fila en `auditoria_plataforma`.
 | `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE`, `SUPERADMIN_CLAVE` | `plataforma:superadmin` y la semilla | — |
 
 En las pruebas, la URL de la app para la base de pruebas se arma con el usuario y la contraseña de
-`DATABASE_URL_APP` y el host, el puerto y la base de `DATABASE_URL_PRUEBAS`.
+`DATABASE_URL_APP` y el host, el puerto y la base de `DATABASE_URL_PRUEBAS`. Nombres exactos de los campos de
+`Entorno` y quién crea el rol `aquagestion_app` en cada entorno: precisiones P-1 y P-11.
 
 ### Servicios del backend (contrato para las pruebas)
 
@@ -482,8 +485,8 @@ class AuditoriaService {
 
 ### Endpoints
 
-Todas las respuestas de `/api/plataforma/*` y `/api/a/*` llevan `Cache-Control: no-store`. Los cuerpos de entrada son
-JSON y sus esquemas son estrictos (un campo de más es 400).
+Todas las respuestas de `/api/plataforma/*` y `/api/a/*` llevan `Cache-Control: no-store`, también las de error
+(precisión P-8). Los cuerpos de entrada son JSON y sus esquemas son estrictos (un campo de más es 400).
 
 | Método y ruta | Sesión | Entrada | Éxito | Errores |
 | --- | --- | --- | --- | --- |
@@ -497,8 +500,9 @@ JSON y sus esquemas son estrictos (un campo de más es 400).
 | `GET /api/a/{nombreCorto}` | no | — | 200 `AcademiaPublica` | 404 `ACADEMIA_NO_ENCONTRADA`, 403 `ACADEMIA_SUSPENDIDA` |
 
 Cookie de sesión: `aq_plataforma`, `HttpOnly`, `SameSite=Strict`, `Path=/api/plataforma`, `Max-Age=28800`, `Secure`
-con `NODE_ENV=production`. Token: criterio 37. Límite: 10 intentos de inicio de sesión por IP cada 60 segundos.
-Bloqueo: 5 fallos seguidos, 15 minutos.
+con `NODE_ENV=production`. Token: criterio 37. Límite: 10 intentos de inicio de sesión por IP cada 60 segundos
+(precisión P-5). Bloqueo: 5 fallos seguidos, 15 minutos. Cookie de borrado: precisión P-6. Rutas sin sesión:
+precisión P-7. Normalización de `{nombreCorto}`: precisión P-4.
 
 ### Esquemas compartidos (`packages/contratos/src/`)
 
@@ -586,6 +590,67 @@ Ninguno.
 - Público: `GET /api/a/{nombreCorto}` y `POST`/`DELETE /api/plataforma/sesion`.
 - Roles de academia (Admin, Secretaria, Entrenador, Alumno): llegan en 002.
 
+### Precisiones del contrato
+
+_(precisión del contrato tras T1–T2, 11/11/2026)_. Detalles técnicos que el contrato no fijaba y que las pruebas
+protegidas de T1 y T2 dan por hechos. No son reglas de negocio nuevas ni cambian el sentido de ningún criterio.
+
+- **P-1. `Entorno` (criterio 5).** El objeto que devuelve `validarEntorno` tiene los campos `DATABASE_URL_APP`
+  (`string`), `JWT_SECRETO` (`string`) y `DATABASE_POOL_MAX` (`number`, 10 si la variable no está), además de
+  `PUERTO_API` y `NODE_ENV` de la spec 000. La API ya no exige `DATABASE_URL`: si falta, el entorno es válido, y si
+  está, `Entorno` no tiene la propiedad `DATABASE_URL`.
+- **P-2. Registros de auditoría (criterios 29 a 32).**
+  - `entidad` es `academia` en `ACADEMIA_CREADA`, `ACADEMIA_SUSPENDIDA` y `ACADEMIA_REACTIVADA`, y `superadmin` en
+    `SUPERADMIN_CREADO` y `SUPERADMIN_CLAVE_RESTABLECIDA`. Se implementa en singular; las pruebas aceptan también el
+    plural (`academias`, `superadmins`).
+  - `ip` es la IP del cliente tal como la ve Express (`req.ip`); en las pruebas, `127.0.0.1` o `::1`.
+  - Con actor `SISTEMA`, `actor_id` no se exige (puede ser nulo). Con actor `SUPERADMIN`, es el id del superadmin.
+- **P-3. Catálogo (criterios 11 y 12).** Toda tabla del negocio (con `academia_id`) tiene `academia_id uuid NOT NULL`
+  con una llave foránea a `academias(id)` cuya acción de borrado es `NO ACTION` o `RESTRICT` (nunca `CASCADE`,
+  `SET NULL` ni `SET DEFAULT`). Toda tabla con `academia_id` y columna `id` tiene una restricción `UNIQUE` o una llave
+  primaria con exactamente las columnas `(academia_id, id)`, en ese orden, ni más ni menos. Las tablas sin columna
+  `id` (por ejemplo `configuraciones`, con PK `(academia_id, clave)`) no necesitan esa restricción.
+- **P-4. `GET /api/a/{nombreCorto}` (criterios 58 y 59).** El segmento ya decodificado se recorta (`trim`, que quita
+  espacios, tabuladores y saltos de línea de los extremos) y se pasa a minúsculas antes de validarlo y buscarlo. Por
+  eso `delfines%0A` (salto de línea al final) encuentra `delfines`, mientras que `del%0Afines` (salto de línea en
+  medio) no cumple el formato y responde 404 `ACADEMIA_NO_ENCONTRADA`. `delfines%00` sigue respondiendo 404: el
+  carácter nulo no es un espacio y no se recorta.
+- **P-5. Límite por IP (criterio 41).** Dentro de una ventana de 60 segundos, las 10 primeras peticiones
+  `POST /api/plataforma/sesion` de una IP se atienden (con la respuesta que corresponda: 200, 400, 401 o 423) y la
+  11.ª, y las siguientes, reciben 429 `DEMASIADAS_SOLICITUDES`.
+- **P-6. Cierre de sesión (criterio 44).** La cabecera `Set-Cookie` de borrado es `aq_plataforma=` con `Max-Age=0` y
+  `Path=/api/plataforma` (puede llevar además `Expires` en el pasado, `HttpOnly`, `SameSite=Strict` y, en
+  producción, `Secure`).
+- **P-7. Rutas bajo `/api/plataforma/` (criterio 45).** La exigencia de sesión se aplica a todo el prefijo con un
+  guard o middleware general, no por controlador: cualquier ruta bajo `/api/plataforma/` que no sea `POST` o `DELETE
+  /api/plataforma/sesion`, incluidas las que no existen (`/api/plataforma/no-existe`) y las que llevan barra final
+  (`/api/plataforma/academias/`), responde 401 `NO_AUTENTICADO` sin una sesión válida. Con sesión válida, una ruta
+  inexistente responde 404 `NO_ENCONTRADO`.
+- **P-8. `Cache-Control: no-store`.** Lo llevan todas las respuestas bajo `/api/plataforma` y `/api/a`, también las de
+  error (400, 401, 403, 404, 409, 423, 429 y 500) y las de rutas inexistentes. Se fija en un middleware de esos
+  prefijos, no solo en los controladores.
+- **P-9. Registro técnico (criterios 4 y 46).** Todo lo que la API escribe en el log pasa por pino: el `Logger` de
+  Nest redirigido a pino (o `PinoLogger`), con el destino de `crearAppDePruebas({ destinoRegistro })`. Nada se
+  escribe con `console`. Así las pruebas leen el mensaje del rol inseguro y comprueban que la clave no aparece.
+- **P-10. `resolver_academia` (criterio 20).** En PostgreSQL 16, `CREATE FUNCTION … SET app.plataforma = 'si'`
+  falla cuando el dueño de la migración no es superusuario (la nube). Por eso la función es `LANGUAGE plpgsql`,
+  `VOLATILE` y `SECURITY INVOKER`, con `SET search_path = pg_catalog, public, pg_temp`, y en tiempo de ejecución:
+  guarda `current_setting('app.plataforma', true)`, ejecuta `set_config('app.plataforma', 'si', true)`, hace la
+  consulta por igualdad, restaura el valor guardado con `set_config('app.plataforma', <anterior o ''>, true)` y
+  devuelve las filas. Si la consulta falla, también restaura antes de propagar el error. El resultado observable es
+  el del criterio 20.
+- **P-11. Quién crea el rol `aquagestion_app` (criterios 6, 8 y 64).** Crear roles exige `CREATEROLE` o ser
+  superusuario. El dueño de las migraciones en la nube (`aquagestion`) no tiene `CREATEROLE`, así que el rol de la
+  app lo crea siempre un usuario con privilegios de cada entorno:
+  - **nube:** el hook de sesión, conectado como el usuario de sistema `postgres` (igual que ya crea `aquagestion`);
+    después `db:crear` solo lo encuentra y lo verifica;
+  - **Windows con Docker:** `db:crear`, conectado con el usuario del contenedor (`POSTGRES_USER`, que es su
+    superusuario y coincide con el de `DATABASE_URL`);
+  - **CI:** `db:crear`, con el usuario del servicio de PostgreSQL (`POSTGRES_USER`, superusuario).
+
+  Si el usuario de `DATABASE_URL` no puede crear roles y el rol no existe, `db:crear` termina con código 1 y dice
+  cómo crearlo (criterio 6).
+
 ## Cambios al modelo de datos
 
 Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados por PostgreSQL
@@ -609,7 +674,8 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 - **`configuraciones`** (por academia): `academia_id uuid not null` → `academias(id)`; `clave text not null` con
   `CHECK` `^[a-z][a-z0-9_]{0,63}$`; `valor jsonb not null`; `actualizado_en`. PK `(academia_id, clave)`. Sin claves
   en esta historia (DR-8).
-- **Funciones** `app_academia_actual()`, `app_es_plataforma()` y `resolver_academia(text)`.
+- **Funciones** `app_academia_actual()`, `app_es_plataforma()` y `resolver_academia(text)` (esta última en
+  `plpgsql`, precisión P-10).
 - **RLS** activada y forzada en las cinco tablas, con estas políticas:
   - `academias`: leer si es plataforma o `id = app_academia_actual()`; crear y modificar solo en plataforma.
   - `superadmins` y `auditoria_plataforma`: solo en plataforma.
@@ -728,9 +794,11 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   (el Superadmin llevaría su sesión a las rutas de las academias).
 - **La comprobación del rol inseguro se hace en la primera operación, no al arrancar,** para no romper el criterio 8
   de 000.
-- **`resolver_academia` como función con `SET app.plataforma = 'si'` solo durante la función.** Alternativas
+- **`resolver_academia` como función que activa `app.plataforma = 'si'` solo durante la función.** Alternativas
   descartadas: dejar leer `academias` sin contexto (listaría todas) o `SECURITY DEFINER` (con `FORCE`, el dueño
-  también queda sujeto a las políticas).
+  también queda sujeto a las políticas). Se activa con `set_config` en tiempo de ejecución y se restaura al salir,
+  no con la cláusula `SET` de `CREATE FUNCTION`, que PostgreSQL 16 rechaza para un dueño que no es superusuario
+  (precisión P-10, tras T1–T2, 11/11/2026).
 - **Privilegios por columna** en `academias` y `superadmins`: la API no puede cambiar el nombre corto, el correo ni
   la contraseña del superadmin.
 

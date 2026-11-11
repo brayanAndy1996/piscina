@@ -7,6 +7,10 @@ corre después de la implementación (T21).
 Especificación aprobada por el responsable el 11/11/2026, con las propuestas de todas las preguntas abiertas
 (DR-1 a DR-10 en "Decisiones" de `spec.md`); ningún criterio cambió. Se puede empezar por T1.
 
+Tras T1 y T2 se agregaron al contrato las precisiones técnicas P-1 a P-11 ("Precisiones del contrato" en `spec.md`);
+el backend las sigue en T5 (P-1), T6 (P-11), T7 (P-3, P-10), T8 (P-9), T10 (P-2), T13 (P-5, P-6, P-7), T14 y T15
+(P-4, P-8).
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -28,7 +32,8 @@ Especificación aprobada por el responsable el 11/11/2026, con las propuestas de
       fija `DATABASE_URL_APP` para las pruebas (criterios 5, 62)
 - [ ] T6 · backend · Rol `aquagestion_app`: `asegurarRolApp` en `crear-bases.mjs` con sus pruebas de integración;
       paso del hook de sesión con `sentenciaCrearRolApp` y su prueba unitaria; variables en `ci.yml` (criterios 6, 8,
-      64)
+      64). Quién crea el rol (P-11, tras T1–T2, 11/11/2026): en la nube el hook como `postgres`; en Windows
+      `db:crear` con el superusuario del contenedor de Docker; en la CI `db:crear` con el usuario del servicio
 - [ ] T7 · backend · Esquema de Prisma y migración `academias_aislamiento`: comprobación del rol, tablas, `CHECK`,
       índices, funciones, RLS forzada, políticas y privilegios (criterios 1, 2, 7, 9 a 20)
 - [ ] T8 · backend · `BaseDatos`: `conAcademia`, `comoPlataforma`, `resolverAcademia`, `comprobarConexion`,

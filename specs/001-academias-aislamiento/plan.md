@@ -77,6 +77,13 @@ Dos roles por servidor:
   función pura `sentenciaCrearRolApp(usuario, clave)` con prueba unitaria. Luego `db:crear` lo encuentra y solo lo
   verifica.
 - **Producción (hosting por decidir, D-21):** la guía explica crear los dos roles; queda como riesgo.
+- **Resumen por entorno** _(precisión del contrato tras T1–T2, 11/11/2026; P-11 de `spec.md`)_: el dueño de las
+  migraciones no siempre puede crear roles (en la nube, `aquagestion` no tiene `CREATEROLE`), así que el rol de la
+  app lo crea un usuario con privilegios: en la nube, el hook como `postgres`; en Windows, `db:crear` con el usuario
+  del contenedor de Docker (`POSTGRES_USER=aquagestion`, superusuario del contenedor, el mismo de `DATABASE_URL`);
+  en la CI, `db:crear` con el usuario del servicio (`POSTGRES_USER`, superusuario). Las pruebas de integración de
+  `asegurarRolApp` que crean roles corren solo donde el usuario puede hacerlo (Docker y CI) y se omiten con aviso en
+  la nube.
 
 ### 2. Migración y RLS
 
@@ -105,17 +112,33 @@ Se crea con `npm run db:migracion -- --create-only --name academias_aislamiento`
 
    CREATE FUNCTION public.resolver_academia(p_nombre_corto text)
      RETURNS TABLE (id uuid, nombre text, nombre_corto text, estado text)
-     LANGUAGE sql STABLE
-     SET app.plataforma = 'si'
+     LANGUAGE plpgsql VOLATILE SECURITY INVOKER
      SET search_path = pg_catalog, public, pg_temp
-   AS $$ SELECT a.id, a.nombre, a.nombre_corto, a.estado::text FROM public.academias a
-         WHERE a.nombre_corto = p_nombre_corto $$;
+   AS $$
+   DECLARE
+     v_anterior text := COALESCE(pg_catalog.current_setting('app.plataforma', true), '');
+   BEGIN
+     PERFORM pg_catalog.set_config('app.plataforma', 'si', true);
+     BEGIN
+       RETURN QUERY
+         SELECT a.id, a.nombre, a.nombre_corto, a.estado::text FROM public.academias a
+         WHERE a.nombre_corto = p_nombre_corto;
+     EXCEPTION WHEN OTHERS THEN
+       PERFORM pg_catalog.set_config('app.plataforma', v_anterior, true);
+       RAISE;
+     END;
+     PERFORM pg_catalog.set_config('app.plataforma', v_anterior, true);
+     RETURN;
+   END $$;
    ```
 
-   La cláusula `SET` de la función fija `app.plataforma` solo mientras dura la llamada y PostgreSQL restaura el valor
-   anterior al salir (criterio 20). La comparación es por igualdad, sin `LIKE`. Si el implementador comprueba que la
-   cláusula `SET` con una variable propia no funciona en la versión instalada, se detiene y lo informa (alternativa:
-   `SECURITY DEFINER` con una política que permita leer al dueño, a decidir).
+   _(precisión del contrato tras T1–T2, 11/11/2026; P-10 de `spec.md`)_. En PostgreSQL 16, la cláusula
+   `SET app.plataforma = 'si'` de `CREATE FUNCTION` falla cuando el dueño de la migración no es superusuario (la
+   nube), así que la marca se activa en tiempo de ejecución con `set_config(…, true)` y se restaura al salir, también
+   si la consulta falla. `RETURN QUERY` ejecuta la consulta en ese momento y guarda las filas, por eso la restauración
+   posterior no cambia el resultado. Debe ser `VOLATILE` porque llama a `set_config`. La comparación es por igualdad,
+   sin `LIKE` (criterio 20). La cláusula `SET search_path` sí funciona sin superusuario (es una variable del sistema).
+   El código es orientativo; lo que manda es el comportamiento del criterio 20.
 4. **RLS:** `ENABLE` y `FORCE ROW LEVEL SECURITY` en las cinco tablas, y políticas por comando (nombres
    orientativos):
 
@@ -207,6 +230,10 @@ las detecta como diferencia; se escriben siempre a mano en el SQL de la migraci�
   la tabla equivocada.
 - Los datos de `datosAntes` y `datosDespues` usan los nombres de campo de la API (camelCase). Nunca se pasan objetos
   completos de `superadmins` (llevarían `clave_hash`): se arma el objeto con los campos permitidos.
+- _(precisión del contrato tras T1–T2, 11/11/2026; P-2 de `spec.md`)_: `entidad` es `academia` o `superadmin`, en
+  singular; `ip` es `req.ip` de Express tal cual; con actor `SISTEMA`, `actorId` va nulo.
+- Catálogo (P-3 de `spec.md`): la llave foránea `academia_id → academias(id)` se declara sin `ON DELETE` (queda
+  `NO ACTION`) o con `RESTRICT`, y la restricción `UNIQUE (academia_id, id)` tiene exactamente esas dos columnas.
 
 ### 5. Seguridad compartida (`backend/src/infraestructura/seguridad/`)
 
@@ -248,7 +275,15 @@ La reutiliza 002 para los usuarios de academia.
   `tipo === 'plataforma'`, carga el superadmin en `comoPlataforma` y compara `ver` con `version_token`. Deja el
   superadmin en la petición (decorador `@SuperadminActual()`). Se aplica a todo el controlador de academias de la
   plataforma y a `GET /plataforma/sesion`.
-- **`DELETE`:** si la cookie es válida, `version_token = version_token + 1`; siempre responde 204 y borra la cookie.
+- **Sesión exigida en todo el prefijo** _(precisión del contrato tras T1–T2, 11/11/2026; P-7 de `spec.md`)_: además
+  del guard de los controladores, un middleware (o guard global) sobre `/api/plataforma` exige la sesión válida en
+  cualquier ruta salvo `POST` y `DELETE /api/plataforma/sesion`, incluidas las inexistentes y las que llevan barra
+  final, que sin sesión responden 401 `NO_AUTENTICADO` y no 404. Comparte con el guard la verificación del token
+  (una sola función).
+- **`DELETE`:** si la cookie es válida, `version_token = version_token + 1`; siempre responde 204 y borra la cookie
+  con `aq_plataforma=`, `Max-Age=0` y `Path=/api/plataforma` (P-6 de `spec.md`; por ejemplo `res.clearCookie` con
+  las mismas opciones de la cookie y `maxAge: 0`, comprobando que la cabecera resultante lleve `Max-Age=0`).
+- **Límite** (P-5): 10 peticiones por IP en 60 segundos se atienden; la 11.ª recibe 429.
 
 ### 7. Academias (`backend/src/modulos/academias/`)
 
@@ -278,7 +313,15 @@ La reutiliza 002 para los usuarios de academia.
 - `comun/validacion/`: un pipe `ValidarCon(esquema)` que usa `safeParse` y, si falla, lanza
   `ErrorNegocio(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.', { errores })` con `campo = path.join('.')`.
 - Cuerpos no JSON: Express no los interpreta; el esquema estricto ve `undefined` o `{}` y responde 400.
-- `Cache-Control: no-store` en los controladores de plataforma y públicos (decorador `@Header` o un interceptor).
+- `Cache-Control: no-store` en un middleware de los prefijos `/api/plataforma` y `/api/a`, para que lo lleven también
+  las respuestas de error (401, 404, 429, 500…) y las de rutas inexistentes; un decorador `@Header` o un interceptor
+  no alcanzan a las respuestas que no pasan por el controlador _(precisión del contrato tras T1–T2, 11/11/2026; P-8
+  de `spec.md`)_.
+- **Registro técnico con pino** _(P-9 de `spec.md`)_: el `Logger` de Nest se redirige a pino (o se usa `PinoLogger`)
+  con el destino que recibe `crearAppDePruebas({ destinoRegistro })`; ningún módulo escribe con `console`. El mensaje
+  del rol inseguro (criterio 4) y los de inicio de sesión (criterio 46) pasan por ahí.
+- **Ruta pública** _(P-4 de `spec.md`)_: el controlador recorta y pasa a minúsculas el segmento decodificado antes de
+  validarlo (`delfines%0A` encuentra `delfines`; `del%0Afines` y `delfines%00` responden 404).
 
 ### 9. Comando `plataforma:superadmin` (`backend/src/cli/superadmin.ts`)
 
@@ -305,7 +348,9 @@ La reutiliza 002 para los usuarios de academia.
 ### 11. Entorno, `.env` y CI
 
 - `validarEntorno` (criterio 5): `DATABASE_URL_APP`, `JWT_SECRETO`, `DATABASE_POOL_MAX`, `PUERTO_API`, `NODE_ENV`.
-  Constante `JWT_SECRETO_DE_EJEMPLO` con el valor de `.env.example`, para rechazarlo en producción.
+  Constante `JWT_SECRETO_DE_EJEMPLO` con el valor de `.env.example`, para rechazarlo en producción. El tipo `Entorno`
+  tiene los campos con esos mismos nombres (`DATABASE_POOL_MAX` numérico, 10 por defecto) y pierde `DATABASE_URL`:
+  la API ya no la exige ni la devuelve _(precisión del contrato tras T1–T2, 11/11/2026; P-1 de `spec.md`)_.
 - `.env.example` (orientativo):
 
   ```
@@ -374,7 +419,8 @@ La reutiliza 002 para los usuarios de academia.
 | `set_config(…, true)` dentro de `$transaction` interactiva | `SET` de sesión; extensión de Prisma que envuelve cada consulta | Lo local a la transacción no se filtra por el pool; la extensión ocultaría el límite de la transacción |
 | `app_academia_actual()` con `NULLIF(…, '')` | Convertir directamente `current_setting(…)::uuid` | Tras un `set_config` local, el valor queda en `''` y la conversión fallaría con error en vez de devolver 0 filas |
 | Marca `app.plataforma` que solo abre las tablas de plataforma | Un rol de base distinto para la plataforma | Un solo rol y un solo pool; las tablas de academia ignoran la marca (criterio 18) |
-| `resolver_academia` con `SET app.plataforma` en la función | Leer `academias` sin contexto; `SECURITY DEFINER` | No permite listar academias; con `FORCE`, el dueño también pasa por las políticas |
+| `resolver_academia` en `plpgsql` que activa `app.plataforma` con `set_config` y lo restaura al salir (P-10, tras T1–T2) | Leer `academias` sin contexto; `SECURITY DEFINER`; cláusula `SET app.plataforma` de `CREATE FUNCTION` | No permite listar academias; con `FORCE`, el dueño también pasa por las políticas; PostgreSQL 16 rechaza la cláusula `SET` con una variable propia si el dueño no es superusuario |
+| Sesión y `Cache-Control` en un middleware de prefijo (P-7, P-8) | Solo guard y `@Header` por controlador | Las rutas inexistentes y las respuestas de error no pasan por el controlador |
 | Comprobación del rol en la primera operación, memorizada | Comprobar al arrancar | La API debe arrancar con la base caída (000, criterio 8) |
 | Superadmins y su auditoría en tablas propias | `usuarios` con rol `SUPERADMIN` y `academia_id` nulo | Las políticas de academia quedan simples y sin excepciones |
 | Cookie `aq_plataforma` con `Path=/api/plataforma` | Una cookie para todos | La sesión de plataforma nunca llega a las rutas de academia |
@@ -398,10 +444,17 @@ La reutiliza 002 para los usuarios de academia.
 - **Transacciones interactivas de Prisma 7 con `@prisma/adapter-pg`:** confirmar que `$transaction(async …)`
   acepta `isolationLevel`, `maxWait` y `timeout` con el adaptador y que `$queryRaw` dentro usa la misma conexión. Si
   no, el implementador se detiene e informa.
-- **Cláusula `SET` con una variable propia en `resolver_academia`:** verificar en PostgreSQL 16 (ver el diseño).
+- **`resolver_academia` sin la cláusula `SET`** _(actualizado tras T1–T2, 11/11/2026)_: se confirmó que en
+  PostgreSQL 16 `CREATE FUNCTION … SET app.plataforma = 'si'` falla si el dueño no es superusuario; se reemplaza por
+  `set_config` en tiempo de ejecución con restauración (diseño, sección 2). Riesgo que queda: que la restauración se
+  omita en algún camino de salida y la marca de plataforma siga activa en la transacción. Lo cubre el criterio 20
+  (después de llamarla, `app.plataforma` no es `si` y `academias` devuelve 0 filas) y la función restaura también en
+  el bloque de excepción. Además, `resolverAcademia` corre en su propia transacción corta, que termina enseguida.
 - **Migración fallida a medias en una base del responsable:** ver "Migraciones".
-- **`CREATEROLE` en la nube:** el dueño no lo tiene; el hook usa `postgres`. Si `runuser` no está, el paso falla
-  con el motivo (spec 000).
+- **`CREATEROLE` en la nube** _(precisado tras T1–T2, 11/11/2026)_: el dueño (`aquagestion`) no lo tiene; el rol
+  `aquagestion_app` lo crea el hook como `postgres`. En Windows lo crea `db:crear` con el superusuario del contenedor
+  de Docker y en la CI, con el usuario del servicio (diseño, sección 1). Si `runuser` no está en la nube, el paso
+  falla con el motivo (spec 000).
 - **Rendimiento de las políticas:** `app_academia_actual()` es `STABLE` y la comparación usa los índices que empiezan
   por `academia_id`; las historias con tablas grandes deben crear esos índices.
 - **Binarios de `@node-rs/argon2` en Windows:** primera dependencia nativa en uso; la CI de Windows lo detecta.
