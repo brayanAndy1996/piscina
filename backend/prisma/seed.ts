@@ -4,6 +4,7 @@
 import { cargarEnvDeLaRaiz, crearClienteDelDueno, enPlataforma, leerVariable } from '../src/cli/conexion';
 import { mensajeSeguro } from '../src/cli/mensaje-seguro';
 import { guardarSuperadmin, hayDatosDeSuperadmin, leerDatosSuperadmin } from '../src/cli/superadmin-datos';
+import { leerNodeEnv } from '../src/infraestructura/entorno/node-env';
 import { hashearClave } from '../src/infraestructura/seguridad/claves';
 
 const ACADEMIAS_DE_EJEMPLO = [
@@ -14,7 +15,13 @@ const ACADEMIAS_DE_EJEMPLO = [
 async function sembrar(): Promise<number> {
   cargarEnvDeLaRaiz();
 
-  if (process.env['NODE_ENV'] === 'production') {
+  // NODE_ENV, si está definida (aunque sea vacía), debe ser exactamente development, test o production (criterio 78).
+  const nodeEnv = leerNodeEnv(process.env);
+  if (!nodeEnv.ok) {
+    console.error(`No se hizo ningún cambio. ${nodeEnv.problema}`);
+    return 1;
+  }
+  if (nodeEnv.valor === 'production') {
     console.error('La semilla no se ejecuta con NODE_ENV=production: solo agrega datos de ejemplo para desarrollo.');
     return 1;
   }

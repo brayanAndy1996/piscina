@@ -8,13 +8,29 @@ const NOMBRE_MINIMO = 3;
 const NOMBRE_MAXIMO = 100;
 const CLAVE_MINIMA = 12;
 const CLAVE_MAXIMA = 128;
+const VISIBLES_MINIMOS = 3;
+
+/**
+ * Reglas de texto de `packages/contratos/src/texto.ts` (criterios 76 y 77), repetidas aquí por la misma razón que el
+ * correo: el comando y la semilla deben funcionar en un clon recién instalado, antes de compilar `packages/contratos`.
+ * `superadmin-datos.test.ts` comprueba que dan el mismo resultado que los esquemas compartidos.
+ */
+const CONTROLES_O_SUSTITUTOS = /[\p{Cc}\p{Cs}]/u;
+const BIDI_O_SEPARADORES = /[\p{Bidi_Control}\u2028\u2029]/u;
+const VISIBLES = /[\p{L}\p{N}\p{P}\p{S}]/gu;
 
 /**
  * Mismo criterio que el correo de `iniciarSesionPlataformaSchema` (contratos): recortado, en minúsculas, de hasta 254
  * caracteres y con formato de correo. Se repite aquí, y no se importa, para que el comando y la semilla funcionen en un
  * clon recién instalado, antes de compilar `packages/contratos`.
  */
-const correoSchema = z.string().trim().toLowerCase().max(CORREO_MAXIMO).pipe(z.email());
+const correoSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .max(CORREO_MAXIMO)
+  .refine((valor) => !CONTROLES_O_SUSTITUTOS.test(valor))
+  .pipe(z.email());
 
 export interface DatosSuperadmin {
   readonly correo: string;
@@ -35,7 +51,9 @@ export function hayDatosDeSuperadmin(env: Readonly<Record<string, string | undef
 
 /**
  * Valida `SUPERADMIN_CORREO` (correo de hasta 254 caracteres, recortado y en minúsculas), `SUPERADMIN_NOMBRE` (3 a 100
- * caracteres) y `SUPERADMIN_CLAVE` (12 a 128 caracteres). Los problemas nombran la variable y nunca incluyen su valor.
+ * caracteres, al menos 3 visibles, sin control bidireccional ni separadores de línea; criterio 77) y `SUPERADMIN_CLAVE`
+ * (12 a 128 caracteres). Ninguna admite caracteres de control (criterio 76; la clave no se recorta, así que un control
+ * en cualquier posición es error). Los problemas nombran la variable y nunca incluyen su valor.
  */
 export function leerDatosSuperadmin(env: Readonly<Record<string, string | undefined>>): LecturaDatosSuperadmin {
   const problemas: string[] = [];
@@ -48,7 +66,9 @@ export function leerDatosSuperadmin(env: Readonly<Record<string, string | undefi
     const analisis = correoSchema.safeParse(correoCrudo);
     if (analisis.success) correo = analisis.data;
     else
-      problemas.push(`La variable SUPERADMIN_CORREO debe ser un correo válido de hasta ${CORREO_MAXIMO} caracteres.`);
+      problemas.push(
+        `La variable SUPERADMIN_CORREO debe ser un correo válido de hasta ${CORREO_MAXIMO} caracteres, sin caracteres de control.`,
+      );
   }
 
   const nombreCrudo = leerVariable(env, 'SUPERADMIN_NOMBRE');
@@ -59,6 +79,16 @@ export function leerDatosSuperadmin(env: Readonly<Record<string, string | undefi
     nombre = nombreCrudo.trim();
     if (nombre.length < NOMBRE_MINIMO || nombre.length > NOMBRE_MAXIMO) {
       problemas.push(`La variable SUPERADMIN_NOMBRE debe tener de ${NOMBRE_MINIMO} a ${NOMBRE_MAXIMO} caracteres.`);
+    } else if (CONTROLES_O_SUSTITUTOS.test(nombre)) {
+      problemas.push('La variable SUPERADMIN_NOMBRE no puede contener caracteres de control ni caracteres no válidos.');
+    } else if (BIDI_O_SEPARADORES.test(nombre)) {
+      problemas.push(
+        'La variable SUPERADMIN_NOMBRE no puede contener caracteres de dirección del texto ni separadores de línea.',
+      );
+    } else if ((nombre.match(VISIBLES) ?? []).length < VISIBLES_MINIMOS) {
+      problemas.push(
+        `La variable SUPERADMIN_NOMBRE debe tener al menos ${VISIBLES_MINIMOS} caracteres visibles (letras, números o símbolos).`,
+      );
     }
   }
 
@@ -67,6 +97,8 @@ export function leerDatosSuperadmin(env: Readonly<Record<string, string | undefi
     problemas.push('Falta la variable SUPERADMIN_CLAVE.');
   } else if (clave.length < CLAVE_MINIMA || clave.length > CLAVE_MAXIMA) {
     problemas.push(`La variable SUPERADMIN_CLAVE debe tener de ${CLAVE_MINIMA} a ${CLAVE_MAXIMA} caracteres.`);
+  } else if (CONTROLES_O_SUSTITUTOS.test(clave)) {
+    problemas.push('La variable SUPERADMIN_CLAVE no puede contener caracteres de control.');
   }
 
   return problemas.length > 0 ? { ok: false, problemas } : { ok: true, datos: { correo, nombre, clave } };

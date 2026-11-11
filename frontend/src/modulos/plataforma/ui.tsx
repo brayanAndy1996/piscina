@@ -57,36 +57,6 @@ export function CampoTexto({ etiqueta, error, ayuda, ...entrada }: PropiedadesCa
   );
 }
 
-interface PropiedadesAreaTexto extends Omit<ComponentProps<'textarea'>, 'className'> {
-  etiqueta: string;
-  error?: string | undefined;
-}
-
-export function AreaTexto({ etiqueta, error, ...entrada }: PropiedadesAreaTexto) {
-  const id = useId();
-  const idError = `${id}-error`;
-  return (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-slate-800">
-        {etiqueta}
-      </label>
-      <textarea
-        id={id}
-        rows={3}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? idError : undefined}
-        className="mt-1 block w-full rounded-lg border-0 bg-white px-3 py-2 text-base text-slate-900 ring-1 ring-slate-300 focus:outline-2 focus:outline-sky-700 aria-invalid:ring-red-500"
-        {...entrada}
-      />
-      {error ? (
-        <p id={idError} role="alert" className="mt-1 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 const ENFOCABLES =
   'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled])';
 

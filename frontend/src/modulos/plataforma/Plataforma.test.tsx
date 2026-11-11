@@ -415,6 +415,39 @@ describe('/plataforma/academias (criterio 69)', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       expect(llamadas(api, `POST /api/plataforma/academias/${ID_B}/reactivar`)).toEqual([{ motivo: 'Pagó la deuda' }]);
     });
+
+    it('el motivo de Suspender y de Reactivar es un campo de una sola línea (criterio 76)', async () => {
+      conSesion();
+      mostrar('/plataforma/academias');
+      const usuario = userEvent.setup();
+      await usuario.click(await screen.findByRole('button', { name: 'Suspender Academia de Natación Los Delfines' }));
+      expect(screen.getByLabelText('Motivo de la suspensión').tagName).toBe('INPUT');
+      await usuario.click(screen.getByRole('button', { name: 'Cancelar' }));
+      await usuario.click(await screen.findByRole('button', { name: 'Reactivar Club de Natación Tiburones' }));
+      expect(screen.getByLabelText('Motivo (opcional)').tagName).toBe('INPUT');
+    });
+
+    it('Suspender no envía un motivo con caracteres de control bidireccional y muestra el error del esquema (criterio 77)', async () => {
+      const api = conSesion();
+      mostrar('/plataforma/academias');
+      const usuario = userEvent.setup();
+      await usuario.click(await screen.findByRole('button', { name: 'Suspender Academia de Natación Los Delfines' }));
+      await usuario.type(screen.getByLabelText('Motivo de la suspensión'), 'Falta de pago\u202e');
+      await usuario.click(screen.getByRole('button', { name: 'Suspender academia' }));
+      expect(await screen.findByText(/caracteres de dirección del texto/)).toBeInTheDocument();
+      expect(llamadas(api, `POST /api/plataforma/academias/${ID_A}/suspender`)).toHaveLength(0);
+    });
+
+    it('Reactivar no envía un motivo con menos de 3 caracteres visibles (criterio 77)', async () => {
+      const api = conSesion();
+      mostrar('/plataforma/academias');
+      const usuario = userEvent.setup();
+      await usuario.click(await screen.findByRole('button', { name: 'Reactivar Club de Natación Tiburones' }));
+      await usuario.type(screen.getByLabelText('Motivo (opcional)'), 'a\u200bb');
+      await usuario.click(screen.getByRole('button', { name: 'Reactivar academia' }));
+      expect(await screen.findByText(/al menos 3 caracteres visibles/)).toBeInTheDocument();
+      expect(llamadas(api, `POST /api/plataforma/academias/${ID_B}/reactivar`)).toHaveLength(0);
+    });
   });
 
   it('Cerrar sesión envía DELETE y vuelve al ingreso', async () => {

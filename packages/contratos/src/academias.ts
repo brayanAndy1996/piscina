@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sinControles, textoVisibleSchema } from './texto';
 
 /**
  * Nombres cortos que no pueden usarse porque chocarían con rutas, carpetas o términos propios del sistema (DR-5).
@@ -37,19 +38,21 @@ const NOMBRE_MINIMO = 3;
 const NOMBRE_MAXIMO = 100;
 const MOTIVO_MINIMO = 3;
 const MOTIVO_MAXIMO = 500;
-const SIN_CARACTERES_DE_CONTROL = /^[^\p{Cc}]*$/u;
 
 /**
  * Nombre corto de una academia (D-27): va en la dirección de sus páginas públicas (`/a/{nombreCorto}`). Se recorta y
  * se pasa a minúsculas; después debe tener de 3 a 30 caracteres, empezar con una letra, usar solo `a-z`, `0-9` y
  * guiones (sin guiones al inicio, al final ni seguidos) y no ser una palabra reservada.
  */
-export const nombreCortoSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .min(NOMBRE_CORTO_MINIMO, `El nombre corto debe tener al menos ${NOMBRE_CORTO_MINIMO} caracteres.`)
-  .max(NOMBRE_CORTO_MAXIMO, `El nombre corto debe tener como máximo ${NOMBRE_CORTO_MAXIMO} caracteres.`)
+export const nombreCortoSchema = sinControles(
+  z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(NOMBRE_CORTO_MINIMO, `El nombre corto debe tener al menos ${NOMBRE_CORTO_MINIMO} caracteres.`)
+    .max(NOMBRE_CORTO_MAXIMO, `El nombre corto debe tener como máximo ${NOMBRE_CORTO_MAXIMO} caracteres.`),
+  'El nombre corto no puede contener caracteres de control ni caracteres no válidos.',
+)
   .regex(
     FORMATO_NOMBRE_CORTO,
     'El nombre corto debe empezar con una letra y usar solo letras minúsculas sin tildes, números y guiones.',
@@ -62,18 +65,9 @@ export const nombreCortoSchema = z
 export const estadoAcademiaSchema = z.enum(['ACTIVA', 'SUSPENDIDA']);
 export type EstadoAcademia = z.infer<typeof estadoAcademiaSchema>;
 
-const nombreAcademiaSchema = z
-  .string()
-  .trim()
-  .min(NOMBRE_MINIMO, `El nombre debe tener al menos ${NOMBRE_MINIMO} caracteres.`)
-  .max(NOMBRE_MAXIMO, `El nombre debe tener como máximo ${NOMBRE_MAXIMO} caracteres.`)
-  .regex(SIN_CARACTERES_DE_CONTROL, 'El nombre no puede contener caracteres de control.');
+const nombreAcademiaSchema = textoVisibleSchema({ sujeto: 'El nombre', min: NOMBRE_MINIMO, max: NOMBRE_MAXIMO });
 
-const motivoSchema = z
-  .string()
-  .trim()
-  .min(MOTIVO_MINIMO, `El motivo debe tener al menos ${MOTIVO_MINIMO} caracteres.`)
-  .max(MOTIVO_MAXIMO, `El motivo debe tener como máximo ${MOTIVO_MAXIMO} caracteres.`);
+const motivoSchema = textoVisibleSchema({ sujeto: 'El motivo', min: MOTIVO_MINIMO, max: MOTIVO_MAXIMO });
 
 /** `POST /api/plataforma/academias` (DR-6: solo el nombre y el nombre corto). */
 export const crearAcademiaSchema = z.strictObject({

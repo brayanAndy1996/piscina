@@ -1,6 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
-import { ThrottlerGuard } from '@nestjs/throttler';
 import {
   type IniciarSesionPlataforma,
   iniciarSesionPlataformaSchema,
@@ -27,12 +26,11 @@ export class SesionPlataformaController {
   ) {}
 
   /**
-   * Inicia la sesión. El límite por IP (10 por minuto) corre antes de validar el cuerpo, así que también cuentan las
-   * peticiones inválidas y la 11.ª recibe 429 sin tocar la base.
+   * Inicia la sesión. El límite por IP (10 por minuto) lo aplica un middleware que corre antes del lector del cuerpo
+   * (`instalarProteccionDePrefijos`, criterio 75): cuentan todas las peticiones y la 11.ª recibe 429 sin leer el cuerpo.
    */
   @Post()
   @HttpCode(200)
-  @UseGuards(ThrottlerGuard)
   async iniciar(
     @Body(new ValidarCon(iniciarSesionPlataformaSchema)) datos: IniciarSesionPlataforma,
     @Req() solicitud: Request,

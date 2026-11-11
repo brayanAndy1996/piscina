@@ -1,4 +1,4 @@
-import { iniciarSesionPlataformaSchema } from '@aquagestion/contratos';
+import { crearAcademiaSchema, iniciarSesionPlataformaSchema } from '@aquagestion/contratos';
 import { describe, expect, it } from 'vitest';
 import { hayDatosDeSuperadmin, leerDatosSuperadmin } from './superadmin-datos';
 
@@ -72,6 +72,59 @@ describe('leerDatosSuperadmin', () => {
       const contratos = iniciarSesionPlataformaSchema.shape.correo.safeParse(correo);
       expect(propio.ok, correo).toBe(contratos.success);
       if (propio.ok && contratos.success) expect(propio.datos.correo).toBe(contratos.data);
+    }
+  });
+
+  it('aplica las reglas de texto de contratos (criterios 76 y 77) al correo, al nombre y a la clave', () => {
+    const controles = ['\u0000', '\t', '\n', '\u007f', '\u0085', '\u009f'];
+    for (const c of controles) {
+      const clave = `Clave${c}Segura-2026`;
+      const lectura = leerDatosSuperadmin({ ...VALIDAS, SUPERADMIN_CLAVE: clave });
+      expect(lectura.ok, JSON.stringify(c)).toBe(iniciarSesionPlataformaSchema.shape.clave.safeParse(clave).success);
+      expect(lectura.ok).toBe(false);
+    }
+    const nombres = [
+      'Dueño de la plataforma',
+      'Club 3',
+      'Delfines\u202e',
+      '\u2066Delfines\u2069',
+      'Del\u2028fines',
+      'Del\u2029fines',
+      '\u200b\u200b\u200b\u200b',
+      'a\u200bb',
+      'a b',
+      'a\u0301b',
+      'Del\u200bfines',
+      'ab',
+    ];
+    for (const nombre of nombres) {
+      const propio = leerDatosSuperadmin({ ...VALIDAS, SUPERADMIN_NOMBRE: nombre });
+      const contratos = crearAcademiaSchema.shape.nombre.safeParse(nombre);
+      expect(propio.ok, JSON.stringify(nombre)).toBe(contratos.success);
+      if (propio.ok && contratos.success) expect(propio.datos.nombre).toBe(contratos.data);
+    }
+    for (const correo of ['dueno\n@b.test', 'dueno@b.test\u0085', 'dueno\t@b.test']) {
+      const propio = leerDatosSuperadmin({ ...VALIDAS, SUPERADMIN_CORREO: correo });
+      expect(propio.ok, JSON.stringify(correo)).toBe(
+        iniciarSesionPlataformaSchema.shape.correo.safeParse(correo).success,
+      );
+    }
+  });
+
+  it('nombra la variable y nunca incluye su valor en los problemas de texto', () => {
+    const lectura = leerDatosSuperadmin({
+      SUPERADMIN_CORREO: 'dueno@b.test',
+      SUPERADMIN_NOMBRE: 'Delfines\u202e',
+      SUPERADMIN_CLAVE: 'Clave\nSegura-2026',
+    });
+
+    expect(lectura.ok).toBe(false);
+    if (!lectura.ok) {
+      const texto = lectura.problemas.join('\n');
+      expect(texto).toContain('SUPERADMIN_NOMBRE');
+      expect(texto).toContain('SUPERADMIN_CLAVE');
+      expect(texto).not.toContain('Segura');
+      expect(texto).not.toContain('Delfines');
     }
   });
 });
