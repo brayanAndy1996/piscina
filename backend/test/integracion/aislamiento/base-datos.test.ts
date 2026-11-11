@@ -7,7 +7,17 @@ import { crearAcademiaDePrueba, type AcademiaDePrueba } from '../../utilidades/a
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { contarDeAcademia, crearDatosDeAislamiento, insertarAuditoria } from '../../utilidades/datos';
 import { ejecutarComo, limpiarBase } from '../../utilidades/base-datos';
-import { type BaseDatosPrueba, cargarPrisma, obtenerBaseDatos, uuidInexistente } from '../../utilidades/modulos';
+// (criterio 100) El cliente de `trabajo` ya no tiene `$queryRawUnsafe` ni `$executeRawUnsafe`: el SQL con parametros `$1`
+// se ejecuta con `consultar` y `ejecutar` (`$queryRaw`/`$executeRaw` con `Prisma.sql`), sin cambiar lo que se comprueba.
+import {
+  type BaseDatosPrueba,
+  type ClientePrueba,
+  cargarPrisma,
+  consultar,
+  ejecutar,
+  obtenerBaseDatos,
+  uuidInexistente,
+} from '../../utilidades/modulos';
 
 interface Contexto {
   academia: string | null;
@@ -24,8 +34,9 @@ const INSERTAR_AUDITORIA = `INSERT INTO auditoria (id, academia_id, fecha_hora, 
 const INSERTAR_AUDITORIA_PLATAFORMA = `INSERT INTO auditoria_plataforma (id, fecha_hora, actor_tipo, accion, entidad)
   VALUES (gen_random_uuid(), now(), 'SISTEMA', 'PRUEBA_TX', 'prueba')`;
 
-async function contexto(tx: { cliente: { $queryRawUnsafe<T>(sql: string): Promise<T> } }): Promise<Contexto> {
-  const filas = await tx.cliente.$queryRawUnsafe<Contexto[]>(LEER_CONTEXTO);
+// (criterio 100) El cliente se tipa con `ClientePrueba` (`$queryRaw`/`$executeRaw`).
+async function contexto(tx: { cliente: ClientePrueba }): Promise<Contexto> {
+  const filas = await consultar<Contexto[]>(tx.cliente, LEER_CONTEXTO);
   return filas[0] as Contexto;
 }
 
@@ -76,7 +87,7 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
     it('criterio 21: el trabajo corre dentro de una transacción y el resultado se devuelve tras confirmarla', async () => {
       let visibleDuranteElTrabajo = -1;
       const resultado = await baseDatos.conAcademia(A.id, async (tx) => {
-        await tx.cliente.$executeRawUnsafe(INSERTAR_AUDITORIA, A.id);
+        await ejecutar(tx.cliente, INSERTAR_AUDITORIA, A.id);
         visibleDuranteElTrabajo = await contarDeAcademia('auditoria', A.id);
         return 'resultado-del-trabajo';
       });
@@ -90,7 +101,7 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
 
     it('criterio 21: dentro de conAcademia(A) solo se ven las filas de A', async () => {
       const total = await baseDatos.conAcademia(A.id, async (tx) => {
-        const filas = await tx.cliente.$queryRawUnsafe<{ academia_id: string }[]>('SELECT academia_id FROM auditoria');
+        const filas = await consultar<{ academia_id: string }[]>(tx.cliente, 'SELECT academia_id FROM auditoria');
         return filas.map((fila) => fila.academia_id);
       });
 
@@ -106,8 +117,9 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
 
       await expect(
         baseDatos.conAcademia(A.id, async (tx) => {
-          await tx.cliente.$executeRawUnsafe(INSERTAR_AUDITORIA, A.id);
-          await tx.cliente.$executeRawUnsafe(
+          await ejecutar(tx.cliente, INSERTAR_AUDITORIA, A.id);
+          await ejecutar(
+            tx.cliente,
             `INSERT INTO configuraciones (academia_id, clave, valor, actualizado_en) VALUES ($1::uuid, 'se_revierte', '{}'::jsonb, now())`,
             A.id,
           );
@@ -124,7 +136,7 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
 
       await expect(
         baseDatos.comoPlataforma(async (tx) => {
-          await tx.cliente.$executeRawUnsafe(INSERTAR_AUDITORIA_PLATAFORMA);
+          await ejecutar(tx.cliente, INSERTAR_AUDITORIA_PLATAFORMA);
           throw error;
         }),
       ).rejects.toBe(error);
@@ -135,8 +147,8 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
     it('criterio 22: un error de la base dentro del trabajo también revierte lo anterior', async () => {
       await expect(
         baseDatos.conAcademia(A.id, async (tx) => {
-          await tx.cliente.$executeRawUnsafe(INSERTAR_AUDITORIA, A.id);
-          await tx.cliente.$executeRawUnsafe(INSERTAR_AUDITORIA, B.id); // viola RLS
+          await ejecutar(tx.cliente, INSERTAR_AUDITORIA, A.id);
+          await ejecutar(tx.cliente, INSERTAR_AUDITORIA, B.id); // viola RLS
         }),
       ).rejects.toBeInstanceOf(Error);
 
@@ -150,10 +162,8 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
       const llamadas = Array.from({ length: 50 }, (_, i) => {
         const propia = i % 2 === 0 ? A : B;
         return baseDatos.conAcademia(propia.id, async (tx) => {
-          await tx.cliente.$queryRawUnsafe('SELECT 1 AS n FROM pg_sleep(0.01)');
-          const filas = await tx.cliente.$queryRawUnsafe<{ academia_id: string }[]>(
-            'SELECT academia_id FROM auditoria',
-          );
+          await consultar(tx.cliente, 'SELECT 1 AS n FROM pg_sleep(0.01)');
+          const filas = await consultar<{ academia_id: string }[]>(tx.cliente, 'SELECT academia_id FROM auditoria');
           const { academia } = await contexto(tx);
           return {
             esperada: propia.id,
@@ -244,11 +254,9 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
 
     it('criterio 26: dentro de comoPlataforma se ven las academias y no los datos internos', async () => {
       const visto = await baseDatos.comoPlataforma(async (tx) => {
-        const academias = await tx.cliente.$queryRawUnsafe<{ n: number }[]>('SELECT count(*)::int AS n FROM academias');
-        const auditoria = await tx.cliente.$queryRawUnsafe<{ n: number }[]>('SELECT count(*)::int AS n FROM auditoria');
-        const config = await tx.cliente.$queryRawUnsafe<{ n: number }[]>(
-          'SELECT count(*)::int AS n FROM configuraciones',
-        );
+        const academias = await consultar<{ n: number }[]>(tx.cliente, 'SELECT count(*)::int AS n FROM academias');
+        const auditoria = await consultar<{ n: number }[]>(tx.cliente, 'SELECT count(*)::int AS n FROM auditoria');
+        const config = await consultar<{ n: number }[]>(tx.cliente, 'SELECT count(*)::int AS n FROM configuraciones');
         return { academias: academias[0]?.n, auditoria: auditoria[0]?.n, configuraciones: config[0]?.n };
       });
 

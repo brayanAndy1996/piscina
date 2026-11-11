@@ -7,9 +7,12 @@ import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { crearAcademiaDePrueba, type AcademiaDePrueba } from '../../utilidades/academias';
 import { ejecutarComo, limpiarBase } from '../../utilidades/base-datos';
 import { contarDeAcademia, leerAuditoriaDeAcademia, leerAuditoriaPlataforma } from '../../utilidades/datos';
+// (criterio 100) El cliente de `trabajo` ya no tiene `$queryRawUnsafe` ni `$executeRawUnsafe`: el SQL con parametros `$1`
+// se ejecuta con `consultar` y `ejecutar` (`$queryRaw`/`$executeRaw` con `Prisma.sql`), sin cambiar lo que se comprueba.
 import {
   type AuditoriaServicePrueba,
   type BaseDatosPrueba,
+  ejecutar,
   obtenerAuditoria,
   obtenerBaseDatos,
 } from '../../utilidades/modulos';
@@ -154,7 +157,8 @@ describe('AuditoriaService', () => {
     it('criterio 30: si la inserción de auditoría falla, la operación completa falla y se revierte', async () => {
       await expect(
         baseDatos.conAcademia(A.id, async (tx) => {
-          await tx.cliente.$executeRawUnsafe(
+          await ejecutar(
+            tx.cliente,
             `INSERT INTO configuraciones (academia_id, clave, valor, actualizado_en) VALUES ($1::uuid, 'operacion', '{}'::jsonb, now())`,
             A.id,
           );

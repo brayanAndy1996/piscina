@@ -4,7 +4,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { crearAcademiaDePrueba } from '../../utilidades/academias';
 import { conClienteComo, ejecutarComo, limpiarBase } from '../../utilidades/base-datos';
-import { obtenerBaseDatos } from '../../utilidades/modulos';
+// (criterio 100) El cliente de `trabajo` ya no tiene `$queryRawUnsafe` ni `$executeRawUnsafe`: el SQL con parametros `$1`
+// se ejecuta con `consultar` (aqui `consultarEnTrabajo`, porque el archivo ya tiene un `consultar` propio) y `ejecutar` (`$queryRaw`/`$executeRaw` con `Prisma.sql`), sin cambiar lo que se comprueba.
+import { consultar as consultarEnTrabajo, obtenerBaseDatos } from '../../utilidades/modulos';
 
 const ROL = 'aquagestion_app';
 
@@ -216,7 +218,7 @@ describe('criterio 3: la API corre como aquagestion_app', () => {
     const baseDatos = await obtenerBaseDatos(app);
 
     const usuario = await baseDatos.conAcademia(academia.id, (tx) =>
-      tx.cliente.$queryRawUnsafe<{ usuario: string }[]>('SELECT current_user::text AS usuario'),
+      consultarEnTrabajo<{ usuario: string }[]>(tx.cliente, 'SELECT current_user::text AS usuario'),
     );
 
     expect(usuario).toEqual([{ usuario: ROL }]);
@@ -226,7 +228,7 @@ describe('criterio 3: la API corre como aquagestion_app', () => {
     const baseDatos = await obtenerBaseDatos(app);
 
     const usuario = await baseDatos.comoPlataforma((tx) =>
-      tx.cliente.$queryRawUnsafe<{ usuario: string }[]>('SELECT current_user::text AS usuario'),
+      consultarEnTrabajo<{ usuario: string }[]>(tx.cliente, 'SELECT current_user::text AS usuario'),
     );
 
     expect(usuario).toEqual([{ usuario: ROL }]);

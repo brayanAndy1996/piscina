@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { crearAcademiaDePrueba, type AcademiaDePrueba } from '../../utilidades/academias';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { ejecutarComo, limpiarBase } from '../../utilidades/base-datos';
-import { type BaseDatosPrueba, obtenerBaseDatos } from '../../utilidades/modulos';
+// (criterio 100) El cliente de `trabajo` ya no tiene `$queryRawUnsafe` ni `$executeRawUnsafe`: el SQL con parametros `$1`
+// se ejecuta con `consultar` y `ejecutar` (`$queryRaw`/`$executeRaw` con `Prisma.sql`), sin cambiar lo que se comprueba.
+import { type BaseDatosPrueba, consultar, ejecutar, obtenerBaseDatos } from '../../utilidades/modulos';
 
 // Criterio 82 (ataque ronda 2, F4): con las migraciones aplicadas, PUBLIC no tiene TEMPORARY sobre la base y
 // `aquagestion_app` tampoco (ni directo ni heredado); CONNECT se conserva. Como app, tambien dentro de `conAcademia` y de
@@ -112,8 +114,8 @@ describe('criterio 82: dentro de BaseDatos (conAcademia y comoPlataforma)', () =
   it.each(SENTENCIAS_TEMPORALES)('criterio 82: conAcademia rechaza %s con SQLSTATE 42501', async (_nombre, sql) => {
     const error = await intentar(() =>
       baseDatos.conAcademia(academia.id, async (tx) => {
-        if (sql.startsWith('SELECT')) await tx.cliente.$queryRawUnsafe(sql);
-        else await tx.cliente.$executeRawUnsafe(sql);
+        if (sql.startsWith('SELECT')) await consultar(tx.cliente, sql);
+        else await ejecutar(tx.cliente, sql);
       }),
     );
 
@@ -124,8 +126,8 @@ describe('criterio 82: dentro de BaseDatos (conAcademia y comoPlataforma)', () =
   it.each(SENTENCIAS_TEMPORALES)('criterio 82: comoPlataforma rechaza %s con SQLSTATE 42501', async (_nombre, sql) => {
     const error = await intentar(() =>
       baseDatos.comoPlataforma(async (tx) => {
-        if (sql.startsWith('SELECT')) await tx.cliente.$queryRawUnsafe(sql);
-        else await tx.cliente.$executeRawUnsafe(sql);
+        if (sql.startsWith('SELECT')) await consultar(tx.cliente, sql);
+        else await ejecutar(tx.cliente, sql);
       }),
     );
 

@@ -6,11 +6,8 @@
 //    un mensaje que nombra la tabla, el privilegio y la correccion (`REVOKE TRUNCATE ON auditoria FROM aquagestion_app;`, o
 //    `FROM PUBLIC` si viene de ahi), sin modificar nada. Un privilegio que falta no lo rechaza. Las bases son temporales: cada
 //    caso crea y borra las suyas, con una tabla `auditoria` (o `academias`) vacia que lleva el nombre de la tabla real.
-//  - 103: `db:crear` rechaza el rol si tiene valores por defecto propios (`pg_roles.rolconfig` o alguna fila de
-//    `pg_db_role_setting` con `setrole` del rol, en cualquier base), nombrando la condicion y la correccion (`ALTER ROLE
-//    aquagestion_app IN DATABASE <base> RESET ALL;`) y sin cambiar nada. Solo se prueba la variante `IN DATABASE <base temporal>`,
-//    que se fija conectado como la app (el propio rol puede fijarse valores) y desaparece con la base: la variante global
-//    (`ALTER ROLE ... SET`) afectaria a todas las demas pruebas que corran a la vez.
+//  - 103: el caso de `db:crear` (valores por defecto propios del rol `aquagestion_app` en una base) esta en
+//    `scripts/test/integracion-aislada/rol-app-config.test.mjs`: modifica el rol compartido y corre solo, despues de las demas.
 //  - 104: si la contrasena de `DATABASE_URL_APP` tiene caracteres fuera de ASCII imprimible (U+0020 a U+007E), `db:crear` termina
 //    con codigo 1 nombrando la variable, sin mostrar la contrasena. Donde se pueden crear roles (Docker y CI) la sentencia que fija
 //    la contrasena en `asegurarRolApp` lleva el verificador SCRAM-SHA-256 y no la contrasena, y el rol creado inicia sesion con
@@ -19,16 +16,8 @@ import crypto from 'node:crypto';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { asegurarRolApp } from '../../crear-bases.mjs';
-import { analizarUrlPostgres, USUARIO_APP } from '../../lib/entorno.mjs';
-import {
-  borrarBases,
-  ejecutarScript,
-  ejecutarSql,
-  nombresTemporales,
-  servidorDePruebas,
-  urlAppDePruebas,
-  urlDe,
-} from './ayuda.mjs';
+import { USUARIO_APP } from '../../lib/entorno.mjs';
+import { borrarBases, ejecutarScript, ejecutarSql, nombresTemporales, servidorDePruebas, urlDe } from './ayuda.mjs';
 
 const servidor = servidorDePruebas();
 const CLAVE_APP_QUE_NO_DEBE_SALIR = 'clave-app-que-no-debe-salir-ronda3';
@@ -229,45 +218,6 @@ describe('criterio 102: db:crear rechaza privilegios de tabla de mas', () => {
     const resultado = ejecutarDbCrear(nombres);
 
     expect(resultado.estado, resultado.salida).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Criterio 103
-// ---------------------------------------------------------------------------------------------------------------------
-
-describe('criterio 103: db:crear rechaza un rol con valores por defecto propios', () => {
-  it('criterio 103: ALTER ROLE aquagestion_app IN DATABASE <base> SET ... termina con codigo 1 y propone ALTER ROLE ... IN DATABASE <base> RESET ALL;', async (contexto) => {
-    if (!existeElRolApp) contexto.skip(`el rol ${USUARIO_APP} no existe en este servidor`);
-    const nombres = await crearPareja();
-    const app = analizarUrlPostgres(urlAppDePruebas(), 'DATABASE_URL_APP');
-    let comoLaApp;
-    try {
-      comoLaApp = await conectar({ user: app.usuario, password: app.clave });
-      await comoLaApp.query(
-        `ALTER ROLE "${USUARIO_APP}" IN DATABASE "${nombres.pruebas}" SET TimeZone = 'America/Lima'`,
-      );
-    } catch (error) {
-      await comoLaApp?.end().catch(() => undefined);
-      console.warn(
-        `[criterio 103] AVISO: no se pudo fijar un valor por defecto del rol (${error.message}); se omite el caso.`,
-      );
-      contexto.skip('no se puede conectar como la app o fijar ALTER ROLE ... IN DATABASE ... SET');
-      return;
-    }
-    try {
-      const resultado = ejecutarDbCrear(nombres);
-
-      expect(resultado.estado, resultado.salida).toBe(1);
-      expect(resultado.salida).toContain(`ALTER ROLE ${USUARIO_APP} IN DATABASE ${nombres.pruebas} RESET ALL;`);
-      expect(resultado.salida).not.toContain(CLAVE_APP_QUE_NO_DEBE_SALIR);
-      expect(resultado.salida).not.toContain(servidor.clave);
-    } finally {
-      await comoLaApp
-        .query(`ALTER ROLE "${USUARIO_APP}" IN DATABASE "${nombres.pruebas}" RESET ALL`)
-        .catch(() => undefined);
-      await comoLaApp.end().catch(() => undefined);
-    }
   });
 });
 

@@ -14,7 +14,7 @@ import {
   leerSuperadmin,
   type DatosDeAislamiento,
 } from '../../utilidades/datos';
-import { esperarHasta, obtenerAuditoria, type TransaccionAcademiaPrueba } from '../../utilidades/modulos';
+import { esperarHasta, obtenerAuditoria } from '../../utilidades/modulos';
 import {
   citar,
   nombreDeLaBase,
@@ -308,7 +308,7 @@ describe.each(VARIANTES)('criterio 98: conexion contaminada $titulo', (variante)
     const entrada = { actorTipo: 'SISTEMA' as const, actorId: null, entidad: 'prueba', entidadId: null };
 
     await baseDatos.conAcademia(datos.B.id, (tx) =>
-      auditoria.registrarEnAcademia(tx as unknown as TransaccionAcademiaPrueba, {
+      auditoria.registrarEnAcademia(tx, {
         ...entrada,
         accion: 'ZONA_ACADEMIA',
       }),

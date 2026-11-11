@@ -5,7 +5,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { crearAcademiaDePrueba, type AcademiaDePrueba } from '../../utilidades/academias';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase } from '../../utilidades/base-datos';
-import { type BaseDatosPrueba, obtenerBaseDatos } from '../../utilidades/modulos';
+// (criterio 100) El cliente de `trabajo` ya no tiene `$queryRawUnsafe` ni `$executeRawUnsafe`: el SQL con parametros `$1`
+// se ejecuta con `consultar` y `ejecutar` (`$queryRaw`/`$executeRaw` con `Prisma.sql`), sin cambiar lo que se comprueba.
+import { type BaseDatosPrueba, consultar, obtenerBaseDatos } from '../../utilidades/modulos';
 
 const NIVELES = [
   ['ReadCommitted', 'read committed'],
@@ -35,7 +37,7 @@ describe('criterio 27: nivel de aislamiento de la transacción', () => {
   it.each(NIVELES)('conAcademia con { aislamiento: %s } corre con ese nivel', async (aislamiento, esperado) => {
     const filas = await baseDatos.conAcademia(
       academia.id,
-      (tx) => tx.cliente.$queryRawUnsafe<{ transaction_isolation: string }[]>(LEER),
+      (tx) => consultar<{ transaction_isolation: string }[]>(tx.cliente, LEER),
       { aislamiento },
     );
     expect(filas[0]?.transaction_isolation).toBe(esperado);
@@ -43,7 +45,7 @@ describe('criterio 27: nivel de aislamiento de la transacción', () => {
 
   it.each(NIVELES)('comoPlataforma con { aislamiento: %s } corre con ese nivel', async (aislamiento, esperado) => {
     const filas = await baseDatos.comoPlataforma(
-      (tx) => tx.cliente.$queryRawUnsafe<{ transaction_isolation: string }[]>(LEER),
+      (tx) => consultar<{ transaction_isolation: string }[]>(tx.cliente, LEER),
       { aislamiento },
     );
     expect(filas[0]?.transaction_isolation).toBe(esperado);
@@ -51,7 +53,7 @@ describe('criterio 27: nivel de aislamiento de la transacción', () => {
 
   it('sin opciones corre con el nivel por defecto de PostgreSQL (read committed)', async () => {
     const filas = await baseDatos.conAcademia(academia.id, (tx) =>
-      tx.cliente.$queryRawUnsafe<{ transaction_isolation: string }[]>(LEER),
+      consultar<{ transaction_isolation: string }[]>(tx.cliente, LEER),
     );
     expect(filas[0]?.transaction_isolation).toBe('read committed');
   });
@@ -59,7 +61,7 @@ describe('criterio 27: nivel de aislamiento de la transacción', () => {
   it('el nivel de una transacción no se queda en la conexión de la siguiente', async () => {
     await baseDatos.conAcademia(academia.id, () => Promise.resolve(), { aislamiento: 'Serializable' });
     const filas = await baseDatos.conAcademia(academia.id, (tx) =>
-      tx.cliente.$queryRawUnsafe<{ transaction_isolation: string }[]>(LEER),
+      consultar<{ transaction_isolation: string }[]>(tx.cliente, LEER),
     );
     expect(filas[0]?.transaction_isolation).toBe('read committed');
   });

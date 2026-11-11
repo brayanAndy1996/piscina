@@ -61,8 +61,8 @@ export interface BaseDatosRonda3 {
 }
 
 /** `BaseDatos` de la aplicacion de pruebas, con el tipo de cliente de la ronda 3 (solo `$queryRaw` y `$executeRaw`). */
-export async function obtenerBaseDatosRonda3(app: INestApplication): Promise<BaseDatosRonda3> {
-  return (await obtenerBaseDatos(app)) as unknown as BaseDatosRonda3;
+export function obtenerBaseDatosRonda3(app: INestApplication): Promise<BaseDatosRonda3> {
+  return obtenerBaseDatos(app);
 }
 
 /** `url` con `?options=<opciones>` (codificado), por ejemplo `-c TimeZone=Pacific/Kiritimati`. */

@@ -6,7 +6,9 @@ import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { crearAcademiaDePrueba, type AcademiaDePrueba } from '../../utilidades/academias';
 import { conClienteComo, ejecutarComo, limpiarBase, urlAppPruebas } from '../../utilidades/base-datos';
 import { crearDatosDeAislamiento } from '../../utilidades/datos';
-import { type BaseDatosPrueba, esperarHasta, obtenerBaseDatos } from '../../utilidades/modulos';
+// (criterio 100) El cliente de `trabajo` ya no tiene `$queryRawUnsafe` ni `$executeRawUnsafe`: el SQL con parametros `$1`
+// se ejecuta con `consultar` y `ejecutar` (`$queryRaw`/`$executeRaw` con `Prisma.sql`), sin cambiar lo que se comprueba.
+import { type BaseDatosPrueba, consultar, ejecutar, esperarHasta, obtenerBaseDatos } from '../../utilidades/modulos';
 
 // Criterio 72 (ataque ronda 1, F1): cada transaccion fija los dos valores de contexto, aunque la conexion del pool
 // venga contaminada con valores de SESION de `app.plataforma` y `app.academia_id`. La API corre con
@@ -108,7 +110,8 @@ const VARIANTES: Variante[] = [
       const app = await crearApiConUnaConexion();
       const baseDatos = await obtenerBaseDatos(app);
       await baseDatos.comoPlataforma(async (tx) => {
-        await tx.cliente.$queryRawUnsafe(
+        await consultar(
+          tx.cliente,
           `SELECT set_config('app.plataforma', 'si', false), set_config('app.academia_id', $1, false)`,
           A.id,
         );
@@ -225,7 +228,7 @@ describe.each(VARIANTES)('criterio 72: conexion contaminada $titulo', (variante)
   it('criterio 72: dentro de conAcademia(B), app.academia_id es el id de B y app.plataforma es vacio', async (ctx) => {
     await conVariante(ctx, async (baseDatos) => {
       const visto = await baseDatos.conAcademia(B.id, async (tx) => {
-        const filas = await tx.cliente.$queryRawUnsafe<Contexto[]>(LEER_CONTEXTO);
+        const filas = await consultar<Contexto[]>(tx.cliente, LEER_CONTEXTO);
         return filas[0];
       });
 
@@ -236,7 +239,7 @@ describe.each(VARIANTES)('criterio 72: conexion contaminada $titulo', (variante)
   it('criterio 72: dentro de conAcademia(B), academias devuelve solo la fila de B', async (ctx) => {
     await conVariante(ctx, async (baseDatos) => {
       const ids = await baseDatos.conAcademia(B.id, async (tx) => {
-        const filas = await tx.cliente.$queryRawUnsafe<{ id: string }[]>('SELECT id::text AS id FROM academias');
+        const filas = await consultar<{ id: string }[]>(tx.cliente, 'SELECT id::text AS id FROM academias');
         return filas.map((fila) => fila.id);
       });
 
@@ -247,10 +250,12 @@ describe.each(VARIANTES)('criterio 72: conexion contaminada $titulo', (variante)
   it('criterio 72: dentro de conAcademia(B), auditoria y configuraciones devuelven solo filas de B', async (ctx) => {
     await conVariante(ctx, async (baseDatos) => {
       const vistas = await baseDatos.conAcademia(B.id, async (tx) => {
-        const auditoria = await tx.cliente.$queryRawUnsafe<{ academia_id: string }[]>(
+        const auditoria = await consultar<{ academia_id: string }[]>(
+          tx.cliente,
           'SELECT academia_id::text AS academia_id FROM auditoria',
         );
-        const configuraciones = await tx.cliente.$queryRawUnsafe<{ academia_id: string }[]>(
+        const configuraciones = await consultar<{ academia_id: string }[]>(
+          tx.cliente,
           'SELECT academia_id::text AS academia_id FROM configuraciones',
         );
         return { auditoria, configuraciones };
@@ -266,10 +271,12 @@ describe.each(VARIANTES)('criterio 72: conexion contaminada $titulo', (variante)
   it('criterio 72: dentro de conAcademia(B), superadmins y auditoria_plataforma devuelven 0 filas', async (ctx) => {
     await conVariante(ctx, async (baseDatos) => {
       const conteos = await baseDatos.conAcademia(B.id, async (tx) => {
-        const [superadmins] = await tx.cliente.$queryRawUnsafe<{ n: number }[]>(
+        const [superadmins] = await consultar<{ n: number }[]>(
+          tx.cliente,
           'SELECT count(*)::int AS n FROM superadmins',
         );
-        const [plataforma] = await tx.cliente.$queryRawUnsafe<{ n: number }[]>(
+        const [plataforma] = await consultar<{ n: number }[]>(
+          tx.cliente,
           'SELECT count(*)::int AS n FROM auditoria_plataforma',
         );
         return { superadmins: superadmins?.n, plataforma: plataforma?.n };
@@ -282,7 +289,7 @@ describe.each(VARIANTES)('criterio 72: conexion contaminada $titulo', (variante)
   it('criterio 72: dentro de comoPlataforma, app.academia_id es vacio y app.plataforma es si', async (ctx) => {
     await conVariante(ctx, async (baseDatos) => {
       const visto = await baseDatos.comoPlataforma(async (tx) => {
-        const filas = await tx.cliente.$queryRawUnsafe<Contexto[]>(LEER_CONTEXTO);
+        const filas = await consultar<Contexto[]>(tx.cliente, LEER_CONTEXTO);
         return filas[0];
       });
 
@@ -294,7 +301,7 @@ describe.each(VARIANTES)('criterio 72: conexion contaminada $titulo', (variante)
     await conVariante(ctx, async (baseDatos) => {
       const conteos = await baseDatos.comoPlataforma(async (tx) => {
         const contar = async (tabla: string) =>
-          (await tx.cliente.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ${tabla}`))[0]?.n;
+          (await consultar<{ n: number }[]>(tx.cliente, `SELECT count(*)::int AS n FROM ${tabla}`))[0]?.n;
         return {
           auditoria: await contar('auditoria'),
           configuraciones: await contar('configuraciones'),
@@ -322,7 +329,7 @@ describe.each(VARIANTES)('criterio 72: conexion contaminada $titulo', (variante)
     await conVariante(ctx, async (baseDatos) => {
       const error = await intentar(() =>
         baseDatos.comoPlataforma(async (tx) => {
-          await tx.cliente.$executeRawUnsafe(insertar, A.id);
+          await ejecutar(tx.cliente, insertar, A.id);
         }),
       );
 

@@ -13,7 +13,15 @@ import {
   leerAcademias,
   leerAuditoriaPlataforma,
 } from '../../utilidades/datos';
-import { type BaseDatosPrueba, cargarPrisma, obtenerBaseDatos, uuidInexistente } from '../../utilidades/modulos';
+// (criterio 100) El cliente de `trabajo` ya no tiene `$queryRawUnsafe` ni `$executeRawUnsafe`: el SQL con parametros `$1`
+// se ejecuta con `consultar` y `ejecutar` (`$queryRaw`/`$executeRaw` con `Prisma.sql`), sin cambiar lo que se comprueba.
+import {
+  type BaseDatosPrueba,
+  cargarPrisma,
+  consultar,
+  obtenerBaseDatos,
+  uuidInexistente,
+} from '../../utilidades/modulos';
 import { cookieDeSesion, crearSuperadminDePrueba, type SuperadminDePrueba } from '../../utilidades/superadmins';
 
 const AHORA = new Date('2026-11-11T15:00:00.000Z');
@@ -503,7 +511,7 @@ describe('academias desde la plataforma', () => {
       expect((await reactivar(academia.id)).status).toBe(200);
 
       const visto = await baseDatos.conAcademia(academia.id, async (tx) => {
-        const filas = await tx.cliente.$queryRawUnsafe<{ n: number }[]>('SELECT count(*)::int AS n FROM auditoria');
+        const filas = await consultar<{ n: number }[]>(tx.cliente, 'SELECT count(*)::int AS n FROM auditoria');
         return filas[0]?.n;
       });
       expect(visto).toBe(1);

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { INestApplication, Type } from '@nestjs/common';
 import { Writable } from 'node:stream';
+import { Prisma } from '../../src/generated/prisma/client';
 
 /**
  * Carga de los módulos de producción de la historia 001 que se describen en el "Contrato" de `spec.md`.
@@ -32,10 +33,49 @@ async function cargarModulo<T>(rutaDesdeSrc: string, exportaciones: readonly str
   return modulo as T;
 }
 
-/** Cliente de Prisma dentro de una transacción: en las pruebas solo se usa SQL directo. */
+/**
+ * Cliente dentro de una transacción de `BaseDatos`. (criterio 100) Desde la ronda 3 el cliente es un envoltorio que solo tiene
+ * `$queryRaw` y `$executeRaw` (como etiqueta de plantilla o con `Prisma.sql`): los métodos `*Unsafe` ya no existen. Para el SQL
+ * armado como texto con parámetros `$1`, `$2`… (como se escribía con `$queryRawUnsafe`) usa `consultar` y `ejecutar`.
+ */
 export interface ClientePrueba {
-  $queryRawUnsafe<T = unknown>(sql: string, ...valores: unknown[]): Promise<T>;
-  $executeRawUnsafe(sql: string, ...valores: unknown[]): Promise<number>;
+  $queryRaw<T = unknown>(consulta: TemplateStringsArray | Prisma.Sql, ...valores: unknown[]): Promise<T>;
+  $executeRaw(consulta: TemplateStringsArray | Prisma.Sql, ...valores: unknown[]): Promise<number>;
+}
+
+/**
+ * (criterio 100) Convierte un texto SQL con parámetros `$1`, `$2`… en un `Prisma.sql` con esos valores, para pasarlo a `$queryRaw`
+ * o `$executeRaw` sin usar los métodos `*Unsafe`. Cada `$n` se sustituye por el n-ésimo valor (en el orden en que aparece).
+ */
+export function sqlDe(texto: string, valores: readonly unknown[] = []): Prisma.Sql {
+  const partes: string[] = [];
+  const usados: unknown[] = [];
+  let ultimo = 0;
+  for (const coincidencia of texto.matchAll(/\$(\d+)/g)) {
+    partes.push(texto.slice(ultimo, coincidencia.index));
+    usados.push(valores[Number(coincidencia[1]) - 1]);
+    ultimo = coincidencia.index + coincidencia[0].length;
+  }
+  partes.push(texto.slice(ultimo));
+  return Prisma.sql(partes, ...usados);
+}
+
+/** (criterio 100) Lo que antes era `cliente.$queryRawUnsafe(texto, ...valores)`, con `$queryRaw(Prisma.sql…)`. */
+export function consultar<T = unknown>(
+  cliente: Pick<ClientePrueba, '$queryRaw'>,
+  texto: string,
+  ...valores: unknown[]
+): Promise<T> {
+  return cliente.$queryRaw<T>(sqlDe(texto, valores));
+}
+
+/** (criterio 100) Lo que antes era `cliente.$executeRawUnsafe(texto, ...valores)`, con `$executeRaw(Prisma.sql…)`. */
+export function ejecutar(
+  cliente: Pick<ClientePrueba, '$executeRaw'>,
+  texto: string,
+  ...valores: unknown[]
+): Promise<number> {
+  return cliente.$executeRaw(sqlDe(texto, valores));
 }
 export interface TransaccionAcademiaPrueba {
   readonly academiaId: string;
