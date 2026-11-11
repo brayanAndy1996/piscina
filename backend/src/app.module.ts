@@ -7,6 +7,7 @@ import { type Entorno, EntornoModule } from './infraestructura/entorno';
 import { PrismaModule } from './infraestructura/prisma';
 import { crearOpcionesRegistro } from './infraestructura/registro';
 import { RelojModule } from './infraestructura/reloj';
+import { AuditoriaModule } from './modulos/auditoria';
 import { SaludModule } from './modulos/salud/salud.module';
 
 export interface OpcionesApp {
@@ -33,6 +34,7 @@ export class AppModule {
         ),
         RelojModule,
         PrismaModule,
+        AuditoriaModule,
         SaludModule,
       ],
       providers: [{ provide: APP_FILTER, useClass: FiltroErrores }],

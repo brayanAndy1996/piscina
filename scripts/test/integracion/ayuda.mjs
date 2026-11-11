@@ -15,6 +15,18 @@ export function servidorDePruebas() {
   return analizarUrlPostgres(process.env.DATABASE_URL_PRUEBAS, 'DATABASE_URL_PRUEBAS');
 }
 
+/** Credencial de desarrollo inventada de `.env.example`, por si el entorno y el .env todavía no definen `DATABASE_URL_APP`. */
+const URL_APP_POR_DEFECTO = 'postgresql://aquagestion_app:aquagestion_app@127.0.0.1:5432/aquagestion';
+
+/**
+ * `DATABASE_URL_APP` para los scripts (spec 001): la del entorno o el .env, o la de ejemplo. Las pruebas de los scripts
+ * solo la usan para crear o comprobar el rol `aquagestion_app`; nunca inician sesión con ella.
+ */
+export function urlAppDePruebas() {
+  cargarEnv();
+  return process.env.DATABASE_URL_APP || URL_APP_POR_DEFECTO;
+}
+
 export function urlDe(servidor, base) {
   const usuario = encodeURIComponent(servidor.usuario);
   const clave = encodeURIComponent(servidor.clave);
@@ -64,7 +76,8 @@ export async function tablasDePublic(servidor, base) {
     base,
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
   );
-  return rows.map((fila) => fila.table_name);
+  // Ordenadas en JavaScript: el orden del servidor depende de la configuración regional de PostgreSQL.
+  return rows.map((fila) => fila.table_name).sort();
 }
 
 export async function borrarBases(servidor, nombres) {

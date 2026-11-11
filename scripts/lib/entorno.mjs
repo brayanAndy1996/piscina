@@ -64,3 +64,26 @@ export function leerUrlsBases(env = process.env) {
   }
   return { desarrollo, pruebas };
 }
+
+/** Nombre fijo del rol de PostgreSQL con el que se conecta la API (spec 001, "Roles de PostgreSQL"). */
+export const USUARIO_APP = 'aquagestion_app';
+
+/**
+ * Descompone `DATABASE_URL_APP` (la conexión de la API). Lanza un error que nombra la variable, sin incluir el valor.
+ * No exige que el usuario sea `aquagestion_app`: eso lo valida quien crea el rol.
+ */
+export function leerUrlApp(env = process.env) {
+  return analizarUrlPostgres(env.DATABASE_URL_APP, 'DATABASE_URL_APP');
+}
+
+/**
+ * URL de la app sobre otra base: el usuario y la contraseña de `urlApp`, y el host, el puerto, la base y los
+ * parámetros de `urlBase`. Se usa para apuntar al rol `aquagestion_app` a la base de pruebas.
+ */
+export function urlAppSobre(urlBase, urlApp) {
+  const resultado = new URL(urlBase);
+  const app = new URL(urlApp);
+  resultado.username = app.username;
+  resultado.password = app.password;
+  return resultado.toString();
+}

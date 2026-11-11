@@ -2,6 +2,9 @@ import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, HttpSta
 import type { ErrorApi } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
+import { ZodError } from 'zod';
+import { ErrorNegocio } from '../errores';
+import { detallesDeZod, MENSAJE_SOLICITUD_INVALIDA } from '../validacion';
 
 const PRIMER_ESTADO_DE_SERVIDOR = 500;
 const MENSAJE_ERROR_INTERNO = 'Ocurrió un error inesperado. Intenta de nuevo más tarde.';
@@ -33,6 +36,10 @@ const ERROR_INTERNO: ErrorApi = { codigo: 'ERROR_INTERNO', mensaje: MENSAJE_ERRO
 /**
  * Filtro global: convierte cualquier excepción en el formato `ErrorApi`. Nunca devuelve el mensaje ni la traza
  * originales; los errores del servidor se registran en el log con su traza.
+ *
+ * - `ErrorNegocio` de 4xx: se responde con su estado, código, mensaje y detalles propios.
+ * - `ZodError` (validación): 400 `SOLICITUD_INVALIDA` con `detalles: { errores: [{ campo, mensaje }] }`.
+ * - Cualquier 5xx (incluido un `ErrorNegocio` de 5xx): `ERROR_INTERNO` sin detalles, y se registra.
  */
 @Catch()
 export class FiltroErrores implements ExceptionFilter {
@@ -45,6 +52,21 @@ export class FiltroErrores implements ExceptionFilter {
   }
 
   private convertir(excepcion: unknown): { estado: number; cuerpo: ErrorApi } {
+    if (excepcion instanceof ZodError) {
+      return {
+        estado: HttpStatus.BAD_REQUEST,
+        cuerpo: {
+          codigo: 'SOLICITUD_INVALIDA',
+          mensaje: MENSAJE_SOLICITUD_INVALIDA,
+          detalles: detallesDeZod(excepcion),
+        },
+      };
+    }
+    if (excepcion instanceof ErrorNegocio && excepcion.estado < PRIMER_ESTADO_DE_SERVIDOR) {
+      const cuerpo: ErrorApi = { codigo: excepcion.codigo, mensaje: excepcion.mensaje };
+      if (excepcion.detalles !== undefined) cuerpo.detalles = excepcion.detalles;
+      return { estado: excepcion.estado, cuerpo };
+    }
     if (excepcion instanceof HttpException) {
       const estado = excepcion.getStatus();
       if (estado < PRIMER_ESTADO_DE_SERVIDOR) {

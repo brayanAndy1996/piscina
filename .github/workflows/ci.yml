@@ -1,4 +1,4 @@
-# Integración continua (spec 000, criterios 3, 25, 42 y 49).
+# Integración continua (spec 000, criterios 3, 25, 42 y 49; spec 001, criterio 64).
 # Tres trabajos: Linux con PostgreSQL 16 real, Windows (D-26: detecta lo que no funcione en la PC del responsable)
 # y verificación de pruebas protegidas. Cualquier paso que falle deja el check en rojo.
 name: CI
@@ -44,6 +44,10 @@ jobs:
       # Valores de desarrollo inventados, iguales a los de .env.example. No hay .env en la CI.
       DATABASE_URL: postgresql://aquagestion:aquagestion@127.0.0.1:5432/aquagestion
       DATABASE_URL_PRUEBAS: postgresql://aquagestion:aquagestion@127.0.0.1:5432/aquagestion_pruebas
+      # La API se conecta como aquagestion_app (sin privilegios, sujeto a RLS); `npm run db:preparar` crea el rol con el
+      # superusuario del servicio (POSTGRES_USER). El secreto es el de .env.example: solo vale fuera de producción.
+      DATABASE_URL_APP: postgresql://aquagestion_app:aquagestion_app@127.0.0.1:5432/aquagestion
+      JWT_SECRETO: solo-desarrollo-cambia-este-secreto-de-ejemplo-0001
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

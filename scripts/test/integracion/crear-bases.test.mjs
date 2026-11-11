@@ -6,6 +6,7 @@ import {
   existeBase,
   nombresTemporales,
   servidorDePruebas,
+  urlAppDePruebas,
   urlDe,
 } from './ayuda.mjs';
 
@@ -22,6 +23,7 @@ function variablesDe(nombres) {
   return {
     DATABASE_URL: urlDe(servidor, nombres.desarrollo),
     DATABASE_URL_PRUEBAS: urlDe(servidor, nombres.pruebas),
+    DATABASE_URL_APP: urlAppDePruebas(),
   };
 }
 
@@ -87,6 +89,7 @@ describe('db:crear (scripts/crear-bases.mjs)', () => {
     const resultado = ejecutarScript(['crear-bases.mjs'], {
       DATABASE_URL: `postgresql://usuario:clave-muy-secreta@127.0.0.1:1/${nombres.desarrollo}`,
       DATABASE_URL_PRUEBAS: `postgresql://usuario:clave-muy-secreta@127.0.0.1:1/${nombres.pruebas}`,
+      DATABASE_URL_APP: urlAppDePruebas(),
     });
     expect(resultado.estado).toBe(1);
     expect(resultado.salida).toContain('No se pudo conectar a PostgreSQL');

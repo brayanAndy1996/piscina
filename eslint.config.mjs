@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { configuracionPrisma } from './eslint/regla-prisma.mjs';
 import { configuracionReloj } from './eslint/regla-reloj.mjs';
 
 export default tseslint.config(
@@ -73,4 +74,7 @@ export default tseslint.config(
 
   // Regla del reloj inyectable.
   configuracionReloj,
+
+  // Regla de importaciones de Prisma: solo BaseDatos llega a la base.
+  configuracionPrisma,
 );

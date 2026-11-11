@@ -1,7 +1,26 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { borrarBases, ejecutarScript, nombresTemporales, servidorDePruebas, tablasDePublic, urlDe } from './ayuda.mjs';
+import {
+  borrarBases,
+  ejecutarScript,
+  nombresTemporales,
+  servidorDePruebas,
+  tablasDePublic,
+  urlAppDePruebas,
+  urlDe,
+} from './ayuda.mjs';
 
 const servidor = servidorDePruebas();
+
+// Tablas de `public` después de aplicar todas las migraciones (la 000 no creaba ninguna; la 001 crea estas cinco).
+// Cada historia con tablas nuevas agrega las suyas aquí.
+const TABLAS_DESPUES_DE_MIGRAR = [
+  '_prisma_migrations',
+  'academias',
+  'auditoria',
+  'auditoria_plataforma',
+  'configuraciones',
+  'superadmins',
+].sort();
 const creadas = [];
 
 function prepararEntorno() {
@@ -12,6 +31,7 @@ function prepararEntorno() {
     variables: {
       DATABASE_URL: urlDe(servidor, nombres.desarrollo),
       DATABASE_URL_PRUEBAS: urlDe(servidor, nombres.pruebas),
+      DATABASE_URL_APP: urlAppDePruebas(),
     },
   };
 }
@@ -21,7 +41,7 @@ afterEach(async () => {
 });
 
 describe('db:migrar y db:migrar:pruebas (scripts/prisma.mjs)', () => {
-  it('aplica la migración inicial, informa que no hay pendientes al repetir y no crea tablas de negocio', async () => {
+  it('aplica las migraciones, informa que no hay pendientes al repetir y crea solo las tablas de la historia 001', async () => {
     const { nombres, variables } = prepararEntorno();
     expect(ejecutarScript(['crear-bases.mjs'], variables).estado).toBe(0);
 
@@ -34,7 +54,7 @@ describe('db:migrar y db:migrar:pruebas (scripts/prisma.mjs)', () => {
     expect(segunda.estado).toBe(0);
     expect(segunda.salida).toMatch(/No pending migrations to apply/);
 
-    expect(await tablasDePublic(servidor, nombres.desarrollo)).toEqual(['_prisma_migrations']);
+    expect(await tablasDePublic(servidor, nombres.desarrollo)).toEqual(TABLAS_DESPUES_DE_MIGRAR);
   });
 
   it('con --pruebas migra la base de pruebas y deja la de desarrollo intacta', async () => {
@@ -44,7 +64,7 @@ describe('db:migrar y db:migrar:pruebas (scripts/prisma.mjs)', () => {
     const resultado = ejecutarScript(['prisma.mjs', '--pruebas', 'migrate', 'deploy'], variables);
 
     expect(resultado.estado).toBe(0);
-    expect(await tablasDePublic(servidor, nombres.pruebas)).toEqual(['_prisma_migrations']);
+    expect(await tablasDePublic(servidor, nombres.pruebas)).toEqual(TABLAS_DESPUES_DE_MIGRAR);
     expect(await tablasDePublic(servidor, nombres.desarrollo)).toEqual([]);
   });
 
@@ -90,8 +110,8 @@ describe('db:preparar (scripts/preparar-bases.mjs)', () => {
     const posiciones = marcas.map(posicion);
     expect([...posiciones].sort((a, b) => a - b)).toEqual(posiciones);
 
-    expect(await tablasDePublic(servidor, nombres.desarrollo)).toEqual(['_prisma_migrations']);
-    expect(await tablasDePublic(servidor, nombres.pruebas)).toEqual(['_prisma_migrations']);
+    expect(await tablasDePublic(servidor, nombres.desarrollo)).toEqual(TABLAS_DESPUES_DE_MIGRAR);
+    expect(await tablasDePublic(servidor, nombres.pruebas)).toEqual(TABLAS_DESPUES_DE_MIGRAR);
 
     // Repetirlo es seguro.
     const repetido = ejecutarScript(['preparar-bases.mjs'], variables);

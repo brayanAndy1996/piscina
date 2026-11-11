@@ -6,7 +6,8 @@
 // Pasos, en orden:
 //   1. Crea .env copiando .env.example (nunca sobrescribe un .env existente).
 //   2. Enciende PostgreSQL (cluster 16 main) si no responde en el host y puerto de DATABASE_URL.
-//   3. Crea el rol de DATABASE_URL (LOGIN, CREATEDB, sin superusuario) si no existe.
+//   3. Crea el rol de DATABASE_URL (LOGIN, CREATEDB, sin superusuario) si no existe, y después el rol de la API,
+//      aquagestion_app (el de DATABASE_URL_APP: sin ningún privilegio, spec 001), también como el usuario postgres.
 //   4. Ejecuta npm ci si falta node_modules o si package-lock.json cambió desde la última instalación hecha aquí.
 //   5. Crea las bases, genera el cliente de Prisma y aplica las migraciones a la base de desarrollo y a la de pruebas.
 //   6. Imprime un resumen breve, una línea por paso.
@@ -107,6 +108,24 @@ export function sentenciaCrearRol(usuario, clave) {
   return [
     'SET standard_conforming_strings = on;',
     `CREATE ROLE "${usuario}" LOGIN CREATEDB NOSUPERUSER PASSWORD ${literal};`,
+    '',
+  ].join('\n');
+}
+
+/**
+ * Sentencia SQL que crea el rol de la API (spec 001, criterio 8) con todos los atributos negativos del criterio 1:
+ * sin superusuario, `BYPASSRLS`, `CREATEDB`, `CREATEROLE`, `REPLICATION` ni herencia. Mismo cuidado con la
+ * contraseña que `sentenciaCrearRol`.
+ */
+export function sentenciaCrearRolApp(usuario, clave) {
+  if (!esNombreValido(usuario)) {
+    throw new Error('El usuario de DATABASE_URL_APP debe tener solo minúsculas, dígitos y guiones bajos.');
+  }
+  if (clave.includes('\0')) throw new Error('La contraseña de DATABASE_URL_APP no puede contener caracteres nulos.');
+  const literal = `'${clave.replaceAll("'", "''")}'`;
+  return [
+    'SET standard_conforming_strings = on;',
+    `CREATE ROLE "${usuario}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD ${literal};`,
     '',
   ].join('\n');
 }
@@ -301,6 +320,7 @@ export async function prepararSesion(raiz) {
 
   // 2 y 3. PostgreSQL y rol, solo si la base es local.
   let baseLista = false;
+  let rolAppListo = false;
   if (conexion) {
     const { host, puerto, usuario, clave } = conexion.desarrollo;
     if (!HOSTS_LOCALES.has(host)) {
@@ -349,6 +369,33 @@ export async function prepararSesion(raiz) {
           mal('Rol de la base', error instanceof Error ? error.message : String(error));
         }
       }
+
+      // 3b. Rol de la API (aquagestion_app). El de DATABASE_URL no puede crear roles en la nube: lo crea postgres.
+      if (baseLista) {
+        try {
+          const urlApp = utilidades().leerUrlApp(entornoParaHijos(raiz));
+          claves.push(urlApp.clave);
+          if (urlApp.usuario !== utilidades().USUARIO_APP) {
+            throw new Error(`El usuario de DATABASE_URL_APP debe ser ${utilidades().USUARIO_APP}.`);
+          }
+          if (urlApp.usuario === usuario) {
+            throw new Error('DATABASE_URL_APP debe usar un usuario distinto del de DATABASE_URL.');
+          }
+          const consulta = ejecutarPsqlComoPostgres(sentenciaExisteRol(urlApp.usuario));
+          if (!consulta.ok) throw new Error(resumirSalida(consulta.salida, claves));
+          if (consulta.salida.split(/\r?\n/).some((linea) => linea.trim() === '1')) {
+            bien('Rol de la aplicación', `${urlApp.usuario} ya existía`);
+            rolAppListo = true;
+          } else {
+            const creacion = ejecutarPsqlComoPostgres(sentenciaCrearRolApp(urlApp.usuario, urlApp.clave));
+            if (!creacion.ok) throw new Error(resumirSalida(creacion.salida, claves));
+            bien('Rol de la aplicación', `${urlApp.usuario} creado (LOGIN, sin ningún privilegio)`);
+            rolAppListo = true;
+          }
+        } catch (error) {
+          mal('Rol de la aplicación', error instanceof Error ? error.message : String(error));
+        }
+      }
     }
   }
 
@@ -385,13 +432,13 @@ export async function prepararSesion(raiz) {
       return resultado.ok;
     };
     correr('Cliente de Prisma', ['run', 'postinstall', '-w', '@aquagestion/backend']);
-    if (baseLista) {
+    if (baseLista && rolAppListo) {
       if (correr('Bases de datos', ['run', 'db:crear'])) {
         correr('Migraciones de desarrollo', ['run', 'db:migrar']);
         correr('Migraciones de pruebas', ['run', 'db:migrar:pruebas']);
       }
     } else if (conexion && HOSTS_LOCALES.has(conexion.desarrollo.host)) {
-      omitido('Bases de datos y migraciones', 'PostgreSQL o el rol no están listos (ver arriba)');
+      omitido('Bases de datos y migraciones', 'PostgreSQL o los roles no están listos (ver arriba)');
     } else if (!conexion) {
       omitido('Bases de datos y migraciones', 'falta una configuración válida de la base (ver arriba)');
     }

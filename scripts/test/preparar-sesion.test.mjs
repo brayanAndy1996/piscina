@@ -18,6 +18,7 @@ import {
   ocultarClaves,
   resumirSalida,
   sentenciaCrearRol,
+  sentenciaCrearRolApp,
   sentenciaExisteRol,
 } from '../../.claude/hooks/preparar-sesion.mjs';
 
@@ -103,6 +104,33 @@ describe('sentenciaCrearRol (casos límite: contraseña con comillas o caractere
 
   it('la consulta de existencia usa el nombre validado', () => {
     expect(sentenciaExisteRol('aquagestion')).toBe("SELECT 1 FROM pg_roles WHERE rolname = 'aquagestion';\n");
+  });
+});
+
+describe('sentenciaCrearRolApp (spec 001, criterios 1 y 8)', () => {
+  it('crea el rol de la API con todos los atributos negativos', () => {
+    const sql = sentenciaCrearRolApp('aquagestion_app', 'clave-app');
+    expect(sql).toContain(
+      'CREATE ROLE "aquagestion_app" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT ' +
+        "PASSWORD 'clave-app';",
+    );
+    expect(sql.startsWith('SET standard_conforming_strings = on;')).toBe(true);
+    expect(sql).not.toMatch(/(?<!NO)(SUPERUSER|BYPASSRLS|CREATEDB|CREATEROLE|REPLICATION)/);
+  });
+
+  it('duplica las comillas simples y deja intactas las barras y los signos de dólar', () => {
+    const sql = sentenciaCrearRolApp('aquagestion_app', 'a\'b\\c$$d"e;--');
+    expect(sql).toContain("PASSWORD 'a''b\\c$$d\"e;--';");
+    const hostil = sentenciaCrearRolApp('aquagestion_app', "'; DROP ROLE postgres; --");
+    expect(hostil).toContain("PASSWORD '''; DROP ROLE postgres; --';");
+  });
+
+  it.each(['Aqua', '1aqua', 'aqua-app', 'aqua app', 'aqua"x', '', 'ñandú'])('rechaza el usuario %j', (usuario) => {
+    expect(() => sentenciaCrearRolApp(usuario, 'x')).toThrow(/minúsculas, dígitos y guiones bajos/);
+  });
+
+  it('rechaza una contraseña con caracteres nulos sin mostrarla', () => {
+    expect(() => sentenciaCrearRolApp('aquagestion_app', 'a\0b')).toThrow(/nulos/);
   });
 });
 
