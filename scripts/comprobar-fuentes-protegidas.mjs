@@ -2,11 +2,17 @@
 // ejecuta antes de ESLint. Falla con código 1, nombrando cada ruta, si:
 //   - hay un enlace simbólico (o unión de Windows) en cualquier nivel de `backend/src/` o de `packages/contratos/src/`;
 //   - `git ls-files -- backend/src/generated` lista algún archivo (esa carpeta está en `.gitignore` y la crea `prisma generate`);
-//   - dentro de `backend/src/generated/` hay algo que no sea la carpeta `prisma/`.
+//   - dentro de `backend/src/generated/` hay algo que no sea la carpeta `prisma/`;
+//   - en `backend/src/` o `packages/contratos/src/` hay un archivo cuyo nombre contiene `.test.` y no termina exactamente en
+//     `.test.ts`, `.test.mts`, `.test.cts`, `.test.js`, `.test.mjs` o `.test.cjs` (criterio 110): pide renombrarlo, esté o no en git.
 // Si `git` no está disponible, falla diciendo el motivo. Solo usa módulos de Node: funciona igual en Windows, Mac y Linux.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { entradasAjenasEnGenerated, enlacesSimbolicos } from './lib/fuentes-protegidas.mjs';
+import {
+  archivosConNombreDePruebaFalso,
+  entradasAjenasEnGenerated,
+  enlacesSimbolicos,
+} from './lib/fuentes-protegidas.mjs';
 import { ejecutarGit, listaNul } from './lib/git.mjs';
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -17,6 +23,16 @@ for (const ruta of enlacesSimbolicos([
   path.join(raiz, 'packages', 'contratos', 'src'),
 ])) {
   problemas.push(`Enlace simbólico no permitido: ${path.relative(raiz, ruta)}`);
+}
+
+const AYUDA_NOMBRE =
+  'Renombra el archivo: quita ".test." del nombre o, si es una prueba, déjalo como *.test.ts, *.test.mts, *.test.cts, *.test.js, *.test.mjs o *.test.cjs.';
+for (const ruta of archivosConNombreDePruebaFalso([
+  path.join(raiz, 'backend', 'src'),
+  path.join(raiz, 'packages', 'contratos', 'src'),
+])) {
+  const relativa = path.relative(raiz, ruta).replaceAll('\\', '/');
+  problemas.push(`Nombre de prueba no válido: ${relativa}. ${AYUDA_NOMBRE}`);
 }
 
 const resultado = ejecutarGit(['ls-files', '-z', '--', 'backend/src/generated'], { cwd: raiz });

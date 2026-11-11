@@ -50,3 +50,34 @@ export function entradasAjenasEnGenerated(carpeta) {
     .filter((nombre) => nombre !== 'prisma' || !fs.lstatSync(path.join(carpeta, nombre)).isDirectory())
     .map((nombre) => path.join(carpeta, nombre));
 }
+
+/** Nombre de una prueba: termina exactamente en `.test.<ts|mts|cts|js|mjs|cjs>` (criterio 110). */
+const NOMBRE_DE_PRUEBA = /\.test\.(?:ts|mts|cts|js|mjs|cjs)$/;
+
+/**
+ * Rutas de los archivos bajo cada raíz cuyo nombre contiene `.test.` y no termina exactamente en una de las extensiones de
+ * prueba (`atajo.test.util.ts`, `x.test.d.ts`, `x.test.tsx`, `x.test.json`…), sea cual sea su contenido (criterio 110, precisión
+ * del 11/11/2026). Así un archivo que parece una prueba pero no queda exento de las reglas no pasa sin que nadie lo vea, aunque
+ * ESLint no revise ese tipo de archivo. Recorre con `lstat`, sin seguir enlaces (los enlaces los rechaza `enlacesSimbolicos`).
+ * Una raíz que no existe no es un error.
+ */
+export function archivosConNombreDePruebaFalso(raices) {
+  const encontrados = [];
+  const recorrer = (ruta) => {
+    let datos;
+    try {
+      datos = fs.lstatSync(ruta);
+    } catch (error) {
+      if (error && error.code === 'ENOENT') return;
+      throw error;
+    }
+    if (datos.isDirectory()) {
+      for (const nombre of fs.readdirSync(ruta).sort()) recorrer(path.join(ruta, nombre));
+      return;
+    }
+    const nombre = path.basename(ruta);
+    if (nombre.includes('.test.') && !NOMBRE_DE_PRUEBA.test(nombre)) encontrados.push(ruta);
+  };
+  for (const raiz of raices) recorrer(raiz);
+  return encontrados;
+}

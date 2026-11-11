@@ -5,7 +5,8 @@
 //     `generated/prisma`, `prisma.service`, `pg` (y `pg/…`, `pg-…`) o cualquier `@prisma/…`, también cuando la ruta pasa por
 //     `node_modules/` (`../../node_modules/pg`, rutas absolutas y URL `file:`); por `import` de un valor, `export … from`,
 //     `import(…)`, `require(…)` o `import x = require(…)`. También falla `import(…)` o `require(…)` con un argumento que no
-//     es una cadena literal, y `createRequire` (de `module` o `node:module`). Los tipos (`import type`, `import { type X }`,
+//     es una cadena literal (también en `cli/`, criterio 113), y `createRequire` (de `module` o `node:module`; en `cli/`
+//     también por cualquiera de sus vías y la función que devuelve, criterio 113). Los tipos (`import type`, `import { type X }`,
 //     `export type … from`) siguen permitidos;
 //   - fuera de `cli/`, ninguna importación (de valor o de tipo) de un archivo de `backend/src/cli/`, con la ruta resuelta
 //     respecto del archivo que importa;
@@ -32,8 +33,12 @@ export const MENSAJE_ACCESO_BASE =
   'y no uses require ni createRequire (los tipos sí se pueden importar).';
 
 export const MENSAJE_CARGA_DINAMICA =
-  'import() y require() solo admiten una cadena literal fuera de infraestructura/prisma: así la regla de acceso a la ' +
-  'base (BaseDatos es el único camino a Prisma y pg) puede ver qué módulo se carga.';
+  'import() y require() solo admiten una cadena literal fuera de infraestructura/prisma (también en cli/): así la regla ' +
+  'de acceso a la base (BaseDatos es el único camino a Prisma y pg) puede ver qué módulo se carga.';
+
+export const MENSAJE_CREATE_REQUIRE =
+  'En cli/ no se usa createRequire ni se carga module/node:module con require() o import(): permiten cargar cualquier ' +
+  "módulo sin que la regla de acceso a la base lo vea (sí se puede importar otro nombre, como `import { builtinModules } from 'node:module'`).";
 
 export const MENSAJE_IMPORTA_CLI =
   'Nada fuera de backend/src/cli/ importa archivos de cli/: los comandos usan la conexión del dueño de las tablas y no ' +
@@ -69,6 +74,19 @@ export function esModuloProhibido(ruta) {
 /** `module` y `node:module`: de ahí sale `createRequire`. */
 function esModuloNode(ruta) {
   return ruta === 'module' || ruta === 'node:module';
+}
+
+/** Nombre de una propiedad de acceso con punto o con una cadena literal; `null` si el acceso es calculado. */
+function nombreDePropiedad(acceso) {
+  if (!acceso.computed) return acceso.property.type === 'Identifier' ? acceso.property.name : null;
+  return acceso.property.type === 'Literal' && typeof acceso.property.value === 'string' ? acceso.property.value : null;
+}
+
+/** Nombre de una clave de propiedad de un patrón o de un objeto (`{ createRequire }`, `{ 'createRequire': x }`); `null` si es calculada. */
+function nombreDeClave(propiedad) {
+  if (propiedad.computed) return null;
+  if (propiedad.key.type === 'Identifier') return propiedad.key.name;
+  return propiedad.key.type === 'Literal' && typeof propiedad.key.value === 'string' ? propiedad.key.value : null;
 }
 
 /** Texto de un argumento si es una cadena literal o una plantilla sin `${}`; `null` si no. */
@@ -186,17 +204,70 @@ const reglaAccesoBase = {
     function revisarCarga(nodo, argumento) {
       const ruta = textoLiteral(argumento);
       if (ruta === null) {
-        if (revisaModulos) informar(nodo, MENSAJE_CARGA_DINAMICA);
+        // Criterio 113: la ruta que se calcula tampoco se puede seguir en cli/; solo infraestructura/prisma/ queda libre.
+        if (!enPrisma) informar(nodo, MENSAJE_CARGA_DINAMICA);
+        return;
+      }
+      // En cli/, `module` y `node:module` no se cargan con require() ni import(): de ahí sale createRequire.
+      if (enCli && esModuloNode(ruta)) {
+        informar(nodo, MENSAJE_CREATE_REQUIRE);
         return;
       }
       revisarRuta(nodo, ruta);
       revisarDestino(nodo, ruta);
     }
 
+    /**
+     * Criterio 113 (cli/): lo que se importa de `module` o `node:module`. `createRequire` por nombre falla (aunque no se use);
+     * el espacio de nombres (`import * as m`) o la importación por defecto solo se pueden usar como `m.<nombre fijo>` distinto de
+     * `createRequire` o desestructurando nombres fijos distintos de `createRequire`: cualquier otro uso (asignarlo, pasarlo,
+     * devolverlo) deja llegar a `createRequire` sin que se vea.
+     */
+    function revisarCreateRequireImportado(nodo) {
+      for (const especificador of nodo.specifiers) {
+        if (especificador.importKind === 'type') continue;
+        if (especificador.type === 'ImportSpecifier') {
+          if ((especificador.imported.name ?? especificador.imported.value) === 'createRequire') {
+            informar(nodo, MENSAJE_CREATE_REQUIRE);
+            return;
+          }
+          continue;
+        }
+        for (const variable of context.sourceCode.getDeclaredVariables(especificador)) {
+          for (const referencia of variable.references) {
+            if (!referencia.isValueReference && referencia.isTypeReference) continue;
+            if (!usoSeguroDelModulo(referencia.identifier)) {
+              informar(referencia.identifier, MENSAJE_CREATE_REQUIRE);
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    /** ¿El identificador del espacio de nombres de `module` se usa solo para llegar a un nombre fijo que no es `createRequire`? */
+    function usoSeguroDelModulo(identificador) {
+      const padre = identificador.parent;
+      if (padre.type === 'MemberExpression' && padre.object === identificador) {
+        const nombre = nombreDePropiedad(padre);
+        return nombre !== null && nombre !== 'createRequire' && nombre !== 'getBuiltinModule';
+      }
+      if (padre.type === 'VariableDeclarator' && padre.init === identificador && padre.id.type === 'ObjectPattern') {
+        return padre.id.properties.every(
+          (propiedad) =>
+            propiedad.type === 'Property' &&
+            nombreDeClave(propiedad) !== null &&
+            nombreDeClave(propiedad) !== 'createRequire',
+        );
+      }
+      return false;
+    }
+
     return {
       ImportDeclaration(nodo) {
         const ruta = String(nodo.source.value);
         revisarDestino(nodo, ruta);
+        if (enCli && esModuloNode(ruta) && importaValores(nodo)) revisarCreateRequireImportado(nodo);
         if (!revisaModulos || !importaValores(nodo)) return;
         if (esModuloProhibido(ruta)) {
           informar(nodo);
@@ -217,12 +288,21 @@ const reglaAccesoBase = {
         if (!nodo.source) return;
         const ruta = String(nodo.source.value);
         revisarDestino(nodo, ruta);
+        if (enCli && esModuloNode(ruta) && exportaValores(nodo)) {
+          const peligroso = nodo.specifiers.some(
+            (especificador) =>
+              especificador.exportKind !== 'type' &&
+              ['createRequire', 'default'].includes(especificador.local.name ?? especificador.local.value),
+          );
+          if (peligroso) informar(nodo, MENSAJE_CREATE_REQUIRE);
+        }
         if (exportaValores(nodo)) revisarRuta(nodo, ruta);
       },
       ExportAllDeclaration(nodo) {
         if (!nodo.source) return;
         const ruta = String(nodo.source.value);
         revisarDestino(nodo, ruta);
+        if (enCli && esModuloNode(ruta) && exportaValores(nodo)) informar(nodo, MENSAJE_CREATE_REQUIRE);
         if (exportaValores(nodo)) revisarRuta(nodo, ruta);
       },
       ImportExpression(nodo) {
@@ -230,6 +310,17 @@ const reglaAccesoBase = {
       },
       CallExpression(nodo) {
         if (nodo.callee.type === 'Identifier' && nodo.callee.name === 'require') revisarCarga(nodo, nodo.arguments[0]);
+      },
+      // En cli/, `createRequire` como propiedad (`x.createRequire`, `x['createRequire']`) o como clave de un patrón
+      // (`const { createRequire } = x`), y `process.getBuiltinModule(…)`, que da el módulo `module` sin importarlo.
+      MemberExpression(nodo) {
+        if (!enCli) return;
+        const nombre = nombreDePropiedad(nodo);
+        if (nombre === 'createRequire' || nombre === 'getBuiltinModule') informar(nodo, MENSAJE_CREATE_REQUIRE);
+      },
+      Property(nodo) {
+        if (!enCli || nodo.parent.type !== 'ObjectPattern') return;
+        if (nombreDeClave(nodo) === 'createRequire') informar(nodo, MENSAJE_CREATE_REQUIRE);
       },
       TSImportEqualsDeclaration(nodo) {
         const referencia = nodo.moduleReference;
