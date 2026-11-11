@@ -1,0 +1,131 @@
+# Integración continua (spec 000, criterios 3, 25, 42 y 49).
+# Tres trabajos: Linux con PostgreSQL 16 real, Windows (D-26: detecta lo que no funcione en la PC del responsable)
+# y verificación de pruebas protegidas. Cualquier paso que falle deja el check en rojo.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+# Una ejecución nueva en la misma rama cancela la anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # La CI no usa los hooks de git de husky.
+  HUSKY: '0'
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aquagestion
+          POSTGRES_PASSWORD: aquagestion
+          POSTGRES_DB: aquagestion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aquagestion"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Valores de desarrollo inventados, iguales a los de .env.example. No hay .env en la CI.
+      DATABASE_URL: postgresql://aquagestion:aquagestion@127.0.0.1:5432/aquagestion
+      DATABASE_URL_PRUEBAS: postgresql://aquagestion:aquagestion@127.0.0.1:5432/aquagestion_pruebas
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Verificar que no hay secretos en git
+        run: npm run verificar:sin-secretos
+      - name: Formato
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Tipos
+        run: npm run typecheck
+      - name: Preparar las bases de datos
+        run: npm run db:preparar
+      - name: Pruebas
+        run: npm test
+      - name: Compilar
+        run: npm run build
+      - name: Instalar Chromium para las pruebas E2E
+        run: npx playwright install --with-deps chromium
+      - name: Pruebas E2E
+        run: npm run e2e
+      - name: Subir el reporte de Playwright
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reporte-playwright
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      # El checkout respeta el core.autocrlf del ejecutor: .gitattributes (LF) debe bastar para que format:check pase.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Formato
+        run: npm run format:check
+      - name: Tipos
+        run: npm run typecheck
+      - name: Compilar
+        run: npm run build
+      - name: Pruebas unitarias
+        run: npm run test:unit
+
+  pruebas-protegidas:
+    name: Pruebas protegidas
+    # No corre en los push a main: funciona con cualquier forma de unir los PR.
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      # En un pull request: el rango entre la base y la cabeza del PR.
+      - name: Verificar el rango del pull request
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          CABEZA: ${{ github.event.pull_request.head.sha }}
+        run: npm run verificar:pruebas-protegidas -- --desde "$BASE" --hasta "$CABEZA"
+      # En un push a otra rama: el rango desde su merge-base con origin/main.
+      - name: Verificar el rango de la rama
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main
+          npm run verificar:pruebas-protegidas

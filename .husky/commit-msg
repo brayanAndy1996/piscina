@@ -1,0 +1,1 @@
+node scripts/verificar-pruebas-protegidas.mjs --preparados --mensaje "$1"

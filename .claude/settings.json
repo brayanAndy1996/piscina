@@ -1,4 +1,18 @@
 {
   "model": "claude-opus-5-5",
-  "effortLevel": "high"
+  "effortLevel": "high",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/preparar-sesion.mjs\"",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
 }

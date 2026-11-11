@@ -37,7 +37,14 @@ export default defineConfig({
       },
       {
         root: 'scripts',
-        test: { ...comun, name: 'scripts', include: ['test/**/*.test.mjs'], exclude: ['test/integracion/**'] },
+        test: {
+          ...comun,
+          name: 'scripts',
+          include: ['test/**/*.test.mjs'],
+          exclude: ['test/integracion/**'],
+          // Algunas pruebas crean repositorios git temporales y ejecutan git muchas veces (más lento en Windows).
+          testTimeout: 60_000,
+        },
       },
       {
         root: 'scripts',
