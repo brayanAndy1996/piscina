@@ -179,6 +179,8 @@ variables de entorno van en `infraestructura/entorno/`.
   @aquagestion/backend` tras el build, o `nest start`) con `DATABASE_URL` = `DATABASE_URL_PRUEBAS` y `PUERTO_API`
   3100, y la web (`vite`) con `PUERTO_WEB` 5180 y proxy a 3100. Las variables se pasan con `env` del `webServer`,
   sin sintaxis de shell.
+- `launchOptions.executablePath` solo si `CHROMIUM_EJECUTABLE` está definida y no vacía (en la nube); en Windows y en
+  la CI no se define y se usa el Chromium que instala Playwright (revisión T22, 11/11/2026; criterio 6).
 - `pruebas/inicio.spec.ts`: abre `/` y espera "Sistema en línea".
 - `npm test` de la raíz no incluye E2E; se ejecutan con `npm run e2e`.
 
@@ -204,7 +206,11 @@ variables de entorno van en `infraestructura/entorno/`.
   # Puertos de desarrollo
   PUERTO_API=3000
   PUERTO_WEB=5173
+  # Ruta de un Chromium ya instalado para las E2E (solo en la nube; la agrega el hook de sesión)
+  # CHROMIUM_EJECUTABLE=/opt/pw-browsers/chromium
   ```
+
+  (revisión T22, 11/11/2026: `CHROMIUM_EJECUTABLE` comentada, criterio 6.)
 
 ### Verificación de pruebas protegidas (`scripts/verificar-pruebas-protegidas.mjs`)
 
@@ -245,6 +251,11 @@ variables de entorno van en `infraestructura/entorno/`.
 
 - `husky` (v9: `"prepare": "husky"`). `.husky/pre-commit`: `npx lint-staged`. `.husky/commit-msg`:
   `node scripts/verificar-pruebas-protegidas.mjs --preparados --mensaje "$1"`.
+- `.husky/pre-commit` compila `@aquagestion/contratos` si falta `packages/contratos/dist`, antes de `lint-staged`,
+  porque las reglas de ESLint con tipos resuelven los tipos del paquete compilado (revisión T22, 11/11/2026;
+  criterio 31).
+- En la nube, el `npm ci` del hook de sesión ejecuta `prepare`, así que los hooks de git quedan activos allí; es lo
+  buscado (revisión T22, 11/11/2026; criterios 31 y 44).
 - `lint-staged`: `*.{ts,tsx,js,mjs,cjs}` → `eslint --fix --max-warnings 0` y `prettier --write`;
   `*.{json,yml,yaml,css,html}` → `prettier --write`. Sin Markdown.
 - En la CI, `husky` no debe romper `npm ci` (en v9 no instala hooks fuera de un repositorio git y se puede desactivar
@@ -254,24 +265,37 @@ variables de entorno van en `infraestructura/entorno/`.
 
 - Solo módulos de Node (`node:fs`, `node:path`, `node:child_process`, `node:crypto`, `node:net`, `node:util`).
   Raíz del proyecto: `CLAUDE_PROJECT_DIR` o, si falta, dos carpetas arriba del archivo.
+- Sin `import` estáticos de módulos del repositorio. Si reutiliza `scripts/lib/entorno.mjs` (análisis de
+  `DATABASE_URL` y validación de nombres), lo carga con `await import()` dentro de un `try/catch` después de
+  comprobar `CLAUDE_CODE_REMOTE`; si falla, lo informa como fallo del paso y sigue hasta terminar en 0 (revisión T22,
+  11/11/2026; criterio 47).
 - Primera línea de lógica: si `process.env.CLAUDE_CODE_REMOTE !== 'true'`, `process.exit(0)` sin salida.
 - Pasos (criterio 44), cada uno en un `try` propio que registra "✓ paso" o "✗ paso: motivo" y corta los siguientes
   si dependen de él:
   1. `.env`: si no existe, `fs.copyFileSync('.env.example', '.env', fs.constants.COPYFILE_EXCL)`. Lee las variables
      con `util.parseEnv` (Node 22) sin modificar `process.env` global más allá de lo necesario para los hijos.
-  2. PostgreSQL: si el host de `DATABASE_URL` no es `localhost` ni `127.0.0.1`, lo informa y salta los pasos 2, 3 y
-     la creación de bases. Si no, comprueba con un `net.connect` al puerto (o `pg_isready`); si no responde,
+     Si existe `/opt/pw-browsers/chromium`: agrega `CHROMIUM_EJECUTABLE=/opt/pw-browsers/chromium` al `.env` solo si
+     el hook acaba de crearlo y no la contiene, y, si existe `CLAUDE_ENV_FILE`, agrega
+     `export CHROMIUM_EJECUTABLE=/opt/pw-browsers/chromium` a ese archivo si no está (revisión T22, 11/11/2026;
+     criterio 44).
+  2. PostgreSQL: si el host de `DATABASE_URL` no es `localhost` ni `127.0.0.1`, lo informa y salta los pasos 2, 3,
+     la creación de bases y las migraciones (solo instala dependencias y genera el cliente de Prisma); la línea final
+     del resumen lo dice en lugar de "Sesión preparada." (revisión T22, 11/11/2026; criterio 46). Si no, comprueba
+     con un `net.connect` al puerto (o `pg_isready`); si no responde,
      `spawnSync('pg_ctlcluster', ['16', 'main', 'start'])` y reintenta cada segundo hasta 30 s.
-  3. Rol: valida usuario y bases con `^[a-z_][a-z0-9_]*$`; ejecuta `runuser -u postgres -- psql -v ON_ERROR_STOP=1
-     -d postgres` (o `su postgres -c` si no hay `runuser`), pasando la sentencia por la entrada estándar: un bloque
+  3. Rol: valida usuario y bases con `^[a-z_][a-z0-9_]*$`; como root ejecuta `runuser -u postgres -- psql -v
+     ON_ERROR_STOP=1 -d postgres` con los argumentos separados (sin root, `sudo -n -u postgres psql …`; si el
+     proceso ya es `postgres`, `psql` directo), pasando la sentencia por la entrada estándar: un bloque
      `DO` que crea el rol con `LOGIN CREATEDB NOSUPERUSER PASSWORD '<contraseña con comillas simples duplicadas>'`
-     si no existe. La contraseña nunca va en los argumentos ni en la salida.
+     si no existe. La contraseña nunca va en los argumentos ni en la salida. No se usa `su postgres -c` (interpreta
+     una cadena con shell): si `runuser` no existe, el paso falla e informa el motivo (revisión T22, 11/11/2026;
+     criterio 47).
   4. Dependencias: huella `sha256` de `package-lock.json` comparada con `node_modules/.preparar-sesion.sha256`; si
      falta `node_modules` o la huella cambió, `npm ci` y, solo si termina bien, se guarda la huella.
   5. `npm run db:crear`, `npx prisma generate` (en el workspace backend), `npm run db:migrar` y
      `npm run db:migrar:pruebas`.
-  6. Resumen final, una línea por paso, más "Sesión preparada." o "Preparación incompleta: reintenta con
-     node .claude/hooks/preparar-sesion.mjs".
+  6. Resumen final, una línea por paso, más "Sesión preparada.", la variante para host remoto (criterio 46) o
+     "Preparación incompleta: reintenta con node .claude/hooks/preparar-sesion.mjs".
 - Siempre termina con código 0. En Windows, `spawnSync` de `npm` necesitaría `npm.cmd`, pero el hook nunca llega a
   esos pasos fuera de la nube.
 - `.claude/settings.json` (combinar con lo existente):

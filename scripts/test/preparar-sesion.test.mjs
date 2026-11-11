@@ -6,8 +6,9 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  cargarUtilidadesEntorno,
   COMANDO_REINTENTO,
   describirFallo,
   esSesionEnLaNube,
@@ -29,6 +30,11 @@ const HOOK = path.resolve(
   'preparar-sesion.mjs',
 );
 const esWindows = process.platform === 'win32';
+
+// Las funciones puras del hook usan scripts/lib/entorno.mjs, que el hook carga solo en la nube.
+beforeAll(async () => {
+  await cargarUtilidadesEntorno();
+});
 
 describe('esSesionEnLaNube', () => {
   it('solo con el valor exacto "true"', () => {
@@ -215,6 +221,60 @@ describe('hook de sesión fuera de la nube (criterio 43)', () => {
   });
 });
 
+describe('carga perezosa de scripts/lib/entorno.mjs (criterios 43 y 46)', () => {
+  let proyecto;
+
+  /** Proyecto temporal con una copia del hook y SIN scripts/lib/entorno.mjs (o con uno que falla al cargarse). */
+  function proyectoConHook(contenidoEntorno) {
+    fs.mkdirSync(path.join(proyecto, '.claude', 'hooks'), { recursive: true });
+    fs.copyFileSync(HOOK, path.join(proyecto, '.claude', 'hooks', 'preparar-sesion.mjs'));
+    if (contenidoEntorno !== undefined) {
+      fs.mkdirSync(path.join(proyecto, 'scripts', 'lib'), { recursive: true });
+      fs.writeFileSync(path.join(proyecto, 'scripts', 'lib', 'entorno.mjs'), contenidoEntorno);
+    }
+    return path.join(proyecto, '.claude', 'hooks', 'preparar-sesion.mjs');
+  }
+
+  function correr(hook, remoto) {
+    const entorno = { ...process.env, CLAUDE_PROJECT_DIR: proyecto };
+    delete entorno.CLAUDE_CODE_REMOTE;
+    delete entorno.CLAUDE_ENV_FILE;
+    if (remoto !== undefined) entorno.CLAUDE_CODE_REMOTE = remoto;
+    const resultado = spawnSync(process.execPath, [hook], { cwd: proyecto, env: entorno, encoding: 'utf8' });
+    return { codigo: resultado.status, salida: resultado.stdout, error: resultado.stderr };
+  }
+
+  beforeEach(() => {
+    proyecto = fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-hook-'));
+  });
+  afterEach(() => {
+    fs.rmSync(proyecto, { recursive: true, force: true });
+  });
+
+  it.each([
+    ['falta el módulo', undefined],
+    ['el módulo falla al cargarse', "throw new Error('no debería cargarse fuera de la nube');\n"],
+  ])('fuera de la nube nunca lo carga (%s): termina en 0 y sin salida', (_caso, contenido) => {
+    const hook = proyectoConHook(contenido);
+    const resultado = correr(hook, undefined);
+    expect(resultado.codigo).toBe(0);
+    expect(resultado.salida).toBe('');
+    expect(resultado.error).toBe('');
+  });
+
+  it.each([
+    ['falta el módulo', undefined],
+    ['el módulo falla al cargarse', "throw new Error('módulo roto');\n"],
+  ])('en la nube, si no se puede cargar (%s) lo informa como paso fallido y termina en 0', (_caso, contenido) => {
+    const hook = proyectoConHook(contenido);
+    const resultado = correr(hook, 'true');
+    expect(resultado.codigo).toBe(0);
+    expect(resultado.salida).toContain('✗ Utilidades de entorno');
+    expect(resultado.salida).toContain(`Preparación incompleta: reintenta con ${COMANDO_REINTENTO}`);
+    expect(fs.existsSync(path.join(proyecto, '.env'))).toBe(false);
+  });
+});
+
 describe.skipIf(esWindows)('hook de sesión en la nube con fallos (criterio 46)', () => {
   const CLAVE = 'SuperClave123';
   let proyecto;
@@ -260,6 +320,38 @@ describe.skipIf(esWindows)('hook de sesión en la nube con fallos (criterio 46)'
     expect(texto).toContain(COMANDO_REINTENTO);
     expect(texto).not.toContain(CLAVE);
     expect(texto).not.toContain('no debe ejecutarse');
+  });
+
+  it('con un host remoto y todo bien, el resumen final dice que no se gestionó la base', () => {
+    escribirEnvExample('db.remota.example');
+    fs.writeFileSync(path.join(proyecto, 'package-lock.json'), '{}\n');
+    comandoFalso('npm', 'mkdir -p node_modules\nexit 0');
+    const resultado = ejecutarHook({ proyecto, remoto: 'true', path: binFalso });
+    expect(resultado.codigo).toBe(0);
+    const lineas = resultado.salida.trim().split('\n');
+    expect(lineas.at(-1)).toBe('Sesión preparada sin gestionar la base de datos (host remoto).');
+    expect(resultado.salida).not.toContain('Preparación incompleta');
+  });
+
+  it('si no existe el comando para ejecutar psql como postgres, el paso falla con un mensaje claro, sin usar su', async () => {
+    const servidor = net.createServer();
+    await new Promise((resolver) => servidor.listen(0, '127.0.0.1', resolver));
+    const puerto = servidor.address().port;
+    try {
+      escribirEnvExample('127.0.0.1', puerto);
+      fs.writeFileSync(path.join(proyecto, 'package-lock.json'), '{}\n');
+      const marcador = path.join(binFalso, 'marcador.txt');
+      comandoFalso('su', `echo su >> "${marcador}"\nexit 0`);
+      comandoFalso('npm', 'exit 1');
+      const resultado = ejecutarHook({ proyecto, remoto: 'true', path: binFalso });
+      expect(resultado.codigo).toBe(0);
+      expect(resultado.salida).toContain('✗ Rol de la base');
+      expect(resultado.salida).toMatch(/no está instalado; no se puede ejecutar psql como el usuario postgres/);
+      expect(resultado.salida).toContain(`reintenta con ${COMANDO_REINTENTO}`);
+      expect(fs.existsSync(marcador)).toBe(false);
+    } finally {
+      await new Promise((resolver) => servidor.close(resolver));
+    }
   });
 
   it('crea .env desde .env.example y nunca sobrescribe uno existente', () => {

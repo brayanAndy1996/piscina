@@ -58,6 +58,10 @@ _(verificación manual)_ indica quién y cómo lo comprueba.
 6. Dado `.env.example`, entonces contiene todas las variables que lee el sistema en esta historia, cada una con un
    comentario en español, solo con valores de desarrollo inventados (sin secretos reales) y con valores que funcionan
    tal cual con el `docker-compose.yml` y con el PostgreSQL de la nube. _(verificación del revisor)_
+   Documenta también, **comentada**, `CHROMIUM_EJECUTABLE` (ruta de un Chromium ya instalado para las E2E):
+   `e2e/playwright.config.ts` usa `executablePath` solo si la variable está definida y no vacía; si no, usa el
+   navegador que instala Playwright. En la PC con Windows y en la CI no se define; en la nube la fija el hook de
+   sesión (criterio 44). _(revisión T22, 11/11/2026; verificación del revisor)_
 
 ### B. API
 
@@ -158,7 +162,11 @@ _(verificación manual)_ indica quién y cómo lo comprueba.
 31. Dado un archivo `.ts` preparado para commit con un error de ESLint que no se corrige solo, cuando se hace el
     commit, entonces `husky` con `lint-staged` lo rechaza; si solo tiene formato incorrecto, Prettier lo corrige y
     el commit sigue. Funciona igual con Git para Windows. _(verificación manual del tester; el responsable lo
-    confirma en Windows)_
+    confirma en Windows)_ Antes de `lint-staged`, el hook `pre-commit` compila `@aquagestion/contratos` si falta
+    `packages/contratos/dist`, porque las reglas de ESLint con tipos lo necesitan; así funciona en un clon recién
+    instalado. Los hooks de git también quedan activos en la nube (el `npm ci` del hook de sesión ejecuta `prepare`,
+    criterio 44), de modo que `pre-commit` y `commit-msg` (criterio 41) corren igual allí. _(revisión T22,
+    11/11/2026; verificación del revisor y del tester)_
 32. Dado que el responsable o un agente ejecuta los comandos del proyecto en Windows, entonces ningún script de
     `package.json` usa `cp`, `rm`, `mkdir -p`, `export` ni sintaxis exclusiva de bash; las variables de entorno en
     comandos se fijan con `cross-env` o desde Node. _(verificación del revisor; CI en Windows)_
@@ -201,15 +209,23 @@ _(verificación manual)_ indica quién y cómo lo comprueba.
 
 43. Dado que `CLAUDE_CODE_REMOTE` no vale `true` (la PC del responsable, la CI), cuando se ejecuta el hook, entonces
     termina con código 0, sin escribir nada en la salida, sin crear ni modificar archivos y sin ejecutar comandos.
-    _(prueba obligatoria: se ejecuta en un directorio temporal y se comprueba que queda igual)_
+    Tampoco carga módulos del repositorio (criterio 47). _(prueba obligatoria: se ejecuta en un directorio temporal
+    y se comprueba que queda igual; lo de los módulos, revisión T22, 11/11/2026)_
 44. Dado la nube (`CLAUDE_CODE_REMOTE=true`), con PostgreSQL apagado y sin `.env`, cuando se ejecuta el hook,
     entonces, en este orden:
     1. crea `.env` copiando `.env.example` (nunca sobrescribe un `.env` existente);
+       - si existe `/opt/pw-browsers/chromium`, deja `CHROMIUM_EJECUTABLE` apuntando ahí (criterio 6): la agrega al
+         final del `.env` **solo si el hook acaba de crearlo** en este paso y no la contiene ya (un `.env` que ya
+         existía no se toca), y, si la variable `CLAUDE_ENV_FILE` existe, agrega a ese archivo
+         `export CHROMIUM_EJECUTABLE=/opt/pw-browsers/chromium` si no está ya. Si la carpeta no existe, no hace nada
+         de esto. _(revisión T22, 11/11/2026)_
     2. si PostgreSQL no responde en el host y puerto de `DATABASE_URL`, enciende el cluster `16 main` y espera a que
        responda, hasta 30 segundos;
     3. crea, si no existe, el rol de `DATABASE_URL` con su contraseña, `LOGIN` y `CREATEDB`, **sin** superusuario;
     4. si falta `node_modules` o `package-lock.json` cambió desde la última instalación hecha por el hook, ejecuta
-       `npm ci`;
+       `npm ci`. Ese `npm ci` ejecuta `prepare` (`husky`), así que en la nube los hooks de git quedan activos; es lo
+       esperado, para que la verificación de pruebas protegidas de `commit-msg` (criterio 41) también corra allí.
+       _(revisión T22, 11/11/2026)_
     5. ejecuta `npm run db:crear`, genera el cliente de Prisma y aplica las migraciones a la base de desarrollo y a
        la de pruebas;
     6. imprime un resumen breve, una línea por paso.
@@ -222,8 +238,20 @@ _(verificación manual)_ indica quién y cómo lo comprueba.
     reintentar (`node .claude/hooks/preparar-sesion.mjs`); nunca imprime la contraseña de la base. Si el host de
     `DATABASE_URL` no es `localhost` ni `127.0.0.1`, no intenta gestionar PostgreSQL y lo informa.
     _(verificación manual del tester; prueba de que el texto no contiene la contraseña si se separa en una función)_
+    Precisión _(revisión T22, 11/11/2026)_: con un host no local, el hook no enciende PostgreSQL, no crea el rol, no
+    crea bases ni aplica migraciones; solo hace los pasos 1 y 4 y genera el cliente de Prisma. La línea final del
+    resumen no es "Sesión preparada." a secas, sino que dice que la base no se gestionó por ser remota (orientativo:
+    "Sesión preparada sin gestionar la base: el host de DATABASE_URL no es local."). Si además falla algún paso,
+    manda el mensaje de preparación incompleta con el comando para reintentar.
 47. Dado el hook, entonces solo usa módulos incluidos en Node (puede ejecutarse antes de `npm ci`) y ejecuta los
     comandos externos sin pasar por una shell, con los argumentos separados. _(verificación del revisor)_
+    Precisión _(revisión T22, 11/11/2026)_:
+    - No importa módulos del repositorio de forma estática. Si usa `scripts/lib/entorno.mjs`, lo carga con
+      `import()` dinámico dentro de un `try/catch`, después de comprobar `CLAUDE_CODE_REMOTE`; si el módulo falta o
+      falla al cargar, lo informa como fallo del paso y termina igual con código 0.
+    - No usa `su -c` ni ningún otro comando que interprete una cadena con una shell. Para ejecutar `psql` como el
+      usuario `postgres` usa `runuser` con los argumentos separados (o `sudo -n -u postgres` sin ser root, o `psql`
+      directo si ya es `postgres`); si `runuser` no existe, informa el fallo del paso del rol con el motivo.
 48. Dado `.claude/settings.json`, entonces conserva `"model": "claude-opus-5-5"` y `"effortLevel": "high"` y agrega el
     hook `SessionStart` que ejecuta `node "$CLAUDE_PROJECT_DIR/.claude/hooks/preparar-sesion.mjs"` al iniciar y al
     reanudar una sesión (no al compactar ni al limpiar), con un tiempo límite de 600 segundos. _(verificación del
@@ -270,7 +298,10 @@ _(verificación manual)_ indica quién y cómo lo comprueba.
   publicado, y la guía explica que hay que cambiar también `DATABASE_URL` y `DATABASE_URL_PRUEBAS`.
 - La base no responde (puerto cerrado) o se cuelga: la API arranca igual; salud responde 503 en menos de 3 segundos.
 - `.env` ya existe en la nube con otros valores: el hook no lo toca y trabaja con esos valores.
-- `.env` define un host remoto: el hook no gestiona PostgreSQL y lo dice.
+- `.env` define un host remoto: el hook no gestiona PostgreSQL, el rol, las bases ni las migraciones, y lo dice en
+  el resumen final (criterio 46).
+- `.env` ya existía en la nube sin `CHROMIUM_EJECUTABLE`: el hook no lo agrega al `.env`, pero sí la exporta en
+  `$CLAUDE_ENV_FILE` si existe (criterio 44).
 - `npm ci` se interrumpe a medias en la nube: la siguiente ejecución del hook reinstala, porque la huella de
   `package-lock.json` solo se guarda al terminar bien.
 - Contraseña de la base con comillas o caracteres especiales: el hook crea el rol sin romper la sentencia SQL;
@@ -314,6 +345,8 @@ No hay reglas de negocio. Se aplican las reglas que no se negocian de `CLAUDE.md
   - `PUERTO_API` (3000) y `PUERTO_WEB` (5173).
   - `POSTGRES_PUERTO` (5432): puerto publicado por `docker compose`.
   - `NODE_ENV`, opcional.
+  - `CHROMIUM_EJECUTABLE`, opcional y comentada en `.env.example`: ruta de un Chromium ya instalado para las E2E; solo
+    se define en la nube (criterios 6 y 44; revisión T22, 11/11/2026).
 - **Reloj:** token `RELOJ`, interfaz `Reloj { ahora(): Date }`, clases `RelojSistema` y `RelojFijo` (esta última con
   métodos para fijar y avanzar la hora), en `backend/src/infraestructura/reloj/`.
 - **Comandos de la raíz:** `dev`, `build`, `test`, `test:unit`, `e2e`, `lint`, `typecheck`, `format`,

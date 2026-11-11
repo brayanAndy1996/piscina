@@ -14,6 +14,9 @@
 // Siempre termina con código 0 para no bloquear la sesión; si un paso falla, la salida dice cuál, por qué y cómo
 // reintentar. Nunca imprime la contraseña de la base. Solo usa módulos incluidos en Node (se ejecuta antes de npm ci)
 // y lanza los comandos externos sin shell, con los argumentos separados.
+//
+// Las utilidades de scripts/lib/entorno.mjs se cargan con import() dinámico, solo en la nube y dentro de try/catch:
+// fuera de la nube nunca se leen, y en la nube un fallo al cargarlas se informa como paso fallido.
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -23,7 +26,6 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseEnv } from 'node:util';
-import { analizarUrlPostgres, esNombreValido } from '../../scripts/lib/entorno.mjs';
 
 export const COMANDO_REINTENTO = 'node .claude/hooks/preparar-sesion.mjs';
 const CLUSTER = ['16', 'main'];
@@ -31,6 +33,24 @@ const SEGUNDOS_ESPERA_POSTGRES = 30;
 const HOSTS_LOCALES = new Set(['localhost', '127.0.0.1']);
 const CHROMIUM_NUBE = '/opt/pw-browsers/chromium';
 const ARCHIVO_HUELLA = path.join('node_modules', '.preparar-sesion.sha256');
+
+let utilidadesEntorno = null;
+
+/**
+ * Carga scripts/lib/entorno.mjs (import dinámico, una sola vez). Debe llamarse después de comprobar que la sesión es
+ * la nube. Lanza el error de la importación si el módulo no se puede cargar.
+ */
+export async function cargarUtilidadesEntorno() {
+  utilidadesEntorno ??= await import('../../scripts/lib/entorno.mjs');
+  return utilidadesEntorno;
+}
+
+function utilidades() {
+  if (!utilidadesEntorno) throw new Error('Las utilidades de entorno no se cargaron (falta cargarUtilidadesEntorno).');
+  return utilidadesEntorno;
+}
+
+const esNombreValido = (nombre) => utilidades().esNombreValido(nombre);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Funciones puras (se prueban por separado)
@@ -111,8 +131,8 @@ export function necesitaInstalar({ existeNodeModules, huellaGuardada, huellaActu
 
 /** Descompone DATABASE_URL y valida los nombres de usuario y bases. Lanza errores sin incluir valores. */
 export function leerConexion(env) {
-  const desarrollo = analizarUrlPostgres(env['DATABASE_URL'], 'DATABASE_URL');
-  const pruebas = analizarUrlPostgres(env['DATABASE_URL_PRUEBAS'], 'DATABASE_URL_PRUEBAS');
+  const desarrollo = utilidades().analizarUrlPostgres(env['DATABASE_URL'], 'DATABASE_URL');
+  const pruebas = utilidades().analizarUrlPostgres(env['DATABASE_URL_PRUEBAS'], 'DATABASE_URL_PRUEBAS');
   return { desarrollo, pruebas };
 }
 
@@ -169,20 +189,19 @@ async function esperarPuerto(host, puerto, segundos) {
 function ejecutarPsqlComoPostgres(sentencia, extra = []) {
   const argumentosPsql = ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-d', 'postgres', ...extra];
   const esAdministrador = typeof process.getuid === 'function' && process.getuid() === 0;
-  const candidatos = esAdministrador
-    ? [
-        ['runuser', ['-u', 'postgres', '--', 'psql', ...argumentosPsql]],
-        ['su', ['postgres', '-c', `psql ${argumentosPsql.join(' ')}`]],
-      ]
+  const [comando, argumentos] = esAdministrador
+    ? ['runuser', ['-u', 'postgres', '--', 'psql', ...argumentosPsql]]
     : os.userInfo().username === 'postgres'
-      ? [['psql', argumentosPsql]]
-      : [['sudo', ['-n', '-u', 'postgres', 'psql', ...argumentosPsql]]];
-  let ultimo = { ok: false, noExiste: true, salida: 'no hay forma de ejecutar psql como el usuario postgres' };
-  for (const [comando, argumentos] of candidatos) {
-    ultimo = ejecutar(comando, argumentos, { cwd: path.parse(process.cwd()).root, entrada: sentencia });
-    if (!ultimo.noExiste) return ultimo;
+      ? ['psql', argumentosPsql]
+      : ['sudo', ['-n', '-u', 'postgres', 'psql', ...argumentosPsql]];
+  const resultado = ejecutar(comando, argumentos, { cwd: path.parse(process.cwd()).root, entrada: sentencia });
+  if (resultado.noExiste) {
+    return {
+      ...resultado,
+      salida: `${comando} no está instalado; no se puede ejecutar psql como el usuario postgres`,
+    };
   }
-  return ultimo;
+  return resultado;
 }
 
 /** Variables de entorno para los procesos hijos: las del proceso, completadas con las del .env sin sobrescribir. */
@@ -238,7 +257,8 @@ export async function prepararSesion(raiz) {
   try {
     if (fs.existsSync(CHROMIUM_NUBE)) {
       const linea = `CHROMIUM_EJECUTABLE=${CHROMIUM_NUBE}`;
-      if (envCreado && !fs.readFileSync(rutaEnv, 'utf8').includes('CHROMIUM_EJECUTABLE=')) {
+      // Solo cuenta una línea activa: en .env.example la variable viene comentada.
+      if (envCreado && !/^CHROMIUM_EJECUTABLE=/m.test(fs.readFileSync(rutaEnv, 'utf8'))) {
         fs.appendFileSync(
           rutaEnv,
           `\n# Navegador preinstalado en la nube para las pruebas E2E (lo agrega el hook de sesión).\n${linea}\n`,
@@ -257,6 +277,7 @@ export async function prepararSesion(raiz) {
 
   // Conexión: de DATABASE_URL del entorno (el .env completa lo que falte).
   let conexion = null;
+  let baseRemota = false;
   if (envListo) {
     try {
       const entorno = entornoParaHijos(raiz);
@@ -283,6 +304,7 @@ export async function prepararSesion(raiz) {
   if (conexion) {
     const { host, puerto, usuario, clave } = conexion.desarrollo;
     if (!HOSTS_LOCALES.has(host)) {
+      baseRemota = true;
       omitido(
         'PostgreSQL',
         `el host de DATABASE_URL no es localhost ni 127.0.0.1; no se gestiona PostgreSQL, bases ni migraciones`,
@@ -377,7 +399,9 @@ export async function prepararSesion(raiz) {
     omitido('Cliente de Prisma, bases y migraciones', 'las dependencias no están listas (ver arriba)');
   }
 
-  lineas.push(completo ? 'Sesión preparada.' : `Preparación incompleta: reintenta con ${COMANDO_REINTENTO}`);
+  if (!completo) lineas.push(`Preparación incompleta: reintenta con ${COMANDO_REINTENTO}`);
+  else if (baseRemota) lineas.push('Sesión preparada sin gestionar la base de datos (host remoto).');
+  else lineas.push('Sesión preparada.');
   return { lineas, completo };
 }
 
@@ -388,6 +412,16 @@ export async function prepararSesion(raiz) {
 async function principal() {
   // Primera instrucción con efectos: fuera de la nube no se hace nada.
   if (!esSesionEnLaNube(process.env)) return;
+
+  try {
+    await cargarUtilidadesEntorno();
+  } catch (error) {
+    const motivo = error instanceof Error ? error.message : String(error);
+    console.log(
+      `✗ Utilidades de entorno (scripts/lib/entorno.mjs): ${motivo}\nPreparación incompleta: reintenta con ${COMANDO_REINTENTO}`,
+    );
+    return;
+  }
 
   const raiz = process.env['CLAUDE_PROJECT_DIR']
     ? path.resolve(process.env['CLAUDE_PROJECT_DIR'])
