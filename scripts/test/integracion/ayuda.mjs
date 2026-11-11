@@ -80,10 +80,35 @@ export async function tablasDePublic(servidor, base) {
   return rows.map((fila) => fila.table_name).sort();
 }
 
+const INSUFFICIENT_PRIVILEGE = '42501';
+const OBJECT_IN_USE = '55006';
+
+const esperar = (milisegundos) => new Promise((resolver) => setTimeout(resolver, milisegundos));
+
+/**
+ * Borra una base temporal. `WITH (FORCE)` termina las demás sesiones de la base, y un usuario que no es superusuario
+ * (la nube) no puede terminar las del autovacuum de PostgreSQL: el autovacuum se conecta a las bases recién creadas
+ * (las que nunca ha procesado van primero) y, si coincide con el DROP, PostgreSQL responde "permission denied to
+ * terminate process" (42501). Es una sesión pasajera, así que se reintenta: en cuanto termina, el DROP prospera.
+ */
+async function borrarBase(cliente, nombre) {
+  const maximo = 40;
+  for (let intento = 1; ; intento++) {
+    try {
+      await cliente.query(`DROP DATABASE IF EXISTS "${nombre}" WITH (FORCE)`);
+      return;
+    } catch (error) {
+      const pasajero = error && (error.code === INSUFFICIENT_PRIVILEGE || error.code === OBJECT_IN_USE);
+      if (!pasajero || intento >= maximo) throw error;
+      await esperar(250);
+    }
+  }
+}
+
 export async function borrarBases(servidor, nombres) {
   const cliente = await conectar(servidor);
   try {
-    for (const nombre of nombres) await cliente.query(`DROP DATABASE IF EXISTS "${nombre}" WITH (FORCE)`);
+    for (const nombre of nombres) await borrarBase(cliente, nombre);
   } finally {
     await cliente.end();
   }
