@@ -10,8 +10,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 
 | N.º | Historia | Ruta crítica | Estado |
 | --- | --- | --- | --- |
-| 000 | Esqueleto | No | 🟨 |
-| 001 | Academias y aislamiento | Sí | ⬜ |
+| 000 | Esqueleto | No | ✅ |
+| 001 | Academias y aislamiento | Sí | 🟨 |
 | 002 | Autenticación y roles por academia | Sí | ⬜ |
 | 003 | Configuración de la academia | No | ⬜ |
 | 004 | Planes y clases con aforo | En parte | ⬜ |
