@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseEnv } from 'node:util';
@@ -7,7 +8,8 @@ import { ErrorEntorno, JWT_SECRETO_DE_EJEMPLO, validarEntorno } from './entorno'
 // Las variables nuevas de la historia 001 (DATABASE_URL_APP, JWT_SECRETO, DATABASE_POOL_MAX) se prueban en
 // entorno-001.test.ts (prueba protegida). Aquí quedan PUERTO_API, NODE_ENV y lo que no cubre aquella.
 const URL_APP = 'postgresql://aquagestion_app:clave-secreta@127.0.0.1:5432/aquagestion';
-const JWT = 'un-secreto-de-prueba-de-al-menos-32-caracteres-0123';
+// Criterio 91: un secreto que producción aceptaría no se escribe en el repositorio; se genera al ejecutar.
+const JWT = randomBytes(32).toString('base64url');
 const BASE = { DATABASE_URL_APP: URL_APP, JWT_SECRETO: JWT };
 
 function mensajes(env: Record<string, string | undefined>): readonly string[] {

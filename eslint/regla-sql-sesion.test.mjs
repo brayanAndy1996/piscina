@@ -133,8 +133,10 @@ describe("criterio 73: set_config('app. fuera de infraestructura/prisma y de cli
 describe('criterio 73: SQL que no cambia el contexto de sesion pasa el lint', () => {
   it.each([
     ['una consulta cualquiera', 'SELECT id, nombre FROM academias WHERE nombre_corto = $1'],
-    ['set_config de otra configuracion con true', "SELECT set_config('statement_timeout', '5s', true)"],
-    ['un SET LOCAL de otra variable', "SET LOCAL statement_timeout = '5s'"],
+    // (Se quitaron de esta lista "SELECT set_config('statement_timeout', '5s', true)" y "SET LOCAL statement_timeout": el
+    // criterio 83 (ataque ronda 2) prohíbe fuera de infraestructura/prisma/ y de cli/ cualquier llamada a set_config, y el 84
+    // prohíbe como sentencia cualquier SET o RESET, sea de la variable que sea. Su rechazo se prueba en
+    // regla-sql-sesion-ronda2.test.mjs.)
     ['un texto con la palabra reset', 'reset de la clave del usuario'],
     ['un texto sin SQL', 'Hola, bienvenido a la academia'],
   ])('criterio 73: %s', async (_nombre, sql) => {

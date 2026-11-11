@@ -1,8 +1,10 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { firmarToken, verificarToken } from './tokens';
 
-const SECRETO = 'secreto-de-prueba-con-mas-de-treinta-y-dos-caracteres';
+// Criterio 91: los secretos que producción aceptaría no se escriben en el repositorio; se generan al ejecutar.
+const SECRETO = randomBytes(32).toString('base64url');
+const OTRO_SECRETO = randomBytes(32).toString('base64url');
 const AHORA = new Date('2026-11-11T15:00:00.000Z');
 const IAT = Math.floor(AHORA.getTime() / 1000);
 const ID = '0f8fad5b-d9cb-469f-a165-70867728950e';
@@ -52,10 +54,7 @@ describe('verificarToken', () => {
   it.each([
     ['basura', () => 'no-es-un-jwt'],
     ['vacío', () => ''],
-    [
-      'otro secreto',
-      () => firmarCrudo({ alg: 'HS256', typ: 'JWT' }, CLAIMS, 'otro-secreto-distinto-de-treinta-y-dos-caracteres'),
-    ],
+    ['otro secreto', () => firmarCrudo({ alg: 'HS256', typ: 'JWT' }, CLAIMS, OTRO_SECRETO)],
     ['alg none', () => `${base64url('{"alg":"none","typ":"JWT"}')}.${base64url(JSON.stringify(CLAIMS))}.`],
     ['otro algoritmo (HS512)', () => firmarCrudo({ alg: 'HS512', typ: 'JWT' }, CLAIMS)],
     [

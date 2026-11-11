@@ -1,5 +1,5 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -23,8 +23,12 @@ import {
 
 const AHORA = new Date('2026-11-11T15:00:00.000Z'); // 10:00 en America/Lima
 const QUINCE_MINUTOS = 15 * 60 * 1000;
-/** Secreto robusto (criterio 79: 32 o más caracteres, sin espacios, 10 o más distintos) solo para pruebas con NODE_ENV=production. */
-const JWT_SECRETO_PRODUCCION_PRUEBAS = 'Zk4pW8sRq2LnV7xTb1Hc9YdFm6JeA3uG0oXiN5';
+/**
+ * Secretos que producción aceptaría (criterio 79: 32 o más caracteres, sin espacios, 10 o más distintos, fuera de la lista
+ * de secretos públicos). Criterio 91: se generan al ejecutar y no están escritos en el repositorio.
+ */
+const JWT_SECRETO_PRODUCCION_PRUEBAS = randomBytes(32).toString('base64url');
+const OTRO_SECRETO_PRUEBAS = randomBytes(32).toString('base64url');
 
 interface ErrorCuerpo {
   codigo: string;
@@ -350,7 +354,7 @@ describe('sesión del superadmin', () => {
       ],
       [
         'un token firmado con otro secreto',
-        () => token(claimsDeSesion(superadmin, AHORA), { secreto: 'otro-secreto-distinto-de-32-o-mas-caracteres-xyz' }),
+        () => token(claimsDeSesion(superadmin, AHORA), { secreto: OTRO_SECRETO_PRUEBAS }),
       ],
       ['un token con alg none', () => token(claimsDeSesion(superadmin, AHORA), { algoritmo: 'none' })],
       [
@@ -433,7 +437,7 @@ describe('sesión del superadmin', () => {
       [
         'con un token de otro secreto',
         () =>
-          `${NOMBRE_COOKIE_PLATAFORMA}=${firmarTokenPlataforma(claimsDeSesion(superadmin, AHORA), { secreto: 'otro-secreto-distinto-de-32-o-mas-caracteres-xyz' })}`,
+          `${NOMBRE_COOKIE_PLATAFORMA}=${firmarTokenPlataforma(claimsDeSesion(superadmin, AHORA), { secreto: OTRO_SECRETO_PRUEBAS })}`,
       ],
     ])('criterio 44: %s también responde 204 y borra la cookie, sin cambiar nada más', async (_caso, cookie) => {
       const antes = await leerSuperadmin(superadmin.id);

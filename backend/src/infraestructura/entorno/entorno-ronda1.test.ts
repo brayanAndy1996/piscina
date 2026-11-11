@@ -1,4 +1,5 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
+import { randomBytes, randomInt } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseEnv } from 'node:util';
@@ -8,8 +9,21 @@ import { ErrorEntorno, validarEntorno } from './entorno';
 // Criterios 78 y 79 (ataque ronda 1, O4): NODE_ENV de una lista cerrada y secreto de firma robusto en produccion.
 
 const URL_APP = 'postgresql://aquagestion_app:clave-app-secreta@127.0.0.1:5432/aquagestion';
-// 43 caracteres base64url, sin espacios, con mas de 10 distintos y fuera de la lista de secretos publicos.
-const SECRETO_ROBUSTO = 'Qm9r3xT7vLw0YzP2sNf8JdH5cAe1UiKbGtR6oXyVn4M';
+// Criterio 91: ningun secreto que produccion aceptaria esta escrito en el repositorio; se generan al ejecutar.
+const ALFABETO_BASE64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/** `n` caracteres base64url distintos entre si (n <= 64), en orden aleatorio. */
+function distintosAleatorios(n: number): string {
+  const letras = [...ALFABETO_BASE64URL];
+  for (let i = letras.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [letras[i], letras[j]] = [letras[j] as string, letras[i] as string];
+  }
+  return letras.slice(0, n).join('');
+}
+
+/** 43 caracteres base64url aleatorios, sin espacios, con mas de 10 distintos y fuera de la lista de secretos publicos. */
+const SECRETO_ROBUSTO = randomBytes(32).toString('base64url');
 const BASE = { DATABASE_URL_APP: URL_APP, JWT_SECRETO: SECRETO_ROBUSTO };
 const RAIZ = path.resolve(__dirname, '..', '..', '..', '..');
 
@@ -150,7 +164,7 @@ describe('criterio 79: JWT_SECRETO robusto con NODE_ENV=production', () => {
 
   describe('longitud (puntos de codigo)', () => {
     it('criterio 79: 31 caracteres (con mas de 10 distintos) se rechazan y 32 se aceptan', () => {
-      const distintos = 'abcdefghijklmnopqrstuvwxyz012345';
+      const distintos = distintosAleatorios(32);
 
       expect(distintos).toHaveLength(32);
       esperarRechazo(distintos.slice(0, 31), '31 caracteres');
@@ -158,7 +172,8 @@ describe('criterio 79: JWT_SECRETO robusto con NODE_ENV=production', () => {
     });
 
     it('criterio 79: los caracteres se cuentan por punto de codigo: 32 puntos de codigo (64 unidades UTF-16) se aceptan', () => {
-      const astrales = Array.from({ length: 32 }, (_, i) => String.fromCodePoint(0x1f600 + i)).join('');
+      const inicio = randomInt(600);
+      const astrales = Array.from({ length: 32 }, (_, i) => String.fromCodePoint(0x1f300 + inicio + i)).join('');
 
       expect([...astrales]).toHaveLength(32);
       expect(astrales).toHaveLength(64);
@@ -166,7 +181,8 @@ describe('criterio 79: JWT_SECRETO robusto con NODE_ENV=production', () => {
     });
 
     it('criterio 79: 31 puntos de codigo (62 unidades UTF-16) se rechazan', () => {
-      const astrales = Array.from({ length: 31 }, (_, i) => String.fromCodePoint(0x1f600 + i)).join('');
+      const inicio = randomInt(600);
+      const astrales = Array.from({ length: 31 }, (_, i) => String.fromCodePoint(0x1f300 + inicio + i)).join('');
 
       expect(astrales).toHaveLength(62);
       esperarRechazo(astrales, '31 puntos de codigo');
@@ -176,7 +192,7 @@ describe('criterio 79: JWT_SECRETO robusto con NODE_ENV=production', () => {
   describe('caracteres distintos (puntos de codigo)', () => {
     it('criterio 79: 9 caracteres distintos en 40 se rechazan y 10 distintos se aceptan', () => {
       const nueve = 'abcdefghi'.repeat(5).slice(0, 40);
-      const diez = 'abcdefghij'.repeat(4);
+      const diez = distintosAleatorios(10).repeat(4);
 
       expect(new Set(nueve).size).toBe(9);
       expect(new Set(diez).size).toBe(10);
@@ -209,7 +225,7 @@ describe('criterio 79: JWT_SECRETO robusto con NODE_ENV=production', () => {
     });
 
     it('criterio 79: un secreto de 32 o mas caracteres, sin espacios, con 10 o mas distintos y fuera de la lista se acepta', () => {
-      expect(problema(produccion('un-secreto-largo-sin-espacios-y-variado-2026'))).toBeUndefined();
+      expect(problema(produccion(randomBytes(33).toString('base64url')))).toBeUndefined();
     });
   });
 

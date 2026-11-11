@@ -1,4 +1,5 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseEnv } from 'node:util';
@@ -6,7 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { ErrorEntorno, validarEntorno } from './entorno';
 
 const URL_APP = 'postgresql://aquagestion_app:clave-app-secreta@127.0.0.1:5432/aquagestion';
-const JWT_VALIDO = 'un-secreto-de-prueba-de-al-menos-32-caracteres-0123';
+// Criterio 91: un secreto que producción aceptaría no se escribe en el repositorio; se genera al ejecutar.
+const JWT_VALIDO = randomBytes(32).toString('base64url');
 const BASE = { DATABASE_URL_APP: URL_APP, JWT_SECRETO: JWT_VALIDO };
 
 /** Entorno validado visto como un registro: el contrato de `Entorno` agrega las variables nuevas con su mismo nombre. */
