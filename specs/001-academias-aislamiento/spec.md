@@ -75,6 +75,17 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
     rol (`row_security`, `search_path`) deshace las garantías sin que la API lo note.
   - 104: autenticación; la contraseña del rol en claro queda en el log de PostgreSQL.
   - 105: entradas y auditoría (RN-22); un texto con bytes inválidos se guarda alterado.
+- **M. Correcciones del ataque, ronda 4 (106 a 119):**
+  - 106 y 107: aislamiento (D-23, D-29); una consulta que sale de la transacción corre sin contexto y lee otra academia
+    o la clave del Superadmin, y una fecha mal leída anula el bloqueo del Superadmin.
+  - 108: autenticación; ante una fecha inválida, el bloqueo debe fallar cerrado, no abrir la cuenta.
+  - 109 a 113 y 115: aislamiento; caminos por los que un SQL o el cliente de Prisma escapan al lint (funciones que
+    ejecutan texto, archivos exentos, enlaces simbólicos, etiquetas falsas, alias de `Prisma`), y un falso positivo que
+    empujaría a saltarse la regla.
+  - 114: aislamiento y cálculo del cobro; sin un punto autorizado, las historias de cobros y caja tendrían que usar
+    `number` para montos o abrir excepciones en las reglas.
+  - 116 a 119: aislamiento; variables del dueño que quedan en el proceso en Windows, un `.env` que un módulo podría
+    recargar, archivos sin revisar bajo `generated/` y archivos `.jsx` que `tsx` ejecuta.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -729,7 +740,9 @@ el anterior queda marcado "(alcance ajustado por el criterio N, ataque ronda 3)"
 nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
 
 92. **El SQL solo llega a la base en plantillas etiquetadas** _(ataque ronda 3, O1, F1 y F4; **reemplaza el alcance**
-    de los criterios 73, 83 y 84 en cuanto a qué texto se analiza)_. Dado el código de `backend/src/` (sin las pruebas:
+    de los criterios 73, 83 y 84 en cuanto a qué texto se analiza)_ _(alcance ajustado por los criterios 110 y 112,
+    ataque ronda 4: qué archivos de prueba se eximen y qué `sql` y `Prisma.sql` se aceptan como argumento)_. Dado el
+    código de `backend/src/` (sin las pruebas:
     `*.test.*` y `backend/test/`), fuera de `backend/src/infraestructura/prisma/` (también en `backend/src/cli/`),
     entonces `npm run lint` falla si:
     - se nombra `$queryRawUnsafe` o `$executeRawUnsafe` de cualquier forma: acceso con punto, acceso con corchetes y un
@@ -785,7 +798,9 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
     de la regla de lint)_
 95. **Reglas de acceso en todas las extensiones, rutas a `node_modules`, `cli/` e internos de
     `infraestructura/prisma/`** _(ataque ronda 3, F2 y O1; **reemplaza el alcance** de archivos y de módulos del
-    criterio 85 y complementa el 28)_. Dado el código de `backend/src/` (sin las pruebas), entonces:
+    criterio 85 y complementa el 28)_ _(alcance ajustado por los criterios 110, 111, 118 y 119, ataque ronda 4:
+    exenciones exactas, rutas reales, `generated/prisma/` y `.jsx`)_. Dado el código de `backend/src/` (sin las pruebas),
+    entonces:
     - las reglas de los criterios 28 y 85 y las del SQL (73, 83, 84 y 92 a 94) se aplican a los archivos
       `backend/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}`, no solo a `.ts`;
     - un especificador de módulo que, con `\` cambiada por `/`, contiene `node_modules/` seguido de un paquete
@@ -807,7 +822,8 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
     Prueba con la clase `ESLint`: un ejemplo que falla por cada extensión y por cada vía, y los que pasan. _(crítico;
     prueba de la regla de lint)_
 96. **Un paso de lint que ningún comentario apaga** _(ataque ronda 3, O1; **reemplaza** la precisión P-15 y la frase
-    del criterio 85 sobre `eslint-disable`)_. Dado el repositorio, entonces:
+    del criterio 85 sobre `eslint-disable`)_ _(alcance ajustado por los criterios 111 y 118, ataque ronda 4: el paso
+    protegido comprueba además enlaces simbólicos y `generated/` antes de ESLint)_. Dado el repositorio, entonces:
     - `eslint.config.mjs` ya no fija `linterOptions.noInlineConfig` para `backend/src`: en el lint normal, un comentario
       `eslint-disable` vuelve a apagar la regla que nombra;
     - hay una configuración aparte para el paso protegido (por ejemplo `eslint.protegido.config.mjs` en la raíz) con
@@ -830,7 +846,9 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
     ejecuta `.js`, `.mjs` y `.cjs`, las reglas cubren todas esas extensiones (criterio 95). Prueba: lee los `tsconfig`
     y comprueba que ninguno tiene `allowJs: true`; y un archivo `.mjs` y otro `.cts` de `backend/src/modulos/` con
     `import pg from 'pg'` hacen fallar el paso protegido. _(crítico; prueba de configuración)_
-98. **Zona horaria de la sesión fija en UTC** _(ataque ronda 3, F3; complementa los criterios 72 y 90)_. Dado que
+98. **Zona horaria de la sesión fija en UTC** _(ataque ronda 3, F3; complementa los criterios 72 y 90)_ _(alcance
+    ajustado por el criterio 107, ataque ronda 4: la primera sentencia fija también los parámetros de formato y la
+    excepción de `cli/` los admite)_. Dado que
     `@prisma/adapter-pg` envía las fechas sin desfase y descarta el desfase al leerlas, entonces toda transacción de
     `BaseDatos` (`conAcademia`, `comoPlataforma` y `resolverAcademia`) y de `enPlataforma` (comandos y semilla) fija
     `TimeZone` en `UTC`, local a la transacción, en la misma primera sentencia que fija el contexto, antes de
@@ -859,7 +877,8 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
     distinguir mayúsculas en el nombre de la variable); fuera de `cli/` y de `infraestructura/prisma/` sigue prohibida
     toda llamada a `set_config`. _(crítico)_
 99. **La API no guarda en su entorno las conexiones del dueño** _(ataque ronda 3, F2; complementa los criterios 5 y
-    95)_. Dada la API arrancada con su punto de entrada real (`backend/src/main.ts`), con `DATABASE_URL`,
+    95)_ _(alcance ajustado por los criterios 116 y 117, ataque ronda 4: sin distinguir mayúsculas, y sin `.env` al
+    alcance de los módulos)_. Dada la API arrancada con su punto de entrada real (`backend/src/main.ts`), con `DATABASE_URL`,
     `DATABASE_URL_PRUEBAS`, `PGUSER`, `PGPASSWORD` y `SUPERADMIN_CLAVE` definidas en el entorno o en el `.env`, entonces,
     cuando ya atiende (`GET /api/salud` responde), `process.env` no tiene ninguna variable cuyo nombre empiece por
     `DATABASE_URL` salvo `DATABASE_URL_APP`, ninguna que empiece por `PG` (las que `pg` toma como valores por defecto
@@ -870,8 +889,9 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
     Prueba: unitaria de la función (quita exactamente esas variables de un objeto y deja las demás) y de integración que
     arranca la API real como proceso hijo (con `tsx`) con un módulo de prueba precargado (`--import`) que, al recibir un
     mensaje por IPC, responde con los nombres de las variables de `process.env`. _(crítico)_
-100. **`trabajo` recibe un envoltorio, no el cliente** _(ataque ronda 3, F5; complementa los criterios 28 y 86)_. Dada
-     la API de pruebas, entonces:
+100. **`trabajo` recibe un envoltorio, no el cliente** _(ataque ronda 3, F5; complementa los criterios 28 y 86)_
+     _(complementado por los criterios 106, 112 y 114, ataque ronda 4: lo que devuelve el envoltorio son promesas nativas,
+     y solo acepta plantillas, fragmentos del punto autorizado o `Sql` de Prisma)_. Dada la API de pruebas, entonces:
      - dentro de `trabajo` de `conAcademia` y de `comoPlataforma`, `tx.cliente` es un objeto armado por `BaseDatos`
        (envoltorio) que solo tiene `$queryRaw`, `$executeRaw` y un objeto por cada modelo de Prisma con sus operaciones
        (`findMany`, `create`, …); `$queryRaw` y `$executeRaw` funcionan como etiqueta de plantilla y con `Prisma.sql`, y
@@ -964,6 +984,271 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
      intento; en `POST /api/plataforma/academias`, `…/suspender` y `…/reactivar` no crea, no cambia ni audita nada. Un
      cuerpo UTF-8 válido que trae U+FFFD escrito por el cliente sigue las reglas de texto de siempre. _(crítico)_
 
+### M. Correcciones del ataque adversarial, ronda 4
+
+Criterios agregados tras la ronda 4 del ataque (11/11/2026, sobre el commit `066c9af`). Son decisiones técnicas de
+seguridad, no reglas de negocio nuevas. Donde un criterio ajusta el alcance de uno anterior lo dice, y el anterior queda
+marcado "(alcance ajustado por el criterio N, ataque ronda 4)", sin borrar su texto. Contratos nuevos: precisiones P-25 a
+P-28. Todos son _(crítico)_.
+
+106. **El envoltorio solo entrega promesas nativas que corren dentro de la transacción** _(ataque ronda 4, F1;
+     complementa los criterios 21, 72 y 100)_. Dada la API de pruebas, dentro de `trabajo` de `conAcademia` y de
+     `comoPlataforma`, entonces:
+     - todo lo que devuelven `tx.cliente.$queryRaw`, `tx.cliente.$executeRaw` y cada operación de cada delegado
+       (`findMany`, `create`, … la lista del plan) es una promesa nativa: `Object.getPrototypeOf(p) === Promise.prototype`,
+       `Reflect.ownKeys(p)` está vacío, `p.requestTransaction` es `undefined`, `p.then`, `p.catch` y `p.finally` son los de
+       `Promise.prototype`, y no hay ninguna otra propiedad que lleve al motor de Prisma (tampoco la API fluida de
+       relaciones, `findUnique(…).relacion()`);
+     - la consulta se envía al llamar la función (no espera a un `then`) y corre en la conexión y en la transacción de
+       `trabajo`, con su contexto (criterios 72, 98, 101 y 107);
+     - una función del envoltorio guardada y llamada cuando `trabajo` ya terminó (con éxito o con error) rechaza sin
+       enviar nada a la base.
+
+     Prueba de integración con `DATABASE_POOL_MAX=2` (para que haya otra conexión en el pool), `DATABASE_URL_APP` con
+     `options` contaminadas (`-c app.academia_id=<id de A> -c app.plataforma=si -c TimeZone=Pacific/Kiritimati`,
+     codificadas) y los datos de `crearDatosDeAislamiento`. Dentro de `conAcademia(B, …)`, la primera consulta toma
+     `pg_backend_pid()`; después, por `$queryRaw`, por `$executeRaw` (una escritura que guarda `pg_backend_pid()` y
+     `current_setting('app.academia_id')` en una fila de `configuraciones` de B, leída después) y por un delegado de
+     lectura y otro de escritura, y también en 20 consultas lanzadas a la vez con `Promise.all`, la consulta ve el mismo
+     `pg_backend_pid()`, `app.academia_id` igual a B y solo filas de B. Cada valor devuelto cumple la primera viñeta (el
+     camino del ataque, `p.requestTransaction({ kind: 'batch', … })`, no existe). Si `trabajo` escribe por cada forma y
+     luego lanza un error, ninguna de esas filas queda (leído como dueño con `pg`). En `comoPlataforma`, una función
+     guardada de `$queryRaw` llamada después de terminar, con `SELECT clave_hash FROM superadmins` o con una lectura de
+     `auditoria` de A, rechaza y no devuelve filas; y un `$executeRaw` guardado y llamado después no escribe nada.
+     _(crítico)_
+107. **Parámetros de formato fijos en cada transacción** _(ataque ronda 4, F2; complementa los criterios 72, 90 y 98;
+     **amplía** la excepción de `cli/` del criterio 98)_. Dado que el adaptador de Prisma interpreta el texto que
+     devuelve PostgreSQL y que ese texto depende de la sesión, entonces toda transacción de `BaseDatos` (`conAcademia`,
+     `comoPlataforma` y `resolverAcademia`) y de `enPlataforma` fija, local a la transacción (`set_config(…, true)`) y en
+     la misma primera sentencia que fija el contexto y `TimeZone` (criterio 98), antes de `trabajo`:
+     `DateStyle = 'ISO, MDY'`, `IntervalStyle = 'postgres'`, `extra_float_digits = '1'` (el valor por defecto de
+     PostgreSQL 12 o posterior, con el que el adaptador lee los `float8` sin pérdida) y `bytea_output = 'hex'`. Dentro de
+     `trabajo`, `current_setting` de cada uno da exactamente esos valores. Con la API de pruebas en `DATABASE_POOL_MAX=1`,
+     un `RelojFijo` y cada una de estas vías de contaminación de los cuatro parámetros (por ejemplo `DateStyle` en
+     `SQL, DMY` o `German`, `IntervalStyle` en `iso_8601`, `extra_float_digits` en `-15` y `bytea_output` en `escape`):
+     (a) un `trabajo` anterior en la misma conexión que ejecutó `set_config(…, false)` y confirmó; (b) `options` en
+     `DATABASE_URL_APP`; (c) `ALTER DATABASE <base de pruebas> SET …` (si el dueño puede; si no, se omite con aviso);
+     (d) `ALTER ROLE ALL SET …` y `ALTER ROLE ALL IN DATABASE <base de pruebas> SET …` (exigen superusuario: en la nube se
+     omiten con aviso; corren en Docker y en la CI); (e) el archivo de configuración del servidor, simulado con
+     `ALTER SYSTEM SET …` y `SELECT pg_reload_conf()` (solo superusuario; si no, se omite con aviso); cada vía se
+     restaura al final (`RESET`, `ALTER SYSTEM RESET` y recarga), también si la prueba falla; entonces:
+     - el 5.º intento fallido bloquea y, durante el bloqueo, la clave correcta responde 423 `CUENTA_BLOQUEADA` (no 200);
+       a los 15 minutos de `RELOJ`, entra;
+     - `GET /api/plataforma/academias` responde 200 con `creadaEn` y `suspendidaEn` iguales a los instantes guardados
+       (criterio 98), no 500;
+     - dentro de `trabajo`, `SELECT now()`, `0.1::float8` y `'\x0102'::bytea` por `tx.cliente.$queryRaw` llegan como un
+       `Date` válido a menos de 5 segundos del instante real, `0.1` y los bytes `01 02`.
+
+     Un rol de la app con estos parámetros propios (`ALTER ROLE aquagestion_app SET …`) no llega a esto: lo rechaza el
+     criterio 103. En `backend/src/cli/`, la regla del criterio 83 admite además exactamente
+     `set_config('DateStyle', 'ISO, MDY', true)`, `set_config('IntervalStyle', 'postgres', true)`,
+     `set_config('extra_float_digits', '1', true)` y `set_config('bytea_output', 'hex', true)` (sin distinguir
+     mayúsculas, como en el criterio 98); cualquier otro valor o un tercer argumento distinto de `true` sigue fallando, y
+     fuera de `cli/` y de `infraestructura/prisma/` sigue prohibida toda llamada a `set_config`. _(crítico)_
+108. **Una fecha inválida leída de la base falla cerrada** _(ataque ronda 4, F2; complementa los criterios 39 y 98)_.
+     Dado que una fecha de la base puede llegar inválida (`Invalid Date`) si algo escapa al criterio 107, entonces:
+     - la función pura del bloqueo (`estaBloqueado`, precisión P-27) considera **bloqueada** la cuenta si
+       `bloqueadoHasta` no es nulo y no es un `Date` válido (incluido `new Date(NaN)`), o si `ahora` no es válido; y
+       `evaluarIntentoFallido` con ese estado devuelve `YA_BLOQUEADA` sin cambiar nada;
+     - en `POST /api/plataforma/sesion`, si `bloqueado_hasta` (o cualquier fecha de la fila del superadmin) llega
+       inválida, el inicio de sesión no se autoriza: responde 500 `ERROR_INTERNO` con el formato común, sin `Set-Cookie`,
+       sin token, sin datos del superadmin, y sin poner a cero `intentos_fallidos` ni `bloqueado_hasta` ni escribir
+       `ultimo_acceso`; el log técnico registra el motivo sin la clave;
+     - toda respuesta que lleva una fecha leída de la base (`creadaEn`, `suspendidaEn`) responde 500 `ERROR_INTERNO` sin
+       datos si esa fecha es inválida, en vez de un 200 con `null`, `"Invalid Date"` o una fecha cualquiera.
+
+     Prueba unitaria de `estaBloqueado` y `evaluarIntentoFallido` con `new Date(NaN)` y con `ahora` inválido; y de
+     integración con la API de pruebas y `BaseDatos` reemplazado (`ajustar`) por un doble cuyo `trabajo` recibe un
+     cliente falso que devuelve la fila del superadmin con `bloqueado_hasta: new Date(NaN)` (clave correcta: 500 sin
+     cookie y el doble no recibió ninguna escritura) y la de una academia con `creada_en: new Date(NaN)` (listado: 500
+     sin `academias` en el cuerpo). _(crítico)_
+109. **Ninguna función que ejecute SQL dado como texto** _(ataque ronda 4, F3; complementa los criterios 84 y 94)_. Dado
+     el texto normalizado de una plantilla analizada (criterio 92), fuera de `backend/src/infraestructura/prisma/`
+     (también en `cli/`), entonces `npm run lint` falla si contiene una llamada, con o sin `pg_catalog.` u otro esquema
+     delante, sin distinguir mayúsculas, con o sin comillas dobles o `U&"…"` en el nombre (criterio 93) y con o sin
+     espacios antes del paréntesis, a una función que ejecuta o lee SQL o tablas a partir de un texto o un nombre:
+     - del núcleo de PostgreSQL 16: `query_to_xml`, `query_to_xmlschema`, `query_to_xml_and_xmlschema`, `cursor_to_xml`,
+       `cursor_to_xmlschema`, `table_to_xml`, `table_to_xmlschema`, `table_to_xml_and_xmlschema`, `schema_to_xml`,
+       `schema_to_xmlschema`, `schema_to_xml_and_xmlschema`, `database_to_xml`, `database_to_xmlschema`,
+       `database_to_xml_and_xmlschema`, `ts_stat` y `ts_rewrite` (su forma de dos argumentos ejecuta una consulta dada
+       como texto; se prohíben todas sus formas);
+     - de extensiones que podrían instalarse: todo nombre que empiece por `dblink` (`dblink`, `dblink_exec`,
+       `dblink_open`, `dblink_send_query`, …), `crosstab…` y `connectby` (`tablefunc`), `pg_background…`, y cualquier
+       función del esquema `cron` (`cron.schedule`, …);
+     - y, en general, toda llamada calificada con un esquema que no sea `pg_catalog` ni `public` (`otro.funcion(`), para
+       que una extensión nueva no abra otro camino sin que se revise. Como el lint no distingue una llamada de
+       `INSERT INTO otro.tabla (…)`, esa forma también falla: AquaGestión solo usa el esquema `public`.
+
+     Fallan, por ejemplo, `` SELECT query_to_xml('SELECT set_config(''app.plataforma'', ''si'', false)', true, false, '') ``,
+     `` SELECT pg_catalog.Query_To_Xml (${q}, true, false, '') ``, `` SELECT "query_to_xml"('SELECT 1', true, false, '') ``,
+     `` SELECT ts_stat('SELECT …') ``, `` SELECT * FROM dblink_exec('…') `` y `` SELECT cron.schedule('…') ``. Siguen
+     pasando `SELECT xpath('/a', ${xml})`, `SELECT to_tsvector(${texto})`, `SELECT pg_catalog.now()`,
+     `SELECT public.app_academia_actual()`, `SELECT a.query_to_xml FROM t a` (una columna, sin paréntesis) y
+     `SELECT count(t.id) FROM t`. Prueba como en el criterio 92. _(crítico; prueba de la regla de lint)_
+110. **Solo las pruebas quedan fuera de las reglas, y nadie las importa** _(ataque ronda 4, F4; **ajusta el alcance** de
+     los criterios 92 y 95 y de los `ignores` de las reglas de los criterios 28, 73, 83 a 85 y 92 a 95)_. Dado el código de
+     `backend/src/`, entonces:
+     - las reglas de esos criterios y del paso protegido (criterio 96) eximen solo los archivos cuyo nombre termina
+       exactamente en `.test.ts`, `.test.mts`, `.test.cts`, `.test.js`, `.test.mjs` o `.test.cjs`, y los de `backend/test/`
+       (que de todos modos está fuera de `backend/src/**`); un archivo como `atajo.test.util.ts`, `x.test.d.ts` o
+       `x.test.tsx` ya no está exento;
+     - `backend/tsconfig.build.json` excluye exactamente esos mismos patrones (`**/*.test.ts`, `**/*.test.mts`,
+       `**/*.test.cts`; los `.js`, `.mjs` y `.cjs` ya no se compilan, criterio 97) y `test`, y no excluye nada más bajo
+       `src` que pueda llevar código;
+     - un archivo de `backend/src/` que no es prueba no puede importar (por cualquiera de las vías del criterio 85, también
+       `import type`) un archivo de pruebas: un especificador cuya ruta resuelta, con o sin extensión, termina en
+       `.test`, `.test.<extensión>` de la lista del criterio 95 (más `.jsx`, criterio 119), o cae dentro de `backend/test/`.
+
+     Prueba: con la configuración del paso protegido, `backend/src/modulos/ejemplo/atajo.test.util.ts` con
+     `import pg from 'pg'` falla; `ejemplo.service.ts` con `import { x } from './atajo.test'`,
+     `require('./ejemplo.service.test.ts')` o `import('../../../test/utilidades/base-datos')` falla; un
+     `ejemplo.service.test.ts` sigue exento; y la prueba lee `tsconfig.build.json` y comprueba su `exclude`.
+     _(crítico; prueba de la regla de lint y de configuración)_
+111. **Sin enlaces simbólicos en el código revisado** _(ataque ronda 4, F5; complementa los criterios 95 y 96)_. Dado el
+     repositorio, entonces:
+     - el paso protegido (`npm run lint:protegido`, dentro de `npm run lint`) falla con código 1, nombrando la ruta, si
+       hay algún enlace simbólico (o unión de Windows) en cualquier nivel dentro de `backend/src/` o de
+       `packages/contratos/src/`, sea a un archivo o a una carpeta; lo comprueba un script de Node antes de ESLint
+       (precisión P-28), que recorre sin seguir enlaces;
+     - las reglas de acceso (criterios 85 y 95, y la del criterio 110) resuelven con `fs.realpathSync` la ruta del archivo
+       que se revisa, la raíz (`context.cwd`) y la ruta importada cuando el archivo existe (probando las extensiones del
+       criterio 95 y `.jsx`, y `index.<extensión>` si es una carpeta); si no existe, usan la resolución léxica de hoy. Así,
+       una importación que pasa por un enlace fuera de `backend/src/` que apunta a `backend/src/cli/` o a un interno de
+       `infraestructura/prisma/` falla como si se escribiera la ruta real.
+
+     Prueba: unitaria del script con una carpeta temporal (un enlace a carpeta y otro a archivo, en el primer nivel y
+     anidados: los encuentra todos; sin enlaces: lista vacía); y de la regla con una carpeta temporal como `cwd`, con
+     `backend/src/cli/conexion.ts` y un enlace `backend/enlace → backend/src/cli`, donde un módulo con
+     `import { crearClienteDelDueno } from '../../../enlace/conexion'` falla. Si el sistema no permite crear enlaces (Windows
+     sin modo de desarrollador: `EPERM`), esos casos se omiten con aviso; corren en Linux. _(crítico)_
+112. **La etiqueta del SQL es la autorizada, también en tiempo de ejecución** _(ataque ronda 4, F6; **ajusta el
+     alcance** del criterio 92 en cuanto a qué `sql` y qué `Prisma.sql` se aceptan)_. Dado el código de `backend/src/`
+     fuera de `infraestructura/prisma/` y de las pruebas, entonces:
+     - `$queryRaw` y `$executeRaw` llamados con un argumento (no como etiqueta) solo aceptan, como ese único argumento,
+       una plantilla etiquetada con:
+       - en los módulos: la función `sql` importada del punto autorizado (criterio 114; `…/infraestructura/prisma` o
+         `…/infraestructura/prisma/index`), con su nombre, con alias (`import { sql as s }`) o como `<espacio>.sql` de un
+         `import * as <espacio>` de ese punto; la regla lo decide por el ámbito (`scope`) de ESLint, no por el nombre, así
+         que una `sql` declarada en el archivo (`const sql = (…) => ({ text: '…' })`), un parámetro llamado `sql` o una
+         `sql` importada de otro sitio no se aceptan;
+       - en `cli/`: `Prisma.sql`, con `Prisma` importado del cliente generado (criterio 113), o la `sql` del punto
+         autorizado;
+       cualquier otro argumento (un objeto, una llamada, una variable, otra etiqueta) hace fallar el lint;
+     - la regla del texto del SQL (criterios 73, 83, 84, 93, 94 y 109) sigue analizando toda plantilla cuya etiqueta sea
+       un identificador `sql` (venga de donde venga), una propiedad `.sql`, `.$queryRaw` o `.$executeRaw`, o un alias de
+       `sql` del punto autorizado: analizar de más no abre caminos;
+     - en tiempo de ejecución, `tx.cliente.$queryRaw` y `tx.cliente.$executeRaw` (precisión P-26) aceptan solo: (a) la forma
+       de etiqueta, con un arreglo de cadenas con su `raw` (también arreglo de cadenas) de un elemento más que los
+       valores; o (b) un único argumento que sea un fragmento del punto autorizado o un `Sql` creado por Prisma
+       (`instanceof` de la clase de Prisma; lo usan las pruebas del criterio 100). Cualquier otro argumento, por ejemplo
+       `{ text: 'SET ROLE postgres', values: [] }`, `{ sql: '…', values: [] }`, `{ strings: ['…'], values: [] }`, una
+       cadena, o dos argumentos sin ser etiqueta, rechaza con `TypeError` sin enviar nada a la base.
+
+     Fallan en un módulo, por ejemplo: `` const sql = (s) => ({ text: s[0] }); cliente.$queryRaw(sql`SET ROLE postgres`) ``,
+     `` cliente.$executeRaw(Prisma.sql`SELECT 1`) `` (en un módulo no hay `Prisma` de valor), `cliente.$queryRaw(consulta)` y
+     `` cliente.$queryRaw(otra`SELECT 1`) ``. Pasan, en un módulo,
+     `` import { sql } from '../../infraestructura/prisma'; … cliente.$executeRaw(sql`SELECT 1`) `` y la plantilla
+     etiquetada directa; y en `cli/`, `` import { Prisma } from '../generated/prisma/client'; … cliente.$queryRaw(Prisma.sql`SELECT 1`) ``.
+     Prueba de la regla como en el criterio 92, y de integración: dentro de `conAcademia`, cada objeto falso de la lista
+     (uno de ellos con un `INSERT` en `configuraciones`) rechaza con `TypeError`, y aunque `trabajo` capture el error y
+     termine bien, no queda ninguna fila (leído como dueño). _(crítico; prueba de la regla de lint y de integración)_
+113. **`Prisma` en `cli/` solo como acceso con punto a un nombre fijo** _(ataque ronda 4, F7; complementa los criterios
+     92 y 95)_. Dado el código de `backend/src/cli/`, entonces las reglas siguen los alias y los espacios de nombres del
+     cliente generado y de `@prisma/…` (`import { Prisma as P }`, `import * as G` y `G.Prisma`, la importación por
+     defecto) y `npm run lint` falla si:
+     - `Prisma` (o un alias, o `G.Prisma`), o el espacio de nombres `G`, se usa como valor de otra forma que como objeto
+       de un acceso con punto a un nombre fijo: asignado (`const P = Prisma`, `x.p = Prisma`), pasado como argumento
+       (`Reflect.get(Prisma, 'raw')`, `Object.getOwnPropertyDescriptor(Prisma, 'raw')`, `f(G)`), propagado (`...Prisma`),
+       devuelto, exportado como valor o con acceso calculado (`Prisma[x]`, `Prisma['raw']`, `G['Prisma']`);
+     - se desestructura de `Prisma` o de `G.Prisma` alguno de `sql`, `raw`, `join`, `empty` o `Sql` (con o sin alias:
+       `const { sql: s } = Prisma`), con una clave calculada o con un resto (`...resto`);
+     - una expresión que empieza por `Prisma` (o un alias) o por `G` accede, en cualquier punto de la cadena, a
+       `constructor`, `prototype` o `__proto__` (`Prisma.empty.constructor`, `` Prisma.sql`x`.constructor ``), o se pasa a
+       `Reflect.*`, `Object.getPrototypeOf`, `Object.getOwnPropertyDescriptor(s)`, `Object.entries`, `Object.values`,
+       `Object.keys` u `Object.assign`;
+     - el cliente generado o `@prisma/…` se cargan con `require(…)` o `import(…)` en lugar de un `import` estático (que
+       es lo que las reglas siguen).
+
+     Se mantienen las prohibiciones del criterio 92 sobre `Prisma.raw`, `Prisma.Sql` como valor, `Prisma.join` con
+     separador y `Prisma.sql` como función, también con los alias. Pasan, en `cli/`,
+     `import { PrismaClient } from '../generated/prisma/client'`, `new PrismaClient(…)`,
+     `` import { Prisma as P } from '../generated/prisma/client'; … cliente.$queryRaw(P.sql`SELECT 1`) `` y
+     `import type { Prisma } from '../generated/prisma/client'`. Prueba como en el criterio 92, un ejemplo que falla por
+     cada forma del ataque (`import { Prisma as P }` con `P.raw`, `import * as G` con `G.Prisma.raw`, `const P = Prisma`,
+     `const { sql: s } = Prisma`, `Prisma.empty.constructor`, `Reflect.get(Prisma, 'raw')`) y los que pasan. _(crítico;
+     prueba de la regla de lint)_
+114. **Un punto autorizado para montos, errores de la base y fragmentos de SQL** _(ataque ronda 4, falsos positivos
+     para las historias siguientes; complementa los criterios 85, 92 y 112)_. Dado
+     `backend/src/infraestructura/prisma/index.ts`, entonces exporta (precisión P-25):
+     - `Decimal` (la clase de decimales de Prisma, valor y tipo) para los montos (convención de `CLAUDE.md`: nunca
+       `number`);
+     - `codigoDeErrorDeBase(error)`, que devuelve el SQLSTATE de cinco caracteres de un error de la base (de Prisma o del
+       adaptador, también de `$queryRaw`) o `null`, y `esViolacionDeUnicidad(error)`, verdadero con el código `P2002` de
+       Prisma o con el SQLSTATE `23505`;
+     - `sql`, `join` y `vacio` para componer fragmentos: `sql` es una etiqueta que solo acepta, como valores, primitivos
+       (`string`, `number`, `bigint`, `boolean`, `null`), `Date`, `Decimal`, `Uint8Array`, arreglos de esos valores y
+       fragmentos creados por el propio punto autorizado, y rechaza con `TypeError` cualquier otro valor (también un `Sql`
+       de Prisma); `join(elementos, separador?)` une valores o fragmentos con un separador de una lista cerrada (`'coma'`,
+       `'y'`, `'o'`, que se traducen a `, `, ` AND ` y ` OR `; por defecto `'coma'`) y rechaza cualquier otro; `vacio` es
+       el fragmento vacío. No existe ni se exporta un equivalente de `raw` ni de `Prisma.join` con separador libre;
+     - los fragmentos son opacos: un objeto congelado sin prototipo (`Object.getPrototypeOf(f) === null`), sin claves
+       propias (`Reflect.ownKeys(f)` vacío) y sin ningún camino a `Sql`, a `raw` ni al cliente; el envoltorio (criterio
+       112) los reconoce y los convierte en el `Sql` de Prisma solo al enviar la consulta, tanto como único argumento como
+       interpolados en una plantilla de `$queryRaw`/`$executeRaw` o dentro de otro fragmento;
+     - las reglas de lint reconocen estas importaciones en los módulos: importar `Decimal`, `codigoDeErrorDeBase`,
+       `esViolacionDeUnicidad`, `sql`, `join` y `vacio` del punto autorizado pasa el paso protegido.
+
+     Pasan en un módulo, por ejemplo: `` tx.cliente.$queryRaw`SELECT … WHERE id = ANY(${ids}::uuid[])` `` (la forma
+     recomendada para listas), `` const filtro = desde ? sql`AND fecha_hora >= ${desde}` : vacio; tx.cliente.$queryRaw`SELECT … WHERE academia_id = ${id}::uuid ${filtro}` ``,
+     `` sql`SELECT … WHERE id IN (${join(ids)})` ``, `new Decimal('10.50')` y
+     `if (esViolacionDeUnicidad(error)) throw new ErrorNegocio(409, …)`. Prueba unitaria (sin base) de `sql`, `join` y
+     `vacio` (valores rechazados, separador fuera de la lista, opacidad) y de los detectores con errores construidos de
+     Prisma y del adaptador; de integración: un fragmento con un valor y otro con `join` dentro de `conAcademia` devuelven
+     las filas esperadas con los valores como parámetros (un valor `'x''; SET ROLE postgres; --'` se guarda tal cual y no
+     cambia el rol), una inserción duplicada en `configuraciones` da `esViolacionDeUnicidad` verdadero y
+     `codigoDeErrorDeBase` `'23505'`; y de la regla: esas importaciones pasan. _(crítico)_
+115. **`SET` como cláusula no es `SET` de sesión** _(ataque ronda 4, falsos positivos; complementa los criterios 73 y
+     84)_. Dado el texto normalizado de una plantilla analizada, entonces las formas `SET [LOCAL|SESSION] ROLE`,
+     `SET SESSION`, `SET [LOCAL|SESSION] SESSION AUTHORIZATION` y `SET [LOCAL|SESSION] app.` que se buscan en cualquier
+     parte del texto (criterios 73 y 84) no cuentan cuando, en la misma sentencia (sin un `;` en medio), las precede la
+     palabra `update` fuera de una cadena: son la cláusula `SET` de un `UPDATE`, de un `ON CONFLICT DO UPDATE` o de un
+     `MERGE … UPDATE`, que asigna columnas. `SET` al inicio de una sentencia sigue fallando siempre (criterio 84). Pasan,
+     por ejemplo, `` UPDATE usuarios SET role = ${r} WHERE id = ${id}::uuid ``,
+     `` UPDATE t SET session = ${s} WHERE … `` e `` INSERT … ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role ``; siguen
+     fallando `` SET ROLE postgres ``, `` SELECT 1; SET ROLE postgres `` y `` UPDATE t SET x = 1; SET SESSION AUTHORIZATION postgres ``.
+     Una palabra prohibida dentro de una cadena SQL (`` SELECT … WHERE motivo = 'WITH HOLD' ``) sigue haciendo fallar el
+     lint: es una limitación aceptada ("Riesgos aceptados"); el valor va como parámetro (`${'WITH HOLD'}`). Ningún ejemplo
+     de las pruebas protegidas de las rondas 1 a 3 cambia de resultado; si alguno cambiara, el test-writer se detiene e
+     informa. _(crítico; prueba de la regla de lint)_
+116. **Variables sensibles sin distinguir mayúsculas** _(ataque ronda 4, observación; **ajusta el alcance** del criterio
+     99 y de la precisión P-21)_. Dado que en Windows `process.env` no distingue mayúsculas (`PgPassword` y `PGPASSWORD`
+     son la misma variable), entonces `retirarVariablesSensibles(env)` compara los nombres pasados a mayúsculas: borra toda
+     clave cuyo nombre en mayúsculas empieza por `DATABASE_URL` salvo la que en mayúsculas es exactamente
+     `DATABASE_URL_APP`, toda la que en mayúsculas empieza por `PG` y la que en mayúsculas es `SUPERADMIN_CLAVE`. Prueba
+     unitaria: quita `PgPassword`, `pguser`, `Database_Url`, `database_url_pruebas` y `Superadmin_Clave`; deja
+     `Database_Url_App`, `jwt_secreto` y las de la lista del criterio 99. _(crítico)_
+117. **La carga del `.env` no está al alcance de los módulos** _(ataque ronda 4, observación; complementa el criterio
+     99)_. Dado el código de `backend/src/`, entonces `cargarEnvRaiz` no se exporta en el `index` de
+     `infraestructura/entorno/` (`main.ts` la importa de su archivo), y `npm run lint` (también el paso protegido) falla si
+     un archivo que no es `backend/src/main.ts`, ni está en `backend/src/cli/` o en `infraestructura/entorno/`, ni es una
+     prueba, importa `…/infraestructura/entorno/cargar-env` o el paquete `dotenv` (`dotenv`, `dotenv/config`, por
+     cualquiera de las vías del criterio 85). Prueba: la regla con un módulo que importa cada uno (falla) y con
+     `main.ts` y un archivo de `cli/` (pasan); y el `index` cargado no tiene `cargarEnvRaiz`. _(crítico)_
+118. **Solo el cliente generado queda fuera de las reglas** _(ataque ronda 4, observación; **ajusta el alcance** de los
+     `ignores` de los criterios 92 a 96)_. Dado el repositorio, entonces la exención `backend/src/generated/**` de las
+     reglas y del paso protegido pasa a ser `backend/src/generated/prisma/**`; y el paso protegido falla con código 1,
+     nombrando la ruta, si `git ls-files -- backend/src/generated` lista algún archivo (toda esa carpeta está en
+     `.gitignore` y la crea `prisma generate`) o si dentro de `backend/src/generated/` hay algo que no sea la carpeta
+     `prisma/`. Si `git` no está disponible, el paso falla con el motivo. Prueba: unitaria de la función del script con
+     carpetas temporales y de que un archivo `backend/src/generated/otra/x.ts` con `import pg from 'pg'` falla con la
+     configuración del paso protegido. _(crítico)_
+119. **También `.jsx`** _(ataque ronda 4, observación; **ajusta el alcance** de los criterios 95 y 97)_. Dado que `tsx`
+     ejecuta también archivos `.jsx`, entonces las reglas de los criterios 28, 73, 83 a 85, 92 a 95, 109, 110, 112, 113
+     y 117, el analizador del paso protegido y el bloque de JavaScript de `eslint.config.mjs` cubren
+     `backend/src/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`, y la resolución de rutas de las reglas prueba también `.jsx`.
+     Prueba: un `.jsx` de `backend/src/modulos/` con `import pg from 'pg'` y otro con
+     `` tx.cliente.$queryRaw`SET ROLE postgres` `` hacen fallar el paso protegido. _(crítico)_
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -1015,6 +1300,14 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
 - **Un superadmin y un usuario de academia en el mismo navegador (desde 002):** la cookie `aq_plataforma` solo se
   envía a `/api/plataforma`, así que nunca llega a las rutas de las academias.
 - **Muchas academias:** el listado no se pagina en el MVP (pocas academias, alta manual).
+- **Una consulta lanzada sin `await` dentro de `trabajo`** _(ataque ronda 4)_: con promesas nativas se envía al
+  llamarla (criterio 106). Si `trabajo` termina antes de que responda, la consulta corre dentro de la transacción (en
+  la misma conexión, antes del cierre) o falla; nunca corre fuera de ella. Quien la lanzó sin esperar no ve su error:
+  el revisor busca promesas sin `await` dentro de `trabajo`.
+- **Base de datos con otro `DateStyle` (por ejemplo, un hosting con `SQL, DMY`)** _(ataque ronda 4)_: no afecta a la
+  API ni a los comandos (criterio 107); sí a herramientas externas como `psql`, que no son parte del sistema.
+- **Lista vacía en un filtro** _(ataque ronda 4)_: `join([])` lanza `TypeError` (P-25); quien filtra por una lista que
+  puede venir vacía usa `= ANY(${lista}::uuid[])`, que con un arreglo vacío no devuelve filas.
 
 ## Reglas de negocio aplicables
 
@@ -1062,14 +1355,15 @@ En las pruebas, la URL de la app para la base de pruebas se arma con el usuario 
 `DATABASE_URL_APP` y el host, el puerto y la base de `DATABASE_URL_PRUEBAS`. Nombres exactos de los campos de
 `Entorno` y quién crea el rol `aquagestion_app` en cada entorno: precisiones P-1 y P-11. Al arrancar, la API borra de
 `process.env` las variables `DATABASE_URL*` (salvo `DATABASE_URL_APP`), las `PG*` y `SUPERADMIN_CLAVE` (criterio 99,
-P-21) _(ataque ronda 3)_.
+P-21) _(ataque ronda 3)_, sin distinguir mayúsculas (criterio 116) _(ataque ronda 4)_.
 
 ### Servicios del backend (contrato para las pruebas)
 
 Exportados desde `backend/src/infraestructura/prisma/index.ts`:
 
 ```ts
-type ClienteTransaccion = Prisma.TransactionClient; // del cliente generado (ataque ronda 3: el envoltorio, P-24)
+type ClienteTransaccion = Prisma.TransactionClient; // del cliente generado (ataque ronda 3: el envoltorio, P-24; ronda 4: P-26)
+// Ataque ronda 4: además Decimal, codigoDeErrorDeBase, esViolacionDeUnicidad, sql, join, vacio y Fragmento (P-25)
 interface TransaccionAcademia { readonly academiaId: string; readonly cliente: ClienteTransaccion }
 interface TransaccionPlataforma { readonly cliente: ClienteTransaccion }
 interface OpcionesTransaccion { readonly aislamiento?: 'ReadCommitted' | 'RepeatableRead' | 'Serializable' }
@@ -1393,7 +1687,8 @@ hechas. No son reglas de negocio nuevas.
 - **P-21. Variables que la API retira (criterio 99).** `backend/src/infraestructura/entorno/` (exportado por su
   `index`) exporta `retirarVariablesSensibles(env: Record<string, string | undefined>): void`, que borra del objeto
   recibido toda clave que empiece por `DATABASE_URL` salvo `DATABASE_URL_APP`, toda clave que empiece por `PG` y
-  `SUPERADMIN_CLAVE`, y no toca las demás.
+  `SUPERADMIN_CLAVE`, y no toca las demás. _(Alcance ajustado por el criterio 116, ataque ronda 4: los nombres se
+  comparan pasados a mayúsculas. El `index` ya no exporta `cargarEnvRaiz`, criterio 117.)_
 - **P-22. Verificador SCRAM (criterio 104).** `scripts/lib/rol-app.mjs` (solo `node:*`) exporta
   `verificadorScram(clave: string, opciones?: { sal?: Buffer; iteraciones?: number }): string`, que devuelve
   `SCRAM-SHA-256$<iteraciones>:<sal en base64>$<StoredKey en base64>:<ServerKey en base64>` (por defecto 4096
@@ -1408,7 +1703,62 @@ hechas. No son reglas de negocio nuevas.
   los delegados de los modelos (orientativo:
   `Pick<Prisma.TransactionClient, '$queryRaw' | '$executeRaw' | Uncapitalize<Prisma.ModelName>>`). `TransaccionAcademia`
   y `TransaccionPlataforma` no cambian de forma. `enPlataforma` (P-17) sigue entregando la transacción completa de
-  Prisma a los comandos, que es asignable a ese tipo.
+  Prisma a los comandos, que es asignable a ese tipo. _(Alcance ajustado por P-26, ataque ronda 4: lo que devuelven los
+  métodos son promesas nativas y `$queryRaw`/`$executeRaw` aceptan también un fragmento del punto autorizado.)_
+
+_(contrato de la ronda 4 del ataque, 11/11/2026)_. Firmas que las pruebas protegidas de los criterios 106 a 119 dan por
+hechas. No son reglas de negocio nuevas.
+
+- **P-25. Punto autorizado (criterios 112 y 114).** `backend/src/infraestructura/prisma/index.ts` exporta, además de lo
+  que ya exporta:
+
+  ```ts
+  export const Decimal: typeof Prisma.Decimal;            // la clase de decimales de Prisma (decimal.js)
+  export type Decimal = Prisma.Decimal;
+  export function codigoDeErrorDeBase(error: unknown): string | null; // SQLSTATE de 5 caracteres o null
+  export function esViolacionDeUnicidad(error: unknown): boolean;     // P2002 de Prisma o SQLSTATE 23505
+  declare const marcaFragmento: unique symbol;
+  export interface Fragmento { readonly [marcaFragmento]: true }      // opaco: sin prototipo ni claves propias
+  type Simple = string | number | bigint | boolean | null | Date | Decimal;
+  export type ValorSql = Simple | Uint8Array | readonly Simple[];
+  export function sql(partes: TemplateStringsArray, ...valores: readonly (ValorSql | Fragmento)[]): Fragmento;
+  export function join(elementos: readonly (ValorSql | Fragmento)[], separador?: 'coma' | 'y' | 'o'): Fragmento;
+  export const vacio: Fragmento;
+  ```
+
+  `sql` lanza `TypeError` si `partes` no es un arreglo de cadenas con `raw` (arreglo de cadenas del mismo largo) y un
+  elemento más que `valores`, o si un valor no es de los tipos indicados (un `Sql` de Prisma, un objeto cualquiera, una
+  función o `undefined`). `join` lanza `TypeError` con una lista vacía, con un separador fuera de la lista o con un
+  elemento no admitido. Los nombres exactos `sql`, `join`, `vacio`, `Decimal`, `codigoDeErrorDeBase` y
+  `esViolacionDeUnicidad` son los que importan las pruebas.
+- **P-26. Envoltorio en tiempo de ejecución (criterios 106 y 112).** `ClienteTransaccion` (P-24) queda, orientativo:
+
+  ```ts
+  interface ClienteTransaccion {
+    $queryRaw<T = unknown>(partes: TemplateStringsArray, ...valores: unknown[]): Promise<T>;
+    $queryRaw<T = unknown>(consulta: Fragmento | Prisma.Sql): Promise<T>;
+    $executeRaw(partes: TemplateStringsArray, ...valores: unknown[]): Promise<number>;
+    $executeRaw(consulta: Fragmento | Prisma.Sql): Promise<number>;
+    // y un delegado por modelo con las operaciones de la lista, que devuelven Promise<…> (no PrismaPromise)
+  }
+  ```
+
+  En la forma de etiqueta, los valores que son fragmentos se reemplazan por su `Sql` y los demás se pasan tal cual como
+  parámetros. Un argumento no admitido rechaza con `TypeError`; una llamada después de terminar `trabajo` rechaza con un
+  `Error` (las pruebas no fijan el texto). En los dos casos no se envía nada a la base.
+- **P-27. Fechas inválidas (criterio 108).** `estaBloqueado(estado, ahora)` y `evaluarIntentoFallido(estado, ahora,
+  reglas?)` de `backend/src/modulos/academias/dominio/bloqueo.ts` conservan su firma; con `bloqueadoHasta` no nulo e
+  inválido (`Number.isNaN(fecha.getTime())`, o un valor que no es `Date`), o con `ahora` inválido, `estaBloqueado`
+  devuelve `true`. Las fechas que la API lee de la base para decidir o responder pasan por una función que lanza un
+  error interno (500 `ERROR_INTERNO`) si no son un `Date` válido (orientativo: `fechaDeBase(valor)` en
+  `backend/src/comun/`).
+- **P-28. Comprobación previa del paso protegido (criterios 111 y 118).** `scripts/lib/fuentes-protegidas.mjs` (solo
+  `node:*`) exporta `enlacesSimbolicos(raices: string[]): string[]` (rutas de los enlaces encontrados bajo cada raíz,
+  recorriendo con `lstat` sin seguir enlaces; una raíz que no existe no es error) y
+  `entradasAjenasEnGenerated(carpeta: string): string[]` (las entradas de `backend/src/generated/` que no son la carpeta
+  `prisma`). `scripts/comprobar-fuentes-protegidas.mjs` las aplica a `backend/src` y `packages/contratos/src`, consulta
+  `git ls-files -- backend/src/generated` y termina con código 1 nombrando cada ruta si encuentra algo. El script
+  `lint:protegido` lo ejecuta antes de ESLint.
 
 ## Cambios al modelo de datos
 
@@ -1493,6 +1843,21 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
     P-24); los módulos solo usaban `$queryRaw` y `$executeRaw`, que siguen;
   - las historias siguientes: cada tabla nueva amplía `PRIVILEGIOS_APP` (criterio 102), y el SQL de los módulos se
     escribe solo en plantillas etiquetadas (criterio 92).
+- **Ronda 4 del ataque (criterios 106 a 119):**
+  - en `eslint/regla-sql-plantillas.test.mjs` (criterio 92), los ejemplos que pasan
+    `` cliente.$queryRaw(Prisma.sql`SELECT 1`) `` y `` cliente.$executeRaw(sql`SELECT 1`) `` en un módulo usan `Prisma` y
+    `sql` sin importarlos; con el criterio 112 pasan a importar `sql` del punto autorizado (en un módulo no hay `Prisma`
+    de valor, así que el primero se escribe con `sql`), y el de `cli/` agrega `import { Prisma } from
+    '../generated/prisma/client'`; `Prisma.join(ids)` en un módulo pasa a `join(ids)` del punto autorizado. Lo adapta el
+    test-writer en el commit de pruebas protegidas de la ronda 4, sin quitar ejemplos ni cambiar los que fallan;
+  - las protegidas que eximen `**/*.test.*` o `backend/src/generated/**` siguen valiendo con los patrones exactos de los
+    criterios 110 y 118 (los ejemplos usan `*.service.test.ts` y el cliente generado);
+  - `cargarEnvRaiz` sale del `index` de `infraestructura/entorno/` (criterio 117); `main.ts` la importa de su archivo;
+  - el envoltorio deja de devolver `PrismaPromise`: se pierde la API fluida de relaciones y una consulta se envía al
+    llamarla aunque no se espere (criterio 106);
+  - las historias siguientes: los montos usan el `Decimal` del punto autorizado, la operación duplicada se detecta con
+    `esViolacionDeUnicidad` y los filtros de reportes se componen con `sql`, `join` y `vacio` o con
+    `= ANY(${lista}::<tipo>[])` (criterio 114).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -1534,28 +1899,52 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   por dirección IPv6 completa (/128), así que quien tenga un bloque IPv6 puede repartir intentos entre muchas
   direcciones; además vive en memoria de cada instancia: se reinicia al reiniciar la API y no se comparte entre
   instancias. Se acepta porque lo acota el bloqueo de la cuenta tras 5 fallos (criterio 39), que está en la base y
-  vale para todas las IP e instancias. Se revisa con el hosting (D-21), junto con `trust proxy`.
+  vale para todas las IP e instancias. Se revisa con el hosting (D-21), junto con `trust proxy`. _(Reconfirmado en la
+  ronda 4.)_
 - **La regla de lint del SQL sigue siendo por texto** _(ataque ronda 2)_: aun con la normalización del criterio 83,
   no ve SQL armado en tiempo de ejecución ni sentencias dentro de un `EXECUTE` anidado en un bloque `DO`. La garantía
   sigue en el criterio 72 (cada transacción fija los dos valores), en el rol sin privilegios (criterios 1, 80 y 82) y
   en el revisor. Desde la ronda 3, `DO` y `EXECUTE` como sentencia también hacen fallar el lint (criterio 94).
 - **Claves JSON duplicadas** _(ataque ronda 3, O5)_: en un cuerpo como `{"correo":"a@x.pe","correo":"b@x.pe"}` gana
   la última, como en `JSON.parse`. Se acepta: el esquema valida el valor que queda y no hay una segunda lectura del
-  cuerpo que vea la otra.
+  cuerpo que vea la otra. _(Reconfirmado en la ronda 4.)_
 - **Lo que el rol de la app todavía puede hacer en SQL** _(ataque ronda 3, O2)_: crear y leer objetos grandes
   (`lo_create`, `lo_from_bytea`), conectarse a la base `postgres` (por el `CONNECT` de `PUBLIC`), terminar o cancelar
   conexiones de su mismo rol (`pg_terminate_backend`) y cambiar su propia contraseña (`ALTER ROLE … PASSWORD`).
   Ninguno da datos de una academia; impedirlos exige un superusuario sobre objetos del sistema que no son de
   AquaGestión. Lo cubren el lint (criterios 84 y 94), que la API no tiene otro camino a la base (criterios 95, 99 y
-  100) y el revisor.
+  100) y el revisor. _(Reconfirmado en la ronda 4: objetos grandes, `pg_terminate_backend` y `ALTER ROLE … PASSWORD`
+  sobre el propio rol.)_
 - **SQL armado en tiempo de ejecución** _(ataque ronda 3)_: el lint ve formas escritas en el código (criterio 92). Un
   módulo que llama a `$queryRaw` con un arreglo que imita una plantilla, o que llega a un método con una clave
   calculada, puede ejecutar cualquier sentencia dentro de su propia transacción. En la API el envoltorio no tiene los
   métodos `Unsafe` (criterio 100); lo demás lo cubren el rol sin privilegios, el contexto por transacción (criterios
-  72, 98 y 101), el revisor y el adversarial.
+  72, 98 y 101), el revisor y el adversarial. _(Reconfirmado en la ronda 4: un arreglo con `raw` que imita una
+  plantilla también lo aceptan el envoltorio y la `sql` del punto autorizado, porque JavaScript no distingue una
+  plantilla real de una imitada; desde la ronda 4, todo eso corre siempre dentro de la transacción con su contexto,
+  criterios 106 y 107.)_
 - **Comprobación del rol una vez por proceso** _(ataque ronda 3)_: un `GRANT` o un `ALTER ROLE … SET` hechos con la
   API ya en marcha no se detectan hasta reiniciarla (criterios 4, 80, 102 y 103). Se acepta: la comprobación cuesta
   varias consultas al catálogo y esos cambios los hace un administrador del servidor; `db:crear` también los detecta.
+  _(Reconfirmado en la ronda 4.)_
+- **El lint es una segunda capa, no una barrera contra código malicioso** _(nota de proceso, ataque ronda 4)_: la
+  protección principal del aislamiento está en la base: RLS forzada, un rol sin privilegios que se comprueba
+  (criterios 1 a 4, 80, 102 y 103) y el contexto fijado en cada transacción (criterios 72, 98, 101, 106 y 107). Las
+  reglas de lint (criterios 28, 73, 83 a 85, 92 a 97, 109 a 113 y 115 a 119) son una segunda capa sobre código escrito
+  por el equipo: atrapan errores y atajos, no a quien quiera evadirlas a propósito. Su límite está en el SQL armado en
+  tiempo de ejecución (riesgo anterior). Por eso, cuando el adversarial encuentre otra forma de evadir el lint sin
+  romper una garantía de la base, se valora si basta con documentarla aquí en lugar de agregar otra regla.
+- **Palabras prohibidas dentro de una cadena SQL** _(ataque ronda 4)_: la regla del texto analiza también el contenido
+  de las cadenas (`'…'` y las de dólar), así que `` SELECT … WHERE motivo = 'WITH HOLD' `` o una cadena con
+  `pg_advisory_lock(` hacen fallar el lint aunque no se ejecuten. Se acepta: no analizar las cadenas dejaría pasar los
+  cuerpos de `DO` o de funciones; el valor va como parámetro (`${'WITH HOLD'}`), que es lo correcto de todos modos
+  (criterio 115).
+- **Sin API fluida de relaciones** _(ataque ronda 4)_: como el envoltorio devuelve promesas nativas (criterio 106),
+  `tx.cliente.modelo.findUnique(…).relacion()` no existe; se usa `include` o `select`. El tipo puede seguir mostrándola
+  si el de Prisma la incluye; el revisor la busca.
+- **Pruebas que no corren en todas partes** _(ataque ronda 4)_: los enlaces simbólicos en Windows sin modo de
+  desarrollador (criterio 111) y la contaminación de `DateStyle` por `ALTER ROLE ALL` o `ALTER SYSTEM` sin superusuario
+  (criterio 107, en la nube) se omiten con aviso; corren en la CI de Linux o en Docker.
 - **Clave de ejemplo del superadmin en `.env.example`:** es pública y solo sirve en desarrollo; la semilla no corre
   en producción y el comando del criterio 34 la reemplaza.
 - **Cookie sin `Secure` fuera de producción:** necesario para `http://localhost`; en producción va con `Secure`
@@ -1692,8 +2081,44 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
 - **UTF-8 estricto en el lector JSON** (criterio 105). Alternativa descartada: aceptar y reemplazar por U+FFFD (el texto
   guardado no es el que el cliente creyó enviar, y la auditoría queda alterada).
 
+### Decisiones técnicas tras el ataque, ronda 4 (11/11/2026)
+
+- **Funciones `async` en el envoltorio y una marca de transacción activa** (criterio 106). Alternativas descartadas:
+  quitar `requestTransaction` de cada `PrismaPromise` o envolverla en un `Proxy` (Prisma puede agregar otra propiedad
+  interna en cualquier versión; una promesa nativa es una lista cerrada).
+- **Fijar `DateStyle`, `IntervalStyle`, `extra_float_digits` y `bytea_output` en cada transacción** (criterio 107),
+  como `TimeZone`. Alternativas descartadas: rechazar `options` en `DATABASE_URL_APP` (no cubre la base, `ALTER ROLE
+  ALL` ni el archivo del servidor) y leer cada fecha como texto con `::text` en cada consulta (se olvida en algún
+  módulo).
+- **Falla cerrada ante una fecha inválida** (criterio 108). Alternativa descartada: tratarla como nula (abre la cuenta
+  bloqueada).
+- **Una lista de funciones prohibidas más todo esquema que no sea `pg_catalog` ni `public`** (criterio 109).
+  Alternativa descartada: analizar como SQL el contenido de las cadenas pasadas a esas funciones (se evade armando la
+  cadena con `chr()`, `format()` o una columna).
+- **Exenciones con nombre exacto y prohibición de importar pruebas** (criterio 110). Alternativa descartada: solo
+  excluir del build `**/*.test.*` (`tsx` ejecutaría igual el archivo exento en desarrollo y en los comandos).
+- **Rechazar enlaces simbólicos y resolver con `realpath`** (criterio 111). Alternativa descartada: que ESLint siga los
+  enlaces (no tiene esa opción y los patrones de `files` son léxicos).
+- **La etiqueta `sql` se reconoce por su declaración (ámbito de ESLint), no por el nombre** (criterio 112), y el
+  envoltorio valida el argumento. Alternativa descartada: prohibir declarar algo llamado `sql` (se evade con otro
+  nombre en una función intermedia).
+- **`Prisma` en `cli/` solo como acceso con punto a un nombre fijo** (criterio 113). Alternativa descartada: seguir una
+  por una las formas de alias (siempre queda una más: `Reflect`, `Object.*`, `.constructor`).
+- **Punto autorizado con fragmentos opacos** (criterio 114). Alternativas descartadas: dejar que los módulos importen
+  `Prisma` (llega a `raw` y a `Sql`) y reexportar `Prisma.sql`, `Prisma.join` y `Prisma.empty` tal cual (desde un `Sql`,
+  `.constructor` lleva a la clase y a un SQL arbitrario).
+- **`SET` después de `UPDATE` en la misma sentencia es una cláusula** (criterio 115). Alternativa descartada: dejarlo
+  como limitación (una columna `role` o `session` obligaría a renombrarla o a apagar la regla). La cadena `'WITH HOLD'`
+  sí queda como limitación aceptada.
+- **Comparar los nombres de variables en mayúsculas** (criterio 116). Alternativa descartada: distinguir mayúsculas
+  (en Windows `PgPassword` es `PGPASSWORD`).
+- **`cargarEnvRaiz` fuera del `index` y `dotenv` prohibido en los módulos** (criterio 117). Alternativa descartada: solo
+  quitarla del `index` (un módulo importaría el archivo o `dotenv` directamente).
+- **Comprobar `generated/` con `git ls-files` y el disco** (criterio 118). Alternativa descartada: solo acotar la
+  exención (un archivo agregado con `git add -f` bajo `generated/prisma/` seguiría exento).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 3 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 4 del ataque son decisiones técnicas y no abren preguntas de
 negocio.

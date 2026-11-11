@@ -21,6 +21,10 @@ Tras la ronda 3 se agregaron los criterios 92 a 105 (sección L de `spec.md`) y 
 tareas son T47 a T58, antes del cierre. Los criterios 73, 83, 84, 85 y la precisión P-15 quedaron con el alcance
 ajustado.
 
+Tras la ronda 4 se agregaron los criterios 106 a 119 (sección M de `spec.md`) y las precisiones P-25 a P-28; sus
+tareas son T59 a T70, antes del cierre. Los criterios 92, 95, 96, 98, 99 y 100 y las precisiones P-21 y P-24 quedaron
+con el alcance ajustado o complementado.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -191,6 +195,56 @@ sección 15 del plan.
 - [ ] T57 · orquestador · `git diff` desde el commit de T48: T49 a T56 no tocaron pruebas protegidas
 - [ ] T58 · adversarial · Ronda 4 sobre todo lo anterior, en especial 92 a 105 (el lint nuevo, el envoltorio, la zona
       horaria y la comprobación del rol); si hay fallas, se repite el ciclo
+
+## Ataque adversarial, ronda 4 (11/11/2026)
+
+Fallas F1 a F7, falsos positivos y observaciones de la ronda 4 (sobre `066c9af`); criterios 106 a 119 de `spec.md`
+(sección M) y precisiones P-25 a P-28. Se reconfirmaron los riesgos aceptados (SQL armado en tiempo de ejecución,
+comprobación del rol una vez por proceso, objetos grandes, `pg_terminate_backend`, `ALTER ROLE … PASSWORD` propio,
+claves JSON duplicadas y límite por IP en memoria y /128) y se agregaron la nota de proceso sobre el lint y la cadena
+`'WITH HOLD'` como limitación. Detalle técnico en la sección 16 del plan.
+
+- [ ] T59 · test-writer · Pruebas protegidas en rojo de los criterios 106 a 119 (archivos en "Protegidas del ataque
+      ronda 4" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación. En el mismo
+      commit, adaptar `eslint/regla-sql-plantillas.test.mjs` a los criterios 112 y 114 como dice "Impacto en
+      especificaciones anteriores" (importaciones de `sql`, `join` y `Prisma`), sin quitar ejemplos ni cambiar los que
+      fallan; y comprobar que ningún ejemplo de las protegidas de lint de las rondas 1 a 3 cambia de resultado con el
+      criterio 115 (si alguno cambiara, detenerse e informar). Commit: "Pruebas protegidas (001), ataque ronda 4:
+      promesas nativas, formato de sesión, fechas inválidas, lint de funciones, exenciones, enlaces, etiquetas, alias,
+      punto autorizado y entorno (en rojo)" (criterios 92, 106 a 119)
+- [ ] T60 · tester · Confirmar que T59 falla por la razón esperada (promesas con `requestTransaction` o fuera de la
+      transacción, escritura que sobrevive, `DateStyle` contaminado que anula el bloqueo o da 500, fecha inválida que
+      deja entrar, funciones de texto que pasan el lint, `atajo.test.util.ts` exento, enlace que evade, `sql` local u
+      objeto falso aceptados, alias de `Prisma` que pasan, punto autorizado inexistente, `UPDATE … SET role` que falla,
+      `PgPassword` que queda, `cargarEnvRaiz` o `dotenv` al alcance, archivos bajo `generated/` exentos, `.jsx` sin
+      revisar) y no por errores de las pruebas. Las que exigen superusuario o enlaces simbólicos se confirman en la CI
+      de Linux o en Docker
+- [ ] T61 · backend · Envoltorio: funciones `async` que devuelven promesas nativas, marca de transacción activa y
+      validación de argumentos de `$queryRaw`/`$executeRaw` con fragmentos y `Sql` de Prisma; tipo `ClienteTransaccion`
+      (P-26) (criterios 106, 112)
+- [ ] T62 · backend · Primera sentencia de `#fijarContexto` y de `enPlataforma` con `DateStyle`, `IntervalStyle`,
+      `extra_float_digits` y `bytea_output`; excepción de esas llamadas exactas en `cli/` en `regla-sql-sesion.mjs`
+      (criterio 107)
+- [ ] T63 · backend · Falla cerrada: `estaBloqueado` con fechas inválidas, `fechaDeBase` y su uso en la sesión del
+      superadmin y en las academias (P-27) (criterio 108)
+- [ ] T64 · backend · Punto autorizado en `infraestructura/prisma/`: `Decimal`, `codigoDeErrorDeBase`,
+      `esViolacionDeUnicidad`, `sql`, `join`, `vacio` y fragmentos opacos, exportados por el `index` (P-25)
+      (criterio 114)
+- [ ] T65 · backend · Lint del texto del SQL: funciones que ejecutan texto y esquemas ajenos (criterio 109), cláusula
+      `SET` tras `UPDATE` (criterio 115) y etiquetas reconocidas por ámbito (criterio 112)
+- [ ] T66 · backend · Lint de formas: `sql` del punto autorizado por ámbito en módulos y `Prisma.sql` del cliente
+      generado en `cli/` como único argumento (criterio 112); `Prisma` en `cli/` solo como acceso con punto a un nombre
+      fijo, sin `constructor`, `Reflect`, `Object.*`, desestructuraciones prohibidas ni `require`/`import()`
+      (criterio 113)
+- [ ] T67 · backend · Lint de acceso y archivos: exenciones exactas, `tsconfig.build.json`, prohibición de importar
+      pruebas, `realpath`, `.jsx`, `generated/prisma/**`, `cargar-env` y `dotenv` fuera de `main.ts`, `cli/` y
+      `entorno/`; `scripts/lib/fuentes-protegidas.mjs` y `scripts/comprobar-fuentes-protegidas.mjs` en `lint:protegido`
+      (P-28) (criterios 110, 111, 117, 118, 119)
+- [ ] T68 · backend · `retirarVariablesSensibles` sin distinguir mayúsculas; `cargarEnvRaiz` fuera del `index` de
+      entorno y `main.ts` importándola de su archivo (criterios 116, 117)
+- [ ] T69 · orquestador · `git diff` desde el commit de T60: T61 a T68 no tocaron pruebas protegidas
+- [ ] T70 · adversarial · Ronda 5 sobre todo lo anterior, en especial 106 a 119 (promesas del envoltorio, parámetros
+      de sesión, punto autorizado y lint); si hay fallas, se repite el ciclo
 
 ## Cierre
 

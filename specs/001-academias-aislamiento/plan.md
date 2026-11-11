@@ -553,6 +553,23 @@ La reutiliza 002 para los usuarios de academia.
     con aviso en la nube);
   - `plataforma/utf8.test.ts` (105);
   - no protegida: `scripts/test/preparar-sesion.test.mjs` pasa a esperar el verificador SCRAM (criterio 104).
+- **Protegidas del ataque ronda 4 (test-writer)** _(criterios 106 a 119; nombres orientativos)_:
+  - `aislamiento/promesas-nativas.test.ts` (106) y `aislamiento/argumentos-envoltorio.test.ts` (112, parte de
+    integración);
+  - `aislamiento/formato-sesion.test.ts` (107, con las vías que exigen superusuario omitidas con aviso) y un caso de
+    `enPlataforma` en `cli/contexto-comandos-ronda4.test.ts`;
+  - `backend/src/modulos/academias/dominio/bloqueo-ronda4.test.ts` (108, unitaria) y
+    `plataforma/fechas-invalidas.test.ts` (108, con `BaseDatos` reemplazado por un doble);
+  - `eslint/regla-sql-funciones-texto.test.mjs` (109), `eslint/regla-exenciones-ronda4.test.mjs` (110, 118 y 119),
+    `eslint/enlaces-simbolicos.test.mjs` (111, regla con `realpath`), `eslint/regla-sql-etiqueta-autorizada.test.mjs`
+    (112), `eslint/regla-prisma-cli-ronda4.test.mjs` (113), `eslint/regla-sql-clausula-set.test.mjs` (115) y
+    `eslint/regla-entorno.test.mjs` (117);
+  - `scripts/test/fuentes-protegidas.test.mjs` (111 y 118, unitarias de P-28 con carpetas temporales);
+  - `backend/src/infraestructura/prisma/punto-autorizado.test.ts` (114, unitaria) y
+    `aislamiento/punto-autorizado.test.ts` (114, integración);
+  - `backend/src/infraestructura/entorno/retirar-variables-ronda4.test.ts` (116);
+  - adaptación de `eslint/regla-sql-plantillas.test.mjs` a los criterios 112 y 114 ("Impacto en especificaciones
+    anteriores" de `spec.md`), en el mismo commit.
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -798,6 +815,146 @@ función de `scripts/lib/rol-app.mjs` (solo `node:*`, P-13) para el rol del due�
 403 (`entity.verify.failed`); el filtro lo traduce a 400 `SOLICITUD_INVALIDA` con `detalles.errores: [{ campo: '',
 mensaje }]`. Como el límite del inicio de sesión corre antes del lector (sección 6), el 400 cuenta para él.
 
+### 16. Correcciones del ataque, ronda 4 (criterios 106 a 119)
+
+Principio de esta ronda (nota de proceso en "Riesgos aceptados" de `spec.md`): la garantía está en la base (RLS, rol
+sin privilegios, contexto por transacción). Lo que cambia en `BaseDatos` (106 a 108) refuerza esa garantía; lo que
+cambia en el lint (109 a 119) cierra caminos que un error del equipo podría abrir, sin pretender ser una barrera contra
+código escrito para evadirlo.
+
+**Envoltorio (criterios 106 y 112, P-26).** `infraestructura/prisma/envoltorio.ts`:
+
+- `envolver(tx)` devuelve `{ cliente, terminar }`: `cliente` es el objeto congelado de hoy; `terminar()` pone en `false`
+  una variable `activa` del cierre. `#transaccion` hace `try { return await trabajo(cliente) } finally { terminar() }`
+  dentro del callback de `$transaction`.
+- Cada función del envoltorio es `async`: comprueba `activa` (si no, `throw new Error('La transacción ya terminó.')`),
+  valida y traduce los argumentos y hace `return await tx.$queryRaw(...)` (o el delegado). Al ser `async`, lo que recibe
+  quien llama es una `Promise` nativa; el `await` interno dispara la `PrismaPromise`, que nunca sale del envoltorio. Ya
+  no hay `requestTransaction`, ni API fluida, ni ejecución perezosa.
+- Validación de `$queryRaw`/`$executeRaw`:
+  - forma de etiqueta: `Array.isArray(partes) && Array.isArray(partes.raw) && partes.length === valores.length + 1`
+    y todos los elementos de `partes` y `partes.raw` son cadenas; los valores que son fragmentos (P-25) se cambian por su
+    `Sql` con `aSql(fragmento)` (función interna); los demás se pasan tal cual;
+  - forma de llamada: exactamente un argumento que es un fragmento (se cambia por su `Sql`) o `instanceof Prisma.Sql`;
+  - cualquier otra cosa: `throw new TypeError('Consulta no válida: usa una plantilla etiquetada o sql del punto
+    autorizado.')`, antes de tocar `tx`.
+- Las operaciones de los delegados no validan sus argumentos (Prisma los valida y los parametriza); solo se vuelven
+  `async`.
+- Tipo: P-26. Si `Prisma.TransactionClient` deja de ser asignable a `ClienteTransaccion` (por la sobrecarga con
+  `Fragmento`), `enPlataforma` tipa su `trabajo` con `Prisma.TransactionClient`, que los comandos ya usan; si eso rompe
+  la verificación de tipos de una prueba protegida, el backend se detiene e informa.
+
+**Parámetros de formato (criterio 107).** `#fijarContexto` y `enPlataforma` amplían su primera sentencia:
+
+```sql
+SELECT set_config('app.plataforma', ${p}, true), set_config('app.academia_id', ${id}, true),
+       set_config('TimeZone', 'UTC', true), set_config('DateStyle', 'ISO, MDY', true),
+       set_config('IntervalStyle', 'postgres', true), set_config('extra_float_digits', '1', true),
+       set_config('bytea_output', 'hex', true)
+```
+
+Sigue siendo una sola sentencia y un solo viaje. En `eslint/regla-sql-sesion.mjs`, `esLlamadaPermitida` (solo en
+`cli/`) admite además, sobre el texto normalizado (en minúsculas), exactamente `('datestyle', 'iso, mdy', true)`,
+`('intervalstyle', 'postgres', true)`, `('extra_float_digits', '1', true)` y `('bytea_output', 'hex', true)`; ojo con
+`argumentosDeLlamada`: la coma dentro de `'iso, mdy'` está dentro de una cadena y ya no separa argumentos.
+`standard_conforming_strings` y `search_path` no se fijan: el SQL de la API va con parámetros (el primero no cambia su
+significado) y el rol no puede crear objetos en ningún esquema (criterios 80 y 82), así que un `search_path` distinto
+solo puede romper consultas (500), no desviarlas.
+
+**Falla cerrada (criterio 108, P-27).**
+
+- `dominio/bloqueo.ts`: `const valida = (f: unknown): f is Date => f instanceof Date && !Number.isNaN(f.getTime())`;
+  `estaBloqueado` devuelve `true` si `!valida(ahora)` o si `bloqueadoHasta !== null && !valida(bloqueadoHasta)`.
+- `backend/src/comun/fechas/fecha-de-base.ts` (orientativo): `fechaDeBase(valor: unknown): Date` y
+  `fechaDeBaseONula(valor: unknown): Date | null`, que lanzan un `Error` interno (el filtro lo traduce a 500
+  `ERROR_INTERNO` y lo registra sin datos) si el valor no es un `Date` válido. `sesion-plataforma.service.ts` pasa por
+  ahí `bloqueado_hasta` y `ultimo_acceso` antes de decidir; `academias.service.ts`, `creada_en` y `suspendida_en`
+  antes de armar la respuesta. El error sale dentro de `trabajo`, así que la transacción se revierte y no se escribe
+  nada.
+
+**Punto autorizado (criterio 114, P-25).** Archivo nuevo `infraestructura/prisma/sql-seguro.ts` y
+`infraestructura/prisma/errores-base.ts`, exportados por el `index`:
+
+- `const sqlDe = new WeakMap<Fragmento, Prisma.Sql>()`; `crearFragmento(s: Prisma.Sql): Fragmento` hace
+  `const f = Object.freeze(Object.create(null)); sqlDe.set(f, s); return f`; `aSql(f)` (interna, la usa el envoltorio)
+  devuelve `sqlDe.get(f)` o `undefined`.
+- `sql(partes, ...valores)`: valida `partes` como el envoltorio; cada valor: fragmento → su `Sql`; `Date`, `Decimal`
+  (`Prisma.Decimal.isDecimal`), `Uint8Array`, primitivo admitido o arreglo de primitivos/`Date`/`Decimal` → tal cual;
+  otro → `TypeError`. Devuelve `crearFragmento(Prisma.sql(partes, ...convertidos))`.
+- `join(elementos, separador = 'coma')`: `SEPARADORES = { coma: ', ', y: ' AND ', o: ' OR ' }` en un objeto sin
+  prototipo; separador fuera de la lista o lista vacía → `TypeError`; elementos convertidos como en `sql`; devuelve
+  `crearFragmento(Prisma.join(convertidos, SEPARADORES[separador]))`.
+- `vacio = crearFragmento(Prisma.empty)`.
+- `Decimal = Prisma.Decimal` (valor) y `type Decimal = Prisma.Decimal`.
+- `codigoDeErrorDeBase(error)`: si es `Prisma.PrismaClientKnownRequestError`, busca un SQLSTATE de 5 caracteres en
+  `meta` (según la versión: `meta.code`, `meta.driverAdapterError.cause.originalCode` o similar; con `P2002` devuelve
+  `'23505'`); si es un error del adaptador con `code`/`originalCode` de 5 caracteres, ese; si no, `null`. La prueba
+  unitaria construye los errores con las clases de Prisma; la de integración provoca una duplicada real con
+  `$executeRaw` y con un delegado (`create`), para fijar la forma de la versión instalada.
+- `esViolacionDeUnicidad(error)`: `codigoDeErrorDeBase(error) === '23505'` o `error.code === 'P2002'`.
+- Alternativas para listas, que el plan recomienda en este orden: `= ANY(${ids}::uuid[])` (un parámetro de arreglo; con
+  lista vacía no devuelve filas), `IN (${join(ids)})` (un parámetro por elemento; lista vacía es `TypeError`) y
+  fragmentos condicionales con `vacio` para filtros opcionales de reportes.
+
+**Lint (criterios 109 a 113, 115 y 117 a 119).**
+
+- `eslint/regla-sql-sesion.mjs`:
+  - patrón nuevo en `PATRONES_EN_CUALQUIER_PARTE` (criterio 109), orientativo:
+    `(?<![\p{L}\p{N}_$.])(?:[\p{L}_][\p{L}\p{N}_$]*\.)?(?:query_to_xml(?:schema|_and_xmlschema)?|cursor_to_xml(?:schema)?|(?:table|schema|database)_to_xml(?:schema|_and_xmlschema)?|ts_stat|ts_rewrite|dblink\w*|crosstab\w*|connectby|pg_background\w*)\s*\(`
+    más `(?<![\p{L}\p{N}_$.])(?!pg_catalog\.|public\.)[\p{L}_][\p{L}\p{N}_$]*\.[\p{L}_][\p{L}\p{N}_$]*\s*\(` para los
+    esquemas ajenos. Se aplican sobre el texto normalizado, donde los identificadores ya no tienen comillas (criterio 83)
+    y los espacios alrededor de `.` ya se quitaron. Ojo: `t.id)` no encaja (no sigue `(`) y `count(t.id)` tampoco;
+  - cláusula `SET` (criterio 115): los cuatro patrones de `set …` dejan `PATRONES_EN_CUALQUIER_PARTE` y se evalúan por
+    sentencia (`sentenciasDe`): una coincidencia cuenta salvo que, en esa sentencia, antes de ella y fuera de una cadena,
+    aparezca `\bupdate\b`. Para "fuera de una cadena" se usa una copia de la sentencia con el contenido de cada `'…'`
+    reemplazado por espacios (mismo largo, mismas posiciones). `^set\b` como sentencia no cambia;
+  - `esEtiquetaDeSql` (texto): acepta identificador `sql` (o cualquier alias local de la `sql` del punto autorizado,
+    resuelto por ámbito) y cualquier `MemberExpression` cuya propiedad sea `sql`, `$queryRaw` o `$executeRaw`.
+- `eslint/regla-sql-formas.mjs`:
+  - `esPlantillaDeSql(nodo)` pasa a resolver la etiqueta con `context.sourceCode.getScope(nodo)` y
+    `ASTUtils.findVariable` (o recorriendo `scope.references`): en módulos, la variable debe tener una sola definición
+    de tipo `ImportBinding` cuyo `ImportDeclaration.source` resuelto sea el punto autorizado e importe `sql`; o la
+    etiqueta es `<ns>.sql` con `<ns>` de un `ImportNamespaceSpecifier` del punto autorizado. En `cli/`, además,
+    `Prisma.sql` con `Prisma` resuelto a un `ImportBinding` de `generated/prisma` o `@prisma/…` (con alias);
+  - `Prisma` en `cli/` (criterio 113): al visitar cada `Identifier` que referencia una variable ligada a `Prisma` (o a
+    un namespace de esos módulos, o a su importación por defecto), el padre debe ser un `MemberExpression` no calculado
+    del que es el `object` (o una posición de tipo); si no, error. Sobre la cadena de miembros que empieza ahí, error si
+    alguna propiedad es `constructor`, `prototype` o `__proto__`, o si la expresión completa es argumento de
+    `Reflect.*` u `Object.{getPrototypeOf,getOwnPropertyDescriptor,getOwnPropertyDescriptors,entries,values,keys,assign}`.
+    Desestructuración (`VariableDeclarator` con `ObjectPattern` cuyo `init` es `Prisma` o `G.Prisma`): error con
+    `sql`, `raw`, `join`, `empty`, `Sql`, clave calculada o `RestElement`. `require`/`import()` de esos módulos en `cli/`:
+    error.
+- `eslint/regla-acceso-base.mjs`:
+  - `resolverRuta(especificador, archivo)`: como hoy, y después `realpathSi(ruta)`: prueba la ruta tal cual, con cada
+    extensión de `EXTENSIONES` (ahora con `jsx`) y con `/index.<ext>`; si existe, `fs.realpathSync.native`; si no, la
+    léxica. `context.filename` y `context.cwd` también pasan por `realpathSi` (criterio 111);
+  - importar un archivo de pruebas desde uno que no lo es (criterio 110): la ruta resuelta (o el especificador, si no se
+    resuelve) cumple `/\.test(?:\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs))?$/` o cae bajo `<raíz>/backend/test/`;
+  - `cargar-env` y `dotenv` (criterio 117): especificador `dotenv` o `dotenv/…`, o ruta resuelta igual a
+    `<raíz>/backend/src/infraestructura/entorno/cargar-env(.ts…)`, desde un archivo que no es `backend/src/main.ts`, ni
+    de `backend/src/cli/`, ni de `backend/src/infraestructura/entorno/` → error;
+  - el punto autorizado (criterio 114) ya pasaba (`…/infraestructura/prisma` e `…/index` están permitidos, criterio 95).
+- Archivos y exenciones (criterios 110, 118 y 119): las tres reglas exportan
+  `files: ['backend/src/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}']` y
+  `ignores: ['backend/src/generated/prisma/**', 'backend/src/**/*.test.{ts,mts,cts,js,mjs,cjs}']` (más
+  `backend/src/infraestructura/prisma/**` donde ya estaba). En `eslint.config.mjs`, el bloque JS pasa a
+  `**/*.{js,jsx,mjs,cjs}`, y el bloque de `ignores` globales cambia `backend/src/generated/**` por
+  `backend/src/generated/prisma/**`. `eslint.protegido.config.mjs`: lo mismo en `ignores` y en el analizador (con
+  `languageOptions.parserOptions.ecmaFeatures.jsx: true` para `.jsx` y `.tsx`).
+- `backend/tsconfig.build.json`: `"exclude": ["node_modules", "dist", "test", "**/*.test.ts", "**/*.test.mts",
+  "**/*.test.cts"]`.
+
+**Comprobación previa (criterios 111 y 118, P-28).** `scripts/lib/fuentes-protegidas.mjs` y
+`scripts/comprobar-fuentes-protegidas.mjs` (solo `node:*`, más `node:child_process` para `git ls-files`, con
+`execFileSync('git', [...])`, que funciona en Windows). `package.json`:
+`"lint:protegido": "node scripts/comprobar-fuentes-protegidas.mjs && eslint --no-inline-config --config eslint.protegido.config.mjs --max-warnings 0 backend/src"`.
+En Windows, `lstat` informa las uniones (`mklink /J`) como enlaces simbólicos, así que también se detectan.
+
+**Entorno (criterios 116 y 117).** `retirarVariablesSensibles`: `const n = nombre.toUpperCase()` y las mismas
+comparaciones sobre `n`. `infraestructura/entorno/index.ts` deja de exportar `cargarEnvRaiz`; `main.ts` importa
+`./infraestructura/entorno/cargar-env`. Pasar a mayúsculas con `toUpperCase` puede borrar de más algún nombre raro
+(`ſ` pasa a `S`), nunca de menos: falla hacia el lado seguro.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -839,6 +996,19 @@ mensaje }]`. Como el límite del inicio de sesión corre antes del lector (secci
 | Lista de privilegios permitidos (criterio 102) | Buscar solo privilegios peligrosos | La lista falla cerrada ante lo no previsto |
 | Verificador SCRAM calculado en el cliente (criterio 104) | `SET log_statement = 'none'` | No cubre el mensaje de error de una sentencia fallida |
 | UTF-8 estricto con `verify` del lector JSON (criterio 105) | Reemplazar por U+FFFD | El texto guardado no sería el enviado |
+| Funciones `async` en el envoltorio y marca de transacción activa (ataque ronda 4, criterio 106) | Quitar `requestTransaction` de la `PrismaPromise`; un `Proxy` | Prisma puede agregar otra propiedad interna; una promesa nativa es una lista cerrada |
+| `DateStyle`, `IntervalStyle`, `extra_float_digits` y `bytea_output` por transacción (criterio 107) | Rechazar `options` en la URL; leer las fechas con `::text` | No cubre la base, `ALTER ROLE ALL` ni el archivo del servidor; `::text` se olvida en algún módulo |
+| Fecha inválida = bloqueado y 500 (criterio 108) | Tratarla como nula | Abre una cuenta bloqueada |
+| Lista de funciones que ejecutan texto más esquemas ajenos (criterio 109) | Analizar el contenido de las cadenas como SQL | Se evade con `chr()`, `format()` o una columna |
+| Exenciones con nombre exacto y sin importar pruebas (criterio 110) | Solo excluir del build | `tsx` ejecuta el archivo exento igual |
+| Rechazar enlaces simbólicos y resolver con `realpath` (criterio 111) | Que ESLint siga los enlaces | No tiene la opción; `files` es léxico |
+| `sql` reconocida por su declaración (ámbito) y validación en el envoltorio (criterio 112) | Prohibir declarar `sql` | Se evade con otro nombre en una función intermedia |
+| `Prisma` en `cli/` solo como `Prisma.<nombre fijo>` (criterio 113) | Seguir cada forma de alias | Siempre queda una más (`Reflect`, `Object.*`, `.constructor`) |
+| Punto autorizado con fragmentos opacos (criterio 114) | Importar `Prisma` en módulos; reexportar `Prisma.sql`/`join`/`empty` | `raw` y `.constructor` llevan a SQL arbitrario |
+| `SET` tras `UPDATE` en la misma sentencia es cláusula (criterio 115) | Documentarlo como limitación | Obligaría a renombrar columnas o apagar la regla |
+| Nombres de variables en mayúsculas (criterio 116) | Distinguir mayúsculas | En Windows `PgPassword` es `PGPASSWORD` |
+| `cargarEnvRaiz` fuera del `index` y `dotenv` prohibido (criterio 117) | Solo quitarla del `index` | Un módulo importaría el archivo o `dotenv` |
+| `git ls-files` y disco en `generated/` (criterio 118) | Solo acotar la exención | Un archivo forzado con `git add -f` seguiría exento |
 
 ## Migraciones
 
@@ -850,6 +1020,7 @@ mensaje }]`. Como el límite del inicio de sesión corre antes del lector (secci
 - No toca la migración inicial de 000.
 - Ronda 3: sin migraciones nuevas. Los privilegios (criterio 102) y los valores por defecto del rol (103) se comprueban;
   no se cambian.
+- Ronda 4: sin migraciones nuevas. Los parámetros de formato (criterio 107) se fijan por transacción, no en la base.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -903,5 +1074,19 @@ mensaje }]`. Como el límite del inicio de sesión corre antes del lector (secci
   amplía cuando se cambie de versión (hoy es la 16).
 - **Prueba de arranque en proceso hijo** _(ataque ronda 3, criterio 99)_: depende de `tsx` y de un puerto libre; si es
   lenta en la CI de Windows, se marca para correr solo en Linux con aviso.
+- **Forma de los errores de Prisma 7 con el adaptador** _(ataque ronda 4, criterio 114)_: dónde viaja el SQLSTATE de
+  una violación de unicidad (`P2002` con `meta`, o un error del adaptador dentro de `$queryRaw`) depende de la versión.
+  La prueba de integración fija la forma real; si no se encuentra el código, el backend se detiene e informa en vez de
+  adivinar.
+- **`ALTER SYSTEM` en las pruebas** _(ataque ronda 4, criterio 107)_: cambia el servidor entero mientras dura la
+  prueba; los archivos de integración ya corren sin paralelismo, y la prueba restaura con `ALTER SYSTEM RESET` y
+  `pg_reload_conf()` en un `finally` y en `afterAll`. Si en la CI de Windows el contenedor no lo permite, se omite con
+  aviso.
+- **Ámbito de ESLint con `typescript-eslint` sin tipos** _(ataque ronda 4, criterios 112 y 113)_: `getScope` y
+  `findVariable` funcionan con el analizador de TypeScript sin información de tipos; confirmar que una importación
+  `import type` no se cuenta como valor (su definición es `ImportBinding` con `importKind: 'type'`).
+- **Tipo de `ClienteTransaccion`** _(ataque ronda 4)_: la sobrecarga con `Fragmento` y las promesas nativas pueden
+  romper la asignación desde `Prisma.TransactionClient` en `enPlataforma` (sección 16). Si toca una prueba protegida, el
+  backend se detiene e informa.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.
