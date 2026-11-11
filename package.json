@@ -1,0 +1,63 @@
+{
+  "name": "aquagestion",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AquaGestión: sistema de gestión para academias de natación",
+  "engines": {
+    "node": ">=22.12.0 <23"
+  },
+  "workspaces": [
+    "packages/contratos",
+    "backend",
+    "frontend",
+    "e2e",
+    "scripts"
+  ],
+  "scripts": {
+    "prepare": "husky",
+    "predev": "npm run build -w @aquagestion/contratos",
+    "dev": "concurrently --kill-others-on-fail --names contratos,api,web --prefix-colors blue,green,magenta \"npm run dev -w @aquagestion/contratos\" \"npm run start:dev -w @aquagestion/backend\" \"npm run dev -w @aquagestion/frontend\"",
+    "build": "npm run build -w @aquagestion/contratos && npm run build -w @aquagestion/backend && npm run build -w @aquagestion/frontend",
+    "pretest": "npm run build -w @aquagestion/contratos",
+    "test": "vitest run",
+    "pretest:unit": "npm run build -w @aquagestion/contratos",
+    "test:unit": "vitest run --project contratos --project eslint --project scripts --project frontend --project backend-unit",
+    "prelint": "npm run build -w @aquagestion/contratos",
+    "e2e": "npm run build -w @aquagestion/contratos && npm run test -w @aquagestion/e2e",
+    "lint": "eslint . --max-warnings 0",
+    "pretypecheck": "npm run build -w @aquagestion/contratos",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:crear": "node scripts/crear-bases.mjs",
+    "db:migrar": "node scripts/prisma.mjs migrate deploy",
+    "db:migrar:pruebas": "node scripts/prisma.mjs --pruebas migrate deploy",
+    "db:migracion": "node scripts/prisma.mjs migrate dev",
+    "db:semilla": "node scripts/prisma.mjs db seed",
+    "db:preparar": "node scripts/preparar-bases.mjs",
+    "verificar:pruebas-protegidas": "node scripts/verificar-pruebas-protegidas.mjs",
+    "verificar:sin-secretos": "node scripts/verificar-sin-secretos.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@swc/core": "^1.16.22",
+    "@types/node": "^22.20.5",
+    "concurrently": "^10.0.7",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "unplugin-swc": "^2.0.0",
+    "vitest": "^5.1.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,mts,cjs}": [
+      "eslint --fix --max-warnings 0 --no-warn-ignored",
+      "prettier --write"
+    ],
+    "*.{json,yml,yaml,css,html}": "prettier --write"
+  }
+}

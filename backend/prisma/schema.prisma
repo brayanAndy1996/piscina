@@ -1,0 +1,12 @@
+// Esquema de AquaGestión. La historia 000 no crea tablas (D-17, spec 000): solo el generador y la conexión.
+// Las tablas y columnas del negocio van en español y en snake_case (@@map y @map).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}

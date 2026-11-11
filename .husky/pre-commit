@@ -1,0 +1,2 @@
+node scripts/compilar-contratos-si-falta.mjs
+npx --no-install lint-staged

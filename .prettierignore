@@ -1,0 +1,16 @@
+# Markdown: no se formatea, para no reescribir los documentos de negocio (docs/, specs/, CLAUDE.md, README.md, .claude/)
+*.md
+docs/
+specs/
+.claude/
+
+# Generados y dependencias
+node_modules/
+dist/
+coverage/
+backend/src/generated/
+backend/prisma/migrations/
+package-lock.json
+playwright-report/
+test-results/
+*.pdf
