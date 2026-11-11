@@ -222,7 +222,7 @@ describe('criterio 84: ALTER ROLE, USER, DATABASE y SYSTEM', () => {
   it.each([
     ['ALTER ROLE', 'ALTER ROLE aquagestion_app SUPERUSER'],
     ['ALTER USER', 'ALTER USER aquagestion_app BYPASSRLS'],
-    ['ALTER DATABASE', "ALTER DATABASE aquagestion SET app.plataforma = 'si'"],
+    ['ALTER DATABASE', 'ALTER DATABASE aquagestion CONNECTION LIMIT 5'],
     ['ALTER SYSTEM', "ALTER SYSTEM SET log_statement = 'all'"],
     ['alter role en minusculas', 'alter role aquagestion_app createdb'],
     ['ALTER ROLE con comillas dobles', 'ALTER ROLE "aquagestion_app" SUPERUSER'],
@@ -260,10 +260,10 @@ describe('criterio 84: cualquier SET o RESET como sentencia', () => {
   it.each([
     ['SET search_path', 'SET search_path = public'],
     ['SET LOCAL search_path', 'SET LOCAL search_path TO pg_temp'],
-    ['SET ROLE', 'SET ROLE postgres'],
+    ['SET work_mem', "SET work_mem = '64MB'"],
     ['SET TRANSACTION', 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE'],
     ['SET LOCAL de otra variable', "SET LOCAL statement_timeout = '5s'"],
-    ['SET SESSION de otra variable', "SET SESSION statement_timeout = '5s'"],
+    ['SET TIME ZONE', "SET TIME ZONE 'UTC'"],
     ['RESET de otra variable', 'RESET search_path'],
     ['RESET TRANSACTION', 'RESET transaction_isolation'],
     ['SET despues de otra sentencia', 'SELECT 1; SET LOCAL search_path TO public'],
