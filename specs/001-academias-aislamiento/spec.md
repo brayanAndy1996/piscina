@@ -843,7 +843,8 @@ Todas las respuestas de `/api/plataforma/*` y `/api/a/*` llevan `Cache-Control: 
 otro `Content-Type` responde 400 `SOLICITUD_INVALIDA` (criterio 74); los textos siguen los criterios 76 y 77
 _(ataque ronda 1)_. `Content-Encoding` admitido: ninguno, `identity`, `gzip` o `deflate`; cualquier otro es 400, y el
 límite de 100 KB se aplica al cuerpo descomprimido (criterio 89). Las longitudes de los textos se cuentan por puntos
-de código (criterio 88) _(ataque ronda 2)_.
+de código (criterio 88) _(ataque ronda 2)_. Detalles de `Content-Encoding` y de las longitudes del correo: precisiones
+P-16 y P-18 _(precisión tras las pruebas de la ronda 2, 11/11/2026)_.
 
 | Método y ruta | Sesión | Entrada | Éxito | Errores |
 | --- | --- | --- | --- | --- |
@@ -1019,6 +1020,75 @@ protegidas de T1 y T2 dan por hechos. No son reglas de negocio nuevas ni cambian
 
   Si el usuario de `DATABASE_URL` no puede crear roles y el rol no existe, `db:crear` termina con código 1 y dice
   cómo crearlo (criterio 6).
+
+_(precisión tras las pruebas de la ronda 2, 11/11/2026)_. Detalles técnicos que el contrato no fijaba y que las
+pruebas protegidas de la ronda 2 dan por hechos. No son reglas de negocio nuevas ni cambian el sentido de ningún
+criterio.
+
+- **P-12. Función pura del rol en la API (criterio 80).** `backend/src/infraestructura/prisma/rol-seguro.ts` exporta:
+
+  ```ts
+  interface FilaRol {
+    rolsuper: boolean; rolbypassrls: boolean; rolreplication: boolean; rolcreaterole: boolean; rolcreatedb: boolean;
+    es_miembro: boolean; dueno_de_la_base: boolean; crea_en_base: boolean; temporales: boolean;
+    crea_en_public: boolean; es_dueno: boolean;
+  }
+  export function problemasDelRol(fila: FilaRol): string[];
+  ```
+
+  Con todos los campos en `false` (rol seguro) devuelve `[]`. Con cualquier campo en `true` devuelve al menos un
+  problema; con dos campos en `true`, al menos dos textos distintos. Las pruebas no fijan el texto de cada problema.
+  La API rechaza con `ErrorRolBaseDatosInseguro` si la lista no está vacía (o si la consulta no devuelve fila).
+- **P-13. Función pura del rol para `db:crear` y el hook (criterio 81).** `scripts/lib/rol-app.mjs` solo importa
+  módulos `node:*` o rutas relativas (el hook lo carga sin `node_modules`) y exporta:
+
+  ```js
+  // fila: { rolname: string, rolsuper, rolbypassrls, rolreplication, rolcreaterole, rolcreatedb, es_miembro: boolean }
+  export function problemasDelRolApp(fila) /* : string[] */;
+  ```
+
+  Con todos los booleanos en `false` devuelve `[]`. Por cada atributo activo devuelve un problema que contiene el
+  nombre del atributo (`SUPERUSER`, `BYPASSRLS`, `REPLICATION`, `CREATEROLE` o `CREATEDB`) y su corrección exacta
+  `ALTER ROLE aquagestion_app NO<ATRIBUTO>;` (por ejemplo, `ALTER ROLE aquagestion_app NOCREATEDB;`). Con
+  `es_miembro` en `true`, un problema con una corrección de la forma `REVOKE … FROM aquagestion_app` (el rol del que
+  es miembro puede ir como marcador). Los mensajes de `db:crear` sobre las condiciones que dependen de cada base
+  nombran la condición (`CREATE` sobre la base o sobre `public`, `TEMPORARY`, dueño o propietario de la base o de
+  objetos de `public`); las pruebas buscan esas palabras, no el texto exacto.
+- **P-14. `RESET` solo como sentencia (criterios 83 y 84).** La regla del SQL reconoce `RESET` solo cuando una
+  sentencia (el texto normalizado completo, o un tramo entre `;`) es exactamente `RESET ALL`, `RESET ROLE`,
+  `RESET SESSION AUTHORIZATION` o `RESET <parámetro>` (un identificador, con puntos si los tiene), sin más palabras.
+  Un texto natural como `"reset de la clave del usuario"` no es esa sentencia y pasa el lint. Fuera de
+  `backend/src/infraestructura/prisma/` (también en `backend/src/cli/`), `SET LOCAL statement_timeout = …` (criterio
+  84, cualquier `SET` como sentencia) y `set_config('statement_timeout', …)` (criterio 83, primer literal que no empieza
+  por `app.`) hacen fallar el lint; por eso no figuran entre los ejemplos que pasan de
+  `eslint/regla-sql-sesion.test.mjs`.
+- **P-15. Comentarios `eslint-disable` sin efecto (criterios 73, 83, 84 y 85).** En los archivos donde se aplican estas
+  reglas, ningún comentario de configuración en línea (`eslint-disable`, `eslint-disable-line`,
+  `eslint-disable-next-line`, `/* eslint-disable */` de archivo, con o sin nombres de reglas, ni `/* eslint … off */`)
+  puede apagarlas: se configura `linterOptions.noInlineConfig: true` (o un mecanismo equivalente que impida que el
+  comentario surta efecto) para esos archivos. No basta con un plugin que informe del comentario: la prueba exige que
+  el error de la regla siga apareciendo con el comentario presente.
+- **P-16. `Content-Encoding` (criterio 89).**
+  - Límite exacto: un cuerpo que descomprimido mide 102 400 bytes se acepta; uno de 102 401 bytes responde 413
+    `CARGA_EXCESIVA`.
+  - `Content-Encoding:` con valor vacío (o solo espacios) es una cabecera presente con valor vacío y responde 400; solo
+    la ausencia de la cabecera equivale a "sin `Content-Encoding`".
+  - Las peticiones sin cuerpo, como `GET` o un `DELETE /api/plataforma/sesion` sin cuerpo, no miran `Content-Encoding`
+    y responden como sin ella (por ejemplo, 204 al cerrar sesión con `Content-Encoding: br`).
+  - Toda respuesta 400 de este criterio (valor no admitido o cuerpo comprimido corrupto) lleva
+    `detalles: { errores: [{ campo: '', mensaje }] }`, con `mensaje` no vacío.
+- **P-17. Conexión de los comandos (criterio 90).** `backend/src/cli/conexion.ts` exporta, como ya hace:
+
+  ```ts
+  export function crearClienteDelDueno(url: string): PrismaClient;
+  export function enPlataforma<T>(cliente: PrismaClient, trabajo: (tx: ClienteTransaccion) => Promise<T>): Promise<T>;
+  ```
+
+  Las pruebas del criterio 90 las importan directamente.
+- **P-18. Correo por puntos de código (criterio 88).** `z.email` no admite emojis, así que el límite de `correo` se
+  prueba con direcciones ASCII válidas: 254 caracteres se aceptan y 255 se rechazan, como los demás límites del
+  criterio 88 (400 en la API; código 1 nombrando `SUPERADMIN_CORREO` en el comando y la semilla). En ASCII, puntos
+  de código y unidades UTF-16 coinciden; la regla de contar por puntos de código no cambia.
 
 ## Cambios al modelo de datos
 

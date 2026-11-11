@@ -531,8 +531,8 @@ La reutiliza 002 para los usuarios de academia.
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
 - **Comprobación del rol en la API (criterio 80).** `verificarRol()` amplía su consulta (orientativa) y separa la
-  decisión en una función pura `problemasDelRol(fila): string[]` (por ejemplo en
-  `infraestructura/prisma/rol-seguro.ts`), con prueba unitaria:
+  decisión en una función pura `problemasDelRol(fila): string[]` en `infraestructura/prisma/rol-seguro.ts` (ruta y
+  forma de la fila fijas: precisión P-12 de la spec, tras las pruebas de la ronda 2), con prueba unitaria:
 
   ```sql
   SELECT r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
@@ -554,9 +554,10 @@ La reutiliza 002 para los usuarios de academia.
 
   Cualquier verdadero (o ninguna fila) → `ErrorRolBaseDatosInseguro`, memorizado como hoy. El mensaje del log puede
   listar las condiciones encontradas, nunca la URL.
-- **`db:crear` y el hook (criterio 81).** `scripts/lib/rol-app.mjs` (sin dependencias, para que el hook también lo
-  pueda importar) con la lista de atributos prohibidos y una función pura que evalúa la fila de `pg_roles` y devuelve
-  los problemas con su corrección (`ALTER ROLE aquagestion_app NOREPLICATION;`, `REVOKE … FROM aquagestion_app;`…).
+- **`db:crear` y el hook (criterio 81).** `scripts/lib/rol-app.mjs` (solo importa `node:*` o rutas relativas, para
+  que el hook también lo pueda importar) con la lista de atributos prohibidos y la función pura
+  `problemasDelRolApp(fila)` que evalúa la fila de `pg_roles` y devuelve los problemas con su corrección
+  (`ALTER ROLE aquagestion_app NOREPLICATION;`, `REVOKE … FROM aquagestion_app;`…); forma exacta: precisión P-13.
   `asegurarRolApp`: si el rol existe, comprueba atributos y membresías explícitas; luego `crearBases`, para la base
   de desarrollo y la de pruebas, revoca `TEMPORARY` a `PUBLIC` (criterio 82) y comprueba `pg_database.datdba`,
   `has_database_privilege(…, 'CREATE' | 'TEMPORARY')` y, conectado a cada base, `CREATE` sobre `public` y la
@@ -582,8 +583,11 @@ La reutiliza 002 para los usuarios de academia.
     respetando paréntesis y comillas, y se exige primer argumento `'app.…'` literal y tercer argumento exactamente
     `true`; fuera de `prisma/` y `cli/`, cualquier llamada es error;
   - sentencias: se parte el texto por `;` (fuera de literales) y se mira el inicio de cada sentencia (`set`,
-    `reset`, `commit`, `end`, `rollback`, `abort`, `savepoint`, `release`, `begin`, `start transaction`), así
-    `UPDATE … SET` y `CASE … END` no cuentan;
+    `commit`, `end`, `rollback`, `abort`, `savepoint`, `release`, `begin`, `start transaction`), así
+    `UPDATE … SET` y `CASE … END` no cuentan; `reset` solo cuenta si la sentencia entera es `reset all`,
+    `reset role`, `reset session authorization` o `reset <parámetro>` (P-14), para que un texto natural como
+    `"reset de la clave del usuario"` pase; `SET LOCAL statement_timeout` y `set_config('statement_timeout', …)`
+    fallan fuera de `prisma/`;
   - en cualquier parte: `alter (role|user|database|system)`, `create (global |local )?temp(orary)?`,
     `into temp(orary)?`, `discard`, `update (pg_catalog\.)?pg_settings`, `(un)?listen`, `notify`, `pg_notify\(`.
 
@@ -592,9 +596,11 @@ La reutiliza 002 para los usuarios de academia.
   más `no-restricted-imports`) que visita `ImportDeclaration` (valores), `ExportNamedDeclaration`/`ExportAllDeclaration`
   con `source`, `ImportExpression`, `CallExpression` de `require` y `TSImportEqualsDeclaration`, con la lista de
   módulos del criterio 85, y rechaza `import()`/`require()` con argumento no literal y `createRequire`. Para que un
-  `eslint-disable` no las apague: `linterOptions.noInlineConfig: true` en un bloque de configuración para
-  `backend/src/**` fuera de `prisma/` y `cli/`, o el plugin `@eslint-community/eslint-plugin-eslint-comments` con
-  `no-restricted-disable` y `no-unlimited-disable` como error; lo elige el backend según lo que pase la prueba.
+  `eslint-disable` no las apague: `linterOptions.noInlineConfig: true` en un bloque de configuración para los
+  archivos de `backend/src/**` donde se aplican las reglas de los criterios 73, 83, 84 y 85 (o un mecanismo
+  equivalente que impida que el comentario surta efecto). Un plugin que solo informe del comentario (por ejemplo
+  `@eslint-community/eslint-plugin-eslint-comments`) no basta: el error de la regla tiene que seguir apareciendo
+  (precisión P-15, tras las pruebas de la ronda 2).
   `BaseDatos`: `readonly #prisma: PrismaService;` asignado en el constructor (no como parámetro con `private`), y
   ningún método ni getter lo devuelve.
 - **Textos (criterios 87 y 88)** en `packages/contratos/src/texto.ts`:
@@ -607,9 +613,13 @@ La reutiliza 002 para los usuarios de academia.
   lector JSON (paso 5): con cuerpo, el valor recortado y en minúsculas debe ser `identity`, `gzip` o `deflate` (un
   solo valor); si no, 400 como en el criterio 74. El lector JSON queda con `inflate: true` y `limit: '100kb'`, que
   `body-parser` aplica a los bytes ya descomprimidos; sus errores de descompresión se traducen a 400 y el de tamaño a
-  413 en el filtro. Si la versión instalada de `body-parser` admite `br`, el middleware lo rechaza antes.
+  413 en el filtro. Si la versión instalada de `body-parser` admite `br`, el middleware lo rechaza antes. Precisión
+  P-16: 102 400 bytes descomprimidos pasan y 102 401 dan 413; la cabecera presente con valor vacío es 400; sin
+  cuerpo (`GET`, `DELETE` sin cuerpo) no se mira la cabecera; los 400 llevan `detalles.errores: [{ campo: '',
+  mensaje }]`.
 - **Contexto de los comandos (criterio 90).** `enPlataforma` ejecuta
   `SELECT set_config('app.academia_id', '', true), set_config('app.plataforma', 'si', true)` como primera sentencia.
+  `crearClienteDelDueno` y `enPlataforma` siguen exportadas de `cli/conexion.ts` con sus firmas actuales (P-17).
 - **Secretos de prueba (criterio 91).** Los genera el test-writer con `randomBytes(32).toString('base64url')` al
   cargar el archivo de prueba; el revisor busca literales de 32 o más caracteres sin espacios cerca de `secreto` o
   `JWT_SECRETO` en las pruebas.
