@@ -1,13 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PinoLogger } from 'nestjs-pino';
+import { PrismaClient, type Prisma } from '../../generated/prisma/client';
+import { ENTORNO, type Entorno } from '../entorno';
+import { cerrarCursores } from './cursores';
+import { envolver } from './envoltorio';
 import {
   ErrorAcademiaNoEncontrada,
   ErrorAcademiaSuspendida,
   ErrorRolBaseDatosInseguro,
   MENSAJE_ROL_INSEGURO,
 } from './errores';
-import { PrismaService } from './prisma.service';
-import { problemasDelRol, type FilaRol } from './rol-seguro';
+import { privilegiosDeMas, type PrivilegioApp } from './privilegios-app';
+import { problemasDeConfiguracion, problemasDelRol, type FilaConfiguracionRol, type FilaRol } from './rol-seguro';
 import type {
   AcademiaResuelta,
   ClienteTransaccion,
@@ -34,7 +39,7 @@ interface FilaAcademia {
  * se fija el contexto con `set_config(..., true)` (local a la transacción: no se filtra a otra operación por el pool)
  * y PostgreSQL aplica la seguridad a nivel de fila (RLS) al rol `aquagestion_app`.
  *
- * Los módulos nunca importan el cliente de Prisma ni `PrismaService` (lo exige ESLint): reciben `tx.cliente` dentro
+ * Los módulos nunca importan el cliente de Prisma (lo exige ESLint): reciben `tx.cliente` dentro
  * de `trabajo`. Cuándo usar cada método:
  *
  * - Petición con sesión de una academia (002 en adelante): la academia sale de la sesión, nunca del cuerpo ni de la
@@ -46,25 +51,38 @@ interface FilaAcademia {
  *
  * Seguridad: antes de la primera operación se comprueba que el rol de `DATABASE_URL_APP` no sea superusuario, no
  * tenga BYPASSRLS, REPLICATION, CREATEROLE ni CREATEDB, no sea miembro de otro rol (ni dueño de la base), no pueda
- * crear en la base ni en `public`, no tenga TEMPORARY y no sea dueño de objetos de `public` (`problemasDelRol`); si
- * algo de eso se cumple, todas las operaciones rechazan con `ErrorRolBaseDatosInseguro` sin ejecutar el trabajo. La comprobación no se hace al arrancar para que la API arranque
- * con la base caída.
+ * crear en la base ni en `public`, no tenga TEMPORARY y no sea dueño de objetos de `public` (`problemasDelRol`), no tenga
+ * valores por defecto propios (`problemasDeConfiguracion`) ni privilegios de más sobre las tablas (`privilegiosDeMas`); si
+ * algo de eso se cumple, todas las operaciones rechazan con `ErrorRolBaseDatosInseguro` sin ejecutar el trabajo. La
+ * comprobación no se hace al arrancar para que la API arranque con la base caída.
+ *
+ * El cliente de Prisma vive en un campo privado real (`#prisma`) y no es un proveedor de Nest; `trabajo` recibe un
+ * envoltorio con solo `$queryRaw`, `$executeRaw` y los modelos (criterio 100). Los métodos que usan el cliente sin envoltorio
+ * son privados reales (`#…`) y el prototipo está congelado al final del archivo.
  */
 @Injectable()
-export class BaseDatos {
+export class BaseDatos implements OnModuleDestroy {
   /**
    * El cliente vive en un campo privado real de JavaScript (`#prisma`), no en una propiedad con `private` de
-   * TypeScript: en tiempo de ejecución no se puede alcanzar desde fuera de la clase (criterio 86).
+   * TypeScript: en tiempo de ejecución no se puede alcanzar desde fuera de la clase (criterios 86 y 100). Se crea aquí y no en
+   * un proveedor de Nest: ningún token del contenedor lleva a él. La conexión es perezosa (no se conecta al arrancar), así la
+   * API arranca con la base caída y se recupera sola cuando vuelve (spec 000, criterio 8).
    */
-  readonly #prisma: PrismaService;
-  private verificacion: Promise<void> | undefined;
+  readonly #prisma: PrismaClient;
+  #verificacion: Promise<void> | undefined;
 
   constructor(
-    prisma: PrismaService,
+    @Inject(ENTORNO) entorno: Entorno,
     private readonly registro: PinoLogger,
   ) {
-    this.#prisma = prisma;
+    this.#prisma = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: entorno.DATABASE_URL_APP, max: entorno.DATABASE_POOL_MAX }),
+    });
     this.registro.setContext(BaseDatos.name);
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.#prisma.$disconnect();
   }
 
   /**
@@ -80,9 +98,8 @@ export class BaseDatos {
   ): Promise<T> {
     if (typeof academiaId !== 'string' || !PATRON_UUID.test(academiaId)) throw new ErrorAcademiaNoEncontrada();
     const id = academiaId.toLowerCase();
-    await this.verificarRol();
-    return this.transaccion(opciones, async (cliente) => {
-      await this.fijarContexto(cliente, { academiaId: id, plataforma: false });
+    await this.#verificarRol();
+    return this.#transaccion(opciones, { academiaId: id, plataforma: false }, async (cliente) => {
       // RLS deja ver solo la fila de la propia academia.
       const filas = await cliente.$queryRaw<{ estado: string }[]>`
         SELECT estado::text AS estado FROM academias WHERE id = ${id}::uuid`;
@@ -102,11 +119,8 @@ export class BaseDatos {
     trabajo: (tx: TransaccionPlataforma) => Promise<T>,
     opciones: OpcionesTransaccion = {},
   ): Promise<T> {
-    await this.verificarRol();
-    return this.transaccion(opciones, async (cliente) => {
-      await this.fijarContexto(cliente, { academiaId: '', plataforma: true });
-      return trabajo({ cliente });
-    });
+    await this.#verificarRol();
+    return this.#transaccion(opciones, { academiaId: '', plataforma: true }, (cliente) => trabajo({ cliente }));
   }
 
   /**
@@ -114,15 +128,14 @@ export class BaseDatos {
    * también las suspendidas, o `null` si no existe. La normalización y el formato del nombre los valida quien llama.
    */
   async resolverAcademia(nombreCorto: string): Promise<AcademiaResuelta | null> {
-    await this.verificarRol();
-    const filas = await this.#prisma.$transaction(
-      async (cliente) => {
-        // Sin contexto: los dos valores en vacío, aunque la conexión traiga otros (criterio 72).
-        await this.fijarContexto(cliente, { academiaId: '', plataforma: false });
-        return cliente.$queryRaw<FilaAcademia[]>`
-          SELECT id::text AS id, nombre, nombre_corto, estado FROM resolver_academia(${nombreCorto})`;
-      },
-      { maxWait: ESPERA_CONEXION_MS, timeout: DURACION_MAXIMA_MS },
+    await this.#verificarRol();
+    // Sin contexto: los dos valores en vacío, aunque la conexión traiga otros (criterio 72).
+    const filas = await this.#transaccion(
+      {},
+      { academiaId: '', plataforma: false },
+      (cliente) =>
+        cliente.$queryRaw<FilaAcademia[]>`
+        SELECT id::text AS id, nombre, nombre_corto, estado FROM resolver_academia(${nombreCorto})`,
     );
     const fila = filas[0];
     if (!fila) return null;
@@ -136,43 +149,55 @@ export class BaseDatos {
 
   /**
    * Primera sentencia de toda transacción: fija **los dos** valores de contexto con `set_config(..., true)` (locales a
-   * la transacción), sin importar lo que traiga la conexión del pool: valores de sesión de un módulo, `options` de la
-   * URL o valores por defecto del rol o de la base (criterio 72). Una sola sentencia, para no gastar un viaje extra.
-   * Sin academia, `academiaId` va vacío; sin plataforma, `app.plataforma` va vacío.
+   * la transacción) y la zona horaria en `UTC`, sin importar lo que traiga la conexión del pool: valores de sesión de un
+   * módulo, `options` de la URL o valores por defecto del rol o de la base (criterios 72 y 98). Una sola sentencia, para no
+   * gastar un viaje extra. Sin academia, `academiaId` va vacío; sin plataforma, `app.plataforma` va vacío. Después cierra
+   * todo cursor que haya sobrevivido (`CLOSE ALL`, criterio 101): se ejecuta aparte porque `CLOSE` no se puede combinar con
+   * un `SELECT` en el protocolo extendido.
    */
-  private async fijarContexto(
-    cliente: ClienteTransaccion,
+  async #fijarContexto(
+    tx: Prisma.TransactionClient,
     contexto: { readonly academiaId: string; readonly plataforma: boolean },
   ): Promise<void> {
     const plataforma = contexto.plataforma ? 'si' : '';
-    await cliente.$queryRaw`
-      SELECT set_config('app.plataforma', ${plataforma}, true), set_config('app.academia_id', ${contexto.academiaId}, true)`;
+    await tx.$queryRaw`
+      SELECT set_config('app.plataforma', ${plataforma}, true), set_config('app.academia_id', ${contexto.academiaId}, true),
+             set_config('TimeZone', 'UTC', true)`;
+    await cerrarCursores(tx);
   }
 
-  private transaccion<T>(
+  /** Abre la transacción, fija el contexto y entrega a `trabajo` el envoltorio (nunca el cliente de la transacción). */
+  #transaccion<T>(
     opciones: OpcionesTransaccion,
+    contexto: { readonly academiaId: string; readonly plataforma: boolean },
     trabajo: (cliente: ClienteTransaccion) => Promise<T>,
   ): Promise<T> {
-    return this.#prisma.$transaction(trabajo, {
-      isolationLevel: opciones.aislamiento,
-      maxWait: ESPERA_CONEXION_MS,
-      timeout: DURACION_MAXIMA_MS,
-    });
+    return this.#prisma.$transaction(
+      async (tx) => {
+        await this.#fijarContexto(tx, contexto);
+        return trabajo(envolver(tx));
+      },
+      {
+        isolationLevel: opciones.aislamiento,
+        maxWait: ESPERA_CONEXION_MS,
+        timeout: DURACION_MAXIMA_MS,
+      },
+    );
   }
 
   /**
    * Comprueba, una sola vez por proceso, que el rol de la conexión es seguro. Un rechazo por rol inseguro se guarda
    * (el rol no cambia mientras corre la API); un fallo de conexión no, para reintentar en la siguiente operación.
    */
-  private verificarRol(): Promise<void> {
-    this.verificacion ??= this.comprobarRol().catch((error: unknown) => {
-      if (!(error instanceof ErrorRolBaseDatosInseguro)) this.verificacion = undefined;
+  #verificarRol(): Promise<void> {
+    this.#verificacion ??= this.#comprobarRol().catch((error: unknown) => {
+      if (!(error instanceof ErrorRolBaseDatosInseguro)) this.#verificacion = undefined;
       throw error;
     });
-    return this.verificacion;
+    return this.#verificacion;
   }
 
-  private async comprobarRol(): Promise<void> {
+  async #comprobarRol(): Promise<void> {
     const filas = await this.#prisma.$queryRaw<FilaRol[]>`
       SELECT r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
              EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid) AS es_miembro,
@@ -194,6 +219,46 @@ export class BaseDatos {
         FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
     const rol = filas[0];
     const problemas = rol ? problemasDelRol(rol) : ['el rol de la conexión no aparece en el catálogo'];
+
+    // Criterio 103: valores por defecto propios del rol (`rolconfig`) o del rol en alguna base (`pg_db_role_setting`).
+    const configuraciones = await this.#prisma.$queryRaw<FilaConfiguracionRol[]>`
+      SELECT (COALESCE(pg_catalog.cardinality(r.rolconfig), 0) > 0
+              OR EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s WHERE s.setrole = r.oid)) AS tiene_configuracion
+        FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
+    const configuracion = configuraciones[0];
+    problemas.push(
+      ...(configuracion
+        ? problemasDeConfiguracion(configuracion)
+        : ['los valores por defecto del rol no se pudieron leer del catálogo']),
+    );
+
+    // Criterio 102: privilegios efectivos (concedidos al rol o a PUBLIC) de tabla, secuencia y columna del esquema public.
+    const efectivos = await this.#prisma.$queryRaw<PrivilegioApp[]>`
+      SELECT c.relname::text AS tabla, NULL::text AS columna, p.privilegio::text AS privilegio
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
+       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+         AND pg_catalog.has_table_privilege(current_user, c.oid, p.privilegio)
+      UNION ALL
+      SELECT c.relname::text, NULL::text, p.privilegio::text
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
+       WHERE n.nspname = 'public' AND c.relkind = 'S'
+         AND pg_catalog.has_sequence_privilege(current_user, c.oid, p.privilegio)
+      UNION ALL
+      SELECT c.relname::text, a.attname::text, p.privilegio::text
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
+       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+         AND pg_catalog.has_column_privilege(current_user, c.oid, a.attnum, p.privilegio)`;
+    problemas.push(
+      ...privilegiosDeMas(efectivos.map(({ tabla, columna, privilegio }) => ({ tabla, columna, privilegio }))),
+    );
+
     if (problemas.length > 0) {
       // El mensaje nombra la variable y las condiciones; nunca incluye la URL ni la contraseña.
       this.registro.error(`${MENSAJE_ROL_INSEGURO} Condiciones: ${problemas.join('; ')}.`);
@@ -201,3 +266,7 @@ export class BaseDatos {
     }
   }
 }
+
+// Los decoradores y los metadatos ya corrieron (`reflect-metadata` los guarda aparte, en un `WeakMap`): ningún código puede
+// reemplazar ni agregar métodos de `BaseDatos` después de cargar el módulo (criterio 100).
+Object.freeze(BaseDatos.prototype);

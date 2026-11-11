@@ -103,19 +103,36 @@ export function describirFallo(paso, motivo, claves = []) {
 }
 
 /**
- * Sentencia SQL que crea el rol de la aplicación sin superusuario. La contraseña va entre comillas simples con las
- * comillas duplicadas (y con `standard_conforming_strings` activo, para que la barra invertida no sea especial).
- * El nombre se valida con `^[a-z_][a-z0-9_]*$` antes de usarlo entre comillas dobles.
+ * Verificador SCRAM-SHA-256 de una contraseña (spec 001, criterio 104): la contraseña nunca viaja en claro en un `CREATE ROLE`.
+ * Usa `verificadorScram` de `scripts/lib/rol-app.mjs` (solo `node:*`), que `prepararSesion` carga antes. Una contraseña fuera
+ * de ASCII imprimible (U+0020 a U+007E) hace fallar el paso con un error que nombra la variable y no muestra la contraseña.
+ */
+function verificadorDeClave(clave, variable) {
+  if (!moduloRolApp) throw new Error('La evaluación del rol no se cargó (falta cargarEvaluacionRolApp).');
+  try {
+    return moduloRolApp.verificadorScram(clave);
+  } catch {
+    throw new Error(
+      `La contraseña de ${variable} tiene caracteres fuera de ASCII imprimible (U+0020 a U+007E): usa solo letras sin ` +
+        'tilde, dígitos y signos ASCII (PostgreSQL la normalizaría con SASLprep y el verificador no coincidiría).',
+    );
+  }
+}
+
+/**
+ * Sentencia SQL que crea el rol de la aplicación sin superusuario. La contraseña va como verificador SCRAM-SHA-256
+ * calculado aquí (criterio 104), nunca en claro. El nombre se valida con `^[a-z_][a-z0-9_]*$` antes de usarlo entre
+ * comillas dobles.
  */
 export function sentenciaCrearRol(usuario, clave) {
   if (!esNombreValido(usuario)) {
     throw new Error('El usuario de DATABASE_URL debe tener solo minúsculas, dígitos y guiones bajos.');
   }
   if (clave.includes('\0')) throw new Error('La contraseña de DATABASE_URL no puede contener caracteres nulos.');
-  const literal = `'${clave.replaceAll("'", "''")}'`;
+  const verificador = verificadorDeClave(clave, 'DATABASE_URL');
   return [
     'SET standard_conforming_strings = on;',
-    `CREATE ROLE "${usuario}" LOGIN CREATEDB NOSUPERUSER PASSWORD ${literal};`,
+    `CREATE ROLE "${usuario}" LOGIN CREATEDB NOSUPERUSER PASSWORD '${verificador}';`,
     '',
   ].join('\n');
 }
@@ -130,10 +147,10 @@ export function sentenciaCrearRolApp(usuario, clave) {
     throw new Error('El usuario de DATABASE_URL_APP debe tener solo minúsculas, dígitos y guiones bajos.');
   }
   if (clave.includes('\0')) throw new Error('La contraseña de DATABASE_URL_APP no puede contener caracteres nulos.');
-  const literal = `'${clave.replaceAll("'", "''")}'`;
+  const verificador = verificadorDeClave(clave, 'DATABASE_URL_APP');
   return [
     'SET standard_conforming_strings = on;',
-    `CREATE ROLE "${usuario}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD ${literal};`,
+    `CREATE ROLE "${usuario}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD '${verificador}';`,
     '',
   ].join('\n');
 }
@@ -291,6 +308,8 @@ export async function prepararSesion(raiz) {
   const lineas = [];
   const claves = [];
   let completo = true;
+  // Las sentencias que crean roles necesitan `verificadorScram`; si el módulo no carga, esos pasos fallan con su motivo.
+  await cargarEvaluacionRolApp().catch(() => undefined);
   const bien = (paso, detalle) => lineas.push(`✓ ${paso}${detalle ? `: ${detalle}` : ''}`);
   const omitido = (paso, motivo) => lineas.push(`- ${paso}: ${motivo}`);
   const mal = (paso, motivo) => {

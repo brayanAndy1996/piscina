@@ -1,18 +1,24 @@
-// Regla del SQL de sesión (spec 001, criterios 73, 83 y 84, ataque rondas 1 y 2): solo `BaseDatos` (infraestructura/prisma)
-// cambia el contexto de sesión y la transacción de PostgreSQL. En `backend/src/`, fuera de `infraestructura/prisma/` y de
-// las pruebas, ningún texto SQL (cadena, plantilla o plantilla etiquetada) puede, ya normalizado con `normalizarSql`:
+// Reglas del SQL (spec 001, criterios 73, 83, 84 y 92 a 94, ataque rondas 1 a 3): el SQL solo llega a la base en plantillas
+// etiquetadas (`$queryRaw`, `$executeRaw`, `Prisma.sql` o `sql`) y solo ese texto se analiza. En `backend/src/`, fuera de
+// `infraestructura/prisma/` y de las pruebas, el texto de esas plantillas, ya normalizado con `normalizarSql`, no puede:
 //   - hacer `SET`, `SET LOCAL` o `SET SESSION` de `app.…`, `ROLE` o `SESSION AUTHORIZATION`, ni `RESET` de una variable;
 //   - llamar a `set_config` con un tercer argumento que no sea exactamente `true` o con un primer argumento que no sea
-//     un literal simple `'app.…'`;
-//   - contener `ALTER ROLE|USER|DATABASE|SYSTEM`, `CREATE [GLOBAL|LOCAL] TEMP[ORARY]`, `INTO TEMP[ORARY]`,
-//     `UPDATE pg_settings` o `pg_notify(`;
+//     un literal simple `'app.…'` (en `cli/` se admite además exactamente `set_config('TimeZone', 'UTC', true)`);
+//   - contener `ALTER ROLE|USER|DATABASE|SYSTEM|DEFAULT PRIVILEGES`, `CREATE [GLOBAL|LOCAL] TEMP[ORARY]`,
+//     `INTO TEMP[ORARY]`, `UPDATE pg_settings`, `pg_notify(`, `WITH HOLD`, ni llamar a funciones de objetos grandes
+//     (`lo_…`, `loread`, `lowrite`), a bloqueos consultivos de sesión ni a `pg_terminate_backend`/`pg_cancel_backend`;
 //   - tener como sentencia (al inicio del texto o después de `;`) `COMMIT`, `END`, `ROLLBACK`, `ABORT`, `SAVEPOINT`,
-//     `RELEASE`, `BEGIN`, `START TRANSACTION`, cualquier `SET`, un `RESET` (P-14), `DISCARD`, `LISTEN`, `UNLISTEN` o
-//     `NOTIFY` (también dentro de un bloque `DO`);
+//     `RELEASE`, `BEGIN`, `START TRANSACTION`, cualquier `SET`, un `RESET` (P-14), `DISCARD`, `LISTEN`, `UNLISTEN`,
+//     `NOTIFY`, `DECLARE`, `CLOSE`, `FETCH`, `MOVE`, `PREPARE`, `EXECUTE`, `DEALLOCATE` o `DO`;
 //   - además, fuera de `cli/`, llamar a `set_config` de cualquier forma.
-// La regla solo ve texto literal: el SQL armado por concatenación de variables no se detecta (la garantía real es el
-// criterio 72: cada transacción fija los dos valores de contexto). Un comentario `eslint-disable` no apaga la regla:
-// `noInlineConfig` en la configuración de estos archivos (P-15). Se exporta por separado para poder probarla con ESLint.
+// La regla de formas (criterio 92) obliga a que el SQL llegue a la base solo en esas plantillas: no se nombran
+// `$queryRawUnsafe` ni `$executeRawUnsafe`, `$queryRaw` y `$executeRaw` solo se usan como etiqueta (o con `Prisma.sql`/`sql`
+// etiquetados), y no se usan `Prisma.raw`, `Prisma.Sql` como valor ni `Prisma.join` con separador. Las cadenas, las plantillas
+// sin etiqueta y las expresiones regulares no se analizan: no llegan a la base. Un comentario `eslint-disable` apaga estas
+// reglas en el lint normal, pero no en el paso protegido (`eslint.protegido.config.mjs` con `--no-inline-config`, criterio 96).
+// Se exporta por separado para poder probarla con ESLint.
+
+import { reglaFormasDeSql } from './regla-sql-formas.mjs';
 
 export const MENSAJE_SQL_SESION =
   'Solo BaseDatos (infraestructura/prisma) cambia el contexto de sesión y la transacción de PostgreSQL: no uses ' +
@@ -61,11 +67,19 @@ function decodificarEscapesE(texto) {
   );
 }
 
-/** Decodifica los escapes de `U&'…'` y `U&"…"` (`\XXXX`, `\+XXXXXX` y `\\`). */
-function decodificarEscapesU(texto) {
-  return texto.replace(/\\(?:\\|([0-9a-fA-F]{4})|\+([0-9a-fA-F]{6}))/g, (todo, u4, u6) => {
+/** Escapa un carácter para usarlo dentro de una expresión regular. */
+const escaparRegex = (caracter) => caracter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Decodifica los escapes de `U&'…'` y `U&"…"`: `<e>XXXX`, `<e>+XXXXXX` y `<e><e>` (el propio carácter), donde `<e>` es el
+ * carácter de escape: `\` o, con `UESCAPE 'x'`, el carácter `x` (criterio 93).
+ */
+function decodificarEscapesU(texto, escape = '\\') {
+  const e = escaparRegex(escape);
+  const patron = new RegExp(`${e}(?:${e}|([0-9a-fA-F]{4})|\\+([0-9a-fA-F]{6}))`, 'g');
+  return texto.replace(patron, (todo, u4, u6) => {
     const codigo = u4 ?? u6;
-    if (codigo === undefined) return '\\';
+    if (codigo === undefined) return escape;
     try {
       return String.fromCodePoint(Number.parseInt(codigo, 16));
     } catch {
@@ -74,12 +88,73 @@ function decodificarEscapesU(texto) {
   });
 }
 
+/** Salta espacios, saltos de línea y comentarios SQL (de línea y de bloque, estos anidados) desde `i`; devuelve la posición siguiente. */
+function saltarBlancos(texto, i) {
+  let j = i;
+  while (j < texto.length) {
+    if (/\s/.test(texto[j])) {
+      j += 1;
+    } else if (texto[j] === '-' && texto[j + 1] === '-') {
+      while (j < texto.length && texto[j] !== '\n' && texto[j] !== '\r') j += 1;
+    } else if (texto[j] === '/' && texto[j + 1] === '*') {
+      let profundidad = 1;
+      j += 2;
+      while (j < texto.length && profundidad > 0) {
+        if (texto[j] === '/' && texto[j + 1] === '*') {
+          profundidad += 1;
+          j += 2;
+        } else if (texto[j] === '*' && texto[j + 1] === '/') {
+          profundidad -= 1;
+          j += 2;
+        } else {
+          j += 1;
+        }
+      }
+    } else {
+      break;
+    }
+  }
+  return j;
+}
+
+/**
+ * Mira si después de una cadena `U&…` (desde `desde`) sigue la cláusula `UESCAPE 'x'`, con blancos y comentarios entre las
+ * partes. Devuelve `null` si no hay cláusula; si la hay, `{ fin, escape }` con la posición siguiente a su literal y el carácter
+ * de escape, o `escape: null` si el literal no es un solo carácter válido para PostgreSQL (vacío, de más de un carácter, un
+ * dígito hexadecimal, `+`, `'`, `"` o un espacio).
+ */
+function leerUescape(texto, desde) {
+  let j = saltarBlancos(texto, desde);
+  const palabra = /^uescape(?![\p{L}\p{N}_$])/iu.exec(texto.slice(j, j + 12));
+  if (!palabra) return null;
+  j = saltarBlancos(texto, j + palabra[0].length);
+  if (texto[j] !== "'") return { fin: j, escape: null };
+  let contenido = '';
+  j += 1;
+  while (j < texto.length) {
+    if (texto[j] === "'" && texto[j + 1] === "'") {
+      contenido += "'";
+      j += 2;
+    } else if (texto[j] === "'") {
+      j += 1;
+      break;
+    } else {
+      contenido += texto[j];
+      j += 1;
+    }
+  }
+  const caracteres = [...contenido];
+  const unico = caracteres.length === 1 ? caracteres[0] : null;
+  const valido = unico !== null && !/[0-9a-fA-F+'"\s]/.test(unico);
+  return { fin: j, escape: valido ? unico : null };
+}
+
 /**
  * Divide el texto en partes: `{ literal: false, valor }` para el SQL fuera de las cadenas (con los identificadores entre
  * comillas dobles ya sin comillas y los comentarios reemplazados por un espacio) y `{ literal: true, valor }` para cada
  * cadena (`'…'`, `E'…'`, `U&'…'`, `N'…'` y las de dólar), con su contenido ya decodificado.
  */
-function partirSql(texto) {
+function partirSql(texto, estado = { uescapeInvalido: false }) {
   const partes = [];
   let actual = '';
   const cerrarOtro = () => {
@@ -139,8 +214,16 @@ function partirSql(texto) {
           i += 1;
         }
       }
-      if (prefijo === 'e') contenido = decodificarEscapesE(contenido);
-      else if (prefijo === 'u&') contenido = decodificarEscapesU(contenido);
+      if (prefijo === 'e') {
+        contenido = decodificarEscapesE(contenido);
+      } else if (prefijo === 'u&') {
+        const uescape = leerUescape(texto, i);
+        if (uescape) {
+          i = uescape.fin;
+          if (uescape.escape === null) estado.uescapeInvalido = true;
+        }
+        contenido = decodificarEscapesU(contenido, uescape?.escape ?? '\\');
+      }
       cerrarOtro();
       partes.push({ literal: true, valor: contenido });
       continue;
@@ -161,7 +244,16 @@ function partirSql(texto) {
           i += 1;
         }
       }
-      actual += prefijo === 'u&' ? decodificarEscapesU(contenido) : contenido;
+      if (prefijo === 'u&') {
+        const uescape = leerUescape(texto, i);
+        if (uescape) {
+          i = uescape.fin;
+          if (uescape.escape === null) estado.uescapeInvalido = true;
+        }
+        actual += decodificarEscapesU(contenido, uescape?.escape ?? '\\');
+      } else {
+        actual += contenido;
+      }
       continue;
     }
     if (c === '$' && !PATRON_IDENTIFICADOR.test(actual.at(-1) ?? ' ')) {
@@ -191,7 +283,13 @@ function partirSql(texto) {
  * todo en minúsculas. El contenido de las cadenas conserva sus comillas simples duplicadas (`''`).
  */
 export function normalizarSql(texto) {
-  const partes = partirSql(String(texto));
+  return normalizarConEstado(texto).texto;
+}
+
+/** Como `normalizarSql`, y además informa si algún `UESCAPE` no era un solo carácter válido (criterio 93). */
+function normalizarConEstado(texto) {
+  const estado = { uescapeInvalido: false };
+  const partes = partirSql(String(texto), estado);
   let normalizado = partes
     .map((parte) =>
       parte.literal
@@ -208,7 +306,7 @@ export function normalizarSql(texto) {
   for (let vuelta = 0; vuelta < 1000 && union.test(normalizado); vuelta += 1) {
     normalizado = normalizado.replace(union, (_todo, a, b) => `'${a}${b}'`);
   }
-  return normalizado.replace(/\s+/g, ' ').trim();
+  return { texto: normalizado.replace(/\s+/g, ' ').trim(), uescapeInvalido: estado.uescapeInvalido };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -222,6 +320,11 @@ const PATRONES_EN_CUALQUIER_PARTE = [
   /\bset\s+(?:local\s+|session\s+)?session\s+authorization\b/,
   /\bset\s+session\b/,
   /\balter\s+(?:role|user|database|system)\b/,
+  /\balter\s+default\s+privileges\b/,
+  /\bwith\s+hold\b/,
+  // Objetos grandes, bloqueos consultivos de sesión y control de otras conexiones (criterio 94). Los bloqueos de transacción
+  // (`pg_advisory_xact_lock`, `pg_try_advisory_xact_lock`) no encajan: llevan `xact_` entre `advisory_` y `lock`.
+  /(?<![\p{L}\p{N}_$])(?:pg_catalog\.)?(?:lo_[\p{L}\p{N}_$]+|loread|lowrite|pg_(?:try_)?advisory_(?:lock|unlock)(?:_shared|_all)?|pg_terminate_backend|pg_cancel_backend)\s*\(/u,
   /\bcreate\s+(?:(?:global|local)\s+)?temp(?:orary)?\b/,
   /\binto\s+temp(?:orary)?\b/,
   /\bupdate\s+(?:pg_catalog\.)?pg_settings\b/,
@@ -234,6 +337,7 @@ const PATRONES_DE_SENTENCIA = [
   /^start\s+transaction\b/,
   /^set\b/,
   /^(?:discard|listen|unlisten|notify)\b/,
+  /^(?:declare|close|fetch|move|prepare|execute|deallocate|do)\b/,
 ];
 
 /** `RESET` solo cuenta si la sentencia es exactamente `RESET ALL|<parámetro>|SESSION AUTHORIZATION` (P-14). */
@@ -266,13 +370,6 @@ function sentenciasDe(normalizado) {
   }
   sentencias.push(actual.trim());
   return sentencias.filter((sentencia) => sentencia !== '');
-}
-
-/** Contenido (con `''` ya sin duplicar) de cada cadena de un texto normalizado. */
-function cadenasDe(normalizado) {
-  return partirSql(normalizado)
-    .filter((parte) => parte.literal)
-    .map((parte) => parte.valor);
 }
 
 /** Argumentos de la llamada cuyo paréntesis de apertura está justo antes de `desde`, separados por comas de primer nivel. */
@@ -317,33 +414,34 @@ function llamadasASetConfig(normalizado) {
   );
 }
 
-/** ¿Es una llamada permitida a `set_config`? Primer argumento un literal `'app.…'` y tercero exactamente `true`. */
+/**
+ * ¿Es una llamada permitida a `set_config`? Primer argumento un literal `'app.…'` y tercero exactamente `true`; o, exactamente,
+ * `set_config('timezone', 'utc', true)` (el texto ya está en minúsculas): lo usa `enPlataforma` en `cli/` (criterio 98). Fuera
+ * de `cli/` y de `infraestructura/prisma/` la regla `set-config-app` prohíbe además toda llamada.
+ */
 function esLlamadaPermitida(argumentos) {
-  return argumentos.length === 3 && /^'app\.[^']*'$/.test(argumentos[0]) && argumentos[2] === 'true';
+  if (argumentos.length !== 3 || argumentos[2] !== 'true') return false;
+  return /^'app\.[^']*'$/.test(argumentos[0]) || (argumentos[0] === "'timezone'" && argumentos[1] === "'utc'");
 }
 
-function violaSentencia(sentencia, profundidad) {
+function violaSentencia(sentencia) {
   if (/^reset\b/.test(sentencia)) return PATRON_RESET.test(sentencia);
-  if (PATRONES_DE_SENTENCIA.some((patron) => patron.test(sentencia))) return true;
-  // Un bloque DO ejecuta las sentencias de su cuerpo: se revisan también.
-  if (/^do\b/.test(sentencia) && profundidad < 4) {
-    return cadenasDe(sentencia).some((cuerpo) => analizarSql(cuerpo, profundidad + 1).sesion);
-  }
-  return false;
+  return PATRONES_DE_SENTENCIA.some((patron) => patron.test(sentencia));
 }
 
 /**
- * Analiza un texto SQL. Devuelve `{ sesion, setConfig }`: `sesion` si incumple las reglas de los criterios 73, 83 y 84
+ * Analiza un texto SQL. Devuelve `{ sesion, setConfig }`: `sesion` si incumple las reglas de los criterios 73, 83, 84, 93 y 94
  * (válidas fuera de `infraestructura/prisma/`); `setConfig` si llama a `set_config` de cualquier forma (se prohíbe además
  * fuera de `cli/`).
  */
-export function analizarSql(texto, profundidad = 0) {
-  const normalizado = normalizarSql(texto);
+export function analizarSql(texto) {
+  const { texto: normalizado, uescapeInvalido } = normalizarConEstado(texto);
   const llamadas = llamadasASetConfig(normalizado);
   const sesion =
+    uescapeInvalido ||
     PATRONES_EN_CUALQUIER_PARTE.some((patron) => patron.test(normalizado)) ||
     llamadas.some((argumentos) => !esLlamadaPermitida(argumentos)) ||
-    sentenciasDe(normalizado).some((sentencia) => violaSentencia(sentencia, profundidad));
+    sentenciasDe(normalizado).some((sentencia) => violaSentencia(sentencia));
   return { sesion, setConfig: llamadas.length > 0 };
 }
 
@@ -356,21 +454,41 @@ function textoDePlantilla(nodo) {
   return nodo.quasis.map((q) => q.value.cooked ?? q.value.raw).join('?');
 }
 
+/** Nombre de la propiedad de un acceso `a.b` o `a['b']` (con un literal); `null` si no se puede saber. */
+function nombreDePropiedad(acceso) {
+  const propiedad = acceso.property;
+  if (!acceso.computed) return propiedad.type === 'Identifier' ? propiedad.name : null;
+  if (propiedad.type === 'Literal' && typeof propiedad.value === 'string') return propiedad.value;
+  if (propiedad.type === 'TemplateLiteral' && propiedad.expressions.length === 0) {
+    return propiedad.quasis[0]?.value.cooked ?? null;
+  }
+  return null;
+}
+
+/**
+ * ¿La etiqueta de una plantilla es una de las que llegan a la base (criterio 92)? `<expr>.$queryRaw`, `<expr>.$executeRaw`,
+ * `Prisma.sql` o el identificador `sql`.
+ */
+function esEtiquetaDeSql(etiqueta) {
+  if (etiqueta.type === 'Identifier') return etiqueta.name === 'sql';
+  if (etiqueta.type !== 'MemberExpression') return false;
+  const nombre = nombreDePropiedad(etiqueta);
+  if (nombre === '$queryRaw' || nombre === '$executeRaw') return true;
+  return nombre === 'sql' && etiqueta.object.type === 'Identifier' && etiqueta.object.name === 'Prisma';
+}
+
 function crearRegla({ prohibido, mensaje }) {
   return {
     meta: { type: 'problem', schema: [], messages: { prohibido: '{{ mensaje }}' } },
     create(context) {
-      function revisar(nodo, texto) {
-        if (prohibido(analizarSql(texto))) {
-          context.report({ node: nodo, messageId: 'prohibido', data: { mensaje } });
-        }
-      }
+      // Solo el texto de las plantillas etiquetadas que llegan a la base (criterio 92): no las cadenas, ni las plantillas sin
+      // etiqueta, ni las expresiones regulares.
       return {
-        Literal(nodo) {
-          if (typeof nodo.value === 'string') revisar(nodo, nodo.value);
-        },
-        TemplateLiteral(nodo) {
-          revisar(nodo, textoDePlantilla(nodo));
+        TaggedTemplateExpression(nodo) {
+          if (!esEtiquetaDeSql(nodo.tag)) return;
+          if (prohibido(analizarSql(textoDePlantilla(nodo.quasi)))) {
+            context.report({ node: nodo.quasi, messageId: 'prohibido', data: { mensaje } });
+          }
         },
       };
     },
@@ -382,27 +500,28 @@ export const pluginSqlSesion = {
   rules: {
     'sesion-en-modulos': crearRegla({ prohibido: (analisis) => analisis.sesion, mensaje: MENSAJE_SQL_SESION }),
     'set-config-app': crearRegla({ prohibido: (analisis) => analisis.setConfig, mensaje: MENSAJE_SET_CONFIG_APP }),
+    'formas-de-sql': reglaFormasDeSql,
   },
 };
 
-/** Archivos a los que se aplica la regla. */
-export const archivosConReglaSqlSesion = ['backend/src/**/*.ts'];
+/** Archivos a los que se aplica la regla: todas las extensiones que `tsx` ejecuta (criterio 95). */
+export const archivosConReglaSqlSesion = ['backend/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}'];
 
 /** Exentos: `BaseDatos` y las pruebas. */
 export const archivosExentosSqlSesion = [
   'backend/src/infraestructura/prisma/**',
   'backend/src/generated/**',
-  '**/*.test.ts',
+  '**/*.test.*',
 ];
 
-/** Bloques de configuración plana listos para agregar a `eslint.config.mjs`. */
+/** Bloques de configuración plana listos para agregar a `eslint.config.mjs` y a la del paso protegido. */
 export const configuracionSqlSesion = [
   {
     name: 'aquagestion/regla-sql-sesion',
     files: archivosConReglaSqlSesion,
     ignores: archivosExentosSqlSesion,
     plugins: { 'aquagestion-sql': pluginSqlSesion },
-    rules: { 'aquagestion-sql/sesion-en-modulos': 'error' },
+    rules: { 'aquagestion-sql/sesion-en-modulos': 'error', 'aquagestion-sql/formas-de-sql': 'error' },
   },
   {
     name: 'aquagestion/regla-sql-sesion-set-config-app',
@@ -410,12 +529,5 @@ export const configuracionSqlSesion = [
     ignores: [...archivosExentosSqlSesion, 'backend/src/cli/**'],
     plugins: { 'aquagestion-sql': pluginSqlSesion },
     rules: { 'aquagestion-sql/set-config-app': 'error' },
-  },
-  // P-15: ningún comentario `eslint-disable` (ni `/* eslint … */`) puede apagar estas reglas ni las de acceso a la base.
-  {
-    name: 'aquagestion/sin-configuracion-en-linea',
-    files: archivosConReglaSqlSesion,
-    ignores: archivosExentosSqlSesion,
-    linterOptions: { noInlineConfig: true },
   },
 ];

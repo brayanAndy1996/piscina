@@ -37,10 +37,10 @@ export default tseslint.config(
     },
   },
 
-  // Configuración en TypeScript de la raíz (por ejemplo, vitest.config.mts): sin información de tipos.
+  // Configuración en TypeScript de la raíz (por ejemplo, vitest.config.mts) y archivos .mts/.cts: sin información de tipos.
   {
     name: 'aquagestion/typescript-sin-tipos',
-    files: ['**/*.mts'],
+    files: ['**/*.mts', '**/*.cts'],
     extends: [...tseslint.configs.recommended],
     languageOptions: { globals: { ...globals.node } },
   },
@@ -80,10 +80,12 @@ export default tseslint.config(
   // Regla de importaciones de Prisma: solo BaseDatos llega a la base.
   configuracionPrisma,
 
-  // Regla de acceso a la base: ningún otro camino al cliente de Prisma ni a pg (criterio 85).
+  // Regla de acceso a la base: ningún otro camino al cliente de Prisma ni a pg; nadie fuera de cli/ importa cli/ ni los internos
+  // de infraestructura/prisma/ (criterios 85 y 95).
   ...configuracionAccesoBase,
 
-  // Regla del SQL de sesión: solo BaseDatos cambia el contexto de PostgreSQL (criterios 73, 83 y 84). Incluye
-  // `noInlineConfig` para los archivos donde se aplican estas reglas y las de acceso a la base (P-15).
+  // Reglas del SQL: el SQL solo llega a la base en plantillas etiquetadas y solo ese texto se analiza (criterios 73, 83, 84 y
+  // 92 a 94). Un comentario `eslint-disable` las apaga aquí; el paso protegido (eslint.protegido.config.mjs, con
+  // `--no-inline-config`) las revisa otra vez sin que ningún comentario pueda apagarlas (criterio 96).
   ...configuracionSqlSesion,
 );

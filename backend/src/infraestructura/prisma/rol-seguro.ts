@@ -43,3 +43,28 @@ const CONDICIONES: readonly (readonly [keyof FilaRol, string])[] = [
 export function problemasDelRol(fila: FilaRol): string[] {
   return CONDICIONES.filter(([campo]) => fila[campo] !== false).map(([, texto]) => texto);
 }
+
+/**
+ * Fila que devuelve la consulta sobre los valores por defecto propios del rol (`ALTER ROLE … SET`, con o sin `IN DATABASE`).
+ * Spec 001, criterio 103, precisión P-19.
+ */
+export interface FilaConfiguracionRol {
+  /** `pg_roles.rolconfig` no vacío, o alguna fila de `pg_db_role_setting` con `setrole` igual al oid del rol. */
+  readonly tiene_configuracion: boolean;
+}
+
+/**
+ * Decide si el rol de la API tiene valores por defecto propios (`ALTER ROLE aquagestion_app SET …`): los aplicaría PostgreSQL
+ * a cada conexión nueva y podrían cambiar `row_security`, `search_path` o los tiempos límite. Devuelve un problema por esa
+ * condición (lista vacía: sin valores propios). Cualquier valor distinto de `false` cuenta como inseguro (falla cerrada).
+ * Función pura: no toca la base. Los valores por defecto de la base para todos los roles no cuentan: los neutraliza cada
+ * transacción (criterios 72 y 98).
+ */
+export function problemasDeConfiguracion(fila: FilaConfiguracionRol): string[] {
+  return fila.tiene_configuracion === false
+    ? []
+    : [
+        'tiene valores por defecto propios (ALTER ROLE … SET; corrige con ALTER ROLE aquagestion_app RESET ALL; o ' +
+          'ALTER ROLE aquagestion_app IN DATABASE <base> RESET ALL;)',
+      ];
+}

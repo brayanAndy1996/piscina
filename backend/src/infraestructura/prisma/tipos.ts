@@ -1,7 +1,15 @@
 import type { Prisma } from '../../generated/prisma/client';
 
-/** Cliente de Prisma dentro de una transacción. Solo se obtiene a través de `BaseDatos`. */
-export type ClienteTransaccion = Prisma.TransactionClient;
+/**
+ * Lo que `trabajo` recibe como `tx.cliente` (spec 001, criterio 100, precisión P-24): un envoltorio armado por `BaseDatos` que
+ * solo tiene `$queryRaw`, `$executeRaw` y los delegados de los modelos. No tiene `$transaction`, `$connect`, `$on`,
+ * `$extends`, `$queryRawUnsafe` ni `$parent`: con ellos un módulo podría salirse de la transacción o ejecutar SQL armado como
+ * texto. Los comandos (`cli/`) pasan la transacción completa de Prisma, que es asignable a este tipo.
+ */
+export type ClienteTransaccion = Pick<
+  Prisma.TransactionClient,
+  '$queryRaw' | '$executeRaw' | Uncapitalize<Prisma.ModelName>
+>;
 
 /** Transacción con una academia fijada: todo lo que se lea o escriba pertenece a `academiaId` (RLS). */
 export interface TransaccionAcademia {

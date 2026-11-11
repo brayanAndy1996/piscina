@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { crearApp } from './crear-app';
-import { cargarEnvRaiz, ErrorEntorno, validarEntorno } from './infraestructura/entorno';
+import { cargarEnvRaiz, ErrorEntorno, retirarVariablesSensibles, validarEntorno } from './infraestructura/entorno';
 
 async function arrancar(): Promise<void> {
   cargarEnvRaiz();
@@ -15,6 +15,9 @@ async function arrancar(): Promise<void> {
     }
     throw error;
   }
+
+  // La API solo necesita DATABASE_URL_APP: las conexiones del dueño y las PG* salen del entorno del proceso (criterio 99).
+  retirarVariablesSensibles(process.env);
 
   const app = await crearApp(entorno);
   await app.listen(entorno.PUERTO_API);

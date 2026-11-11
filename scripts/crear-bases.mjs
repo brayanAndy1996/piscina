@@ -1,14 +1,22 @@
 // Crea la base de desarrollo y la de pruebas si no existen, y el rol aquagestion_app (el que usa la API) si falta.
 // No borra nada y no cambia la contraseña ni los atributos de un rol que ya existe. En las bases que crea o encuentra
 // revoca TEMPORARY a PUBLIC y a aquagestion_app (criterio 82) y comprueba que el rol no tenga ninguna condición
-// insegura (criterios 80 y 81); si la tiene, termina con código 1 y dice cómo corregirla.
+// insegura (criterios 80, 81, 102 y 103: atributos, membresías, dueño, CREATE, privilegios de más sobre las tablas y valores
+// por defecto propios); si la tiene, termina con código 1 y dice cómo corregirla. La contraseña del rol se envía como
+// verificador SCRAM-SHA-256 y nunca en claro (criterio 104).
 // Uso: npm run db:crear
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { cargarEnv, esNombreValido, leerUrlApp, leerUrlsBases, USUARIO_APP } from './lib/entorno.mjs';
-import { problemasDelRolApp } from './lib/rol-app.mjs';
+import {
+  correccionDePrivilegio,
+  privilegiosNoPermitidos,
+  problemasDeConfiguracionApp,
+  problemasDelRolApp,
+  verificadorScram,
+} from './lib/rol-app.mjs';
 
 const DUPLICATE_DATABASE = '42P04';
 const DUPLICATE_OBJECT = '42710';
@@ -20,14 +28,29 @@ function ocultarClave(texto, clave) {
 }
 
 /**
- * Sentencia que crea el rol de la app sin privilegios. La contraseña va entre comillas simples con las comillas
- * duplicadas; hay que ejecutarla con `standard_conforming_strings = on` para que la barra invertida no sea especial.
+ * Valida la contraseña de `DATABASE_URL_APP` (criterio 104): solo ASCII imprimible (U+0020 a U+007E), porque PostgreSQL la
+ * normaliza con SASLprep y el verificador calculado aquí podría no coincidir. El error nombra la variable y no la contraseña.
  */
-function sentenciaCrearRolApp(usuario, clave) {
-  const literal = `'${clave.replaceAll("'", "''")}'`;
+function validarClaveApp(clave) {
+  try {
+    verificadorScram(clave);
+  } catch {
+    throw new Error(
+      'La contraseña de DATABASE_URL_APP tiene caracteres fuera de ASCII imprimible (U+0020 a U+007E): usa solo letras ' +
+        'sin tilde, dígitos y signos ASCII (PostgreSQL la normalizaría con SASLprep y el verificador no coincidiría).',
+    );
+  }
+}
+
+/**
+ * Sentencia que crea el rol de la app sin privilegios. La contraseña nunca viaja en claro: se envía como verificador
+ * SCRAM-SHA-256 calculado aquí con `node:crypto` (criterio 104), que no contiene comillas ni barras invertidas.
+ */
+export function sentenciaCrearRolApp(usuario, clave) {
+  validarClaveApp(clave);
   return (
     `CREATE ROLE "${usuario}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT ` +
-    `PASSWORD ${literal}`
+    `PASSWORD '${verificadorScram(clave)}'`
   );
 }
 
@@ -45,6 +68,7 @@ export async function asegurarRolApp(cliente, { usuario, clave }) {
   }
   if (!clave) throw new Error('La URL de DATABASE_URL_APP debe incluir la contraseña del rol.');
   if (clave.includes('\0')) throw new Error('La contraseña de DATABASE_URL_APP no puede contener caracteres nulos.');
+  validarClaveApp(clave);
 
   const { rows } = await cliente.query(
     `SELECT r.rolname, r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
@@ -180,10 +204,85 @@ export async function problemasDeLaBase(clientePostgres, abrirCliente, { base, u
           `DATABASE_URL>; ejecutado en esa base.`,
       );
     }
+    problemas.push(...(await problemasDePrivilegios(clienteBase, { base, usuarioApp })));
   } finally {
     await clienteBase.end();
   }
   return problemas;
+}
+
+/**
+ * Privilegios efectivos de `usuarioApp` (concedidos al rol o a PUBLIC) sobre las tablas, vistas, secuencias, etc. del esquema
+ * `public` de la base a la que está conectado `clienteBase`, a nivel de tabla y de columna (criterio 102), comparados con la
+ * lista permitida (`PRIVILEGIOS_APP`). Un problema por cada privilegio de más, con su corrección (`REVOKE … FROM <rol>;` o
+ * `FROM PUBLIC;` si lo concede PUBLIC). No modifica nada. Un privilegio que falta no es un problema.
+ */
+export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) {
+  const { rows } = await clienteBase.query(
+    `SELECT c.relname::text AS tabla, NULL::text AS columna, p.privilegio::text AS privilegio, false AS secuencia,
+            pg_catalog.has_table_privilege('public', c.oid, p.privilegio) AS via_public
+       FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND pg_catalog.has_table_privilege($1::name, c.oid, p.privilegio)
+     UNION ALL
+     SELECT c.relname::text, NULL::text, p.privilegio::text, true,
+            pg_catalog.has_sequence_privilege('public', c.oid, p.privilegio)
+       FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
+      WHERE n.nspname = 'public' AND c.relkind = 'S'
+        AND pg_catalog.has_sequence_privilege($1::name, c.oid, p.privilegio)
+     UNION ALL
+     SELECT c.relname::text, a.attname::text, p.privilegio::text, false,
+            pg_catalog.has_column_privilege('public', c.oid, a.attnum, p.privilegio)
+       FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+       CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND pg_catalog.has_column_privilege($1::name, c.oid, a.attnum, p.privilegio)`,
+    [usuarioApp],
+  );
+  const deMas = privilegiosNoPermitidos(rows);
+  // Si el privilegio es de la tabla entera, el de cada columna es el mismo: se informa solo el de la tabla.
+  const deTabla = new Set(
+    deMas.filter((fila) => fila.columna === null).map((fila) => `${fila.tabla}|${fila.privilegio}`),
+  );
+  return deMas
+    .filter((fila) => fila.columna === null || !deTabla.has(`${fila.tabla}|${fila.privilegio}`))
+    .map((fila) => {
+      const objeto = fila.columna === null ? fila.tabla : `${fila.tabla}.${fila.columna}`;
+      const correccion = correccionDePrivilegio(fila, {
+        rol: usuarioApp,
+        viaPublic: fila.via_public,
+        secuencia: fila.secuencia,
+      });
+      return (
+        `El rol de la API tiene el privilegio ${fila.privilegio} de más sobre ${objeto} en la base ${base}` +
+        `${fila.via_public ? ' (concedido a PUBLIC)' : ''}. Corrígelo con el dueño o un superusuario: ${correccion}`
+      );
+    });
+}
+
+/**
+ * Valores por defecto propios del rol en cualquier base (criterio 103): `pg_roles.rolconfig` (`ALTER ROLE … SET`) o filas de
+ * `pg_db_role_setting` con el rol y una base (`ALTER ROLE … IN DATABASE … SET`). Los de la base para todos los roles no cuentan.
+ * `clientePostgres` está conectado a `postgres`. Devuelve la lista de problemas (vacía si no hay ninguno).
+ */
+export async function problemasDeConfiguracionDelRol(clientePostgres, usuarioApp) {
+  const { rows } = await clientePostgres.query(
+    `SELECT r.rolconfig,
+            ARRAY(SELECT d.datname::text FROM pg_catalog.pg_db_role_setting s
+                    JOIN pg_catalog.pg_database d ON d.oid = s.setdatabase
+                   WHERE s.setrole = r.oid ORDER BY 1) AS bases
+       FROM pg_catalog.pg_roles r WHERE r.rolname = $1`,
+    [usuarioApp],
+  );
+  const fila = rows[0];
+  if (!fila) return [];
+  return problemasDeConfiguracionApp({ rolconfig: fila.rolconfig, bases: fila.bases, rolname: usuarioApp });
 }
 
 /**
@@ -261,13 +360,13 @@ export async function crearBases(env = process.env) {
     for (const nombre of nombres) {
       await revocarTemporales(cliente, { base: nombre, usuarioApp: app.usuario });
     }
-    const problemas = [];
+    const problemas = [...(await problemasDeConfiguracionDelRol(cliente, app.usuario))];
     for (const nombre of nombres) {
       problemas.push(...(await problemasDeLaBase(cliente, abrirCliente, { base: nombre, usuarioApp: app.usuario })));
     }
     if (problemas.length > 0) {
       throw new Error(
-        `El rol de la API no es seguro en las bases de desarrollo o de pruebas (spec 001, criterios 80 y 81). ` +
+        `El rol de la API no es seguro en las bases de desarrollo o de pruebas (spec 001, criterios 80 a 83, 102 y 103). ` +
           `No se modificó el rol.\n${problemas.map((p) => `- ${p}`).join('\n')}`,
       );
     }
