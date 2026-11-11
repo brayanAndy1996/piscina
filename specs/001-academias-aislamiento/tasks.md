@@ -17,6 +17,10 @@ T26 a T34, antes del cierre.
 Tras la ronda 2 se agregaron los criterios 80 a 91 (sección K de `spec.md`); sus tareas son T35 a T46, antes del
 cierre.
 
+Tras la ronda 3 se agregaron los criterios 92 a 105 (sección L de `spec.md`) y las precisiones P-19 a P-24; sus
+tareas son T47 a T58, antes del cierre. Los criterios 73, 83, 84, 85 y la precisión P-15 quedaron con el alcance
+ajustado.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -144,6 +148,49 @@ Fallas F1 a F6, O1, O2, O4, O5 y O6 de la ronda 2; criterios 80 a 91 de `spec.md
 - [ ] T44 · backend · `enPlataforma` fija los dos valores de contexto (criterio 90)
 - [ ] T45 · orquestador · `git diff` desde el commit de T36: T37 a T44 no tocaron pruebas protegidas
 - [ ] T46 · adversarial · Ronda 3 sobre todo lo anterior, en especial 80 a 91; si hay fallas, se repite el ciclo
+
+## Ataque adversarial, ronda 3 (11/11/2026)
+
+Fallas F1 a F6 y observaciones O1 a O5 de la ronda 3; criterios 92 a 105 de `spec.md` (sección L) y precisiones
+P-19 a P-24. Las claves JSON duplicadas y lo que el rol aún puede hacer en SQL (objetos grandes, conexión a
+`postgres`, `pg_terminate_backend`, su propia contraseña) quedaron en "Riesgos aceptados". Detalle técnico en la
+sección 15 del plan.
+
+- [ ] T47 · test-writer · Pruebas protegidas en rojo de los criterios 92 a 105 (archivos en "Protegidas del ataque
+      ronda 3" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación. En el mismo
+      commit, adaptar las protegidas de lint de las rondas 1 y 2 (`eslint/regla-sql-sesion.test.mjs`,
+      `eslint/regla-sql-sesion-ronda2.test.mjs`, `eslint/regla-acceso-base.test.mjs`) al alcance nuevo de los
+      criterios 92 y 96, sin quitar ningún texto SQL de los ejemplos; y actualizar la prueba no protegida
+      `scripts/test/preparar-sesion.test.mjs` al verificador SCRAM (criterio 104). Commit: "Pruebas protegidas (001),
+      ataque ronda 3: lint por plantillas, zona horaria, entorno, envoltorio, cursores, privilegios, SCRAM y UTF-8
+      (en rojo)" (criterios 73, 83 a 85, 92 a 105)
+- [ ] T48 · tester · Confirmar que T47 falla por la razón esperada (SQL fuera de plantillas o `UESCAPE` que pasan el
+      lint, falsos positivos que fallan, `eslint-disable` sin efecto en el lint normal, fechas corridas 5 horas,
+      `DATABASE_URL` en `process.env`, cliente alcanzable, cursor que sobrevive, `GRANT` o `ALTER ROLE … SET`
+      aceptados, contraseña en claro, U+FFFD guardado) y no por errores de las pruebas. Las de integración que crean
+      roles (104 y parte de 102 y 103 en `db:crear`) se confirman en la CI
+- [ ] T49 · backend · Lint: la regla del SQL solo sobre plantillas etiquetadas y la regla de formas; `UESCAPE` en
+      `normalizarSql`; sentencias y funciones nuevas prohibidas; excepción de `set_config('TimeZone', 'UTC', true)` en
+      `cli/` (criterios 92, 93, 94, 98)
+- [ ] T50 · backend · Lint: reglas de acceso en todas las extensiones, rutas a `node_modules`, importaciones de `cli/`
+      y de los internos de `infraestructura/prisma/`; `eslint.protegido.config.mjs`, script `lint:protegido` dentro de
+      `npm run lint`, sin `noInlineConfig`; bloque de `.cts` en `eslint.config.mjs` (criterios 95, 96, 97)
+- [ ] T51 · backend · `BaseDatos`: cliente creado dentro de la clase sin proveedor de Nest, métodos `#`, prototipo
+      congelado, envoltorio de `trabajo` y tipo `ClienteTransaccion` (P-24); `TimeZone` en `UTC` y `CLOSE ALL` en cada
+      transacción (criterios 98, 100, 101)
+- [ ] T52 · backend · `cli/conexion.ts`: `enPlataforma` con `TimeZone` y `CLOSE ALL`; `crearClienteDelDueno(url,
+      { max })` (P-23) (criterios 98, 101)
+- [ ] T53 · backend · `retirarVariablesSensibles` (P-21) y su llamada en `main.ts` (criterio 99)
+- [ ] T54 · backend · Comprobación de privilegios de más y de valores por defecto del rol en la API
+      (`privilegios-app.ts`, `problemasDeConfiguracion`) y en `db:crear` (`scripts/lib/rol-app.mjs`), con
+      `PRIVILEGIOS_APP` igual en los dos lados (P-19, P-20) (criterios 102, 103)
+- [ ] T55 · backend · `verificadorScram` (P-22) en `scripts/lib/rol-app.mjs`; sentencias de `db:crear` y del hook con
+      el verificador y rechazo de contraseñas fuera de ASCII imprimible (criterio 104)
+- [ ] T56 · backend · UTF-8 estricto en el lector JSON y traducción del error de `verify` a 400 en el filtro
+      (criterio 105)
+- [ ] T57 · orquestador · `git diff` desde el commit de T48: T49 a T56 no tocaron pruebas protegidas
+- [ ] T58 · adversarial · Ronda 4 sobre todo lo anterior, en especial 92 a 105 (el lint nuevo, el envoltorio, la zona
+      horaria y la comprobación del rol); si hay fallas, se repite el ciclo
 
 ## Cierre
 

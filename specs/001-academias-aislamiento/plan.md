@@ -14,12 +14,15 @@ piscina/
 ├── .env.example                         + DATABASE_URL_APP, JWT_SECRETO, SUPERADMIN_*, DATABASE_POOL_MAX (comentada)
 ├── eslint.config.mjs                    + regla de importaciones de Prisma (criterio 28) y del SQL de sesión (73)
 ├── eslint/regla-sql-sesion.mjs          nuevo, ataque ronda 1 (criterio 73); ronda 2: normalización (83, 84)
-├── eslint/regla-acceso-base.mjs         nuevo, ataque ronda 2: import(), require, pg y @prisma (criterio 85)
+├── eslint/regla-acceso-base.mjs         nuevo, ataque ronda 2: import(), require, pg y @prisma (criterio 85);
+│                                        ronda 3: extensiones, node_modules, cli/ e internos de prisma/ (95)
+├── eslint.protegido.config.mjs          nuevo, ataque ronda 3: paso con --no-inline-config (criterio 96)
 ├── .github/workflows/ci.yml             + DATABASE_URL_APP y JWT_SECRETO en Linux (y en el E2E)
 ├── .claude/hooks/preparar-sesion.mjs    + creación del rol aquagestion_app (criterio 8); ronda 2: atributos (81)
 ├── scripts/
 │   ├── lib/entorno.mjs                  + leerUrlApp(), urlAppSobre(base)
-│   ├── lib/rol-app.mjs                  nuevo, ataque ronda 2: consulta y evaluación del rol (criterio 81)
+│   ├── lib/rol-app.mjs                  nuevo, ataque ronda 2: consulta y evaluación del rol (criterio 81);
+│   │                                    ronda 3: privilegios, valores por defecto y verificador SCRAM (102 a 104)
 │   ├── crear-bases.mjs                  + asegurarRolApp() (criterio 6); ronda 2: lista completa y TEMPORARY (81, 82)
 │   ├── completar-env.mjs                nuevo (criterio 63)
 │   └── test/…                           pruebas de lo anterior; actualización de migraciones.test.mjs (criterio 65)
@@ -34,7 +37,9 @@ piscina/
 │   ├── prisma/migrations/<marca>_endurecer_rol_app/migration.sql   nuevo, ataque ronda 2 (criterio 82)
 │   ├── prisma/seed.ts                   academias de ejemplo y superadmin de desarrollo (criterio 61)
 │   ├── src/infraestructura/entorno/     + DATABASE_URL_APP, JWT_SECRETO, DATABASE_POOL_MAX (criterio 5)
-│   ├── src/infraestructura/prisma/      BaseDatos, PrismaService interno, errores, verificación del rol
+│   ├── src/infraestructura/prisma/      BaseDatos, PrismaService interno, errores, verificación del rol;
+│   │                                    ronda 3: envoltorio, sin proveedor del cliente, privilegios-app.ts (98 a 103)
+│   ├── src/infraestructura/entorno/     ronda 3: retirarVariablesSensibles, llamada desde main.ts (criterio 99)
 │   ├── src/infraestructura/seguridad/   claves (argon2) y tokens (JWT con RELOJ)
 │   ├── src/comun/errores/               ErrorNegocio
 │   ├── src/comun/filtros/               filtro: ErrorNegocio y detalles de validación (criterio 66)
@@ -527,6 +532,27 @@ La reutiliza 002 para los usuarios de academia.
   - `cli/contexto-comandos.test.ts` (90);
   - 91: el test-writer cambia los secretos fijos que cumplen el criterio 79 por secretos generados al ejecutar
     (`randomBytes`), empezando por `plataforma/sesion.test.ts`; lo verifica el revisor.
+- **Protegidas del ataque ronda 3 (test-writer)** _(criterios 92 a 105; nombres orientativos)_:
+  - `eslint/regla-sql-plantillas.test.mjs` (92), casos de `UESCAPE` en `eslint/normalizar-sql-ronda3.test.mjs` (93),
+    `eslint/regla-sql-sesion-ronda3.test.mjs` (94), `eslint/regla-acceso-base-ronda3.test.mjs` (95, 97) y
+    `eslint/paso-protegido.test.mjs` (96, 97);
+  - adaptación de las protegidas de las rondas 1 y 2 al alcance nuevo (criterios 92 y 96): en
+    `regla-sql-sesion.test.mjs`, `regla-sql-sesion-ronda2.test.mjs` y `regla-acceso-base.test.mjs`, las formas
+    "cadena" y "plantilla sin etiqueta" dejan de esperarse como error y pasan a ejemplos que pasan (o se quitan de
+    `enTodasLasFormas`), los mismos textos SQL se siguen probando como `$queryRaw` y `Prisma.sql`, y los casos de
+    `eslint-disable` se prueban con la configuración del paso protegido y `allowInlineConfig: false`;
+  - `aislamiento/zona-horaria-sesion.test.ts` y `cli/zona-horaria-comandos.test.ts` (98);
+  - `backend/src/infraestructura/entorno/retirar-variables.test.ts` y `integracion/arranque/entorno-proceso.test.ts`
+    (99), con un módulo precargado en `backend/test/utilidades/`;
+  - `aislamiento/envoltorio.test.ts` (100);
+  - `aislamiento/cursores.test.ts` (101) y un caso de `enPlataforma` en `cli/contexto-comandos-ronda3.test.ts`;
+  - `aislamiento/privilegios-de-mas.test.ts`, `backend/src/infraestructura/prisma/privilegios-app.test.ts` (102) y
+    `aislamiento/configuracion-rol.test.ts` (103);
+  - `scripts/test/rol-app-ronda3.test.mjs` (unitarias de P-19, P-20 y P-22) y
+    `scripts/test/integracion/rol-app-ronda3.test.mjs` (102 a 104 en `db:crear`; los casos que crean roles se omiten
+    con aviso en la nube);
+  - `plataforma/utf8.test.ts` (105);
+  - no protegida: `scripts/test/preparar-sesion.test.mjs` pasa a esperar el verificador SCRAM (criterio 104).
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -602,7 +628,8 @@ La reutiliza 002 para los usuarios de academia.
   `@eslint-community/eslint-plugin-eslint-comments`) no basta: el error de la regla tiene que seguir apareciendo
   (precisión P-15, tras las pruebas de la ronda 2).
   `BaseDatos`: `readonly #prisma: PrismaService;` asignado en el constructor (no como parámetro con `private`), y
-  ningún método ni getter lo devuelve.
+  ningún método ni getter lo devuelve. _(Ronda 3: `noInlineConfig` se reemplaza por un paso de lint aparte con
+  `--no-inline-config`, y `PrismaService` deja de ser proveedor; ver la sección 15.)_
 - **Textos (criterios 87 y 88)** en `packages/contratos/src/texto.ts`:
   - visibles: `/[\p{L}\p{N}\p{P}\p{S}]/u` y no `/[\p{Default_Ignorable_Code_Point}⠀]/u`;
   - longitud: una ayuda `longitudEnPuntos(min, max)` (`[...t].length`) que reemplaza `.min()`/`.max()` de zod en
@@ -623,6 +650,153 @@ La reutiliza 002 para los usuarios de academia.
 - **Secretos de prueba (criterio 91).** Los genera el test-writer con `randomBytes(32).toString('base64url')` al
   cargar el archivo de prueba; el revisor busca literales de 32 o más caracteres sin espacios cerca de `secreto` o
   `JWT_SECRETO` en las pruebas.
+
+### 15. Correcciones del ataque, ronda 3 (criterios 92 a 105)
+
+**Lint (criterios 92 a 97).** El cambio de fondo: el SQL solo puede llegar a la base por plantillas etiquetadas, así
+que la regla del SQL deja de visitar cadenas y plantillas sueltas y solo mira esas plantillas.
+
+- `eslint/regla-sql-sesion.mjs`:
+  - visita solo `TaggedTemplateExpression` cuya etiqueta es `<expr>.$queryRaw`, `<expr>.$executeRaw`, `Prisma.sql` o
+    el identificador `sql`; une los `quasis` con el marcador, como hoy, y aplica `normalizarSql` y las reglas de los
+    criterios 73, 83, 84 y 94;
+  - en `cli/`, la regla de `set_config` admite, además de `'app.…'` con `true`, exactamente
+    `set_config('timezone', 'UTC', true)` con el nombre sin distinguir mayúsculas (criterio 98);
+  - patrones nuevos (orientativos, sobre el texto normalizado): sentencias que empiezan por
+    `declare|close|fetch|move|prepare|execute|deallocate|do`; en cualquier parte `\bwith\s+hold\b`,
+    `\balter\s+default\s+privileges\b` y llamadas
+    `(pg_catalog\.)?(lo_\w+|loread|lowrite|pg_(try_)?advisory_(lock|unlock)(_shared|_all)?|pg_terminate_backend|pg_cancel_backend)\s*\(`;
+    `pg_advisory_xact_lock` y `pg_try_advisory_xact_lock` no encajan porque llevan `xact_` entre `advisory_` y
+    `lock`.
+- `normalizarSql` (criterio 93): después de reconocer `U&'…'` o `U&"…"`, mira si sigue (saltando espacios y
+  comentarios) la palabra `uescape` y un literal `'x'`; si sigue, decodifica con `x` como escape (`x` + 4 hexadecimales,
+  `x+` + 6 hexadecimales, `xx`); si el literal no es un carácter válido (vacío, más de uno, hexadecimal, `+`, `'`, `"`,
+  espacio), la regla informa error. Prueba propia de `normalizarSql` con los ejemplos del criterio.
+- Regla nueva de formas (criterio 92), en el mismo archivo o en `eslint/regla-sql-formas.mjs`:
+  - `MemberExpression` o `Property` (desestructuración) con nombre `$queryRawUnsafe` o `$executeRawUnsafe`, y
+    `Literal`/`TemplateLiteral` cuyo texto los contiene → error;
+  - `MemberExpression` con nombre `$queryRaw` o `$executeRaw` cuyo padre no es una `TaggedTemplateExpression` (como
+    etiqueta) ni una `CallExpression` (como callee) con un solo argumento que sea una plantilla etiquetada con
+    `Prisma.sql` o `sql` → error; con corchetes (`computed`) → error;
+  - `Prisma.sql` o `sql` como callee de una `CallExpression` → error;
+  - `MemberExpression` de valor `Prisma.raw`, `Prisma.Sql`, o `Prisma.join` con más de un argumento; e
+    `ImportSpecifier` `raw`, `join` o `Sql` de `generated/prisma` o `@prisma/…` (en `cli/`, donde se pueden importar)
+    → error. En TypeScript, `Prisma.Sql` en posición de tipo es `TSQualifiedName`, no `MemberExpression`, así que no
+    cuenta.
+- `eslint/regla-acceso-base.mjs` (criterio 95):
+  - `esModuloProhibido(especificador)`: cambia `\` por `/`; si contiene `node_modules/`, toma lo que sigue al último
+    `node_modules/` y lo evalúa como nombre de paquete (`pg`, `pg/…`, `pg-pool`, `@prisma/…`, `.prisma/…`); sigue
+    reconociendo `generated/prisma` y `prisma.service` en cualquier parte;
+  - resolución de rutas: para un especificador relativo o absoluto (o `file:`), `path.resolve(path.dirname(
+    context.filename), especificador)` normalizado con `/`; si cae dentro de `<raíz>/backend/src/cli/` y el archivo
+    que importa no está ahí → error; si cae dentro de `<raíz>/backend/src/infraestructura/prisma/` y no es
+    `…/prisma`, `…/prisma/index` (con o sin `.ts`/`.js`) y el archivo que importa no está en esa carpeta → error. La
+    raíz sale de `context.cwd`. Se aplica a todas las vías del criterio 85 y también a `import type`.
+- Archivos (criterios 95 y 97): todas las configuraciones de estas reglas usan
+  `files: ['backend/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}']` e `ignores` de las pruebas (`**/*.test.*`). En
+  `eslint.config.mjs`, el bloque de TypeScript sin tipos incluye también `**/*.cts`, para que esos archivos se analicen
+  y no fallen por sintaxis.
+- Paso protegido (criterio 96):
+  - `eslint.protegido.config.mjs` en la raíz (para que las rutas de `files` se resuelvan como las del principal):
+    `typescript-eslint` como analizador, sin información de tipos, para todas las extensiones del criterio 95, y solo
+    las configuraciones exportadas por `regla-prisma.mjs`, `regla-acceso-base.mjs` y `regla-sql-sesion.mjs`;
+  - `package.json`: `"lint": "eslint . --max-warnings 0 && npm run lint:protegido"` y
+    `"lint:protegido": "eslint --no-inline-config --config eslint.protegido.config.mjs --max-warnings 0 backend/src"`
+    (`&&` funciona en Windows con npm);
+  - se quita el bloque `linterOptions: { noInlineConfig: true }` de `configuracionSqlSesion`.
+- `backend/tsconfig.build.json` y `tsconfig.base.json` quedan sin `allowJs` (hoy no lo tienen); la prueba lo fija.
+
+**`BaseDatos` (criterios 98, 100 y 101).**
+
+- `fijarContexto` pasa a ser `#fijarContexto` y su sentencia fija tres valores:
+  `SELECT set_config('app.plataforma', ${p}, true), set_config('app.academia_id', ${id}, true),
+  set_config('TimeZone', 'UTC', true)`; a continuación `` $executeRaw`CLOSE ALL` `` (una sentencia aparte: `CLOSE`
+  no se puede combinar con un `SELECT` en el protocolo extendido). El orden deja intacto el criterio 90 ("la primera
+  sentencia fija los valores"). Luego, la comprobación de la academia y `trabajo`.
+- Cliente sin proveedor: se borra `PrismaService` como proveedor (`PrismaModule.providers = [BaseDatos]`). `BaseDatos`
+  recibe `@Inject(ENTORNO) entorno: Entorno` y el registro, y crea el cliente en su constructor
+  (`this.#prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString, max }) })`), con conexión perezosa
+  como hoy, y lo cierra en `onModuleDestroy`. Así `design:paramtypes` es `[Object, PinoLogger]` y ningún token del
+  contenedor lleva al cliente. Si se conserva un archivo para crear el cliente, es una función interna, no una clase
+  inyectable.
+- Métodos privados reales: `#transaccion`, `#fijarContexto`, `#verificarRol`, `#comprobarRol` y el campo
+  `#verificacion`. Después de la clase, `Object.freeze(BaseDatos.prototype)` (los decoradores ya corrieron;
+  `reflect-metadata` guarda los metadatos aparte, en un `WeakMap`).
+- Envoltorio (`infraestructura/prisma/envoltorio.ts`, interno): `envolver(tx)` devuelve un objeto literal congelado
+  con `$queryRaw: (...a) => tx.$queryRaw(...a)`, `$executeRaw: (...a) => tx.$executeRaw(...a)` y, por cada valor de
+  `Prisma.ModelName` (con la primera letra en minúscula), un objeto congelado con funciones flecha para una lista fija
+  de operaciones (`findUnique`, `findUniqueOrThrow`, `findFirst`, `findFirstOrThrow`, `findMany`, `create`,
+  `createMany`, `createManyAndReturn`, `update`, `updateMany`, `updateManyAndReturn`, `upsert`, `delete`,
+  `deleteMany`, `count`, `aggregate`, `groupBy`) que llaman al delegado de `tx`. Las funciones flecha no tienen
+  `prototype` ni propiedades que lleven al cliente. `ClienteTransaccion` pasa a ser el tipo del envoltorio (P-24).
+  `#transaccion` entrega a `trabajo` el envoltorio; solo los métodos privados ven `tx`.
+- `cli/conexion.ts`: `enPlataforma` agrega `set_config('TimeZone', 'UTC', true)` a su primera sentencia y
+  `` CLOSE ALL `` después; `crearClienteDelDueno(url, { max })` pasa `max` a `PrismaPg` (P-23). Los comandos siguen
+  recibiendo la transacción completa: corren como el dueño, fuera de la API.
+
+**Entorno de la API (criterio 99).** `retirarVariablesSensibles(env)` en `infraestructura/entorno/` (P-21). En
+`main.ts`: cargar el `.env` (como hoy), `validarEntorno(process.env)`, `retirarVariablesSensibles(process.env)` y
+después `NestFactory.create`. La prueba de integración arranca `tsx backend/src/main.ts` con `stdio` que incluye
+`'ipc'`, `--import` de un módulo de `backend/test/utilidades/` que hace
+`process.on('message', () => process.send(Object.keys(process.env)))`, espera a que `GET /api/salud` responda en el
+puerto elegido y pide la lista. Funciona en Windows (IPC de Node, sin señales).
+
+**Comprobación del rol (criterios 102 y 103).** `#comprobarRol` hace, además de la consulta de la ronda 2:
+
+```sql
+-- Valores por defecto propios (criterio 103)
+SELECT (COALESCE(pg_catalog.cardinality(r.rolconfig), 0) > 0
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s WHERE s.setrole = r.oid)) AS tiene_configuracion
+  FROM pg_catalog.pg_roles r WHERE r.rolname = current_user;
+
+-- Privilegios efectivos de tabla (criterio 102), orientativo
+SELECT c.relname AS tabla, NULL::text AS columna, p.privilegio
+  FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+  CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p(privilegio)
+ WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','f')
+   AND pg_catalog.has_table_privilege(current_user, c.oid, p.privilegio)
+UNION ALL
+SELECT c.relname, NULL, p.privilegio
+  FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+  CROSS JOIN unnest(ARRAY['USAGE','SELECT','UPDATE']) AS p(privilegio)
+ WHERE n.nspname = 'public' AND c.relkind = 'S'
+   AND pg_catalog.has_sequence_privilege(current_user, c.oid, p.privilegio)
+UNION ALL
+SELECT c.relname, a.attname, p.privilegio
+  FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+  JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+  CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) AS p(privilegio)
+ WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','f')
+   AND pg_catalog.has_column_privilege(current_user, c.oid, a.attnum, p.privilegio);
+```
+
+Como el rol no es miembro de otro (criterio 80), las funciones `has_*_privilege` dan exactamente lo concedido al rol
+o a `PUBLIC`. La decisión está en `problemasDeConfiguracion` y `privilegiosDeMas` (P-19, P-20); el rechazo se memoriza
+con el de la ronda 2. En `scripts/lib/rol-app.mjs`, las mismas consultas con `'aquagestion_app'` en lugar de
+`current_user` (sobre cada base, conectado como el dueño), `bases` con `pg_database.datname` de las filas de
+`pg_db_role_setting`, y los mensajes con `REVOKE … FROM aquagestion_app;` (o `FROM PUBLIC` si
+`has_table_privilege('public', …)` también es verdadero) y `ALTER ROLE … RESET ALL;`. `PRIVILEGIOS_APP` se escribe
+dos veces (TypeScript para la API, `.mjs` para los scripts, que no pueden importar el backend) y una prueba compara
+las dos.
+
+**SCRAM (criterio 104).** En `scripts/lib/rol-app.mjs`:
+
+```js
+const salted = pbkdf2Sync(clave, sal, iteraciones, 32, 'sha256');
+const clientKey = createHmac('sha256', salted).update('Client Key').digest();
+const storedKey = createHash('sha256').update(clientKey).digest();
+const serverKey = createHmac('sha256', salted).update('Server Key').digest();
+return `SCRAM-SHA-256$${iteraciones}:${sal.toString('base64')}$${storedKey.toString('base64')}:${serverKey.toString('base64')}`;
+```
+
+PostgreSQL reconoce un valor con ese formato como verificador y lo guarda tal cual, sin importar
+`password_encryption`. Para ASCII imprimible SASLprep no cambia nada; por eso se rechaza lo demás. El hook importa la
+función de `scripts/lib/rol-app.mjs` (solo `node:*`, P-13) para el rol del dueño y el de la app.
+
+**UTF-8 (criterio 105).** `express.json({ …, verify: (req, res, buf) => { new TextDecoder('utf-8', { fatal: true
+}).decode(buf); } })`: `verify` recibe los bytes ya descomprimidos. `body-parser` convierte el error de `verify` en un
+403 (`entity.verify.failed`); el filtro lo traduce a 400 `SOLICITUD_INVALIDA` con `detalles.errores: [{ campo: '',
+mensaje }]`. Como el límite del inicio de sesión corre antes del lector (sección 6), el 400 cuenta para él.
 
 ## Decisiones
 
@@ -656,6 +830,15 @@ La reutiliza 002 para los usuarios de academia.
 | `\p{Default_Ignorable_Code_Point}` y U+2800 fuera de los visibles (criterio 87) | Lista de caracteres sueltos | Se queda corta ante el siguiente carácter en blanco |
 | Longitudes por puntos de código (criterio 88) | `.length` (UTF-16) | El comando y la API aceptaban textos distintos |
 | `Content-Encoding` `identity`, `gzip` o `deflate`; el resto 400 (criterio 89) | 415; admitir `br` | Un solo formato de error de entrada; ningún cliente comprime cuerpos |
+| SQL solo en plantillas etiquetadas; el lint analiza solo esas (ataque ronda 3, criterios 92 a 94) | Analizar todo literal de `backend/src` | Bloqueaba código legítimo (`'end'`, `'Set-Cookie'`) y aun así se evadía con `$queryRawUnsafe` |
+| Paso de lint aparte con `--no-inline-config` (criterio 96) | `noInlineConfig` en todo `backend/src` | Apagaba los `eslint-disable` legítimos de otras reglas |
+| `TimeZone = 'UTC'` con `set_config(…, true)` en cada transacción (criterio 98) | `options` del cliente de `pg`; `SET` al conectar | La URL reemplaza las `options`; un `SET` de conexión se deshace con `RESET ALL` en el pool |
+| `retirarVariablesSensibles` en `main.ts` (criterio 99) | En `configurarApp` | Las pruebas corren la API en su mismo proceso y perderían `DATABASE_URL_PRUEBAS` |
+| Envoltorio por transacción y cliente creado dentro de `BaseDatos` (criterio 100) | Entregar `Prisma.TransactionClient`; un `Proxy` | `$parent` y `_originalClient` llevan al cliente; un `Proxy` es difícil de probar exhaustivamente |
+| `CLOSE ALL` en cada transacción (criterio 101) | `DISCARD ALL` | No se puede dentro de una transacción y borraría las sentencias preparadas del adaptador |
+| Lista de privilegios permitidos (criterio 102) | Buscar solo privilegios peligrosos | La lista falla cerrada ante lo no previsto |
+| Verificador SCRAM calculado en el cliente (criterio 104) | `SET log_statement = 'none'` | No cubre el mensaje de error de una sentencia fallida |
+| UTF-8 estricto con `verify` del lector JSON (criterio 105) | Reemplazar por U+FFFD | El texto guardado no sería el enviado |
 
 ## Migraciones
 
@@ -665,6 +848,8 @@ La reutiliza 002 para los usuarios de academia.
   `TEMPORARY` sobre la base a `PUBLIC` y `CREATE`/`TEMPORARY` a `aquagestion_app`, y `CREATE` sobre `public` a
   `PUBLIC`; idempotente. Es una migración nueva para no cambiar la suma de control de la ya aplicada en la nube.
 - No toca la migración inicial de 000.
+- Ronda 3: sin migraciones nuevas. Los privilegios (criterio 102) y los valores por defecto del rol (103) se comprueban;
+  no se cambian.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -703,5 +888,20 @@ La reutiliza 002 para los usuarios de academia.
   migración y `db:crear` fallan con un mensaje claro; la guía de despliegue lo documenta (D-21).
 - **`eslint-disable` que no apaga reglas** _(ataque ronda 2)_: `noInlineConfig` apaga también los `eslint-disable`
   legítimos de esos archivos; si molesta, se usa el plugin de comentarios con la lista de reglas protegidas.
+  _(Resuelto en la ronda 3 con el paso aparte del criterio 96.)_
+- **Rutas de la configuración aparte** _(ataque ronda 3)_: con `--config`, la base de las rutas de `files` depende de
+  la versión de ESLint; por eso el archivo va en la raíz. Si con la versión instalada no coincide, fijar `basePath` o
+  detenerse e informar.
+- **Métodos `#` y prototipo congelado con Nest** _(ataque ronda 3)_: confirmar que el `target` de TypeScript emite
+  métodos privados nativos (ES2022 o posterior) y que Nest no escribe en el prototipo de `BaseDatos` al crear la
+  instancia. Si no, detenerse e informar.
+- **`CLOSE ALL` con el adaptador** _(ataque ronda 3)_: confirmar que `` $executeRaw`CLOSE ALL` `` corre en la
+  conexión de la transacción interactiva. Cuesta un viaje más a la base por transacción; se acepta.
+- **Lectura de `pg_db_role_setting` como la app** _(ataque ronda 3)_: es un catálogo legible por todos en PostgreSQL
+  16; si en algún servidor no lo es, la comprobación falla cerrada (sin fila = rol inseguro) y el backend lo informa.
+- **PostgreSQL 17 o posterior** _(ataque ronda 3)_: agrega el privilegio `MAINTAIN`; la lista del criterio 102 se
+  amplía cuando se cambie de versión (hoy es la 16).
+- **Prueba de arranque en proceso hijo** _(ataque ronda 3, criterio 99)_: depende de `tsx` y de un puerto libre; si es
+  lenta en la CI de Windows, se marca para correr solo en Linux con aviso.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.
