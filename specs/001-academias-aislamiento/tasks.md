@@ -11,6 +11,9 @@ Tras T1 y T2 se agregaron al contrato las precisiones técnicas P-1 a P-11 ("Pre
 el backend las sigue en T5 (P-1), T6 (P-11), T7 (P-3, P-10), T8 (P-9), T10 (P-2), T13 (P-5, P-6, P-7), T14 y T15
 (P-4, P-8).
 
+Tras la ronda 1 del ataque adversarial se agregaron los criterios 72 a 79 (sección J de `spec.md`); sus tareas son
+T26 a T34, antes del cierre.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -85,6 +88,29 @@ el backend las sigue en T5 (P-1), T6 (P-11), T7 (P-3, P-10), T8 (P-9), T10 (P-2)
       scripts compatibles con Windows
 - [ ] T23 · tester · Suite completa (`npm test`), `lint`, `typecheck`, `format:check`, `build` y, si hay navegador,
       `npm run e2e`
+
+## Ataque adversarial, ronda 1 (11/11/2026)
+
+Fallas F1 a F3, O1, O2 y O4 de la ronda 1; criterios 72 a 79 de `spec.md` (sección J). O3, O5, O6 y los ya
+aceptados quedaron en "Riesgos aceptados".
+
+- [ ] T26 · test-writer · Pruebas protegidas en rojo de los criterios 72 a 79 (archivos en "Pruebas" del plan,
+      sección 13), con la marca de pruebas protegidas, sin mirar la implementación. Commit: "Pruebas protegidas
+      (001), ataque ronda 1: contexto, cuerpos, límite, textos y entorno (en rojo)"
+- [ ] T27 · tester · Confirmar que T26 falla por la razón esperada (contexto residual visible, form aceptado,
+      400/413 sin contar, 500 o texto aceptado, `NODE_ENV` o secreto aceptados) y no por errores de las pruebas
+- [ ] T28 · backend · `BaseDatos` fija los dos valores de contexto en `conAcademia`, `comoPlataforma` y
+      `resolverAcademia`; regla de lint del SQL de sesión con su prueba (criterios 72, 73)
+- [ ] T29 · backend · Middlewares de `/api` en el orden del plan: límite del inicio de sesión antes del lector del
+      cuerpo (sin `ThrottlerGuard`), rechazo de cuerpos no JSON y lector JSON propio (criterios 74, 75)
+- [ ] T30 · backend · `packages/contratos/src/texto.ts` (`sinControles`, `textoVisibleSchema`) con pruebas unitarias;
+      uso en `plataforma.ts`, `academias.ts` y el comando del superadmin (criterios 76, 77)
+- [ ] T31 · frontend · Motivo de suspensión en un campo de una línea; los formularios muestran los errores de texto de
+      los esquemas (criterios 76, 77)
+- [ ] T32 · backend · `NODE_ENV` de lista cerrada en `validarEntorno` y la semilla; reglas de `JWT_SECRETO` en
+      producción y lista de secretos públicos con su prueba (criterios 78, 79)
+- [ ] T33 · orquestador · `git diff` desde el commit de T27: T28 a T32 no tocaron pruebas protegidas
+- [ ] T34 · adversarial · Ronda 2 sobre todo lo anterior, en especial 72 a 79; si hay fallas, se repite el ciclo
 
 ## Cierre
 

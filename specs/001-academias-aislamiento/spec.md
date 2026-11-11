@@ -40,6 +40,16 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   nombre corto repetido mezclaría las páginas públicas de dos academias; la suspensión debe cortar el acceso.
 - **G. Academia por su nombre corto (58 a 60):** entrada pública (D-27); es el punto por el que las páginas públicas
   de 002 y 005 eligen la academia.
+- **J. Correcciones del ataque, ronda 1 (72 a 79):**
+  - 72 y 73: aislamiento entre academias (D-23, D-29); una conexión del pool con contexto residual daría a una
+    academia las filas de todas, o a la plataforma los datos internos de una academia.
+  - 74: autenticación y entradas; un formulario simple de otro sitio (sin verificación previa del navegador) podría
+    iniciar sesión, crear o suspender academias.
+  - 75: autenticación; el límite por IP es la defensa contra la fuerza bruta y no debe tener atajos.
+  - 76 y 77: entradas de autenticación y auditoría (RN-22); un 500 ante una entrada, o un nombre o motivo invisible
+    o invertido, deja una auditoría ilegible o una página pública engañosa.
+  - 78 y 79: autenticación; una cookie sin `Secure` o un secreto de firma público permitirían robar o falsificar la
+    sesión del Superadmin.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -366,6 +376,113 @@ fila en `auditoria_plataforma`.
 71. Dado `npm run e2e`, entonces una prueba de Playwright crea un superadmin, inicia sesión en
     `/plataforma/ingresar`, crea una academia, la suspende, la reactiva y cierra sesión. _(CI en Linux)_
 
+### J. Correcciones del ataque adversarial, ronda 1
+
+Criterios agregados tras la ronda 1 del ataque (11/11/2026). Son decisiones técnicas de seguridad y validación, no
+reglas de negocio nuevas, y no cambian el sentido de los criterios 1 a 71.
+
+72. **Contexto completo en cada transacción, aunque la conexión venga contaminada** _(ataque ronda 1, F1)_. Dada la
+    API con `DATABASE_POOL_MAX=1` y datos en A y B, cuando la conexión del pool trae valores **de sesión** de
+    `app.plataforma` y `app.academia_id` (por ejemplo, `si` y el id de A), entonces:
+    - dentro de `conAcademia(B, …)`, `current_setting('app.academia_id', true)` es el id de B y
+      `current_setting('app.plataforma', true)` es `''`; `academias` devuelve solo la fila de B; `auditoria` y
+      `configuraciones`, solo filas de B; `superadmins` y `auditoria_plataforma`, 0 filas;
+    - dentro de `comoPlataforma`, `app.academia_id` es `''` y `app.plataforma` es `si`; `auditoria` y
+      `configuraciones` devuelven 0 filas y su `INSERT` falla con `42501`;
+    - en la transacción de `resolverAcademia`, los dos valores son `''` antes de llamar a `resolver_academia`, y el
+      resultado es el mismo que con una conexión limpia (criterio 20).
+
+    Se comprueba de dos formas, ambas obligatorias: (a) un `trabajo` anterior, en la misma conexión, ejecuta
+    `set_config('app.plataforma', 'si', false)` y `set_config('app.academia_id', '<id de A>', false)` y confirma; (b)
+    `DATABASE_URL_APP` lleva `?options=-c app.plataforma=si -c app.academia_id=<id de A>` (codificado en la URL). Si
+    el dueño de la base de pruebas puede ejecutar `ALTER DATABASE … SET app.plataforma = 'si'`, se comprueba también
+    con ese valor por defecto y se restaura al final; si no puede, esa variante se omite con aviso. El criterio 23
+    sigue valiendo tal cual. _(crítico)_
+73. **Regla de lint contra el contexto de sesión** _(ataque ronda 1, F1)_. Dado el código de `backend/src/` (sin
+    contar las pruebas: `*.test.ts` y `backend/test/`), entonces `npm run lint` falla si un texto SQL (cadena,
+    plantilla o plantilla etiquetada como `` $queryRaw`…` `` o `` Prisma.sql`…` ``; en las plantillas se analiza el
+    texto con un marcador en lugar de cada `${…}`), sin distinguir mayúsculas, contiene:
+    - fuera de `backend/src/infraestructura/prisma/`: `set_config(` con `false` como último argumento; `SET app.`,
+      `SET LOCAL app.` o `SET SESSION`; `SET ROLE`; o `RESET` (de `app.…`, `ROLE` o `ALL`);
+    - además, fuera de `backend/src/infraestructura/prisma/` y de `backend/src/cli/`: cualquier `set_config('app.`
+      (solo `BaseDatos` fija el contexto de la API; el comando del superadmin fija el suyo con `true`).
+
+    La prueba de la regla usa la clase `Linter`, como la del criterio 28, con un ejemplo que falla y otro que pasa por
+    cada caso. _(crítico; prueba de la regla de lint)_
+74. **Solo cuerpos JSON** _(ataque ronda 1, F2)_. Dada cualquier ruta de `/api` con método `POST`, `PUT`, `PATCH` o
+    `DELETE`, cuando la petición trae cuerpo (`Content-Length` mayor que 0 o `Transfer-Encoding`) y su `Content-Type`
+    no es `application/json` (el tipo sin distinguir mayúsculas, con `charset=utf-8` opcional), por ejemplo
+    `application/x-www-form-urlencoded`, `text/plain`, `multipart/form-data`, `application/json; charset=latin1`,
+    `application/vnd.api+json` o ninguno, entonces responde **400 `SOLICITUD_INVALIDA`** con
+    `detalles: { errores: [{ campo: "", mensaje }] }` y `Cache-Control: no-store` (P-8), sin interpretar el cuerpo.
+    En particular:
+    - `POST /api/plataforma/sesion` con un formulario y la clave correcta no emite cookie, no calcula ningún hash y
+      no cambia `intentos_fallidos`, `bloqueado_hasta` ni `ultimo_acceso` (sí cuenta para el límite por IP, criterio
+      75);
+    - `POST /api/plataforma/academias`, `…/suspender` y `…/reactivar` no crean, no cambian ni auditan nada;
+    - `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON responde 400 sin cambiar `version_token`; sin
+      cuerpo sigue el criterio 44.
+
+    En las rutas de `/api/plataforma` que exigen sesión, una petición sin sesión válida sigue respondiendo 401
+    `NO_AUTENTICADO` antes de mirar el cuerpo (P-7). Se elige 400 y no 415 para conservar el código del criterio 42 y
+    un solo formato para los errores de entrada. _(crítico)_
+75. **Toda petición de inicio de sesión cuenta para el límite** _(ataque ronda 1, F3)_. Dadas peticiones
+    `POST /api/plataforma/sesion` desde la misma IP en 60 segundos, entonces todas cuentan para el límite del
+    criterio 41 sea cual sea su resultado: JSON mal formado (400), cuerpo demasiado grande (413 `CARGA_EXCESIVA`),
+    tipo no JSON (400, criterio 74), esquema inválido (400), 401 o 423. También cuentan, y comparten el contador, las
+    variantes de la ruta que Express atiende con el mismo controlador (`/api/plataforma/sesion/`,
+    `/api/Plataforma/SESION`). La 11.ª y las siguientes reciben 429 `DEMASIADAS_SOLICITUDES` sin leer el cuerpo, aunque
+    sean válidas y con la clave correcta, sin contar como intento fallido ni emitir cookie. Prueba: 12 peticiones con
+    JSON mal formado (las 10 primeras 400, la 11.ª y la 12.ª 429) y después una válida con la clave correcta: 429.
+    Lo mismo mezclando 413, formularios y variantes de la ruta. _(crítico)_
+76. **Caracteres de control en las entradas** _(ataque ronda 1, O1)_. Dado cualquier texto de una entrada de la API
+    (en esta historia: `correo`, `clave`, `nombre`, `nombreCorto` y `motivo`), cuando contiene, después del recorte que
+    ya hace su campo, el carácter nulo `\u0000` u otro carácter de control (`\p{Cc}`: U+0000 a U+001F y U+007F a
+    U+009F, incluidos el tabulador y los saltos de línea en medio del texto), entonces responde 400
+    `SOLICITUD_INVALIDA` con `detalles.errores` que nombra el campo; nunca 500; sin escribir en la base, calcular un
+    hash ni contar un intento. `clave` no se recorta: un control en cualquier posición es 400. El comando del
+    criterio 33 aplica la misma regla a `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE` (código 1,
+    nombra la variable y no cambia nada, criterio 35). La regla vive en los esquemas compartidos de texto de
+    `packages/contratos/`, para que la reutilicen las historias siguientes. _(crítico)_
+77. **Textos visibles y sin control bidireccional** _(ataque ronda 1, O2)_. Dados el `nombre` de una academia
+    (crear), el `motivo` (suspender y reactivar) y `SUPERADMIN_NOMBRE` (comando), entonces, además de sus reglas de
+    longitud (criterios 35, 49 y 52):
+    - se rechazan si contienen caracteres de control bidireccional (`\p{Bidi_Control}`: U+061C, U+200E, U+200F,
+      U+202A a U+202E y U+2066 a U+2069) o separadores de línea o de párrafo (U+2028, U+2029);
+    - deben tener al menos 3 caracteres visibles: letras, números, signos de puntuación o símbolos (`\p{L}`, `\p{N}`,
+      `\p{P}`, `\p{S}`). Los espacios (`\p{Zs}`), los caracteres de formato (`\p{Cf}`, como U+200B o U+FEFF) y las
+      marcas combinantes (`\p{M}`) no cuentan.
+
+    Además, cualquier texto de entrada de la API (los campos del criterio 76) que contenga un sustituto UTF-16 suelto
+    (U+D800 a U+DFFF sin su pareja; `isWellFormed()` falso) se rechaza. Si no se cumple: 400 `SOLICITUD_INVALIDA` con
+    `detalles.errores` que nombra el campo, sin crear, cambiar ni auditar nada (en el comando, código 1). Se rechazan,
+    por ejemplo, `"​​​​"`, `"a​b"` (2 visibles), `"Delfines‮"`, `"⁦Delfines⁩"`
+    y `"Del\uD800fines"`; se aceptan `"Academia Ñandú"` y `"Club 3"`. El valor se guarda tal como llega, después del
+    recorte. _(crítico)_
+78. **`NODE_ENV` de una lista cerrada** _(ataque ronda 1, O4)_. Dado `NODE_ENV`, entonces, si no está definida, la API
+    y la semilla se comportan fuera de producción, como hoy; si está definida (aunque sea vacía), debe ser exactamente
+    `development`, `test` o `production`, sin recorte ni cambio de mayúsculas. Con cualquier otro valor (`Production`,
+    `PRODUCTION`, `" production"`, `"production "`, `prod`, `""`):
+    - la API no arranca: `validarEntorno` lanza `ErrorEntorno` con un mensaje que nombra `NODE_ENV` y los valores
+      permitidos, sin mostrar el valor recibido;
+    - `npm run db:semilla` termina con código 1 sin escribir nada, con un mensaje equivalente.
+
+    El campo `NODE_ENV` de `Entorno` pasa a ser `'development' | 'test' | 'production' | undefined`. La cookie lleva
+    `Secure` (criterio 36) y rigen las reglas de producción (criterios 5 y 79) solo con `production`. _(crítico;
+    prueba unitaria de `validarEntorno` e integración de la semilla)_
+79. **Secreto de firma robusto en producción** _(ataque ronda 1, O4)_. Dado `NODE_ENV=production`, entonces la API no
+    arranca, con un mensaje que nombra `JWT_SECRETO` sin mostrar su valor, si `JWT_SECRETO`:
+    - es uno de los secretos públicos del repositorio: el de `.env.example`, `JWT_SECRETO_PRUEBAS` de
+      `backend/test/utilidades/aplicacion.ts` o el de respaldo de `e2e/playwright.config.ts`;
+    - contiene algún espacio en blanco (`\s`) en cualquier posición;
+    - tiene menos de 32 caracteres; o
+    - tiene menos de 10 caracteres distintos.
+
+    Los caracteres se cuentan por punto de código. Un secreto de 32 o más caracteres, sin espacios, con 10 o más
+    distintos y fuera de la lista se acepta (por ejemplo, 43 caracteres base64url aleatorios). Fuera de producción
+    rige solo el criterio 5. La lista de secretos públicos es una constante del backend; una prueba unitaria comprueba
+    que contiene los valores actuales de esos tres archivos. _(crítico; prueba unitaria de `validarEntorno`)_
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -379,7 +496,16 @@ fila en `auditoria_plataforma`.
 - **`current_setting` después de un `set_config` local:** fuera de esa transacción devuelve `''`, no `NULL`;
   `app_academia_actual()` lo trata como "sin academia" (criterio 13).
 - **Conexiones reutilizadas del pool:** el contexto es local a la transacción; nunca se usa `SET` de sesión
-  (criterio 23).
+  (criterio 23). Si aun así una conexión llega con valores de sesión (un error de un módulo, `options` en la URL o
+  valores por defecto del rol o de la base), cada transacción fija los dos valores, el suyo y el vacío del otro
+  (criterio 72), y el lint impide escribir SQL de sesión (criterio 73) _(ataque ronda 1)_.
+- **Formularios y otros tipos de cuerpo:** solo se interpreta JSON; el resto es 400 y, en el inicio de sesión, cuenta
+  para el límite por IP (criterios 74 y 75) _(ataque ronda 1)_.
+- **Textos con caracteres invisibles, de control o bidireccionales:** 400 (criterios 76 y 77). Los caracteres de
+  formato dentro de un texto con al menos 3 visibles (por ejemplo, el unidor de ancho cero de algunos emojis) se
+  aceptan _(ataque ronda 1)_.
+- **`NODE_ENV` mal escrito (`Production`, con espacios):** la API y la semilla no arrancan (criterio 78)
+  _(ataque ronda 1)_.
 - **Academia suspendida entre el inicio y el fin de una operación:** `conAcademia` comprueba el estado al empezar;
   una operación ya iniciada termina. Se acepta.
 - **Nombre corto con mayúsculas, espacios, letras turcas (`İ`) o cirílicas parecidas:** se normaliza y, si queda algo
@@ -431,7 +557,8 @@ fila en `auditoria_plataforma`.
 | `DATABASE_URL_PRUEBAS` | lo mismo, en la base de pruebas | dueño |
 | `DATABASE_URL_APP` | la API | `aquagestion_app` (nombre fijo) |
 | `DATABASE_POOL_MAX` | la API (opcional, 1 a 100, por defecto 10) | — |
-| `JWT_SECRETO` | la API (al menos 32 caracteres) | — |
+| `JWT_SECRETO` | la API (al menos 32 caracteres; en producción, además, criterio 79) | — |
+| `NODE_ENV` | la API y la semilla (ausente, `development`, `test` o `production`; criterio 78) | — |
 | `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE`, `SUPERADMIN_CLAVE` | `plataforma:superadmin` y la semilla | — |
 
 En las pruebas, la URL de la app para la base de pruebas se arma con el usuario y la contraseña de
@@ -486,7 +613,9 @@ class AuditoriaService {
 ### Endpoints
 
 Todas las respuestas de `/api/plataforma/*` y `/api/a/*` llevan `Cache-Control: no-store`, también las de error
-(precisión P-8). Los cuerpos de entrada son JSON y sus esquemas son estrictos (un campo de más es 400).
+(precisión P-8). Los cuerpos de entrada son JSON y sus esquemas son estrictos (un campo de más es 400). Un cuerpo con
+otro `Content-Type` responde 400 `SOLICITUD_INVALIDA` (criterio 74); los textos siguen los criterios 76 y 77
+_(ataque ronda 1)_.
 
 | Método y ruta | Sesión | Entrada | Éxito | Errores |
 | --- | --- | --- | --- | --- |
@@ -501,7 +630,8 @@ Todas las respuestas de `/api/plataforma/*` y `/api/a/*` llevan `Cache-Control: 
 
 Cookie de sesión: `aq_plataforma`, `HttpOnly`, `SameSite=Strict`, `Path=/api/plataforma`, `Max-Age=28800`, `Secure`
 con `NODE_ENV=production`. Token: criterio 37. Límite: 10 intentos de inicio de sesión por IP cada 60 segundos
-(precisión P-5). Bloqueo: 5 fallos seguidos, 15 minutos. Cookie de borrado: precisión P-6. Rutas sin sesión:
+(precisión P-5), contando toda petición, también las de cuerpo ilegible, demasiado grande o no JSON (criterio 75,
+ataque ronda 1). Bloqueo: 5 fallos seguidos, 15 minutos. Cookie de borrado: precisión P-6. Rutas sin sesión:
 precisión P-7. Normalización de `{nombreCorto}`: precisión P-4.
 
 ### Esquemas compartidos (`packages/contratos/src/`)
@@ -732,8 +862,30 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   en lugar de la sesión, RLS no lo detecta. Lo mitigan las reglas de 002 (la academia sale de la sesión o del nombre
   corto), el revisor y el adversarial.
 - **Saber si existe un correo de superadmin:** el 423 solo aparece en un correo que existe. Se acepta porque exige
-  adivinar el correo y está limitado por IP; el Superadmin necesita saber que está bloqueado.
+  adivinar el correo y está limitado por IP; el Superadmin necesita saber que está bloqueado. Confirmado en el ataque
+  ronda 1.
 - **Revelar que una academia está suspendida** en su página pública (403 en lugar de 404): aceptado por el responsable (DR-4).
+  Confirmado en el ataque ronda 1.
+- **Bloqueo provocado por terceros** _(ataque ronda 1)_: quien conozca el correo del Superadmin puede bloquear su
+  cuenta 15 minutos con 5 intentos fallidos (criterio 39), limitado por IP (criterio 41). Se acepta: el bloqueo es
+  temporal y el comando del criterio 34 lo levanta al instante.
+- **Una sesión abierta sigue valiendo si la cuenta se bloquea** _(ataque ronda 1)_: el bloqueo impide nuevos
+  ingresos, no cierra sesiones ya emitidas. Para cortarlas, el comando del criterio 34 incrementa `version_token`;
+  cambiar `JWT_SECRETO` las corta todas.
+- **O3. Signo Kelvin en el nombre corto** _(ataque ronda 1)_: `K` (U+212A) se convierte en `k` con `toLowerCase`, así
+  que `/api/a/…K…` lleva a la misma academia que `…k…`. No permite suplantar a otra academia ni crear un nombre
+  corto distinto (el resultado cumple el formato y la unicidad se comprueba sobre el valor normalizado).
+- **O5. Diferencia de tiempo entre correo existente e inexistente** _(ataque ronda 1)_: de 3 a 5 ms, pese al hash
+  ficticio. Revela lo mismo que el 423 ya aceptado y está limitada por IP.
+- **O6. Estadísticas de PostgreSQL** _(ataque ronda 1)_: `pg_stat_user_tables` (y vistas parecidas) muestran al rol
+  de la app el total de filas por tabla, de todas las academias, sin contenido. Se acepta: no revela datos de
+  ninguna academia ni a qué academia pertenecen las filas, y la API no expone esas vistas.
+- **La regla de lint del criterio 73 solo ve texto literal** _(ataque ronda 1)_: un SQL armado por concatenación o
+  pasado en una variable a `$executeRawUnsafe` no lo detecta. La garantía está en el criterio 72 (cada transacción
+  fija los dos valores) y el revisor busca ese patrón.
+- **`NODE_ENV` ausente en producción** _(ataque ronda 1)_: sin la variable, la API se comporta fuera de producción
+  (cookie sin `Secure`, semilla permitida), como define la spec 000. Un valor mal escrito ya no pasa (criterio 78);
+  que la variable exista en el servidor lo cubre la guía de despliegue, con el hosting (D-21).
 - **Límite por IP detrás de un proxy:** sin `trust proxy`, todas las peticiones pueden parecer de la misma IP. Se
   decide con el hosting (D-21).
 - **Clave de ejemplo del superadmin en `.env.example`:** es pública y solo sirve en desarrollo; la semilla no corre
@@ -801,6 +953,23 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   (precisión P-10, tras T1–T2, 11/11/2026).
 - **Privilegios por columna** en `academias` y `superadmins`: la API no puede cambiar el nombre corto, el correo ni
   la contraseña del superadmin.
+
+### Decisiones técnicas tras el ataque, ronda 1 (11/11/2026)
+
+- **Cada transacción fija los dos valores de contexto** (criterio 72): `conAcademia` pone `app.plataforma` en `''` y
+  `comoPlataforma` pone `app.academia_id` en `''`, con `set_config(…, true)`. Alternativa descartada: rechazar en
+  `validarEntorno` una URL con `options` (no cubre un `set_config(…, false)` de un módulo ni los valores por defecto
+  del rol o de la base).
+- **400 `SOLICITUD_INVALIDA` para un cuerpo que no es JSON** (criterio 74). Alternativa descartada: 415 (el criterio
+  42 ya fija 400 para un cuerpo que no es JSON, y la web trata igual todos los errores de entrada).
+- **El límite de inicio de sesión cuenta antes de leer el cuerpo** (criterio 75). Alternativa descartada: el
+  `ThrottlerGuard` en el controlador (corre después del lector del cuerpo, así que los 400 y 413 de Express no
+  cuentan).
+- **`NODE_ENV` de una lista cerrada exacta, sin normalizar** (criterio 78). Alternativa descartada: recortar y pasar a
+  minúsculas (aceptaría en silencio un valor mal escrito; mejor detenerse y que se corrija).
+- **Reglas de texto con propiedades Unicode** (`\p{Cc}`, `\p{Bidi_Control}`, `\p{L}`…) en esquemas compartidos
+  (criterios 76 y 77). Alternativa descartada: una lista de caracteres permitidos (rechazaría nombres legítimos con
+  tildes, ñ o de otros alfabetos).
 
 ## Preguntas abiertas
 

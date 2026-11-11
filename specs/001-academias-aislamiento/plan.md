@@ -12,7 +12,8 @@ documentación y el implementador lo informa. Lo que no es orientativo es el con
 piscina/
 ├── package.json                         + plataforma:superadmin, env:completar
 ├── .env.example                         + DATABASE_URL_APP, JWT_SECRETO, SUPERADMIN_*, DATABASE_POOL_MAX (comentada)
-├── eslint.config.mjs                    + regla de importaciones de Prisma (criterio 28)
+├── eslint.config.mjs                    + regla de importaciones de Prisma (criterio 28) y del SQL de sesión (73)
+├── eslint/regla-sql-sesion.mjs          nuevo, ataque ronda 1 (criterio 73)
 ├── .github/workflows/ci.yml             + DATABASE_URL_APP y JWT_SECRETO en Linux (y en el E2E)
 ├── .claude/hooks/preparar-sesion.mjs    + creación del rol aquagestion_app (criterio 8)
 ├── scripts/
@@ -22,6 +23,7 @@ piscina/
 │   └── test/…                           pruebas de lo anterior; actualización de migraciones.test.mjs (criterio 65)
 ├── packages/contratos/src/
 │   ├── academias.ts · plataforma.ts     nuevos (+ *.test.ts)
+│   ├── texto.ts                         nuevo, ataque ronda 1: reglas de texto (criterios 76, 77)
 │   └── error-api.ts                     + detallesValidacionSchema
 ├── backend/
 │   ├── package.json                     + @node-rs/argon2, @nestjs/jwt (o jsonwebtoken), @nestjs/throttler, cookie-parser
@@ -195,6 +197,16 @@ las detecta como diferencia; se escriben siempre a mano en el SQL de la migraci�
 - **`resolverAcademia(nombreCorto)`:** `verificarRol()` y una transacción corta sin contexto con
   `SELECT * FROM resolver_academia(${nombreCorto})`; devuelve la fila mapeada o `null`. La normalización y el
   formato los valida el controlador antes de llamar.
+- **Los dos valores en cada transacción** _(ataque ronda 1, criterio 72)_: la primera sentencia de cada transacción
+  fija ambos con `true`, sin importar lo que traiga la conexión (valores de sesión, `options` de la URL o valores por
+  defecto del rol o de la base):
+  - `conAcademia`: `SELECT set_config('app.plataforma', '', true), set_config('app.academia_id', ${id}, true)`;
+  - `comoPlataforma`: `SELECT set_config('app.academia_id', '', true), set_config('app.plataforma', 'si', true)`;
+  - `resolverAcademia`: los dos en `''` antes de llamar a `resolver_academia` (la función restaura el valor previo,
+    que así es `''`).
+
+  Conviene una sola función interna `fijarContexto(cliente, { academiaId, plataforma })` que siempre escribe los dos,
+  para que ninguna variante olvide uno. Una sola sentencia con los dos `set_config` evita un viaje extra a la base.
 - **`comprobarConexion()`:** `SELECT 1` sin verificar el rol (salud mantiene el contrato de 000).
 - **`verificarRol()`:** una promesa memorizada que ejecuta, como la app:
 
@@ -221,6 +233,18 @@ las detecta como diferencia; se escriben siempre a mano en el SQL de la migraci�
   cliente generado (`**/generated/prisma/**`) y de `PrismaService`, aplicada a `backend/src/**/*.ts` excepto
   `backend/src/infraestructura/prisma/**`, `backend/src/cli/**` y las pruebas. Prueba con la clase `Linter`, como la
   regla del reloj de 000.
+- **Regla de lint del SQL de sesión** _(ataque ronda 1, criterio 73)_: regla propia en `eslint/regla-sql-sesion.mjs`
+  (con su `regla-sql-sesion.test.mjs`) que visita `Literal` de texto, `TemplateLiteral` y `TaggedTemplateExpression`;
+  en las plantillas une los `quasis` con un marcador (por ejemplo `?`) y aplica, sin distinguir mayúsculas,
+  expresiones como:
+  - `set_config\s*\([^)]*,\s*false\s*\)`;
+  - `\bset\s+(local\s+|session\s+)?app\.`, `\bset\s+session\b`, `\bset\s+role\b`;
+  - `\breset\s+(app\.|role\b|all\b)`;
+  - fuera de `backend/src/cli/**`, también `set_config\s*\(\s*'app\.`.
+
+  Se aplica a `backend/src/**/*.ts` salvo `backend/src/infraestructura/prisma/**` y las pruebas (`**/*.test.ts`); la
+  parte de `set_config('app.` excluye además `backend/src/cli/**`. Las expresiones son orientativas; lo que manda son
+  los casos del criterio 73.
 
 ### 4. Auditoría (`backend/src/modulos/auditoria/`)
 
@@ -284,6 +308,30 @@ La reutiliza 002 para los usuarios de academia.
   con `aq_plataforma=`, `Max-Age=0` y `Path=/api/plataforma` (P-6 de `spec.md`; por ejemplo `res.clearCookie` con
   las mismas opciones de la cookie y `maxAge: 0`, comprobando que la cabecera resultante lleve `Max-Age=0`).
 - **Límite** (P-5): 10 peticiones por IP en 60 segundos se atienden; la 11.ª recibe 429.
+- **Límite antes de leer el cuerpo** _(ataque ronda 1, criterios 74 y 75)_: el `ThrottlerGuard` corre después del
+  lector del cuerpo de Express, así que un JSON mal formado (400) o demasiado grande (413) nunca llega a contarse. El
+  límite pasa a un middleware de Express que `instalarProteccionDePrefijos` (o `configurarApp`) instala **antes** del
+  lector del cuerpo:
+  - reconoce la ruta igual que el router de Express: método `POST` y `req.path` sin distinguir mayúsculas, con o sin
+    barra final (la expresión `RUTA_DE_SESION` ya existe);
+  - cuenta por `req.ip` con el almacenamiento de `@nestjs/throttler` (`ThrottlerStorage.increment`, con el mismo
+    `LIMITE_INICIO_SESION`: 10 en 60 000 ms) o con un almacén propio en memoria, y responde 429
+    `DEMASIADAS_SOLICITUDES` por el filtro (como `responderError`) sin llamar a `siguiente()`;
+  - se quita el `ThrottlerGuard` del controlador para no contar dos veces.
+- **Orden de los middlewares de `/api`** (todos antes de que Nest registre su lector del cuerpo):
+  1. `Cache-Control: no-store` (P-8);
+  2. límite del inicio de sesión (criterio 75);
+  3. sesión del prefijo `/api/plataforma` (P-7): sin sesión, 401 antes de mirar el cuerpo;
+  4. tipo de contenido (criterio 74): `POST`, `PUT`, `PATCH` o `DELETE` con cuerpo (`Content-Length` > 0 o
+     `Transfer-Encoding`) y un tipo distinto de `application/json` (`charset` ausente o `utf-8`) → 400
+     `SOLICITUD_INVALIDA` con `detalles: { errores: [{ campo: '', mensaje }] }`;
+  5. lector JSON (`express.json`, `strict: true`).
+
+  Para que Nest no registre su lector `urlencoded`, se crea la aplicación con `bodyParser: false` y se registra solo
+  el lector JSON en `configurarApp`, o se registran middlewares con los nombres `jsonParser` y `urlencodedParser`
+  antes de `init` (el adaptador de Express omite los suyos si ya hay uno con ese nombre). `crearAppDePruebas` llama
+  a `configurarApp`, así que el orden vale igual en las pruebas; confirmar con la versión de Nest instalada y, si
+  ninguna opción funciona sin tocar las utilidades protegidas, detenerse e informar.
 
 ### 7. Academias (`backend/src/modulos/academias/`)
 
@@ -313,6 +361,19 @@ La reutiliza 002 para los usuarios de academia.
 - `comun/validacion/`: un pipe `ValidarCon(esquema)` que usa `safeParse` y, si falla, lanza
   `ErrorNegocio(400, 'SOLICITUD_INVALIDA', 'La solicitud no es válida.', { errores })` con `campo = path.join('.')`.
 - Cuerpos no JSON: Express no los interpreta; el esquema estricto ve `undefined` o `{}` y responde 400.
+  _(Ataque ronda 1: no bastaba, porque Nest registra también el lector `urlencoded`. Ahora los rechaza un middleware
+  antes de leerlos; ver sección 6, criterio 74.)_
+- **Reglas de texto compartidas** _(ataque ronda 1, criterios 76 y 77)_, en `packages/contratos/src/texto.ts`:
+  - `sinControles(esquema)`: rechaza `\p{Cc}` y textos con `isWellFormed() === false`, con un mensaje propio; se
+    aplica a `correo`, `clave`, `nombre`, `nombreCorto` y `motivo` (después del recorte, si el campo recorta);
+  - `textoVisibleSchema({ min, max })`: recorta, aplica `sinControles`, rechaza `\p{Bidi_Control}`, U+2028 y
+    U+2029, cuenta los puntos de código de `[\p{L}\p{N}\p{P}\p{S}]` (al menos 3) y comprueba la longitud; lo usan
+    `crearAcademiaSchema.nombre`, `suspenderAcademiaSchema.motivo`, `reactivarAcademiaSchema.motivo` y el comando
+    para `SUPERADMIN_NOMBRE`.
+
+  Como el pipe valida antes de llamar al servicio, el 500 por el carácter nulo (PostgreSQL 22021) no llega a
+  producirse. Expresiones con la bandera `u`; Node 22 admite `\p{Bidi_Control}` e `isWellFormed`. Pruebas unitarias
+  en `texto.test.ts` con los ejemplos de los criterios 76 y 77.
 - `Cache-Control: no-store` en un middleware de los prefijos `/api/plataforma` y `/api/a`, para que lo lleven también
   las respuestas de error (401, 404, 429, 500…) y las de rutas inexistentes; un decorador `@Header` o un interceptor
   no alcanzan a las respuestas que no pasan por el controlador _(precisión del contrato tras T1–T2, 11/11/2026; P-8
@@ -335,10 +396,16 @@ La reutiliza 002 para los usuarios de academia.
   inserción que `AuditoriaService` (sin Nest) o inserta directamente con el mismo formato.
 - Mensajes: nunca la clave; ante un error de conexión imprime solo el motivo sin la URL (reusar la idea de
   `ocultarClaves`).
+- _(Ataque ronda 1, criterios 76 y 77)_: valida `SUPERADMIN_CORREO` y `SUPERADMIN_CLAVE` con `sinControles` y
+  `SUPERADMIN_NOMBRE` con `textoVisibleSchema({ min: 3, max: 100 })`, antes de conectarse.
 
 ### 10. Semilla (`backend/prisma/seed.ts`)
 
 - Termina con código 1 si `NODE_ENV === 'production'`.
+- _(Ataque ronda 1, criterio 78)_: antes, si `NODE_ENV` está definida y no es exactamente `development`, `test` o
+  `production`, termina con código 1 y un mensaje que nombra la variable y los valores permitidos. Conviene una
+  función compartida `leerNodeEnv(env)` (por ejemplo en `backend/src/infraestructura/entorno/`) que usen
+  `validarEntorno` y la semilla.
 - Con `DATABASE_URL` (dueño) y contexto de plataforma: crea `delfines` y `tiburones` si no existen (`INSERT … ON
   CONFLICT (nombre_corto) DO NOTHING`), sin auditoría (son datos de ejemplo). Si están las tres variables
   `SUPERADMIN_*`, crea el superadmin si no existe, con la misma función del comando pero sin restablecer.
@@ -351,6 +418,17 @@ La reutiliza 002 para los usuarios de academia.
   Constante `JWT_SECRETO_DE_EJEMPLO` con el valor de `.env.example`, para rechazarlo en producción. El tipo `Entorno`
   tiene los campos con esos mismos nombres (`DATABASE_POOL_MAX` numérico, 10 por defecto) y pierde `DATABASE_URL`:
   la API ya no la exige ni la devuelve _(precisión del contrato tras T1–T2, 11/11/2026; P-1 de `spec.md`)_.
+- _(Ataque ronda 1, criterios 78 y 79)_:
+  - `NODE_ENV`: ausente → `undefined` (fuera de producción, como prueba `entorno.test.ts` de 000); definida → debe
+    estar en `['development', 'test', 'production']` por igualdad exacta; si no, problema "La variable NODE_ENV debe
+    ser development, test o production." (sin el valor). El tipo pasa a `'development' | 'test' | 'production' |
+    undefined`.
+  - Con `production`, `JWT_SECRETO` además: fuera de `JWT_SECRETOS_PUBLICOS` (el de `.env.example`, el de
+    `JWT_SECRETO_PRUEBAS` y el de respaldo de `e2e/playwright.config.ts`, copiados como constantes), sin `\s`, al
+    menos 32 puntos de código (`[...secreto].length`) y al menos 10 distintos (`new Set([...secreto]).size`). Un
+    solo mensaje que nombra `JWT_SECRETO` y explica la regla, sin el valor.
+  - Prueba unitaria que lee `.env.example` y `e2e/playwright.config.ts`, importa `JWT_SECRETO_PRUEBAS` y comprueba
+    que los tres están en `JWT_SECRETOS_PUBLICOS`.
 - `.env.example` (orientativo):
 
   ```
@@ -391,6 +469,9 @@ La reutiliza 002 para los usuarios de academia.
   'numeric' })`. Las pruebas corren en UTC (spec 000), así que comprueban el cambio de día (por ejemplo,
   `2026-11-12T03:00:00Z` se muestra `11/11/2026`).
 - Rutas: `/plataforma` → `/plataforma/academias`; `/plataforma/ingresar`; `/plataforma/academias` protegida.
+- _(Ataque ronda 1, criterios 76 y 77)_: los formularios usan los mismos esquemas, así que muestran los errores de
+  texto sin ir al servidor. El motivo de suspensión va en un campo de una sola línea (`<input>`, no `<textarea>`),
+  porque un salto de línea en medio del texto es un carácter de control (criterio 76).
 
 ### 13. Pruebas
 
@@ -402,6 +483,16 @@ La reutiliza 002 para los usuarios de academia.
     `plataforma/bloqueo-concurrente.test.ts` (40), `plataforma/limite.test.ts` (41);
   - `academias/plataforma.test.ts` (30, 32, 48, 50 a 57), `academias/publica.test.ts` (58 a 60);
   - `backend/src/infraestructura/entorno/entorno-001.test.ts` (5, unitaria) y la prueba de la regla de lint (28).
+- **Protegidas del ataque ronda 1 (test-writer):**
+  - `aislamiento/contexto-contaminado.test.ts` (72), con su propia aplicación de `DATABASE_POOL_MAX=1`; la variante
+    de `ALTER DATABASE … SET` se omite con aviso si el dueño no puede y se restaura en `afterAll`;
+  - `eslint/regla-sql-sesion.test.mjs` (73);
+  - `plataforma/tipo-contenido.test.ts` (74) y `plataforma/limite.test.ts` ampliado o `plataforma/limite-cuerpos.test.ts`
+    (75);
+  - `academias/textos.test.ts` y casos en `plataforma/sesion.test.ts` (76, 77), más casos del comando en
+    `plataforma/superadmin-comando.test.ts`;
+  - `entorno-001.test.ts` ampliado o `entorno-ronda1.test.ts` (78, 79) y un caso de la semilla con `NODE_ENV`
+    inválido (78).
 - **No protegidas:** 6 (`scripts/test/integracion/`), 8 (unitaria del hook), 27, 49 (contratos), 61, 63, 66,
   frontend (68 a 70) y E2E (71).
 - `limpiarBase()` antes de cada prueba que dependa del contenido; los archivos de integración ya corren sin
@@ -429,6 +520,11 @@ La reutiliza 002 para los usuarios de academia.
 | UUID generados por PostgreSQL | Enteros autoincrementales | No se pueden recorrer ni adivinar con facilidad; no hay secuencias que conceder |
 | Superadmin creado por comando | Registro por la web o en una migración | Nadie de fuera puede crear un superadmin; ninguna clave queda en el repositorio salvo la de desarrollo |
 | `env:completar` para el `.env` | Pedir al responsable copiar líneas a mano | Cada historia agrega variables; copiar a mano en Windows es propenso a errores |
+| Cada transacción fija los dos valores de contexto (ataque ronda 1, criterio 72) | Rechazar `options` en `DATABASE_URL_APP` | No cubre un `set_config(…, false)` de un módulo ni los valores por defecto del rol o de la base |
+| 400 `SOLICITUD_INVALIDA` para cuerpos no JSON (criterio 74) | 415 | El criterio 42 ya fija 400; un solo formato de error de entrada |
+| Límite de inicio de sesión en un middleware antes del lector del cuerpo (criterio 75) | `ThrottlerGuard` en el controlador | El guard corre después del lector: los 400 y 413 de Express no cuentan |
+| `NODE_ENV` de una lista cerrada exacta (criterio 78) | Recortar y pasar a minúsculas | Un valor mal escrito debe detener el arranque, no aceptarse en silencio |
+| Reglas de texto con propiedades Unicode en contratos (criterios 76 y 77) | Lista de caracteres permitidos | Rechazaría nombres con tildes, ñ u otros alfabetos |
 
 ## Migraciones
 
@@ -461,5 +557,10 @@ La reutiliza 002 para los usuarios de academia.
 - **Librería de JWT en CommonJS:** NestJS compila a CommonJS; elegir una librería que se pueda `require` (por ejemplo
   `jsonwebtoken` o `@nestjs/jwt`).
 - **Límite por IP:** `req.ip` sin `trust proxy` es la del socket; queda para el hosting.
+- **Lector del cuerpo de Nest** _(ataque ronda 1)_: el orden de los middlewares del criterio 75 depende de cómo la
+  versión instalada de Nest registra su lector (`bodyParser: false` o nombres `jsonParser`/`urlencodedParser`). Si
+  no se puede lograr sin cambiar las utilidades protegidas, el backend se detiene e informa.
+- **Lint por texto** _(ataque ronda 1)_: la regla del criterio 73 no ve SQL concatenado ni pasado en variables; la
+  garantía real es el criterio 72.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.
