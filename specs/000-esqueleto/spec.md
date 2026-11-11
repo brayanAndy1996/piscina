@@ -6,7 +6,7 @@
 - **Ruta crítica:** no. Ningún criterio toca dinero, datos de academias ni permisos: la historia no crea tablas de
   negocio ni maneja usuarios. Los criterios de seguridad básica y de verificación de pruebas protegidas llevan
   pruebas obligatorias, pero sin TDD protegido ni ataque adversarial (ver "Clasificación de ruta crítica").
-- **Estado:** borrador
+- **Estado:** aprobada por el responsable (11/11/2026)
 
 ## Objetivo
 
@@ -280,7 +280,7 @@ _(verificación manual)_ indica quién y cómo lo comprueba.
   revierte en un commit nuevo y la CI vuelve a verde (criterio 37), sin `--force`.
 - Un commit de pruebas protegidas con el título mal escrito: el hook `commit-msg` lo rechaza antes de crearse.
 - Unión de un PR con "Squash and merge": la verificación no corre en los push a `main` (criterio 42), así que no
-  queda en rojo; ver la pregunta abierta 2.
+  queda en rojo; el responsable decidió unir con "Create a merge commit" (ver "Decisiones").
 - Checkout en Windows con `core.autocrlf=true`: `.gitattributes` manda.
 - Ruta de proyecto con espacios en Windows: los comandos usan rutas entre comillas o argumentos separados.
 
@@ -328,7 +328,7 @@ No hay reglas de negocio. Se aplican las reglas que no se negocian de `CLAUDE.md
 
 ## Cambios al modelo de datos
 
-- Ninguna tabla de negocio ni transversal (ver la pregunta abierta 1).
+- Ninguna tabla de negocio ni transversal (decisión del responsable, 11/11/2026; ver "Decisiones").
 - `backend/prisma/schema.prisma` solo con el `datasource` de PostgreSQL y el generador del cliente, sin modelos.
 - Una migración inicial `backend/prisma/migrations/<marca>_inicial/` sin sentencias de tablas, para que
   `migrate deploy` funcione desde el primer día. Prisma crea su tabla `_prisma_migrations`.
@@ -336,7 +336,7 @@ No hay reglas de negocio. Se aplican las reglas que no se negocian de `CLAUDE.md
 ## Fuera de alcance
 
 - **Tablas de academias, usuarios, auditoría y configuración:** academias, auditoría y configuración por academia en
-  001 (necesitan `academia_id` y la tabla de academias); usuarios en 002. Ver la pregunta abierta 1.
+  001 (necesitan `academia_id` y la tabla de academias); usuarios en 002. Ver "Decisiones".
 - **RLS, cliente de Prisma que fija la academia y rol de base de datos sin privilegios para la aplicación:** 001.
 - **Autenticación, cookies, `@nestjs/throttler`, validación de entradas con zod y generación de OpenAPI:** 002, la
   primera historia con entradas; así el limitador, la validación y la documentación se diseñan con un caso real.
@@ -355,7 +355,8 @@ No hay reglas de negocio. Se aplican las reglas que no se negocian de `CLAUDE.md
   001.
 - **Servir la web compilada en producción en el mismo dominio que la API:** se decide con el hosting (D-21). En
   desarrollo lo resuelve el proxy de Vite.
-- **Escáner de secretos por contenido:** fuera; ver la pregunta abierta 3 (función de GitHub).
+- **Escáner de secretos por contenido:** fuera; lo cubre "Secret scanning" de GitHub, que activa el responsable (ver
+  "Decisiones").
 
 ## Impacto en especificaciones anteriores
 
@@ -369,8 +370,9 @@ No hay reglas de negocio. Se aplican las reglas que no se negocian de `CLAUDE.md
     agrega el limitador, la validación con zod y OpenAPI.
   - **Todas:** el orquestador confirma las pruebas protegidas en commits con el título del criterio 34, incluidas
     las que nacen de un ataque.
-- **`docs/decisiones.md`:** si el responsable aprueba la propuesta de la pregunta abierta 1, hay que ajustar el texto
-  de D-17 (lo hace el orquestador o el documentador, no esta especificación).
+- **`docs/decisiones.md`:** el responsable aprobó (11/11/2026) que la 000 no cree tablas, así que hay que ajustar el
+  texto de D-17 para que diga que auditoría y configuración por academia van en 001 y usuarios en 002 (lo hace el
+  documentador en T25, no esta especificación).
 
 ## Riesgos aceptados
 
@@ -390,9 +392,18 @@ No hay reglas de negocio. Se aplican las reglas que no se negocian de `CLAUDE.md
 
 ## Decisiones
 
-- **Ninguna tabla en 000** (propuesta, pendiente de confirmar en la pregunta abierta 1). Alternativa descartada:
-  crear usuarios, auditoría y configuración aquí, como dice D-17. Motivo: todas son tablas por academia (D-23) y
-  necesitan la tabla de academias y RLS de 001; crearlas antes obligaría a cambiarlas enseguida.
+- **Ninguna tabla en 000** (decisión del responsable, 11/11/2026). Solo Prisma conectado, una migración inicial
+  vacía y el endpoint de salud; auditoría y configuración por academia van en 001 y usuarios en 002. Alternativa
+  descartada: crear usuarios, auditoría y configuración aquí, como dice D-17. Motivo: todas son tablas por academia
+  (D-23) y necesitan la tabla de academias y RLS de 001; crearlas antes obligaría a cambiarlas enseguida. El texto
+  de D-17 se ajusta en T25.
+- **Los PR se unen con "Create a merge commit"** (decisión del responsable, 11/11/2026). Alternativa descartada:
+  "Squash and merge". Motivo: conserva en `main` los commits de pruebas protegidas, que son el rastro del TDD. La
+  verificación funciona con cualquiera de las dos, porque no corre en los push a `main`.
+- **Configuración del repositorio en GitHub** (decisión del responsable, 11/11/2026; la hace el responsable, no el
+  código): después de unir la 000, proteger `main` exigiendo los tres checks de la CI (Linux, Windows y pruebas
+  protegidas) y activar "Secret scanning" con "Push protection", que cubre los secretos dentro de los archivos, cosa
+  que `verificar:sin-secretos` no hace.
 - **Endpoint de salud que consulta la base** como prueba de que Prisma está conectado. Alternativa descartada: solo
   `prisma migrate` sin endpoint. Motivo: el endpoint se prueba en integración, sirve a la web y al hosting.
 - **La API arranca aunque la base esté caída.** Alternativa descartada: conectar al iniciar y abortar. Motivo: el
@@ -411,27 +422,10 @@ No hay reglas de negocio. Se aplican las reglas que no se negocian de `CLAUDE.md
 - **`scripts/` es un workspace** (`@aquagestion/scripts`), como dice la nota del backlog, porque `db:crear` necesita
   el paquete `pg` y sus pruebas corren con Vitest.
 - **Prettier no formatea Markdown.** Motivo: reescribiría las tablas de `docs/decisiones.md` y de los requerimientos.
-- **Página de inicio provisional** con el nombre "AquaGestión" y el estado del sistema; la reemplazan historias
-  posteriores (ver la pregunta abierta 4).
+- **Página de inicio provisional** con el nombre "AquaGestión" y el estado del sistema (decisión del responsable,
+  11/11/2026). La raíz no pertenece a ninguna academia (D-23, D-27: cada una tendrá sus páginas en
+  `/a/{academia}/…`); qué va en ella más adelante (por ejemplo, el ingreso del Superadmin) se decide en 001.
 
 ## Preguntas abiertas
 
-1. **¿Qué tablas crea la 000?** D-17 dice que la 000 crea "lo transversal (usuarios, auditoría y configuración)",
-   pero la nota de la 000 en el backlog (aprobado en D-30) dice "sin tablas de negocio", la de la 001 pone ahí la
-   auditoría y la configuración por academia, y la de la 002, los usuarios.
-   **Propuesta:** la 000 no crea ninguna tabla (solo Prisma conectado, una migración inicial vacía y el endpoint de
-   salud); auditoría y configuración van en 001 y usuarios en 002, porque todas llevan `academia_id` (D-23) y
-   dependen de la tabla de academias. Ajustar el texto de D-17 para que diga eso.
-   **Valor provisional:** ninguna tabla (no bloquea el avance).
-2. **¿Cómo vas a unir los PR en GitHub?** "Create a merge commit" conserva los commits de pruebas protegidas (el
-   rastro del TDD); "Squash and merge" los junta en uno solo.
-   **Propuesta:** "Create a merge commit". La verificación funciona con cualquiera de las dos, porque no corre en los
-   push a `main`.
-3. **Configuración del repositorio en GitHub** (la haces tú, no el código):
-   **Propuesta:** después de unir la 000, proteger `main` exigiendo los tres checks de la CI (Linux, Windows y
-   pruebas protegidas) y activar "Secret scanning" con "Push protection", que es gratis en repositorios públicos y
-   cubre los secretos dentro de los archivos, cosa que `verificar:sin-secretos` no hace.
-4. **¿Qué muestra la página raíz `/`?** El sistema es para varias academias (D-23) y cada una tendrá sus páginas en
-   `/a/{academia}/…` (D-27); la raíz no pertenece a ninguna.
-   **Propuesta:** por ahora, el nombre "AquaGestión" y el estado del sistema. Qué va en la raíz más adelante (por
-   ejemplo, el ingreso del Superadmin) se decide en 001.
+Ninguna.

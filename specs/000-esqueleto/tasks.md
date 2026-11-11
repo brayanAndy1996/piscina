@@ -77,8 +77,9 @@ cubiertos por pruebas automáticas.
 
 - [ ] T23 · documentador · `docs/guia-local-windows.md` (criterio 50)
 - [ ] T24 · documentador · `.github/pull_request_template.md` (criterio 51)
-- [ ] T25 · documentador · `README.md` (criterio 52) y, si el responsable aprobó la propuesta de la pregunta abierta
-      1, el ajuste del texto de D-17 en `docs/decisiones.md`
+- [ ] T25 · documentador · `README.md` (criterio 52) y el ajuste del texto de D-17 en `docs/decisiones.md`, aprobado
+      por el responsable el 11/11/2026: la 000 no crea tablas; auditoría y configuración por academia van en 001 y
+      usuarios en 002
 - [ ] T26 · responsable · En Windows, seguir la guía desde un clon limpio hasta ver "Sistema en línea", y hacer un
       commit de prueba para confirmar los hooks de git (criterios 20, 22, 31, 50)
 

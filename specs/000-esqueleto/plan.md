@@ -320,7 +320,7 @@ variables de entorno van en `infraestructura/entorno/`.
 
 | Decisión | Alternativa descartada | Motivo |
 | --- | --- | --- |
-| Ninguna tabla; migración inicial vacía | Usuarios, auditoría y configuración en 000 (D-17) | Llevan `academia_id` y dependen de 001 (pregunta abierta 1) |
+| Ninguna tabla; migración inicial vacía | Usuarios, auditoría y configuración en 000 (D-17) | Llevan `academia_id` y dependen de 001 (decisión del responsable, 11/11/2026) |
 | Salud con `SELECT 1` y límite de 2 s | Conectar al arrancar y abortar si falla | La API se recupera sola y el estado se ve en salud |
 | Contratos compilados con `tsup` a ESM y CommonJS | Solo ESM confiando en `require(esm)`; importar el código fuente con alias de rutas | NestJS compila a CommonJS; la salida doble evita depender de comportamientos recientes de Node y TypeScript |
 | Un solo `.env` en la raíz | Un `.env` por workspace | Un solo lugar para el responsable; `docker compose` lo lee también |
