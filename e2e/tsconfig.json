@@ -1,9 +1,10 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "noEmit": true
   },
-  "include": ["playwright.config.ts", "pruebas"]
+  "include": ["playwright.config.ts", "global-setup.ts", "datos-e2e.ts", "pruebas"]
 }

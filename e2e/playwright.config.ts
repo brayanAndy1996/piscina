@@ -43,6 +43,8 @@ const ejecutableChromium = process.env['CHROMIUM_EJECUTABLE'];
 
 export default defineConfig({
   testDir: './pruebas',
+  // Crea el superadmin de las pruebas en la base de pruebas.
+  globalSetup: './global-setup.ts',
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env['CI']),
