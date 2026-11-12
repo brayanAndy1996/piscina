@@ -147,6 +147,16 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   - 155: aforo y caja (RN-11, RN-17); la forma de tomar el bloqueo de transacción que sugería la spec falla en Prisma, y
     una historia que la copiara rompería la inscripción o el cobro o, en un lote, cortaría las consultas siguientes
     (criterio 153); el bloqueo es lo que evita la carrera por el último cupo o el doble cobro.
+- **U. Correcciones del ataque, ronda 12 (156 a 158):**
+  - 156: auditoría (RN-22) y, desde las historias siguientes, pagos, caja, aforo y asistencia; la segunda consulta de una
+    cadena sin `await` (`.then(…)` o una función `async` con `void`) se rechazaba sin enviarse y la API respondía éxito sin
+    esa escritura, por ejemplo un cobro sin su auditoría o sin su movimiento de caja.
+  - 157: disponibilidad de todas las academias a la vez; un rechazo sin manejar terminaba el proceso de la API y cortaba
+    las peticiones en curso de todas (cobros y verificaciones incluidos), y cualquiera que encontrara un camino para
+    provocarlo podía tumbar la API una y otra vez.
+  - 158: auditoría (RN-22) y, desde las historias siguientes, pagos y aforo; una escritura con relaciones anidadas que
+    fallaba a medio camino dejaba escrita una parte (por ejemplo, una academia suspendida sin su registro de auditoría) y,
+    si `trabajo` atrapaba el error como permite el criterio 153, se confirmaba.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -289,7 +299,9 @@ de plataforma devuelve 2 filas y `superadmins`, 1).
     transacción. _(crítico)_ _(ampliado por los criterios 149 y 151, ataque ronda 10: "tras confirmar" exige que la
     transacción siga viva y sin abortar al terminar `trabajo`; si no, rechaza con `ErrorTransaccionAbortada`)_
     _(ampliado por los criterios 153 y 154, ataque ronda 11: las consultas de `trabajo` se entregan a Prisma de una en una,
-    y una que vuelve con `undefined` hace rechazar con `ErrorTransaccionAbortada`)_
+    y una que vuelve con `undefined` hace rechazar con `ErrorTransaccionAbortada`)_ _(ampliado por los criterios 156 y
+    158, ataque ronda 12: las consultas encadenadas sin `await` se aceptan hasta que `asentar` termina y una que llega
+    tarde hace rechazar; una escritura de un delegado que rechaza no deja nada propio)_
 22. Dado que `trabajo` lanza un error, entonces la transacción se revierte por completo (las filas que insertó en
     `auditoria` o `configuraciones` no quedan) y `conAcademia` rechaza con ese mismo error. Lo mismo en
     `comoPlataforma`. _(crítico)_ _(complementado por los criterios 149 y 151, ataque ronda 10: si `trabajo` atrapa un
@@ -309,6 +321,7 @@ de plataforma devuelve 2 filas y `superadmins`, 1).
     `app.plataforma` igual a `si` y sin `app.academia_id` (vacío o nulo). _(crítico)_ _(ampliado por los criterios
     149 y 151, ataque ronda 10: devuelve el resultado de `trabajo` solo si la transacción se confirma)_ _(ampliado por
     los criterios 153 y 154, ataque ronda 11: consultas de una en una; una que vuelve con `undefined` hace rechazar)_
+    _(ampliado por los criterios 156 y 158, ataque ronda 12, como en el 21)_
 27. Dadas las opciones `{ aislamiento: 'Serializable' }` (o `'RepeatableRead'`, `'ReadCommitted'`), entonces la
     transacción de `conAcademia` y de `comoPlataforma` corre con ese nivel (`SHOW transaction_isolation`). Lo usarán
     el aforo y la caja. _(prueba obligatoria)_
@@ -330,7 +343,9 @@ de plataforma devuelve 2 filas y `superadmins`, 1).
     queda; y cuando la inserción de auditoría falla, la operación completa falla. Prueba: con un disparador temporal
     en `auditoria_plataforma` que lanza un error, `POST /api/plataforma/academias` responde 500 y la academia no
     existe. _(crítico)_ _(ampliado por los criterios 153 y 154, ataque ronda 11: tampoco se confirma una operación cuya
-    escritura o auditoría, lanzada a la vez con otras, Prisma no llegó a ejecutar)_
+    escritura o auditoría, lanzada a la vez con otras, Prisma no llegó a ejecutar)_ _(ampliado por los criterios 156 y
+    158, ataque ronda 12: tampoco una a la que le falta la auditoría encadenada sin `await`, ni una escritura que falló a
+    medias)_
 31. Dada una transacción de `comoPlataforma`, cuando se llama a `auditoria.registrarEnPlataforma(tx, entrada)`,
     entonces se inserta en `auditoria_plataforma` con `fecha_hora` igual a `RELOJ.ahora()`. _(crítico)_ _(ampliado
     por el criterio 152, ataque ronda 10: la `ip`, como en el 29)_
@@ -1110,7 +1125,10 @@ P-28. Todos son _(crítico)_.
      complementa los criterios 21, 72 y 100)_ _(complementado por el criterio 134, ataque ronda 6: una llamada desde otro
      contexto asíncrono rechaza aunque la transacción siga abierta)_ _(segunda viñeta precisada por el criterio 153, ataque
      ronda 11: la consulta se entrega sin esperar un `then` de quien llama, en el momento de la llamada o, si hay otra sin
-     asentar, en cuanto le toca en la cola)_. Dada la API de pruebas, dentro de `trabajo` de `conAcademia` y de
+     asentar, en cuanto le toca en la cola)_ _(tercera viñeta precisada por el criterio 156, ataque ronda 12: si `trabajo`
+     termina bien, el envoltorio sigue aceptando las llamadas de su contexto hasta que `asentar` termina; "cuando `trabajo`
+     ya terminó" se lee "cuando el envoltorio ya se apagó": al terminar `asentar` en el camino bueno, o en cuanto `trabajo`
+     lanza)_. Dada la API de pruebas, dentro de `trabajo` de `conAcademia` y de
      `comoPlataforma`, entonces:
      - todo lo que devuelven `tx.cliente.$queryRaw`, `tx.cliente.$executeRaw` y cada operación de cada delegado
        (`findMany`, `create`, … la lista del plan) es una promesa nativa: `Object.getPrototypeOf(p) === Promise.prototype`,
@@ -2302,7 +2320,9 @@ nuevo: precisiones P-36 y P-37. Todos son _(crítico)_.
 
 149. **Una transacción abortada nunca se reporta como confirmada en `BaseDatos`** _(ataque ronda 10, F1; **amplía** los
      criterios 21 y 26 y complementa el 22; decisión del orquestador)_ _(ampliado por los criterios 153 y 154, ataque ronda
-     11: `asentar` espera también la cola, y una consulta que vuelve con `undefined` hace rechazar)_. Dado que, si una
+     11: `asentar` espera también la cola, y una consulta que vuelve con `undefined` hace rechazar)_ _(ampliado por el
+     criterio 156, ataque ronda 12: `asentar` espera también las consultas encadenadas que lleguen mientras corre, y una
+     llamada que llega cuando el envoltorio ya se apagó hace rechazar)_. Dado que, si una
      sentencia falla dentro de `trabajo`
      y `trabajo` atrapa el error y termina bien (un reintento que atrapa `esViolacionDeUnicidad`, un `.catch(() =>
      undefined)`, un `try`/`catch` vacío), PostgreSQL deja la transacción abortada; que Prisma 7 envía `COMMIT` y
@@ -2415,7 +2435,10 @@ queda marcado "(… ataque ronda 11)", sin borrar su texto. Contrato nuevo: prec
 _(crítico)_.
 
 153. **El envoltorio envía las consultas de una en una (cola serial)** _(ataque ronda 11, F1; **amplía** los criterios 21,
-     26, 30 y 149; **precisa** la segunda viñeta del 106; decisión del orquestador)_. Dado que, dentro de una transacción
+     26, 30 y 149; **precisa** la segunda viñeta del 106; decisión del orquestador)_ _(quinta viñeta precisada por el
+     criterio 158, ataque ronda 12: la escritura de un delegado que rechaza con un error que no es de la base no deja nada
+     propio, así que lo que se confirma es todo lo demás; sexta viñeta ampliada por el criterio 156: `asentar` espera
+     también las consultas encadenadas que lleguen mientras corre)_. Dado que, dentro de una transacción
      interactiva, Prisma 7.10.1 agrupa en un lote las consultas enviadas en el mismo turno (`Promise.all`, `map` con
      funciones `async`, `Promise.allSettled`), las ejecuta en orden y, ante el primer error que no es de la base (P2025 de
      `update` o `delete` sobre una fila que no existe, o el error al leer una columna de tipo `void`), deja de ejecutar el
@@ -2512,6 +2535,174 @@ _(crítico)_.
      esa transacción sigue abierta (una barrera), otra `conAcademia(A, …)` lee `pg_try_advisory_xact_lock` de la misma
      clave con `$queryRaw` y obtiene `false`, y después de que la primera confirma obtiene `true`; y la forma con `::text`
      y `$queryRaw` resuelve con una fila. _(crítico)_
+
+### U. Correcciones del ataque adversarial, ronda 12
+
+Criterios agregados tras la ronda 12 del ataque (12/11/2026, sobre el commit `8a63dbc`). La ronda encontró una falla alta
+(la segunda consulta de una cadena sin `await` se perdía después de `terminar()` y la operación respondía éxito), una media
+(una escritura con relaciones anidadas que falla a medio camino deja escrita una parte) y tres observaciones. Son
+decisiones técnicas del especificador, no reglas de negocio nuevas. Las observaciones O1 (escritura anidada sobre
+`academias` desde `conAcademia`) y O2 (la cola quita el agrupado de `findUnique`) no llevan criterio: son notas del plan
+(sección 24); la O3 amplía el riesgo aceptado "Tiempo límite con una operación de varias sentencias a medias". Donde un
+criterio amplía o precisa uno anterior lo dice, y el anterior queda marcado "(… ataque ronda 12)", sin borrar su texto.
+Contrato nuevo: precisiones P-39 y P-40 y precisión de P-38. Todos son _(crítico)_.
+
+156. **El envoltorio acepta las consultas encadenadas hasta que `asentar` termina; una que llega tarde hace rechazar**
+     _(ataque ronda 12, F1; **amplía** los criterios 21, 26, 30 y 149; **precisa** la tercera viñeta del 106, la sexta del
+     153 y P-38; decisión del especificador sobre el resultado esperado)_. Dado que `asentar()` solo esperaba las consultas
+     que ya estaban en la cola cuando `terminar()` apagaba el envoltorio; que la segunda consulta de una cadena sin `await`
+     (`tx.cliente.x.create(…).then(() => auditoria.registrarEnAcademia(…)).catch(…)`, o
+     `void (async () => { await …; await … })()`, formas que el lint acepta) se llama cuando la primera se asienta, ya con
+     el envoltorio apagado; y que así se rechazaba con "La transacción ya terminó." sin enviarse ni marcar nada, y la
+     operación confirmaba y respondía éxito sin esa escritura (por ejemplo, sin la auditoría), entonces:
+     - **camino bueno:** cuando `trabajo` termina bien, el envoltorio no se apaga todavía: sigue aceptando las llamadas
+       desde el contexto asíncrono de la transacción (criterio 134) y las encola como cualquier otra (criterio 153);
+     - `asentar()` termina solo cuando no queda ninguna consulta sin asentar y, después de ceder un turno completo del
+       ciclo de eventos (que deja correr las continuaciones pendientes de `then` y de funciones `async`), sigue sin quedar
+       ninguna; en ese mismo paso, sin ceder otra vez, apaga el envoltorio. Si llegan consultas nuevas, vuelve a esperar.
+       Una cadena que no deja de enviar consultas mantiene la transacción abierta hasta que termina o hasta
+       `DURACION_MAXIMA_MS` (rechaza por tiempo, como hoy);
+     - **llamada tardía:** desde que `trabajo` terminó bien hasta que la transacción se confirma o se revierte, toda
+       llamada al envoltorio que se rechaza sin entregarse porque el envoltorio ya se apagó (desde cualquier contexto) o
+       porque viene de otro contexto asíncrono marca la transacción: la llamada rechaza con su `Error` de hoy, y
+       `conAcademia`, `comoPlataforma` y `resolverAcademia` rechazan con `ErrorTransaccionAbortada` (P-36, motivo
+       `incompleta`), Prisma revierte y no queda nada escrito. La marca se revisa después de `asentar()` y otra vez después
+       de la comprobación del criterio 149, justo antes de devolver el valor para que Prisma confirme;
+     - **resultado esperado** _(decisión del especificador)_: con una cadena cuyas continuaciones solo esperan consultas del
+       envoltorio o promesas que se resuelven sin salir del turno (las dos formas del ataque), **queda todo confirmado**: la
+       escritura y su auditoría. Con una cadena que espera algo ajeno a la base (un temporizador, un archivo, un hash), la
+       llamada puede llegar después de que el envoltorio se apagó: si llega antes de la última revisión, la operación
+       rechaza sin nada escrito; si llega después, ver "Riesgos aceptados" ("Continuación sin `await` que espera algo
+       ajeno a la base"). En ningún caso de las dos formas del ataque se responde éxito con la mitad;
+     - **mientras `trabajo` corre, nada cambia:** una llamada desde otro contexto rechaza sin marcar la transacción dueña
+       (criterio 134), y una rechazada por un argumento no admitido tampoco marca (criterio 153);
+     - **camino del error, sin cambios:** si `trabajo` lanza, el envoltorio se apaga y descarta la cola en el acto
+       (criterio 153) y rige el criterio 22;
+     - el registro técnico dice que una llamada a la transacción llegó después de que el envoltorio se apagó y nombra la
+       operación (por ejemplo, `auditoria.create` o `$executeRaw`), nunca sus argumentos, los parámetros ni la URL.
+
+     Pruebas de integración con la API de pruebas, las academias A y B (`crearDatosDeAislamiento`) y `BaseDatos` y
+     `AuditoriaService` tomados de la app. En cada caso, `trabajo` pone una variable `termino = true` justo antes de
+     devolver un valor reconocible, y la continuación guarda el valor que ve de `termino` (debe ser `true`: prueba que la
+     llamada llegó después de que `trabajo` terminó; con el código de `8a63dbc`, los casos 1 y 2 resolvían sin la
+     auditoría):
+     1. **`.then().catch()`:** en `conAcademia(A, …)`, `tx.cliente.configuracion.create(<clave prueba_r12_<n>>)
+        .then(() => auditoria.registrarEnAcademia(tx, …)).catch(() => undefined)` sin `await`, y devuelve; en
+        `comoPlataforma`, lo mismo con la creación de una academia con el nombre corto `prueba-r12-<n>` (orientativo:
+        `tx.cliente.academia.create`) y `registrarEnPlataforma`. Resuelve con el valor y, leído como dueño con una
+        conexión nueva, existen la fila (o la academia) y su registro de auditoría;
+     2. **`void` con función `async`:** `void (async () => { await <la misma escritura>; await <el mismo registro>; })()`,
+        y devuelve: el mismo resultado que en el 1, en `conAcademia(A, …)` y en `comoPlataforma`;
+     3. **cadena que falla:** como el 1, pero la segunda escritura de la cadena es un duplicado (una clave de
+        `configuraciones` de A que ya existe; una academia con el nombre corto de A), con `.catch(() => undefined)`:
+        rechaza con `ErrorTransaccionAbortada` y no queda nada, tampoco la primera escritura;
+     4. **por la API:** un controlador de prueba (opción `controladores` de `crearAppDePruebas`) cuya ruta llama a
+        `comoPlataforma` con la forma 2 responde con éxito, y la academia y su registro existen;
+
+     y, después de cada caso, con `DATABASE_POOL_MAX=1`, un `conAcademia(B, …)` resuelve, lee su propio contexto (criterio
+     23) y no ve nada del caso. Prueba unitaria del envoltorio con una transacción falsa (P-38), dentro de `ejecutar`:
+     (i) con una consulta entregada y sin asentar, se llama a `asentar()`; desde la continuación de esa consulta se llama a
+     otra: se acepta, se entrega cuando la primera se asienta, y `asentar()` no termina hasta que se asienta la segunda;
+     (ii) una llamada hecha dentro de un `then` encadenado a una promesa ya resuelta, cuando la cola ya está vacía, también
+     se acepta antes de que `asentar()` termine; (iii) después de que `asentar()` terminó, una llamada desde el contexto de
+     `ejecutar` y otra desde fuera de él rechazan sin entregarse y `exigirCompleta()` lanza `ErrorTransaccionAbortada`;
+     (iv) con `asentar()` en curso, una llamada desde fuera de `ejecutar` rechaza sin entregarse y `exigirCompleta()` lanza;
+     (v) antes de llamar a `asentar()`, una llamada desde fuera de `ejecutar` rechaza y `exigirCompleta()` no lanza
+     (criterio 134 sin cambios); (vi) tras `descartar()` y `terminar()`, una llamada rechaza sin entregarse (como hoy).
+     Siguen pasando sin cambiar de resultado las pruebas protegidas anteriores, en especial las del envoltorio (criterios
+     106, 134, 153 y 154, también `envoltorio-cola.test.ts`), las de `asentar` y las consultas sin `await` (149 a 151),
+     la reversión ante un error de `trabajo` (22), la conexión del pool (23), la concurrencia (24) y las de tiempos de
+     espera y de duración. Si alguna cambiara, el test-writer o el backend se detienen e informan. _(crítico)_
+157. **Un rechazo sin manejar en la API se registra y no detiene el proceso** _(ataque ronda 12, F1, forma `void`;
+     decisión del especificador)_. Dado que una promesa rechazada que nadie maneja (por ejemplo, la de una función
+     `async` lanzada con `void` cuya llamada al envoltorio rechaza) hoy termina el proceso de la API (Node 22, modo
+     `throw`) y corta las peticiones en curso de todas las academias, entonces:
+     - `backend/src/main.ts` registra un manejador de `unhandledRejection` (P-40) **después** de que `app.listen` resuelve;
+     - el manejador registra con el registro de pino de la app, en nivel `error`, un mensaje fijo y el error como `{ err }`
+       (lo mismo que hace el filtro de errores con un 500); si lo rechazado no es un `Error`, registra solo su tipo
+       (`typeof`), nunca su valor;
+     - no llama a `process.exit`, no lanza y no cambia `process.exitCode`: el proceso sigue atendiendo;
+     - no se registra manejador de `uncaughtException`: una excepción síncrona sin atrapar sigue terminando el proceso;
+     - un fallo al arrancar (antes de que `listen` resuelva: entorno inválido, puerto ocupado) sigue terminando el proceso
+       con error, como hoy;
+     - no oculta ni cambia nada más: la respuesta de cada petición y el resultado de cada transacción los deciden los
+       criterios 149, 154, 156 y 158; las pruebas no corren `main.ts`, así que el manejador no tapa un rechazo en ellas.
+
+     Prueba unitaria de la función de P-40 con un registro falso y `process.exit` espiado: con un `Error`, llama una vez a
+     `registro.error` con `{ err: <el mismo error> }` y un texto; con una cadena `'dato-secreto-r12'` y con un objeto
+     `{ dni: '12345678' }`, el registro tiene el tipo y no contiene ese texto ni ese valor; en ningún caso llama a
+     `process.exit` ni lanza. El revisor confirma en `main.ts` que el registro va después de `await app.listen(…)` y que no
+     hay manejador de `uncaughtException`. _(crítico)_
+158. **Una escritura de un delegado que rechaza no deja escrito nada propio** _(ataque ronda 12, F2; **precisa** la quinta
+     viñeta del criterio 153 y **amplía** el 30; decisión del especificador, opción (a) con la capa debajo del
+     envoltorio)_. Dado que, dentro de una transacción interactiva, Prisma 7.10.1 no usa `SAVEPOINT` en las operaciones de
+     varias sentencias; que una escritura con relaciones anidadas que falla con un error que no es de la base (P2025,
+     P2018, P2014) después de ejecutar parte de sus sentencias deja escrito lo ejecutado sin abortar la transacción; y que
+     así, si `trabajo` atrapaba el error como permite el criterio 153, se confirmaba un cambio a medias sin auditoría,
+     entonces:
+     - cada operación de escritura de un delegado (`create`, `createMany`, `createManyAndReturn`, `update`, `updateMany`,
+       `updateManyAndReturn`, `upsert`, `delete` y `deleteMany`), con o sin relaciones anidadas, corre dentro de un punto
+       de guardado propio, en la misma conexión y en la misma posición de la cola que la escritura (criterio 153);
+     - si la escritura resuelve, el punto de guardado se libera y la operación resuelve con su valor, como hoy;
+     - si rechaza y la transacción sigue sana (el error no es de la base), se vuelve al punto de guardado, que deshace todo
+       lo que esa operación escribió, se libera, y la operación rechaza con su mismo error (por ejemplo, el P2025). Si
+       `trabajo` lo atrapa y termina bien, se confirma todo lo demás y nada de esa operación;
+     - si rechaza y la transacción quedó abortada (error de la base), no se vuelve al punto de guardado: la transacción
+       sigue abortada como hoy (las consultas siguientes reciben `25P02`) y al final rige el criterio 149
+       (`ErrorTransaccionAbortada`, nada escrito). Atrapar un error de la base sigue sin servir para seguir (nota O3 de la
+       ronda 10);
+     - si el punto de guardado no se puede crear porque la transacción ya estaba abortada, la escritura no se entrega y la
+       operación rechaza con ese error (`25P02`), como recibiría hoy;
+     - si cualquier otra sentencia del punto de guardado falla (crearlo, liberarlo, volver a él o comprobar el estado de la
+       transacción), la operación rechaza y la transacción queda marcada: `conAcademia`, `comoPlataforma` y
+       `resolverAcademia` rechazan con `ErrorTransaccionAbortada` y no queda nada escrito;
+     - el nombre del punto de guardado es aleatorio por transacción (no se puede adivinar desde otra);
+     - no cambian: las lecturas de los delegados, `$queryRaw` y `$executeRaw` (una sentencia cruda es atómica), lo que
+       recibe `trabajo` (P-24, P-26 y P-38), el momento en que el envoltorio entrega cada operación a la capa (criterio
+       153), el lint (`SAVEPOINT` sigue prohibido fuera de `infraestructura/prisma/`, criterio 84) ni `enPlataforma`;
+     - el permiso del criterio 153 de atrapar un P2025 y seguir se mantiene para toda escritura de un delegado, con o sin
+       relaciones anidadas: desde este criterio, lo que se confirma nunca incluye una parte de la operación que falló.
+
+     Pruebas de integración con la API de pruebas, las academias A y B (`crearDatosDeAislamiento`) y `BaseDatos` y
+     `AuditoriaService` tomados de la app; lo escrito se lee como dueño con una conexión nueva:
+     1. **reproducción en `comoPlataforma`:** `trabajo` llama, dentro de un `try`/`catch` que solo ignora un error cuyo
+        `codigoDeErrorDeBase` es `null`, a `tx.cliente.academia.update({ where: { id: A }, data: { estado: 'SUSPENDIDA',
+        suspendidaEn: <fecha>, motivoSuspension: 'prueba r12', configuraciones: { update: { where: <llave de una
+        configuración de A>, data: { valor: … } } } } })`, en dos variantes: una configuración de A que existe (oculta
+        para la plataforma por la RLS) y una clave que no existe. Después crea una academia con el nombre corto
+        `prueba-r12-<n>` y su registro con `registrarEnPlataforma`, y devuelve. Resuelve; A sigue `ACTIVA`, con
+        `suspendida_en` y `motivo_suspension` nulos y `actualizada_en` sin cambio; la configuración de A no cambió; y la
+        academia nueva y su registro existen. Con el código de `8a63dbc`, A quedaba suspendida sin auditoría (el
+        test-writer confirma el rojo y que la escritura rechaza con un error de Prisma que no es de la base; la forma de
+        `where` es orientativa);
+     2. **en `conAcademia(A, …)`:** una escritura anidada de un delegado que, con el código de `8a63dbc`, deje escrita una
+        parte antes de rechazar con un error que no es de la base (orientativo: `tx.cliente.configuracion.update` de una
+        configuración de A con `data: { valor: <nuevo>, academia: { update: { estado: 'SUSPENDIDA' } } }`, que no puede
+        actualizar `academias` desde la academia); atrapada, luego una escritura y `registrarEnAcademia`: resuelve, la
+        configuración conserva su valor anterior y las otras dos filas existen. Si ninguna forma deja escrita una parte en
+        `conAcademia` con el código de `8a63dbc`, el test-writer deja la prueba como guarda (verde por diseño) e informa;
+     3. **control, P2025 suelto:** como el caso 6 del criterio 153, y además la escritura que falló no dejó nada;
+     4. **control, error de la base dentro de una escritura anidada:** en `comoPlataforma`,
+        `tx.cliente.academia.create({ data: { nombre: …, nombreCorto: 'prueba-r12-<n>', configuraciones: { create: [ … ]
+        } } })` (la RLS no deja a la plataforma escribir en `configuraciones`) atrapado por `trabajo`, que luego crea otra
+        academia y devuelve: rechaza con `ErrorTransaccionAbortada` y no queda ninguna de las dos academias;
+     5. **una escritura que va bien no cambia:** `create`, `update` y `delete` de `configuraciones` en `conAcademia(A, …)`
+        devuelven lo de hoy y sus filas quedan como hoy; y 20 escrituras lanzadas a la vez con `Promise.all` quedan todas,
+        cada una con su resultado;
+
+     y, después de cada caso, con `DATABASE_POOL_MAX=1`, un `conAcademia(B, …)` resuelve, lee su propio contexto y no ve
+     nada del caso. Prueba unitaria de la capa (P-39) con una transacción falsa como la de P-38, que registra cada sentencia
+     entregada y la reconoce por su texto (P-39): una escritura que resuelve produce, en orden, crear el punto, la
+     escritura y liberarlo; una que rechaza con un error sin SQLSTATE y con la comprobación del estado sana produce crear
+     el punto, la escritura, la comprobación, volver al punto y liberarlo, y rechaza con el mismo error; si la
+     comprobación rechaza con `25P02`, no se vuelve al punto y `exigirSana()` lanza `ErrorTransaccionAbortada`; si crear
+     el punto rechaza, la escritura no se entrega y la operación rechaza con ese error; si liberar, volver al punto o la
+     comprobación rechazan con otro error, `exigirSana()` lanza; las lecturas, `$queryRaw` y `$executeRaw` se entregan
+     solas, sin sentencias de la capa; ninguna sentencia de la capa sale antes de que se asiente la anterior; y el nombre
+     del punto es el mismo dentro de una capa y distinto entre dos capas. Siguen pasando sin cambiar de resultado las
+     pruebas protegidas anteriores, en especial 22, 23, 24, 106, 134, 149 a 155 (también el caso 5 del 153: la tercera
+     escritura rechaza con `25P02`) y las de tiempos de espera y de duración. Si alguna cambiara, el test-writer o el
+     backend se detienen e informan. _(crítico)_
 
 ## Casos límite
 
@@ -2611,6 +2802,15 @@ _(crítico)_.
   de una inexistente se perdían en silencio.
 - **Bloqueo de transacción en el aforo y la caja** _(ataque ronda 11)_: con `$executeRaw` (criterio 155); con `$queryRaw`
   sin `::text`, la consulta rechaza aunque PostgreSQL ya haya tomado el bloqueo.
+- **Auditoría encadenada sin `await`** _(ataque ronda 12)_: `x.create(…).then(() => registrar…)` o una función `async`
+  lanzada con `void` dentro de `trabajo` se completan antes de confirmar (criterio 156); la forma recomendada sigue siendo
+  `await` en cada paso. Si la cadena espera algo ajeno a la base, la operación puede rechazar (o, en el peor caso, perder
+  esa escritura: riesgo aceptado), así que en las historias siguientes no se usa.
+- **Escritura anidada que falla por una hija que no existe o no se ve** _(ataque ronda 12)_: rechaza con su error de
+  Prisma y no deja nada propio (criterio 158); `trabajo` puede atraparla y seguir.
+- **Actualizar `academias` desde `conAcademia`** _(ataque ronda 12, O1)_: la política de `UPDATE` de `academias` es solo de
+  plataforma; desde una academia, la sentencia toca 0 filas sin error y una escritura anidada sobre la academia puede no
+  hacer nada sin avisar. No se actualiza `academias` desde `conAcademia` (plan, sección 24).
 
 ## Reglas de negocio aplicables
 
@@ -3275,6 +3475,52 @@ _(contrato de la ronda 11 del ataque, 12/11/2026; criterios 153 a 155)_. No son 
   consulta). Las funciones del envoltorio exigen el contexto de `ejecutar` (P-32), así que la prueba las llama dentro de
   `ejecutar`. La firma de `envolver` y el tipo `ClienteTransaccion` (P-24, P-26) no cambian.
 
+_(contrato de la ronda 12 del ataque, 12/11/2026; criterios 156 a 158)_. No son reglas de negocio nuevas.
+
+- **Precisión de P-38 (criterio 156).** Los nombres y las firmas no cambian. Cambia el sentido de dos funciones:
+  - `asentar()` puede llamarse sin `terminar()` antes (es lo que hace `#transaccion` en el camino bueno): mientras corre,
+    el envoltorio acepta y encola llamadas desde el contexto de `ejecutar`; termina cuando, tras ceder un turno del ciclo
+    de eventos, no queda ninguna consulta sin asentar, y en ese momento apaga el envoltorio. Si ya se llamó a
+    `terminar()`, solo espera, como hoy. Nunca rechaza;
+  - desde que se llama a `asentar()`, toda llamada que se rechaza por el envoltorio apagado o por venir de otro contexto
+    marca la transacción, y `exigirCompleta()` lanza `ErrorTransaccionAbortada` (motivo `incompleta`); antes de
+    `asentar()`, esas llamadas no marcan nada (como hoy).
+
+  `terminar()` sigue apagando en el acto (camino del error, junto con `descartar()`).
+- **P-39. Capa de puntos de guardado (criterio 158).** `backend/src/infraestructura/prisma/puntos-de-guardado.ts` (interno
+  de la carpeta; la prueba unitaria lo importa con esa ruta) exporta:
+
+  ```ts
+  export function conPuntosDeGuardado(tx: Prisma.TransactionClient): {
+    readonly tx: Prisma.TransactionClient; // $queryRaw, $executeRaw y un delegado por modelo con las operaciones de la lista
+                                           // del envoltorio; las escrituras, con punto de guardado; lo demás, tal cual
+    readonly exigirSana: () => void;       // lanza ErrorTransaccionAbortada si una sentencia de la capa falló o una
+                                           // escritura dejó la transacción abortada; si no, no hace nada
+  };
+  ```
+
+  `#transaccion` de `BaseDatos` pasa a `envolver` el `tx` de la capa (nunca a `trabajo`) y llama a `exigirSana()` junto con
+  `exigirCompleta()`. La capa envía sus sentencias con `$executeRaw` y `$queryRaw` de la transacción que recibe, una
+  después de otra, y cada operación que expone devuelve un objeto con `then` que inicia la secuencia al llamarse (el
+  envoltorio lo llama al entregar). En las pruebas acepta una transacción falsa como la de P-38; la prueba reconoce cada
+  sentencia de la capa por el texto SQL del argumento (las partes de la plantilla unidas, o `.sql` si es un
+  `Prisma.Sql`), sin espacios al principio: `SAVEPOINT `, `RELEASE SAVEPOINT ` y `ROLLBACK TO SAVEPOINT ` por su
+  comienzo, y la comprobación del estado como la sentencia de `$queryRaw` que sigue a una escritura rechazada. El nombre
+  del punto cumple `^aq_[0-9a-f]{32}$`.
+- **P-40. Rechazos sin manejar (criterio 157).** `backend/src/infraestructura/proceso/rechazos.ts` (ruta y nombre fijos:
+  los importa la prueba unitaria) exporta:
+
+  ```ts
+  export function crearManejadorDeRechazos(registro: {
+    error(datos: object, mensaje: string): void;
+  }): (motivo: unknown) => void;
+  ```
+
+  El manejador llama a `registro.error({ err: motivo }, <mensaje fijo>)` si `motivo` es un `Error`, y a
+  `registro.error({ tipo: typeof motivo }, <mensaje fijo>)` si no; no lanza y no toca `process`. `main.ts` lo registra con
+  `process.on('unhandledRejection', …)` después de `await app.listen(…)`, con el registro de pino de la app. El texto del
+  mensaje es libre; la prueba no lo fija.
+
 ## Cambios al modelo de datos
 
 Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados por PostgreSQL
@@ -3522,6 +3768,24 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   - las historias siguientes: el aforo y la caja toman el bloqueo de transacción con `$executeRaw` (criterio 155; plan,
     sección 23); un `trabajo` no atrapa un error de la base para seguir (criterio 149), pero sí puede atrapar un P2025 de
     una consulta y seguir (criterio 153).
+- **Ronda 12 del ataque (criterios 156 a 158):**
+  - en el camino bueno, el envoltorio se apaga al terminar `asentar()` y no al terminar `trabajo` (criterio 156; precisión
+    de la tercera viñeta del 106 y de P-38). Las pruebas protegidas del 106 llaman a la función guardada después de que
+    `conAcademia` o `comoPlataforma` resolvieron, con el envoltorio ya apagado, así que no cambian de resultado; la
+    unitaria de `asentar` del 153 llama a `terminar()` antes y tampoco. Si alguna cambiara, el test-writer o el backend se
+    detienen e informan;
+  - cada escritura de un delegado cuesta dos sentencias más en la misma transacción (crear y liberar el punto de
+    guardado) y, si rechaza sin abortar, tres (criterio 158). Ninguna prueba protegida cuenta las sentencias de una
+    escritura de la API; la unitaria de P-38 usa `envolver` sin la capa y no ve esas sentencias. El caso 5 del criterio
+    153 sigue dando `25P02` en la tercera escritura (el punto de guardado no se puede crear en una transacción abortada y
+    la operación rechaza con ese error);
+  - el criterio 22, P-24, P-26, P-36 y el lint no cambian; `enPlataforma` no cambia (los comandos y la semilla no usan
+    escrituras de delegados);
+  - `main.ts` (de 000) registra el manejador de rechazos sin manejar después de `listen` (criterio 157); el arranque y sus
+    errores no cambian;
+  - las historias siguientes: cada paso de `trabajo` se espera con `await` (sin cadenas sueltas con `.then` ni `void`);
+    una escritura de un delegado que falla con un P2025 se puede atrapar y seguir sin dejar nada a medias; no se actualiza
+    `academias` desde `conAcademia`; para leer varias filas por id se usa `findMany` con `in` (plan, sección 24).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -3750,6 +4014,9 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   terminar `trabajo` podría llegar a la conexión después de la comprobación; si falla, el comando informaría éxito. Los
   comandos y la semilla los escribe el equipo, no reciben entradas de terceros y no usan consultas sin `await`; lo busca
   el revisor. En la API (criterio 149) no hay este riesgo: el envoltorio espera todas las consultas enviadas.
+  _(Ampliado tras la ronda 12.)_ Lo mismo con una consulta encadenada sin `await` (criterio 156) y con una escritura de un
+  delegado que falla a medias (criterio 158): `enPlataforma` no tiene la espera de cadenas ni la capa de puntos de
+  guardado. Los comandos y la semilla usan SQL crudo con `await` en cada paso y no atrapan errores dentro de `trabajo`.
 - **IP vacía o ausente** _(ataque ronda 10, criterio 152)_: si Express no da `req.ip` (el socket ya se cerró), el
   controlador pasa `null` y se audita sin IP, como hasta ahora; quien la provoca corta su propia conexión y no recibe la
   respuesta. Sin `trust proxy` (plan, "Límite por IP"), el cliente no elige el texto de la IP; si el hosting lo activa,
@@ -3775,7 +4042,30 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   con `academia_id` impiden enlazar filas de otra academia; la operación ya rechazó por tiempo. La única excepción sería
   una conexión con valores de contexto de sesión puestos por `options` en `DATABASE_URL_APP`, que es una mala
   configuración del `.env` (la API no la pone y el criterio 72 la neutraliza dentro de toda transacción). Con la cola del
-  criterio 153 hay a lo sumo una operación en curso por transacción.
+  criterio 153 hay a lo sumo una operación en curso por transacción. _(Ampliado tras la ronda 12, O3.)_ Lo mismo cuando
+  `trabajo` lanza mientras una operación de varias sentencias, enviada sin `await`, sigue en curso: `descartar()` solo
+  detiene las de la cola, Prisma revierte la transacción y las sentencias que faltan de esa operación (y las de su punto
+  de guardado, criterio 158) llegan fuera de ella o Prisma las rechaza por la transacción cerrada; fuera de la transacción
+  la RLS no deja leer ni escribir nada (comprobado por el adversarial en la ronda 12) y la operación ya rechazó con el
+  error de `trabajo`. Con el nombre aleatorio del punto de guardado, una sentencia de la capa que llegara a otra
+  transacción en la misma conexión fallaría (el punto no existe) y la abortaría, que falla cerrada (criterio 149).
+- **Continuación sin `await` que espera algo ajeno a la base** _(ataque ronda 12, criterio 156)_: si una cadena sin
+  `await` dentro de `trabajo` espera un temporizador, un archivo, un hash u otra cosa que no termina en el mismo turno, su
+  consulta puede llegar cuando el envoltorio ya se apagó. Si llega antes de la última revisión, la operación rechaza sin
+  nada escrito; si llega mientras Prisma confirma o después, la llamada rechaza sin enviarse y la operación ya respondió
+  éxito sin esa escritura (con `void`, el rechazo queda registrado por el manejador del criterio 157; con `.catch`, se
+  pierde en silencio). No hay forma de saber desde `BaseDatos` que una continuación ajena todavía va a llamar; esperar un
+  tiempo fijo antes de confirmar no lo garantiza y retrasa todas las operaciones. Regla para el equipo: cada paso de
+  `trabajo` se espera con `await`; nada de cadenas sueltas con `.then` ni `void` dentro de una transacción. Lo buscan el
+  revisor y el adversarial.
+- **Sentencia cruda ejecutada cuyo resultado Prisma no pudo leer** _(ataque ronda 12, criterio 158)_: `$queryRaw` y
+  `$executeRaw` no llevan punto de guardado (una sentencia es atómica y envolver cada lectura triplicaría sus viajes). Si
+  una sentencia cruda que escribe (por ejemplo, un `WITH … INSERT … RETURNING` con una columna de tipo `void`) se ejecuta
+  entera y Prisma falla al leer el resultado, lo escrito queda y `trabajo` recibe un error que no es de la base; si lo
+  atrapa, se confirma la sentencia completa (no una parte). Lo evita la forma del criterio 155 y lo busca el revisor.
+- **Dos sentencias más por escritura de un delegado** _(ataque ronda 12, criterio 158)_: crear y liberar el punto de
+  guardado agregan dos viajes a la base por escritura (tres más si rechaza sin abortar). Con el volumen de una academia
+  no se nota; si una historia escribe muchas filas, usa `createMany` (una sola operación) o `$executeRaw`.
 - **Argumentos que `trabajo` cambia después de llamar** _(ataque ronda 11, criterio 153)_: una consulta que espera en la
   cola lee sus argumentos cuando le toca; si `trabajo` cambia el objeto que pasó (por ejemplo, `data`) antes de ese
   momento, puede enviarse con el cambio. No cruza academias (el contexto y la RLS son los de la transacción) y es un error de
@@ -4133,9 +4423,58 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   envolver la función de PostgreSQL en una propia que devuelva `boolean` (otra función en `FUNCIONES_APP`, otra
   migración y otra superficie del criterio 144, para lo que resuelve una forma de llamar).
 
+### Decisiones técnicas tras el ataque, ronda 12 (12/11/2026)
+
+- **El envoltorio acepta llamadas hasta que `asentar` termina, y el resultado esperado de una cadena sin `await` es "todo
+  confirmado"** (criterio 156; decisión del especificador). Una cadena que solo espera consultas de la transacción es
+  código correcto que se puede completar sin ambigüedad, y la operación debe hacer lo que el código dice. Alternativas
+  descartadas: rechazar siempre que llegue una llamada después de que `trabajo` terminó (fallaría con 500 un código que
+  sí se puede completar, y la regla dependería de cuántos turnos tarda la cadena); y solo marcar la llamada tardía sin
+  seguir aceptando (deja como única salida el rechazo, con el mismo problema). La marca de la llamada tardía queda como
+  segunda capa para lo que llega después del último turno.
+- **Ceder un turno completo del ciclo de eventos (`setImmediate`) antes de apagar** (criterio 156). Alternativa
+  descartada: revisar la cola solo tras las microtareas (una función `async` con varios `await` intermedios llama después
+  de que `Promise.allSettled` resuelve y se perdería); esperar un tiempo fijo (retrasa todas las operaciones y no
+  garantiza nada para lo que espera un temporizador o un archivo).
+- **Una llamada rechazada por otro contexto solo marca desde que empieza `asentar`** (criterio 156). Mientras `trabajo`
+  corre, el criterio 134 no cambia (y otra petición no puede hacer fallar esta); después, una continuación que perdió el
+  contexto asíncrono es la misma falla del ataque y debe fallar cerrada.
+- **Manejador de `unhandledRejection` en `main.ts` que registra y no termina el proceso** (criterio 157; decisión del
+  especificador). Un rechazo sin manejar en la API es un error de programación dentro de una petición; la integridad la
+  dan las transacciones (cada una se confirma entera o se revierte, criterios 149, 154, 156 y 158), y terminar el proceso
+  corta las peticiones en curso de todas las academias, incluidos cobros y verificaciones, y deja una forma de tumbar la
+  API a quien encuentre cómo provocarlo. Se registra en nivel `error` con el error completo, como un 500, así que no se
+  oculta. Alternativas descartadas: dejar el comportamiento de Node (termina el proceso); registrar y terminar
+  (la misma caída, con registro); manejar también `uncaughtException` (tras una excepción síncrona el estado del proceso
+  no es fiable y Node recomienda terminar). Se registra después de `listen` para que un fallo al arrancar siga terminando
+  el proceso.
+- **Opción (a), punto de guardado por escritura, en una capa debajo del envoltorio** (criterio 158; decisión del
+  especificador). Es viable: la capa emite `SAVEPOINT`, `RELEASE SAVEPOINT` y `ROLLBACK TO SAVEPOINT` con la misma
+  transacción de Prisma (la misma conexión), una sentencia después de otra y dentro de la posición de la cola de la
+  escritura, en `infraestructura/prisma/`, donde el lint del criterio 84 no aplica. Va debajo del envoltorio y no dentro
+  de él porque la prueba protegida de P-38 entrega a `envolver` una transacción falsa y comprueba qué consulta se
+  entrega y cuándo: con las sentencias dentro del envoltorio, la primera entregada sería el `SAVEPOINT` y no la
+  escritura, y esas pruebas cambiarían de resultado. Alternativas descartadas: la opción (b), marcar la transacción ante
+  todo rechazo de una escritura (convertiría en 500 el patrón válido de la lista que ignora las inexistentes, criterio
+  153, o exigiría distinguir por los argumentos qué escritura tiene relaciones anidadas, lo que depende de detalles de
+  Prisma como el troceo de `createMany`); y el punto de guardado solo en las escrituras con relaciones anidadas (la misma
+  dependencia de cómo Prisma reparte cada operación en sentencias).
+- **Con un error de la base no se vuelve al punto de guardado** (criterio 158). Antes de volver, la capa comprueba el
+  estado con una sentencia: si la transacción está abortada, la deja así. Mantiene sin cambios los criterios 149 y 153
+  (un error de la base atrapado hace rechazar la operación; las consultas siguientes reciben `25P02`) y la nota O3 de la
+  ronda 10 (los duplicados esperados van con `ON CONFLICT`). Alternativa descartada: decidir por el código del error
+  (depende de que Prisma conserve el SQLSTATE en cada caso; la comprobación lo pregunta a PostgreSQL).
+- **Nombre aleatorio del punto de guardado por transacción** (criterio 158). Alternativa descartada: un nombre fijo (una
+  sentencia de la capa que llegara tarde a otra transacción en la misma conexión podría deshacer una escritura ajena con
+  el mismo nombre de punto; con un nombre aleatorio, falla y la otra transacción falla cerrada).
+- **El permiso del criterio 153 de atrapar un P2025 se mantiene** para toda escritura de un delegado (criterio 158):
+  con el punto de guardado, lo que se confirma nunca incluye una parte de la operación que falló. Alternativa descartada:
+  limitarlo a escrituras sin relaciones anidadas (la regla tendría que vivir en el lint o en la revisión, y la capa ya lo
+  hace seguro).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 11 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 12 del ataque son decisiones técnicas y no abren preguntas de
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").

@@ -39,6 +39,10 @@ Tras la ronda 8 se agregaron los criterios 141 a 143 (sección Q de `spec.md`), 
 sus tareas son T99 a T106, antes del cierre. La definición de "esquemas revisados" (sección O) y los criterios 5, 130, 131 y
 137 quedaron ajustados o ampliados.
 
+Tras la ronda 12 se agregaron los criterios 156 a 158 (sección U de `spec.md`), las precisiones P-39 y P-40 y una
+precisión de P-38; sus tareas son T130 a T138, antes del cierre. Los criterios 21, 26, 30, 106, 149 y 153 quedaron
+ampliados o precisados.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -519,6 +523,55 @@ ampliación de P-36 y precisión P-38. Plan, sección 23. La O2 y `enPlataforma`
       la cola ante rechazos, descartes, tiempos agotados y llamadas desde otro contexto; `undefined` y resultados vacíos
       legítimos; bloqueos de transacción; y que las protegidas anteriores sigan igual); si hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 12 (12/11/2026)
+
+Falla F1 (alta), falla F2 (media) y observaciones O1 a O3 de la ronda 12 (sobre `8a63dbc`); criterios 156 a 158 de
+`spec.md` (sección U), precisión de P-38 y precisiones P-39 y P-40. Plan, sección 24. O1 y O2 son notas del plan; O3
+amplía el riesgo aceptado "Tiempo límite con una operación de varias sentencias a medias".
+
+- [ ] T130 · test-writer · Pruebas protegidas en rojo de los criterios 156 a 158 (archivos en "Protegidas del ataque ronda
+      12" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: las cadenas sin
+      `await` (`.then().catch()` y `void (async () => …)()`) en `conAcademia` y `comoPlataforma`, la cadena que falla y la
+      ruta de un controlador de prueba, con `termino === true` en la continuación y la conexión sana después (156); la
+      unitaria de `asentar` y de las llamadas tardías con la transacción falsa de P-38, casos (i) a (vi) (156); la
+      unitaria de `crearManejadorDeRechazos` (157, P-40); la reproducción de la escritura anidada en `comoPlataforma` (hija
+      oculta e inexistente), la de `conAcademia` si alguna forma deja una parte escrita con `8a63dbc`, los controles del
+      P2025 suelto, del error de la base dentro de una escritura anidada y de las escrituras que van bien (158); y la
+      unitaria de `conPuntosDeGuardado` con una transacción falsa (158, P-39). Comprobar que ninguna protegida anterior
+      cambia de resultado por estas pruebas (si alguna cambiara, detenerse e informar). Commit: "Pruebas protegidas (001),
+      ataque ronda 12: consultas encadenadas sin await, rechazos sin manejar y escrituras anidadas a medias (en rojo)"
+      (criterios 156 a 158)
+- [ ] T131 · tester · Confirmar que T130 falla por la razón esperada: las cadenas de los casos 1, 2 y 4 resuelven sin la
+      auditoría (o sin la academia) y la unitaria ve rechazada la llamada encadenada durante `asentar()` y
+      `exigirCompleta()` sin lanzar tras una llamada tardía (156); `rechazos.ts` no existe (157); en la reproducción, A
+      queda suspendida sin auditoría y `puntos-de-guardado.ts` no existe (158). Se informan como verdes por diseño: la
+      cadena que falla (caso 3 del 156) si ya rechaza, los controles del 158 (P2025 suelto, error de la base, escrituras
+      que van bien), el caso (v) y el (vi) de la unitaria del 156, y la reproducción en `conAcademia` si quedó como guarda
+- [ ] T132 · backend · Envoltorio abierto durante `asentar` en `envoltorio.ts`: `asentar()` sin `terminar()` previo,
+      espera con `setImmediate` y apagado en el mismo paso; `cerrando`; `exigirActiva` con el nombre de la operación; las
+      llamadas tardías y las de otro contexto desde `asentar` marcan `incompleta`; mensajes de error sin cambios (plan,
+      sección 24) (criterio 156)
+- [ ] T133 · backend · Capa de puntos de guardado en `infraestructura/prisma/puntos-de-guardado.ts` (P-39): punto
+      aleatorio por transacción, secuencia de crear, escribir, liberar; comprobación del estado y vuelta al punto solo con
+      la transacción sana; marca en `exigirSana` ante cualquier falla de la capa; lecturas y crudo tal cual (plan,
+      sección 24) (criterio 158)
+- [ ] T134 · backend · `#transaccion` en `base-datos.ts`: `envolver(capa.tx)`; en el error, `descartar()` y `terminar()`;
+      en el camino bueno, `asentar()` sin `terminar()` previo, `exigirCompleta()` y `capa.exigirSana()` antes y después de
+      `comprobarTransaccionViva`, y `terminar()` en un `finally`; registro técnico sin argumentos (criterios 156, 158)
+- [ ] T135 · backend · `crearManejadorDeRechazos` en `backend/src/infraestructura/proceso/rechazos.ts` (P-40) y su
+      registro en `main.ts` después de `await app.listen(…)`, con el registro de pino de la app y sin `uncaughtException`
+      (criterio 157)
+- [ ] T136 · backend · Revisar que ningún servicio de 001 use cadenas sin `await` dentro de `trabajo`, escrituras con
+      relaciones anidadas ni actualice `academias` desde `conAcademia`; si hay alguno, corregirlo (plan, sección 24)
+      (criterios 156, 158)
+- [ ] T137 · orquestador · `git diff` desde el commit de T130: T132 a T136 no tocaron pruebas protegidas
+- [ ] T138 · adversarial · Ronda 13 sobre todo lo anterior, en especial 156 a 158 (cadenas sin `await` con microtareas,
+      temporizadores, E/S y contextos perdidos; llamadas tardías antes, durante y después de la comprobación; `asentar`
+      que no termina; rechazos sin manejar y lo que registran; escrituras de delegados con relaciones anidadas, `upsert`,
+      `createMany` y `deleteMany` que fallan a medias; errores de la base dentro de una escritura; sentencias de la capa
+      que fallan o llegan tarde; nombre del punto de guardado; y que las protegidas anteriores sigan igual); si hay
+      fallas, se repite el ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
@@ -526,7 +579,8 @@ ampliación de P-36 y precisión P-38. Plan, sección 23. La O2 y `enPlataforma`
       de 001 y 002 en `specs/backlog.md`: el primer administrador de cada academia pasa de 001 a 002 (DR-1). Desde la
       ronda 10: la sección "Fechas y horas de negocio (America/Lima)" de `docs/arquitectura.md`, con el texto propuesto
       en el plan, sección 22, nota O1. Desde la ronda 11: las tres viñetas de transacciones del plan, sección 23
-      (consultas a la vez, errores atrapados y bloqueos con `$executeRaw`)
+      (consultas a la vez, errores atrapados y bloqueos con `$executeRaw`). Desde la ronda 12: las tres viñetas del plan,
+      sección 24 (cada paso con `await`, escrituras que fallan sin dejar nada, `academias` y `findMany` con `in`)
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)
