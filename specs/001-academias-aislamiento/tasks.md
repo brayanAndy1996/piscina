@@ -742,7 +742,8 @@ binario, aunque no lleve errores de la base; el criterio 167, (t1), (t2) y (t11)
       pruebas, en especial `registro-de-errores-ronda15.test.ts` ((u12) y (u14)) y `registro-de-errores.test.ts` (si alguna
       cambiara, detenerse e informar; si `tsx` no carga el módulo en el hijo, detenerse e informar). Commit: "Pruebas
       protegidas (001), ataque ronda 16: costo acotado del registro de errores y cause por su nombre (en rojo)"
-      (criterios 167 y 168)
+      (criterios 167 y 168). _(Precisión del orquestador, ronda 16: (t5) con 50 000 claves y (t9) sin el `Proxy` de un
+      `Buffer`, como dice ahora el criterio 167.)_
 - [ ] T164 · tester · Confirmar que T163 falla por la razón esperada: con `8b503d2`, (t1) a (t4), (t7) y el `Proxy` de un
       `Buffer` de (t9) pasan del límite de tiempo; (t1) y (t2) dan `truncado` o el mismo objeto en lugar del objeto
       convertido sin el binario; (t6) da `truncado` sin `mensaje`; (t10) con (t1) empieza con `error sin detalles`; en
@@ -750,7 +751,10 @@ binario, aunque no lleve errores de la base; el criterio 167, (t1), (t2) y (t11)
       `44556677`, `penicilina-r16` o `invalid input syntax`, o la función espía se llamó (168). Se informan como verdes por
       diseño, si ya pasan: (t5), (t8), las falsas hojas de (t9) sin el `Proxy` de un `Buffer`, (g6) con el
       getter que devuelve `new Error('otra')` y con `errors` función, y `mensajeSeguro` con (g1). Informar las medidas de
-      tiempo de cada caso con `8b503d2`
+      tiempo de cada caso con `8b503d2`. _(Precisión del orquestador, ronda 16: el `Proxy` de un `Buffer` ya no está en
+      (t9) ni en la lista de rojos (pasa al riesgo aceptado "Objetos sin `length` con millones de claves"); los rojos por
+      tiempo son (t1) a (t4) y (t7). (t5), ahora con 50 000 claves, es verde por diseño; las tres falsas hojas de (t9),
+      también si ya pasan.)_
 - [ ] T165 · backend · `registro-de-errores.ts`: `esHojaBinaria` por la ranura interna (`ArrayBuffer.isView`,
       `types.isAnyArrayBuffer`), `clavesDe` con `length` antes de listar, `Reflect.ownKeys` antes de `for…in` y corte de
       `for…in` al pasar el tope, sin colecciones de más de 101 claves; las hojas no cuentan como visitadas; la búsqueda

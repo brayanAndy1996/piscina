@@ -2711,8 +2711,16 @@ function clavesDe(objeto: object): PropertyKey[] | undefined {
 
 - `leerClave` es el de hoy (`Reflect.get` sin dejar que un getter lance). Con un `Proxy` sin trampa `get`, `length` es
   el del destino; con una trampa que lanza, `undefined` (sigue con las claves, que pueden lanzar: falla cerrada).
+  _(Precisión del orquestador, ronda 16: la primera frase es **falsa** para los arreglos tipados. Sin trampa `get`,
+  `Reflect.get` llama al getter `TypedArray.prototype.length` con el `Proxy` como receptor, y ese getter exige la ranura
+  interna: lanza `TypeError: Method get TypedArray.prototype.length called on incompatible receiver`, así que `leerClave`
+  da `undefined`. Para un destino con `length` como propiedad de datos (un arreglo, un objeto plano), sí se lee el del
+  destino.)_
 - Un `Proxy` de un `Buffer` no es una hoja (`ArrayBuffer.isView` da falso) y su `length` pasa del tope: falla cerrada sin
-  listar (caso (t9)).
+  listar (caso (t9)). _(Precisión del orquestador, ronda 16: no es así. Leer su `length` lanza (punto anterior), se toma
+  como sin `length` y `Reflect.ownKeys` entrega sus 5 M de índices (≈7 s); sin leer el destino de un `Proxy` no hay API
+  pública para tratarlo como hoja. El caso sale de (t9) y va al riesgo aceptado "Objetos sin `length` con millones de
+  claves" de la spec; `clavesDe` no cambia por él.)_
 - `Object.create(Uint8Array.prototype)`: no es una hoja; leer su `length` lanza (el getter del prototipo exige la ranura)
   y se toma como sin `length`; se recorre normal (caso (t9)).
 - `types.isAnyArrayBuffer` es de `node:util/types` (también `require('node:util').types`); funciona entre contextos de
@@ -3125,7 +3133,10 @@ de la ronda 15:
 - **Tiempos de las pruebas en la CI** _(ataque ronda 16, criterio 167)_: el límite de 200 ms por llamada supone que
   `Reflect.ownKeys` de un objeto de 500 000 claves con nombre ((t5)) y la lectura de `length` tardan bastante menos. Si en
   la CI de Windows algún caso pasa del límite con el código corregido, el backend se detiene e informa con las medidas; no
-  se sube el límite ni se achica el caso sin una decisión nueva.
+  se sube el límite ni se achica el caso sin una decisión nueva. _(Precisión del orquestador, ronda 16: esa decisión ya
+  se tomó para (t5). `Reflect.ownKeys` cuesta ≈0,5 µs por clave: 500 000 claves, ≈245 ms, más que el límite con
+  cualquier código; (t5) pasa a 50 000 claves (≈25 ms) y el tamaño mayor queda en el riesgo aceptado "Objetos sin
+  `length` con millones de claves".)_
 - **`tsx` en el proceso hijo** _(ataque ronda 16, criterio 167)_: (t11) supone que `registro-de-errores.ts` y el cliente
   generado de Prisma cargan con `--import tsx` en Node 22, como `superadmin`. Si no cargan, el test-writer se detiene e
   informa (alternativa: compilar con `tsc` como `rechazos-proceso.test.ts`, más lento).

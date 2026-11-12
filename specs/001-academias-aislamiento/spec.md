@@ -3338,7 +3338,12 @@ _(crítico)_.
        interna del motor (`ArrayBuffer.isView` y `types.isAnyArrayBuffer` de `node:util`), nunca por `instanceof`, por el
        prototipo ni por `Symbol.toStringTag`: un objeto común con `[Symbol.toStringTag]: 'ArrayBuffer'`, uno creado con
        `Object.create(Uint8Array.prototype)` o un `Proxy` de un `Buffer` no son hojas y se recorren con las reglas de
-       siempre;
+       siempre; _(precisión del orquestador, ronda 16: un `Proxy` de un `Buffer` sigue sin ser una hoja, pero no se corta
+       por `length`: `Reflect.get(proxy, 'length')` lanza `TypeError` (el getter de `TypedArray.prototype.length` exige
+       la ranura y el receptor es el `Proxy`), aun sin trampas, así que cuenta como sin `length` y se listan sus claves.
+       Sin leer el destino de un `Proxy` no hay API pública para tratarlo como hoja, y `Reflect.ownKeys` de uno de 5 MB
+       cuesta ≈7 s. Un `Proxy` de un binario dentro de un error es código hostil: va al riesgo aceptado "Objetos sin
+       `length` con millones de claves" y sale de (t9))_
      - **un `Error` con un binario no sale tal cual** _(R16-1)_: si la búsqueda encuentra al menos una hoja binaria en el
        grafo (en cualquier propiedad, a cualquier nivel dentro de los topes), `errorParaRegistro` no devuelve el mismo
        error aunque no haya errores de la base: devuelve la forma convertida del criterio 165 (`tipo`, `mensaje`, `pila`,
@@ -3396,8 +3401,11 @@ _(crítico)_.
      Array(2_000_000).fill(0) })` y con `new Array(2_000_000)` (disperso): `{ tipo: 'Error', truncado: true }` (sin otras
      claves) en menos de 200 ms; (t4) **`String` grande:** `Object.assign(new Error('texto r16'), { texto: new
      String('x'.repeat(5_000_000)) })`: `{ tipo: 'Error', truncado: true }` en menos de 200 ms; (t5) **muchas claves con
-     nombre:** `Object.assign(new Error('mapa r16'), { mapa: <objeto plano con 500 000 claves propias `k0` … `k499999`> })`:
-     `{ tipo: 'Error', truncado: true }` en menos de 200 ms; (t6) **base junto a un binario:** `Object.assign(new
+     nombre:** `Object.assign(new Error('mapa r16'), { mapa: <objeto plano con 50 000 claves propias `k0` … `k49999`> })`:
+     `{ tipo: 'Error', truncado: true }` en menos de 200 ms _(precisión del orquestador, ronda 16: antes decía 500 000
+     claves, `k0` … `k499999`; `Reflect.ownKeys` de 500 000 claves ya tarda ≈245 ms, más que el límite, y ese tamaño
+     está en el riesgo aceptado "Objetos sin `length` con millones de claves"; con 50 000, ≈25 ms. (t5) es verde por
+     diseño: comprueba que un objeto sin `length` que pasa del tope de claves falla cerrada sin recorrer `for…in`)_; (t6) **base junto a un binario:** `Object.assign(new
      Error('Fallo r16'), { archivo: Buffer.alloc(5 * 1024 * 1024), detalle: base16 })`: no es el mismo objeto, `tipo:
      'Error'`, `mensaje: 'Fallo r16'`, sin `truncado`, `base16` exactamente una vez, en `erroresDeLaBase`, con su forma
      limpia (`tipo: 'PrismaClientKnownRequestError'`, `codigoPrisma: 'P2007'`), en menos de 200 ms; (t7) **base junto a un
@@ -3410,7 +3418,9 @@ _(crítico)_.
      `Object.create(Uint8Array.prototype)` con la propiedad `error: base16` y de `new Proxy(Object.assign({}, { error: base16
      }), {})`, cada uno como propiedad de un `Error`: no es el mismo objeto y `base16` aparece en su forma limpia; y `new
      Proxy(Buffer.alloc(5 * 1024 * 1024), {})` como propiedad de un `Error`: `truncado: true` en menos de 200 ms (no es una
-     hoja y su `length` pasa del tope); (t10) **`mensajeSeguro`:** con el `Error` interior de (t1), es `No se pudo subir el
+     hoja y su `length` pasa del tope) _(precisión del orquestador, ronda 16: este último caso, el `Proxy` de un `Buffer`,
+     **se quita** de (t9); leer su `length` lanza y listar sus 5 M de claves cuesta ≈7 s; va al riesgo aceptado "Objetos
+     sin `length` con millones de claves". Las otras tres falsas hojas se mantienen)_; (t10) **`mensajeSeguro`:** con el `Error` interior de (t1), es `No se pudo subir el
      comprobante`; con el de (t3), empieza con `error sin detalles`; las dos en menos de 200 ms. **Memoria:** (t11) un
      proceso hijo (`process.execPath` con `--max-old-space-size=256 --import tsx` y un script de prueba en
      `backend/test/utilidades/`, nombre orientativo) ejecuta `errorParaRegistro` con (t1) (solo la excepción), (t3) y (t4)
@@ -3419,7 +3429,8 @@ _(crítico)_.
      módulo no carga con `tsx` en el hijo, el test-writer se detiene e informa). Con el código de `8b503d2`, (t1) a (t4),
      (t7) y la parte de `Proxy` de (t9) pasaban del límite de tiempo, (t1), (t2) y (t10) con (t1) daban `truncado` o el
      mismo objeto, (t6) daba `truncado` sin `mensaje` y en (t11) el hijo terminaba por falta de memoria; (t5) y (t8) pueden
-     pasar ya (el tester los informa). Siguen
+     pasar ya (el tester los informa). _(Precisión del orquestador, ronda 16: "la parte de `Proxy` de (t9)" ya no está en
+     (t9); con `8b503d2` pasan del límite de tiempo (t1) a (t4) y (t7). (t5), con 50 000 claves, es verde por diseño.)_ Siguen
      pasando sin cambiar de resultado las protegidas de los criterios 157 y 161 a 166 (`registro-de-errores.test.ts`,
      `registro-de-errores-ronda14.test.ts`, `registro-de-errores-ronda15.test.ts` —en especial los casos (u12): la lista de
      1000 objetos, el árbol de más de 200, el getter infinito y el `Proxy` cuyo `ownKeys` lanza—,
@@ -5188,6 +5199,14 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   pasan del tope. Se acepta: nadie guarda así un dato en un error; el criterio 167 cubre las formas en que llegan datos
   grandes de verdad (binarios, arreglos y textos). Regla para el equipo: un error no lleva copias de un archivo ni de una
   lista; el revisor busca `...` y `Object.assign({}, …)` de un `Buffer` o arreglo dentro de un error.
+  _(Precisión del orquestador, ronda 16: costo medido de `Reflect.ownKeys`, ≈0,5 µs por clave: 50 000 claves, ≈25 ms;
+  500 000, ≈245 ms (más que el límite de 200 ms de las pruebas, por eso (t5) del criterio 167 usa 50 000); millones,
+  segundos. Entra también aquí **un `Proxy` de un binario** (por ejemplo, `new Proxy(Buffer.alloc(5 MB), {})`) dentro
+  de un error: no es una hoja (`ArrayBuffer.isView` da falso), leer su `length` lanza `TypeError` aun sin trampas (el
+  getter de `TypedArray.prototype.length` exige la ranura y el receptor es el `Proxy`), así que se toma como sin `length`
+  y `Reflect.ownKeys` entrega sus 5 M de índices: ≈7 s. Sin leer el destino de un `Proxy` no hay API pública para
+  tratarlo como hoja. Se acepta: es código hostil, no una forma en que llegue un archivo a un error. Regla para el
+  equipo: un error no lleva un `Proxy` de un binario; el revisor lo busca junto con las copias de arriba.)_
 - **Contenido de un binario en el registro** _(ataque ronda 16, criterio 167; pregunta R16-1, ya resuelta: ver la nota al
   final)_:
   con los binarios como hojas, un `Error` sin errores de la base que lleva un archivo en cualquier propiedad se devuelve
@@ -5779,6 +5798,13 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   pedido del orquestador). 200 ms queda lejos de las reproducciones (1,8 a 7,3 s) para no fallar por una CI lenta; la
   memoria se mide como la reproducción (`--max-old-space-size=256`), que es determinista, y no con `heapUsed`, que depende
   del recolector. Alternativas descartadas: límites ajustados (pruebas inestables en Windows); medir `heapUsed`.
+- **(t5) con 50 000 claves y sin el `Proxy` de un `Buffer` en (t9)** (criterio 167; precisión del orquestador, ronda 16,
+  tras lo que encontró el test-writer al escribir T163). `Reflect.ownKeys` cuesta ≈0,5 µs por clave: con 500 000, (t5)
+  pasaba del límite de 200 ms con cualquier código; y el `Proxy` de un `Buffer` no se puede cortar por `length` (leerlo
+  lanza) ni reconocer como hoja sin leer el destino. Los dos van al riesgo aceptado "Objetos sin `length` con millones de
+  claves". Alternativas descartadas: subir el límite de tiempo (dejaría de distinguir el costo acotado del que no lo
+  está); leer el destino del `Proxy` (no hay API pública; `util.types.isProxy` solo dice que es un `Proxy`, y cortar
+  todo `Proxy` como falla cerrada rompería la falsa hoja `Proxy` de (t9), que debe encontrar `base16`).
 - **`cause` y `errors` por su nombre en cada objeto visitado** (criterio 168, O1; decisión del orquestador, alcance del
   especificador). Son las dos propiedades que pino lee por su nombre, en el error y en cada causa y cada error de
   `errors`. Alternativas descartadas: leerlas solo en el error recibido (pino las lee también en cada causa); leer todos
