@@ -16,8 +16,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
 import { ejecutarGit, git, listaNul } from './lib/git.mjs';
+import { esPuntoDeEntrada } from './lib/punto-de-entrada.mjs';
 
 const LINEAS_DE_MARCA = 5;
 const PATRON_MARCA = /^\s*(?:\/\/|#|\/\*|--|<!--)\s*spec:\s*(\d{3}-[a-z0-9-]+)\s*\(pruebas protegidas\)/;
@@ -285,9 +285,7 @@ function principal() {
   process.exit(resultado.codigo);
 }
 
-const esEjecucionDirecta =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (esEjecucionDirecta) {
+if (esPuntoDeEntrada(import.meta.url)) {
   try {
     principal();
   } catch (error) {

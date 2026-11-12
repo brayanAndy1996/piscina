@@ -5,8 +5,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
 import { raizProyecto } from './lib/entorno.mjs';
+import { esPuntoDeEntrada } from './lib/punto-de-entrada.mjs';
 
 /** Archivo que indica que los contratos ya están compilados. */
 const SALIDA_ESPERADA = path.join('packages', 'contratos', 'dist', 'index.d.ts');
@@ -32,9 +32,7 @@ export function compilarContratos(raiz = raizProyecto) {
   return resultado.status ?? 1;
 }
 
-const esEjecucionDirecta =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (esEjecucionDirecta) {
+if (esPuntoDeEntrada(import.meta.url)) {
   // Argumento opcional: otra raíz del proyecto (lo usan las pruebas).
   const raiz = process.argv[2] ? path.resolve(process.argv[2]) : raizProyecto;
   if (faltaCompilar(raiz)) process.exit(compilarContratos(raiz));

@@ -25,7 +25,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 
 export const COMANDO_REINTENTO = 'node .claude/hooks/preparar-sesion.mjs';
@@ -303,16 +303,43 @@ function ejecutarPsqlComoPostgres(sentencia, extra = []) {
   return resultado;
 }
 
-/** Variables de entorno para los procesos hijos: las del proceso, completadas con las del .env sin sobrescribir. */
-function entornoParaHijos(raiz) {
-  const entorno = { ...process.env };
+/**
+ * Variables de entorno para los procesos hijos: una copia de `entorno`, completada con las del .env de `raiz` sin
+ * sobrescribir lo ya definido. Lee el .env como el backend (`dotenv`): quita un U+FEFF inicial antes de `parseEnv` (spec 001,
+ * criterio 169, P-43). Es una copia de la regla de `quitarBom` de scripts/lib/entorno.mjs, porque el hook no importa módulos
+ * del repositorio de forma estática (criterio 47 de 000).
+ */
+export function entornoParaHijos(raiz, entorno = process.env) {
+  const copia = { ...entorno };
   const rutaEnv = path.join(raiz, '.env');
   if (fs.existsSync(rutaEnv)) {
-    for (const [clave, valor] of Object.entries(parseEnv(fs.readFileSync(rutaEnv, 'utf8')))) {
-      if (entorno[clave] === undefined) entorno[clave] = valor;
+    const texto = fs.readFileSync(rutaEnv, 'utf8');
+    const valores = parseEnv(texto.startsWith('\uFEFF') ? texto.slice(1) : texto);
+    for (const [clave, valor] of Object.entries(valores)) {
+      if (copia[clave] === undefined) copia[clave] = valor;
     }
   }
-  return entorno;
+  return copia;
+}
+
+/**
+ * ¿El módulo de `urlDelModulo` es el punto de entrada del proceso? Copia de `esPuntoDeEntrada` de
+ * scripts/lib/punto-de-entrada.mjs (spec 001, criterio 171, P-44; el hook no importa módulos del repositorio de forma
+ * estática). Compara las rutas reales, y en Windows sin distinguir mayúsculas. Nunca lanza.
+ */
+export function esPuntoDeEntrada(
+  urlDelModulo,
+  argv1 = process.argv[1],
+  { plataforma = process.platform, realpath = fs.realpathSync } = {},
+) {
+  if (typeof argv1 !== 'string' || argv1 === '') return false;
+  try {
+    const delModulo = realpath(fileURLToPath(urlDelModulo));
+    const delArgumento = realpath(path.resolve(argv1));
+    return plataforma === 'win32' ? delModulo.toLowerCase() === delArgumento.toLowerCase() : delModulo === delArgumento;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -567,9 +594,7 @@ async function principal() {
   }
 }
 
-const esEjecucionDirecta =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (esEjecucionDirecta) {
+if (esPuntoDeEntrada(import.meta.url)) {
   await principal();
   process.exit(0);
 }

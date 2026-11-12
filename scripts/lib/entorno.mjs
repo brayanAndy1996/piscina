@@ -7,6 +7,42 @@ import { parseEnv } from 'node:util';
 export const raizProyecto = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const PATRON_NOMBRE = /^[a-z_][a-z0-9_]*$/;
+const BOM = '\uFEFF';
+
+/**
+ * Quita un U+FEFF solo si es el primer carácter del texto; ninguno más (spec 001, criterio 169, P-43). Un `.env` guardado
+ * con BOM (PowerShell 5.1) lo trae al principio, y `dotenv` (el que usa el backend) lo descarta.
+ */
+export function quitarBom(texto) {
+  return texto.startsWith(BOM) ? texto.slice(1) : texto;
+}
+
+/**
+ * `parseEnv(quitarBom(texto))`: la lectura que usan todos los scripts de un `.env` o de `.env.example`, de modo que la
+ * primera clave no lleve el BOM pegado (spec 001, criterio 169, P-43).
+ */
+export function analizarEnv(texto) {
+  return parseEnv(quitarBom(texto));
+}
+
+// Líneas separadas por \n, \r, U+2028 o U+2029; en cada una, tras quitar los espacios del principio (los de `\s` de
+// JavaScript, que incluyen U+FEFF y U+00A0) y un `export` opcional, una clave y luego `=` o `:`.
+const SEPARADOR_DE_LINEAS = /\r\n|[\n\r\u2028\u2029]/;
+const LINEA_CON_CLAVE = /^\s*(?:export\s+)?([\w.-]+)\s*[=:]/;
+
+/**
+ * Claves que alguna línea del texto podría definir para `dotenv`: una regla más amplia que la de `dotenv` (en la duda, sí;
+ * por ejemplo, también cuenta una línea dentro de un valor entre comillas de varias líneas). Nunca lanza (spec 001,
+ * criterio 170, P-43).
+ */
+export function clavesPosiblesEnv(texto) {
+  const claves = new Set();
+  for (const linea of String(texto).split(SEPARADOR_DE_LINEAS)) {
+    const coincidencia = LINEA_CON_CLAVE.exec(linea);
+    if (coincidencia) claves.add(coincidencia[1]);
+  }
+  return claves;
+}
 
 /**
  * Carga el .env de la raíz en `env` sin sobrescribir las variables ya definidas (las de la CI mandan).
@@ -15,7 +51,7 @@ const PATRON_NOMBRE = /^[a-z_][a-z0-9_]*$/;
 export function cargarEnv(env = process.env, raiz = raizProyecto) {
   const ruta = path.join(raiz, '.env');
   if (!fs.existsSync(ruta)) return;
-  const valores = parseEnv(fs.readFileSync(ruta, 'utf8'));
+  const valores = analizarEnv(fs.readFileSync(ruta, 'utf8'));
   for (const [clave, valor] of Object.entries(valores)) {
     if (env[clave] === undefined) env[clave] = valor;
   }

@@ -5,10 +5,9 @@
 //
 // Uso: node scripts/verificar-sin-secretos.mjs
 // Códigos de salida: 0 sin secretos, 1 con archivos prohibidos, 2 si git no pudo ejecutarse.
-import path from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
 import { ejecutarGit, listaNul } from './lib/git.mjs';
+import { esPuntoDeEntrada } from './lib/punto-de-entrada.mjs';
 
 const PATRON_ENV = /^\.env(\..+)?$/i;
 const PATRON_CLAVES = /\.(pem|key|p12|pfx)$/i;
@@ -43,9 +42,7 @@ export function verificarSinSecretos({ cwd = process.cwd() } = {}) {
   return { codigo: 0, salida: 'Sin archivos de secretos en git.', error: '' };
 }
 
-const esEjecucionDirecta =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (esEjecucionDirecta) {
+if (esPuntoDeEntrada(import.meta.url)) {
   const resultado = verificarSinSecretos();
   if (resultado.salida) console.log(resultado.salida);
   if (resultado.error) console.error(resultado.error);
