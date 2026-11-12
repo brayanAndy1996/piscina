@@ -209,7 +209,7 @@ ${CAMPOS}
 
 /** Ejemplos que PASAN. */
 const PASAN = [
-  ['const t = tx dentro de trabajo', enConAcademia('const t = tx;\n      void t;')],
+  ['const t = tx dentro de trabajo', enConAcademia('const t = tx;\n      String(t);')],
   [
     'this.auditoria.registrarEnAcademia(tx, entrada)',
     enConAcademia('await this.auditoria.registrarEnAcademia(tx, entrada);'),
@@ -246,7 +246,7 @@ ${CAMPOS}
   ],
   [
     'una variable local que recibe tx (no es this ni el nivel del modulo)',
-    enConAcademia('let local: unknown;\n      local = tx;\n      void local;'),
+    enConAcademia('let local: unknown;\n      local = tx;\n      String(local);'),
   ],
   [
     'una propiedad de un objeto local que recibe tx',
@@ -265,7 +265,7 @@ ${CAMPOS}
   async guardar(id: string) {
     this.id = id;
     return this.baseDatos.conAcademia(id, async (tx) => {
-      void tx;
+      String(tx);
     });
   }
 }
