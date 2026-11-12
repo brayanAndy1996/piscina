@@ -3217,6 +3217,25 @@ frecuentes", en lugar de la segunda viñeta de la ronda 17:
 > - Escribe los nombres de las variables exactamente como en `.env.example` (en mayúsculas) y no definas variables que
 >   empiecen con `DOTENV_`.
 
+### 31. Ataque, ronda 19 (sin fallas)
+
+La ronda 19 (12/11/2026, sobre `03fad3c`) no encontró fallas confirmadas: no hay criterios, pruebas ni cambios de diseño
+nuevos, y el ciclo adversarial de 001 termina (spec, sección AB). Se probó: fuzz de 2 000 000 de textos del lector mínimo
+del hook frente a `dotenv.parse`, con 0 diferencias (criterio 174); 40 000 textos de `completarEnv`, con la comprobación
+antes de escribir exacta (173); las seis opciones de `dotenv.config` escritas en los cuatro cargadores (175); que
+`@prisma/config` usa su propio `dotenv` con `dotenv: false` y no carga el `.env` (confirma la verificación de T180);
+sondeos de RLS y del rol de la aplicación, y la relectura de `AcademiasService` y `SesionPlataformaService`.
+
+Dos observaciones quedan como riesgos aceptados (spec, "Riesgos aceptados", ronda 19; y "Riesgos" de este plan), sin
+cambios de código:
+
+- **O1:** `createRequire(...)('dotenv')` en `cargarDotenv` (`scripts/lib/entorno.mjs`) y en `cargarAnalizadorEnv` del hook
+  puede resolver, antes de `npm ci`, un `dotenv` de fuera del repositorio (carpetas padre, `NODE_PATH`, rutas globales).
+- **O2:** `frontend/vite.config.ts` lee el `.env` con `loadEnv` de Vite (su propio `dotenv`, con expansión de `$VAR`,
+  `.env.local` y `.env.[modo]`), solo para `PUERTO_WEB` y `PUERTO_API`.
+
+Siguen T22 (revisor), T23 (tester) y T24 (documentador). La guía no cambia por esta ronda.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -3356,6 +3375,8 @@ frecuentes", en lugar de la segunda viñeta de la ronda 17:
 | Lector mínimo garantizado por una propiedad con fuzz determinista contra `dotenv.parse` (criterio 174) | Casos fijos | Los casos fijos no encuentran la siguiente forma; con semilla fija la prueba es repetible |
 | `opcionesDotenv` con las seis opciones escritas (criterio 175, O1) | Borrar las `DOTENV_*` del entorno al arrancar; riesgo aceptado | Efecto global que no cubre a Prisma ni a Playwright; se cierra con una función |
 | O2 (mayúsculas en Windows) como riesgo aceptado (R18-4 provisional) | Comparar sin mayúsculas en Windows; aviso | El mismo `.env` daría resultados distintos según el sistema; los dos lados ya leen lo mismo |
+| O1 de la ronda 19 (`dotenv` resuelto fuera del repositorio antes de `npm ci`) como riesgo aceptado (decisión del orquestador) | Resolver `dotenv` solo desde el `node_modules` del repositorio | Desde `dotenv` 15 el analizador por defecto es la misma expresión regular; `db:crear` revalida después de `npm ci`; más código en el hook sin efecto práctico |
+| O2 de la ronda 19 (Vite con su propio `dotenv`) como riesgo aceptado (decisión del orquestador) | Que `vite.config.ts` lea los puertos con `analizarEnv` | Fuera de la ruta crítica: solo `PUERTO_WEB` y `PUERTO_API` del servidor de desarrollo; Vite seguiría cargando sus `.env.*` |
 
 ## Migraciones
 
@@ -3397,6 +3418,7 @@ frecuentes", en lugar de la segunda viñeta de la ronda 17:
 - Ronda 17: sin migraciones nuevas. La lectura del `.env` y el punto de entrada son de los scripts y del hook.
 - Ronda 18: sin migraciones nuevas. La lectura del `.env` y las opciones de `dotenv` son de los scripts, el hook, las
   utilidades de prueba y la carga del entorno del backend.
+- Ronda 19: sin fallas y sin migraciones nuevas.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -3582,5 +3604,12 @@ frecuentes", en lugar de la segunda viñeta de la ronda 17:
 - **(r5) depende de `npm`** _(ataque ronda 17, criterio 171)_: el script intenta compilar en una carpeta sin
   `package.json` y solo se mira que lo anuncie; si `npm` no está en el `PATH` del hijo, el mensaje sale igual (se imprime
   antes de lanzarlo).
+- **`dotenv` de fuera del repositorio antes de `npm ci`** _(ataque ronda 19, O1, riesgo aceptado)_: `createRequire` en
+  `cargarDotenv` y en `cargarAnalizadorEnv` puede resolver un `dotenv` de una carpeta padre, de `NODE_PATH` o de las rutas
+  globales. Impacto práctico nulo (desde `dotenv` 15 el analizador por defecto usa la misma expresión regular; `db:crear`
+  revalida después de `npm ci`); la prueba (h2) del criterio 174 ya se omite con su motivo en ese caso.
+- **Vite y su propio `dotenv`** _(ataque ronda 19, O2, riesgo aceptado)_: `loadEnv` en `frontend/vite.config.ts` expande
+  `$VAR` y lee `.env.local` y `.env.[modo]`; solo afecta a `PUERTO_WEB` y `PUERTO_API` del servidor de desarrollo y su
+  proxy, fuera de la ruta crítica.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.

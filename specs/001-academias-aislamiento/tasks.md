@@ -128,6 +128,9 @@ criterio 167).
 - [ ] T23 · tester · Suite completa (`npm test`), `lint`, `typecheck`, `format:check`, `build` y, si hay navegador,
       `npm run e2e`
 
+_(12/11/2026: el ciclo adversarial terminó con la ronda 19 sin fallas (T182). Las siguientes son T22, T23 y T24, en
+ese orden.)_
+
 ## Ataque adversarial, ronda 1 (11/11/2026)
 
 Fallas F1 a F3, O1, O2 y O4 de la ronda 1; criterios 72 a 79 de `spec.md` (sección J). O3, O5, O6 y los ya
@@ -893,13 +896,28 @@ T176.
       `npm run typecheck` en verde (plan, sección 30) (criterio 175)
 - [ ] T181 · orquestador · `git diff` desde el commit de T176: T178 a T180 no tocaron pruebas protegidas (ni
       `backend/test/utilidades/base-datos.ts` ni `base-pruebas.ts`)
-- [ ] T182 · adversarial · Ronda 19 sobre todo lo anterior, en especial 172 a 175 (otra forma de que los scripts, el
+- [x] T182 · adversarial · Ronda 19 sobre todo lo anterior, en especial 172 a 175 (otra forma de que los scripts, el
       hook, las utilidades de prueba y el backend lean valores distintos: otra copia o versión de `dotenv` resuelta por
       otro camino, `NODE_PATH`, un `dotenv` en una carpeta superior al repositorio, Vite, la CLI de Prisma; el lector
       mínimo del hook aceptando un texto que `dotenv` lee distinto; `env:completar` cambiando la lectura de lo que ya había
       por otra vía que la comprobación no vea (codificación, bytes inválidos, archivo cambiado entre la lectura y la
       escritura); variables `DOTENV_*` o `NODE_OPTIONS` que todavía cambien la carga; y que las protegidas anteriores
-      sigan igual); si hay fallas, se repite el ciclo
+      sigan igual); si hay fallas, se repite el ciclo. _(**Hecha**, 12/11/2026, sobre `03fad3c`: **sin fallas
+      confirmadas**; ver la sección "Ataque adversarial, ronda 19" abajo.)_
+
+## Ataque adversarial, ronda 19 (12/11/2026)
+
+**Sin fallas confirmadas** (sobre `03fad3c`): termina el ciclo adversarial de 001. No hay criterios, pruebas protegidas
+ni código nuevos. Se probó: fuzz de 2 000 000 de textos del lector mínimo del hook frente a `dotenv.parse`, con 0
+diferencias (criterio 174); 40 000 textos de `completarEnv`, con la comprobación antes de escribir exacta (173); las
+seis opciones fijas de `dotenv.config` en los cuatro cargadores (175); que `@prisma/config` usa su propio `dotenv` con
+`dotenv: false`; sondeos de RLS y del rol de la aplicación; relectura de `AcademiasService` y `SesionPlataformaService`.
+Dos observaciones quedan como riesgos aceptados, sin tareas: O1 (`createRequire(...)('dotenv')` puede resolver un
+`dotenv` de fuera del repositorio antes de `npm ci`) y O2 (Vite lee el `.env` con su propio `dotenv`, solo para
+`PUERTO_WEB` y `PUERTO_API`). `spec.md`, sección AB y "Riesgos aceptados"; plan, sección 31.
+
+**Siguen, en este orden:** T22 (revisor), T23 (tester) y T24 (documentador), en "Verificación" y "Cierre"; después,
+T25 (responsable, en Windows).
 
 ## Cierre
 
@@ -930,4 +948,4 @@ T176.
 
 - [ ] Pruebas escritas por test-writer y confirmadas en rojo
 - [ ] Pruebas en verde tras la implementación
-- [ ] Ataque adversarial sin fallas abiertas
+- [x] Ataque adversarial sin fallas abiertas _(ronda 19, 12/11/2026, sobre `03fad3c`: sin fallas confirmadas)_

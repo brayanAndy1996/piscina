@@ -204,6 +204,8 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
     borran (criterio 19 de 000).
   - 175: con `DOTENV_OVERRIDE` (u otra variable `DOTENV_*`) en el entorno, el `.env` pisaba lo que fijan la CI, Playwright
     o `scripts/prisma.mjs --pruebas`: la API de las E2E y `db:migrar:pruebas` podían trabajar sobre la base de desarrollo.
+- **AB. Ronda 19 del ataque (sin fallas):** no agrega criterios. Los dos riesgos nuevos (O1 y O2 de la ronda 19) quedan
+  en "Riesgos aceptados"; ninguno toca el aislamiento, los datos ni la base que usan la API y los scripts.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -4029,6 +4031,29 @@ crítica", AA).
      cambiar de resultado `eslint/regla-entorno.test.mjs` (criterio 117: `opciones-dotenv.ts` está en
      `infraestructura/entorno/` y no importa `dotenv`) y las protegidas de `cargar-env` y de los comandos. _(crítico)_
 
+### AB. Ataque adversarial, ronda 19 (sin fallas)
+
+Ronda 19 del ataque (12/11/2026, sobre el commit `03fad3c`): **sin fallas confirmadas**. No agrega ni cambia criterios,
+pruebas ni código; con ella termina el ciclo adversarial de 001 (T182). Siguen la revisión (T22), la suite completa (T23)
+y el cierre (T24).
+
+Qué se probó, en resumen:
+
+- **Lector mínimo del hook frente a `dotenv.parse`** (criterio 174): fuzz de 2 000 000 de textos; en todos los que el
+  lector mínimo acepta da lo mismo que `dotenv.parse` (0 diferencias), y en los demás se niega.
+- **`completarEnv`** (criterio 173): 40 000 textos; la comprobación antes de escribir es exacta (lo que `dotenv.parse` lee
+  después de agregar es lo de antes más lo agregado, o el comando se niega sin escribir).
+- **Opciones de `dotenv.config`** (criterio 175): las seis opciones están escritas en los cuatro cargadores
+  (`cargar-env.ts`, `cli/conexion.ts`, `prisma.config.ts` y `e2e/playwright.config.ts`); las variables `DOTENV_*` no
+  cambian la carga.
+- **CLI de Prisma:** `@prisma/config` trae su propio `dotenv` y lo usa con `dotenv: false`, así que no carga el `.env` por
+  su cuenta (confirma la verificación de T180 y el riesgo aceptado "Otros lectores del `.env` con su propio `dotenv`").
+- **RLS y rol de la aplicación:** sondeos sobre las políticas y los privilegios de `aquagestion_app`, sin hallazgos.
+- **Servicios:** relectura de `AcademiasService` y `SesionPlataformaService`, sin hallazgos.
+
+Observaciones que no son fallas, aceptadas como riesgos (decisión del orquestador): O1 (`dotenv` resuelto fuera del
+repositorio antes de `npm ci`) y O2 (Vite lee el `.env` con su propio `dotenv`). Ver "Riesgos aceptados", ronda 19.
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -5480,6 +5505,7 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
     `dotenv.config` (criterio 175); lo que cargan no cambia;
   - las historias siguientes: un `dotenv.config` nuevo usa `opcionesDotenv` y un lector nuevo del `.env` en los scripts usa
     `analizarEnv` (las pruebas estáticas de 172 y 175 lo exigen); nadie define variables `DOTENV_*`.
+- **Ronda 19 del ataque (sin fallas):** ningún impacto nuevo en especificaciones anteriores.
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -5926,7 +5952,8 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   usa su propio `dotenv` y expande `$`; solo toma `PUERTO_WEB` y `PUERTO_API` (y las `VITE_*`, que hoy no hay). Un
   desacuerdo solo rompe el proxy de desarrollo y se ve al instante; no toca bases ni datos. La CLI de Prisma trae `c12`
   con otro `dotenv`; si cargara el `.env` por su cuenta, no pisaría lo definido (lo confirma el backend en T178; si no
-  fuera así, se detiene e informa).
+  fuera así, se detiene e informa). _(Ronda 19: confirmado; `@prisma/config` usa su propio `dotenv` con `dotenv: false` y
+  no carga el `.env`. Lo de Vite se precisa en el riesgo O2 de la ronda 19.)_
 - **El lector mínimo del hook se niega antes de `npm ci`** _(ataque ronda 18, R18-1 y R18-2, provisional)_: con un `.env`
   que no tiene la forma simple (comillas, `#` en un valor, una variable repetida) en un contenedor recién creado, la
   primera ejecución del hook instala las dependencias pero no prepara la base, y pide reintentar. Se acepta: en la nube el
@@ -5934,6 +5961,18 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 - **Cambios de comportamiento de `dotenv` entre versiones** _(ataque ronda 18)_: al actualizar `dotenv`, los scripts y el
   backend cambian juntos (mismo rango y misma versión, criterio 172, prueba (s4)). Lo que cambie es para los dos lados; el
   lector mínimo del hook lo vigila la propiedad (h7) con la versión instalada.
+- **`dotenv` resuelto fuera del repositorio antes de `npm ci`** _(ataque ronda 19, O1; decisión del orquestador)_:
+  `createRequire(...)('dotenv')`, en `cargarDotenv` (`scripts/lib/entorno.mjs`) y en `cargarAnalizadorEnv` del hook, sigue
+  la resolución normal de Node, así que antes de `npm ci` puede encontrar un `dotenv` fuera del repositorio (en una carpeta
+  padre, en `NODE_PATH` o en las rutas globales) y leer el `.env` con esa versión en vez de la declarada. Se acepta porque el
+  impacto práctico es nulo: desde `dotenv` 15 el analizador por defecto usa la misma expresión regular, así que otra versión
+  lee lo mismo; `db:crear` vuelve a comprobar después de `npm ci`, con la versión instalada; y la prueba (h2) del criterio
+  174 ya se omite con su motivo cuando `createRequire(…).resolve('dotenv')` encuentra uno en la carpeta temporal.
+- **Vite lee el `.env` con su propio `dotenv`** _(ataque ronda 19, O2; decisión del orquestador; precisa el riesgo "Otros
+  lectores del `.env` con su propio `dotenv`" de la ronda 18)_: `frontend/vite.config.ts` usa `loadEnv` de Vite, que trae
+  su propio `dotenv`, expande `$VAR` y lee también `.env.local` y `.env.[modo]`. Solo toma `PUERTO_WEB` y `PUERTO_API`, para
+  el servidor de desarrollo y su proxy. Se acepta porque está fuera de la ruta crítica: no toca bases ni datos, y un
+  desacuerdo solo rompe el proxy de desarrollo, que se ve al instante.
 
 ## Notas para historias futuras
 
@@ -6606,12 +6645,22 @@ _(Ronda 18: las dos primeras decisiones de esta lista se reemplazan; ver abajo. 
   un commit de implementación aparte para las utilidades (el `git diff` de T181 las vería como protegidas tocadas por la
   implementación, y no hay código de la aplicación que esperar).
 
+### Decisiones técnicas tras el ataque, ronda 19 (12/11/2026)
+
+- **Fin del ciclo adversarial** (decisión del orquestador): la ronda 19 (sobre `03fad3c`) no encontró fallas confirmadas;
+  no hay criterios nuevos y siguen T22 (revisor), T23 (tester) y T24 (documentador).
+- **O1 y O2 de la ronda 19 quedan como riesgos aceptados** (decisión del orquestador). O1: alternativa descartada,
+  resolver `dotenv` solo desde `node_modules` del repositorio (con `paths` fijos o leyendo la carpeta a mano); agrega
+  código al hook y a los scripts para un caso sin efecto práctico, porque otra versión de `dotenv` lee igual y `db:crear`
+  revalida después de `npm ci`. O2: alternativa descartada, que Vite lea los puertos con `analizarEnv`; está fuera de la
+  ruta crítica y Vite seguiría cargando sus propios archivos `.env.*`.
+
 ## Preguntas abiertas
 
 Ninguna de negocio. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a
 DR-10 en "Decisiones"). Las correcciones de las rondas 1 a 16 del ataque son decisiones técnicas y no abren preguntas de
 negocio. _(Ronda 17: tampoco; sus preguntas técnicas R17-1 a R17-3 están al final.)_ _(Ronda 18: tampoco; sus preguntas
-técnicas R18-1 a R18-4 están al final.)_ Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
+técnicas R18-1 a R18-4 están al final.)_ _(Ronda 19: sin fallas y sin preguntas nuevas.)_ Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").
 
 Pregunta técnica de la ronda 16, **resuelta** por el orquestador el 12/11/2026, antes de T163: se aceptó la propuesta
