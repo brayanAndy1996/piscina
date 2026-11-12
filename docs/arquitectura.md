@@ -19,7 +19,7 @@ Navegador (PC de recepción / celular)
         └── tareas programadas (faltas, cierre de mes)
 ```
 
-## Varias academias
+## Aislamiento entre academias
 
 - Toda tabla del negocio lleva `academia_id`.
 - La API toma la academia de la sesión del usuario, o del nombre corto de la dirección en las páginas públicas
@@ -28,6 +28,107 @@ Navegador (PC de recepción / celular)
   comprobar con seguridad a nivel de fila (RLS). Un error en una consulta no puede mostrar datos de otra academia.
 - El DNI es único dentro de cada academia (D-28). El Superadmin administra las academias, pero no ve sus datos
   internos (D-29).
+
+Lo que construye la historia 001 (migraciones en `backend/prisma/migrations/` y módulo `infraestructura/prisma/`):
+
+- **Dos roles.** El dueño de las tablas (`DATABASE_URL`) corre las migraciones, la semilla y
+  `npm run plataforma:superadmin`. La API se conecta con `aquagestion_app` (`DATABASE_URL_APP`): sin superusuario, sin
+  `BYPASSRLS`, sin membresías, sin ser dueño de las tablas y solo con los privilegios que cada tabla necesita.
+- **RLS forzada.** Las cinco tablas de 001 (`academias`, `superadmins`, `auditoria`, `auditoria_plataforma` y
+  `configuraciones`) tienen `ENABLE` y `FORCE ROW LEVEL SECURITY`, también para el dueño. Las políticas leen dos valores
+  de la transacción, con las funciones `app_academia_actual()` (`app.academia_id`) y `app_es_plataforma()`
+  (`app.plataforma`):
+  - `auditoria` y `configuraciones` solo muestran las filas de la academia de la transacción; en contexto de plataforma
+    no devuelven ninguna.
+  - `superadmins` y `auditoria_plataforma` solo se ven en contexto de plataforma.
+  - `academias` la ven la plataforma y la propia academia; solo la plataforma la crea o la modifica.
+- **`BaseDatos` es el único punto de acceso.** Expone `conAcademia(academiaId, trabajo)`, `comoPlataforma(trabajo)`,
+  `resolverAcademia(nombreCorto)` y `comprobarConexion()`. Cada transacción fija los dos valores de contexto (academia y
+  plataforma) con `set_config(…, true)`: solo viven dentro de esa transacción, así que no pasan a la siguiente petición
+  que use la misma conexión del pool. Los módulos no usan Prisma directamente; una regla de lint lo impide.
+- **Falla cerrada.** `BaseDatos` comprueba una vez por proceso que el rol de la API no tiene atributos ni privilegios que
+  permitirían saltarse RLS (superusuario, `BYPASSRLS`, `REPLICATION`, `CREATEROLE`, `CREATEDB`, membresías, `CREATE` o
+  `TEMPORARY`, o ser dueño de objetos). Si el rol no es seguro, las operaciones rechazan con `ErrorRolBaseDatosInseguro`
+  (500) sin ejecutar nada.
+- **Rutas públicas.** `GET /api/a/{nombreCorto}` no tiene sesión. Busca la academia con la función `resolver_academia`, y
+  la respuesta solo lleva el nombre corto y el nombre, sin id ni estado. Una academia suspendida responde 403.
+- **Sesión del superadmin.** Entra con la cookie `aq_plataforma` (`HttpOnly`, `SameSite=Strict`, `Path=/api/plataforma`,
+  8 horas). Cambiar su clave sube `version_token`, y las sesiones abiertas dejan de valer.
+- **Auditoría.** Las altas, suspensiones y reactivaciones de academias, y el alta y el restablecimiento del superadmin,
+  quedan en `auditoria_plataforma`. Los cambios dentro de una academia van a `auditoria`. Los inicios de sesión solo van
+  al registro técnico (DR-7).
+- **Lo que no hace la 001:** los usuarios de las academias y su inicio de sesión, y el primer administrador de cada
+  academia (lo crea la 002, DR-1); la configuración con sus claves y valores por defecto (la define la 003, DR-8).
+
+## Fechas y horas de negocio (America/Lima)
+
+- Las fechas y horas de negocio (el día de una asistencia o de una caja, el mes de una mensualidad, un vencimiento, si
+  una clase ya empezó) se deciden en la zona America/Lima (RNF-12), nunca en la del servidor.
+- La conexión de la API con PostgreSQL trabaja en UTC (spec 001, criterio 98). Los instantes (`now()`, columnas
+  `timestamptz`) son correctos, pero `CURRENT_DATE`, `now()::date`, `date_trunc('day', now())` y `LOCALTIME` dan el día
+  y la hora de UTC: desde las 19:00 de Lima ya es el día siguiente.
+- Por eso la fecha de negocio se calcula en el código, con `@date-fns/tz` en `America/Lima` a partir de la hora del reloj
+  inyectable (`RELOJ`), y se pasa a la consulta como parámetro. Si tiene que calcularse en SQL, se escribe la zona:
+  `(now() AT TIME ZONE 'America/Lima')::date`.
+- Las pruebas de estos cálculos fijan la hora con `RELOJ` en los bordes: 18:59 y 19:00 de Lima, fin de mes y la clase de
+  19:00 a 20:00.
+
+## Reglas para las historias siguientes
+
+Estas reglas salen de las rondas del ataque adversarial de la 001. El revisor y el adversarial las comprueban en cada
+historia nueva. Los números entre paréntesis son criterios de `specs/001-academias-aislamiento/spec.md`.
+
+### Transacciones
+
+- Dentro de una transacción, cada paso se espera con `await`. No se dejan cadenas sueltas con `.then` ni con `void`
+  (criterio 156). Toda promesa que se crea dentro se espera antes de devolver, también la que se guarda en una variable.
+- No se pasan funciones `async` a `process.nextTick`, `setImmediate`, `setTimeout`, `setInterval` ni `queueMicrotask`.
+  Lo que sea diferido va después de confirmar (criterio 164).
+- Dentro de una transacción de la API, las consultas que se lanzan a la vez (`Promise.all`) se ejecutan de una en una, y
+  cada una recibe su propio resultado o su propio error (criterio 153). En los comandos y en la semilla (`enPlataforma`)
+  no se lanzan consultas en paralelo: se encadenan con `await`.
+- Un error de la base que se atrapa dentro de la transacción la deja abortada, y la operación falla (criterio 149). Un
+  P2025 atrapado por una consulta no la aborta, y una escritura de un modelo que falla no deja nada escrito, aunque tenga
+  relaciones anidadas (criterio 158).
+- Los duplicados que se esperan se resuelven con `INSERT … ON CONFLICT DO NOTHING RETURNING`, y se mira si volvió una
+  fila, como en `AcademiasService.crear`.
+- Los bloqueos de transacción (`pg_advisory_xact_lock`) se toman con `$executeRaw`, por ejemplo
+  `` await tx.cliente.$executeRaw`SELECT pg_catalog.pg_advisory_xact_lock(${clave}::bigint)` `` (criterio 155).
+- No se actualiza la tabla `academias` desde `conAcademia`: los cambios de una academia se hacen desde `comoPlataforma`,
+  y nunca con una escritura anidada hacia `academias`.
+- Para leer varias filas por id se usa `findMany({ where: { id: { in: ids } } })`, no
+  `Promise.all(ids.map((id) => findUnique(…)))`: con la cola serial de la API, cada `findUnique` va por separado, y
+  `findMany` con `in` es una sola consulta.
+
+### Escrituras y errores
+
+- Para escribir muchas filas en una transacción se usan `createMany`, `updateMany`, `deleteMany` o `$executeRaw`, no un
+  bucle de escrituras de un modelo. PostgreSQL guarda hasta 64 identificadores de subtransacción por conexión: con más de
+  64 escrituras de modelos en una transacción, la conexión desborda esa caché y el servidor se vuelve más lento para
+  todas las academias mientras la transacción siga abierta.
+- No se usa el tipo `money` de PostgreSQL: los montos van en `numeric` y en `Decimal`, en la base y en el código.
+- Un error que se pasa a una excepción de Nest lleva un mensaje propio y `{ cause: error }`, por ejemplo
+  `new InternalServerErrorException('No se pudo …', { cause: error })`. Nunca se pasa el error de Prisma ni su mensaje,
+  y un error propio no copia el mensaje de otro (criterio 165).
+
+### Errores y registros
+
+- En `backend/src` no se descartan promesas: ni `void` ni funciones `async` sin `await`. Lo exige el lint (criterio 159).
+  Un rechazo que llega después de que `trabajo` terminó hace fallar la operación (criterio 160).
+- El registro técnico de un error de la base lleva solo el tipo y los códigos, nunca el mensaje de Prisma, que puede
+  llevar datos personales (Ley 29733). Se registra con `errorParaRegistro` (criterio 162), y de la pila solo se conservan
+  los marcos que siguen al encabezado `nombre: mensaje` (criterio 163).
+- Un error nunca lleva el contenido de un archivo, ni un binario, ni una copia de él, ni un `Proxy` de un binario: se
+  guarda la clave del archivo en `AlmacenArchivos` (D-19). La `cause` de un error es un valor, nunca una función
+  (criterios 167 y 168).
+
+### Datos, fechas y cachés
+
+- Las fechas de negocio se calculan en America/Lima, con `@date-fns/tz` o con `AT TIME ZONE 'America/Lima'`, como dice la
+  sección anterior.
+- Los servicios no guardan resultados de consultas en propiedades ni en variables del módulo: otra academia recibiría
+  datos que no son suyos, sin pasar por su propia transacción. Si una historia necesita caché, la clave incluye la
+  `academia_id` (por ejemplo, `Map<academiaId, …>`), se invalida al escribir y lo decide su especificación.
 
 ## Estructura de carpetas
 
@@ -97,8 +198,8 @@ base de datos.
 |               | Nube (sesiones de Claude)                                            | PC del responsable (Windows)         |
 | ------------- | -------------------------------------------------------------------- | ------------------------------------ |
 | PostgreSQL    | El instalado en el contenedor (no hay Docker)                        | `docker compose up -d`               |
-| Configuración | `.env` con `DATABASE_URL`                                            | El mismo `.env`, con sus valores     |
-| Al empezar    | `preparar-sesion.mjs`: enciende PostgreSQL, crea las bases de desarrollo y de pruebas, instala dependencias y aplica migraciones | `git pull` → `npm ci` → migraciones → `npm run dev` |
+| Configuración | `.env` con `DATABASE_URL` (dueño) y `DATABASE_URL_APP` (la API)      | El mismo `.env`, con sus valores     |
+| Al empezar    | `preparar-sesion.mjs`: enciende PostgreSQL, crea el rol `aquagestion_app` y las bases de desarrollo y de pruebas, instala dependencias y aplica migraciones | `git pull` → `npm ci` → `npm run env:completar` si cambió `.env.example` → `npm run db:migrar` (o `db:preparar`, si la historia crea un rol o una base) → `npm run dev` |
 
 - Node 22 LTS en la nube, en la integración continua y en la PC (`.nvmrc` y `engines`).
 - `.gitattributes` fija LF para que Windows no altere los archivos.

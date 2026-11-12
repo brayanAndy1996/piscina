@@ -6,8 +6,7 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
 
 ## Qué está construido
 
-La historia **000 · Esqueleto** está en curso. Deja la base técnica sobre la que se construye el resto. Todavía no hay
-funciones de negocio ni tablas: el sistema arranca, se conecta a PostgreSQL y las herramientas de calidad funcionan.
+**000 · Esqueleto** está unida a `main` y deja la base técnica:
 
 - **API** (NestJS, en `/api`):
   - `GET /api/salud`: responde 200 si la API y la base de datos responden, y 503 si la base no responde, en menos de
@@ -17,8 +16,6 @@ funciones de negocio ni tablas: el sistema arranca, se conecta a PostgreSQL y la
   - Registros en JSON, con los valores de cookies y credenciales ocultos. Valida la configuración al arrancar, sin
     mostrar valores.
   - Reloj inyectable (`RELOJ`) para controlar la hora en las pruebas.
-- **Base de datos:** PostgreSQL 16 con Prisma. La migración inicial está vacía: no hay tablas de negocio todavía
-  (D-17). Las tablas de academias, auditoría y configuración llegan con la 001, y las de usuarios, con la 002.
 - **Web** (React, en `/`): la página de inicio muestra el título "AquaGestión" y el estado del sistema ("Sistema en
   línea", "Sin conexión con la base de datos", entre otros). Las rutas desconocidas muestran "Página no encontrada"
   con un enlace para volver al inicio.
@@ -27,7 +24,33 @@ funciones de negocio ni tablas: el sistema arranca, se conecta a PostgreSQL y la
   Windows y pruebas protegidas.
 - **Pruebas E2E** con Playwright: comprueban que la web abre y muestra "Sistema en línea".
 
-La siguiente historia es la **001 · Academias y aislamiento** (ver [`specs/backlog.md`](specs/backlog.md)).
+**001 · Academias y aislamiento** está construida y espera la aprobación del responsable para unirse a `main`. Trae:
+
+- **Academias:** cada academia tiene un nombre y un nombre corto (de 3 a 30 caracteres, en minúsculas, que no se puede
+  cambiar; D-27). La plataforma la crea, la lista, la suspende con un motivo obligatorio y la reactiva. Una academia
+  suspendida conserva sus datos.
+- **Superadmin:** su cuenta se crea, y su clave se restablece, con `npm run plataforma:superadmin`; no hay registro por
+  la web (D-29). Inicia sesión en `/plataforma/ingresar`, con una cookie `httpOnly` de 8 horas. Cinco intentos fallidos
+  seguidos bloquean la cuenta 15 minutos, y hay un límite de 10 intentos por minuto desde una misma IP.
+- **Aislamiento entre academias:** la API se conecta con el rol `aquagestion_app`, sin superusuario ni `BYPASSRLS`.
+  PostgreSQL filtra las tablas por academia con seguridad a nivel de fila (RLS), también para el dueño de las tablas.
+  Cada transacción fija la academia o el contexto de plataforma, y si el rol no es seguro, la API no atiende datos.
+  Detalles en [`docs/arquitectura.md`](docs/arquitectura.md).
+- **Auditoría:** las altas, suspensiones y reactivaciones de academias, y el alta y el restablecimiento del superadmin,
+  quedan en la auditoría de la plataforma. Los inicios de sesión van solo al registro técnico. Todavía no hay pantalla
+  para verla.
+- **Configuración:** la tabla de configuración por academia existe, sin claves todavía (las define la 003).
+- **Ruta pública:** `GET /api/a/{nombreCorto}` devuelve el nombre de una academia activa, sin su id ni su estado. Responde
+  404 si no existe y 403 si está suspendida.
+- **Datos de ejemplo:** `npm run db:semilla` (y `npm run db:preparar`) crea, si no existen, las academias `delfines`
+  ("Academia de Natación Los Delfines") y `tiburones` ("Club de Natación Tiburones") y el superadmin de desarrollo.
+- **Web:** `/plataforma/ingresar` y `/plataforma/academias`, para crear, suspender y reactivar academias y para cerrar
+  sesión. `/plataforma` lleva a la lista.
+
+Todavía no existen los usuarios de las academias ni su inicio de sesión: el primer administrador de cada academia lo crea
+la 002 (DR-1).
+
+La siguiente historia es la **002 · Autenticación y roles por academia** (ver [`specs/backlog.md`](specs/backlog.md)).
 
 ## Cómo levantarlo en Windows
 
@@ -48,35 +71,45 @@ npm run dev
 `Copy-Item` y `npm run db:preparar` solo hacen falta la primera vez. Luego abre http://localhost:5173: debe aparecer
 **Sistema en línea**.
 
+Si ya tenías el proyecto antes de la historia 001, no vuelvas a copiar `.env.example`: ejecuta `npm ci` y
+`npm run env:completar` (agrega las variables nuevas a tu `.env`), y después `npm run db:preparar`. Los pasos completos
+están en la guía, en "Después de traer la historia 001".
+
 ## Comandos principales
 
-| Comando                                                                 | Qué hace                                                                                       |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `npm run dev`                                                           | Enciende la API (puerto 3000), la web (puerto 5173) y la compilación de los contratos.         |
-| `npm run build`                                                         | Compila contratos, API y web, en ese orden.                                                    |
-| `npm test`                                                              | Todas las pruebas, incluidas las de integración con PostgreSQL.                                |
-| `npm run test:unit`                                                     | Las pruebas que no necesitan base de datos.                                                    |
-| `npm run e2e`                                                           | Pruebas E2E con Chromium (la primera vez, `npx playwright install chromium`).                  |
-| `npm run lint`, `npm run typecheck`, `npm run format:check`            | ESLint, tipos de TypeScript y formato con Prettier.                                            |
-| `npm run db:preparar`                                                   | Crea las bases de desarrollo y de pruebas que falten, aplica las migraciones y la semilla.     |
-| `npm run db:migrar`, `npm run db:migrar:pruebas`                        | Aplica las migraciones pendientes a la base de desarrollo o a la de pruebas.                   |
-| `npm run db:migracion`                                                  | Crea una migración nueva a partir de un cambio en el esquema de Prisma.                        |
-| `npm run db:semilla`                                                    | Carga los datos de ejemplo (hoy no carga ninguno).                                             |
-| `npm run verificar:pruebas-protegidas`, `npm run verificar:sin-secretos` | Verificaciones del método y de seguridad del repositorio.                                      |
+| Comando                                                                 | Qué hace                                                                                                          |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                                           | Enciende la API (puerto 3000), la web (puerto 5173) y la compilación de los contratos.                            |
+| `npm run build`                                                         | Compila contratos, API y web, en ese orden.                                                                       |
+| `npm test`                                                              | Todas las pruebas, incluidas las de integración con PostgreSQL.                                                   |
+| `npm run test:unit`                                                     | Las pruebas que no necesitan base de datos.                                                                       |
+| `npm run e2e`                                                           | Pruebas E2E con Chromium (la primera vez, `npx playwright install chromium`).                                     |
+| `npm run lint`, `npm run typecheck`, `npm run format:check`            | ESLint, tipos de TypeScript y formato con Prettier.                                                               |
+| `npm run db:preparar`                                                   | Crea el rol `aquagestion_app` y las bases de desarrollo y de pruebas que falten, aplica las migraciones y la semilla. |
+| `npm run db:crear`                                                      | Crea solo el rol `aquagestion_app` y las bases que falten (lo usa `db:preparar`).                                 |
+| `npm run db:migrar`, `npm run db:migrar:pruebas`                        | Aplica las migraciones pendientes a la base de desarrollo o a la de pruebas.                                      |
+| `npm run db:migracion`                                                  | Crea una migración nueva a partir de un cambio en el esquema de Prisma.                                           |
+| `npm run db:semilla`                                                    | Crea las academias de ejemplo y el superadmin de desarrollo, si no existen.                                       |
+| `npm run env:completar`                                                 | Agrega a `.env` las variables de `.env.example` que falten, sin cambiar las que ya tienes.                        |
+| `npm run plataforma:superadmin`                                         | Crea el superadmin de la plataforma o le restablece la clave, con `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE`. |
+| `npm run verificar:pruebas-protegidas`, `npm run verificar:sin-secretos` | Verificaciones del método y de seguridad del repositorio.                                                         |
 
 ## Cómo funciona
 
 - **Un solo dominio:** la web está en `/` y la API en `/api` (D-25). En desarrollo, Vite reenvía `/api` a la API.
 - **Configuración en `.env`:** es una copia de `.env.example`, con valores de desarrollo inventados. No se sube al
   repositorio (D-21).
+- **Dos conexiones a la base:** la API se conecta con `DATABASE_URL_APP`, que es el rol `aquagestion_app` y está sujeto
+  a la seguridad por academia. Las migraciones, la semilla y los comandos usan `DATABASE_URL`, que es el dueño de las
+  tablas.
 - **Mismo sistema en dos lugares:** en la nube, las sesiones de Claude usan un PostgreSQL del contenedor, y un hook
-  prepara el entorno al empezar. En la PC del responsable, PostgreSQL corre en Docker (D-18, D-26). En ambos casos se
-  usa `DATABASE_URL`.
+  prepara el entorno al empezar. En la PC del responsable, PostgreSQL corre en Docker (D-18, D-26).
 - **Cómo se trabaja:** cada historia tiene su carpeta `specs/NNN-nombre/` (especificación, plan y tareas) y entra al
   proyecto por pull request. Las pruebas protegidas (`// spec: NNN-nombre (pruebas protegidas)`) solo cambian en sus
   propios commits, y la CI lo verifica en cada pull request. Detalles en [`docs/metodologia.md`](docs/metodologia.md).
-- **Varias academias:** cada tabla de negocio llevará `academia_id`, y PostgreSQL filtrará por academia con seguridad a
-  nivel de fila (D-23). Eso empieza en la 001.
+- **Varias academias:** cada tabla de negocio lleva `academia_id`, y PostgreSQL filtra por academia con seguridad a nivel
+  de fila (D-23). Eso ya está en la 001. Las reglas de fechas, transacciones y errores que siguen las historias nuevas
+  están en [`docs/arquitectura.md`](docs/arquitectura.md).
 
 ## Estructura
 
@@ -87,7 +120,7 @@ piscina/
 ├── packages/contratos/   Esquemas zod y tipos que comparten la API y la web
 ├── e2e/                  Pruebas E2E con Playwright
 ├── scripts/              Scripts en Node: bases de datos y verificaciones
-├── eslint/               Regla de ESLint que obliga a usar RELOJ
+├── eslint/               Reglas de ESLint del proyecto (uso de RELOJ, acceso a la base y SQL)
 ├── specs/                Una carpeta por historia, backlog.md y _plantillas/
 ├── docs/                 Requerimientos, decisiones, metodología, arquitectura y guía de Windows
 ├── .claude/              Roles de la metodología y hook de sesión para la nube
@@ -106,7 +139,8 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/requerimientos.md`](docs/requerimientos.md): el mismo contenido en texto, para buscar y consultar rápido.
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
-- [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso.
+- [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, y cómo
+  entrar a la plataforma.
 
 ## Forma de trabajo
 
@@ -116,7 +150,8 @@ adversariales y roles separados. Ver [`docs/metodologia.md`](docs/metodologia.md
 - [`CLAUDE.md`](CLAUDE.md): instrucciones del orquestador, ruta crítica, arquitectura y convenciones.
 - [`.claude/agents/`](.claude/agents): los roles (especificador, adversarial, backend, frontend, test-writer,
   revisor, tester y documentador).
-- [`docs/arquitectura.md`](docs/arquitectura.md): arquitectura y estructura de carpetas.
+- [`docs/arquitectura.md`](docs/arquitectura.md): arquitectura, aislamiento entre academias, fechas y horas de Lima, y
+  reglas para las historias siguientes.
 - [`specs/backlog.md`](specs/backlog.md): la lista ordenada de historias.
 - [`specs/`](specs): una carpeta por historia (`spec.md`, `plan.md`, `tasks.md`), a partir de
   `specs/_plantillas/`.
