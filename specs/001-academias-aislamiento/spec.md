@@ -132,6 +132,14 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
     que se escribe o qué filas toca una sentencia.
   - 148: aislamiento; si `DATABASE_URL_APP` apunta a otra base u otro servidor, `db:crear` aprueba el rol en una base y
     la API usa otra, y la comprobación de `db:crear` deja de valer como garantía (como en el 143).
+- **S. Correcciones del ataque, ronda 10 (149 a 152):**
+  - 149 y 150: auditoría (RN-22) y, desde las historias siguientes, pagos, caja y asistencia; una transacción que
+    PostgreSQL revirtió se reportaba como confirmada, así que la API respondería "cobrado", "verificado" o "asistencia
+    registrada" sin que nada ni su auditoría quedaran escritos.
+  - 151: lo mismo por otro camino: un `ROLLBACK` o `COMMIT` escrito dentro de `trabajo` (que el lint del criterio 84
+    prohíbe, pero el lint es la segunda capa) deja lo que sigue fuera de la transacción y sin contexto.
+  - 152: auditoría (RN-22); una IP con zona IPv6 hacía fallar la operación, y la corrección no puede abrir un camino
+    para registrar una operación sin la IP de quien la hizo.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -271,10 +279,12 @@ de plataforma devuelve 2 filas y `superadmins`, 1).
 21. Dada una academia activa A, cuando se llama a `baseDatos.conAcademia(A.id, trabajo)`, entonces `trabajo` corre
     dentro de una transacción en la que `current_setting('app.academia_id', true)` es el id de A y `app.plataforma`
     no es `si`; recibe `tx.academiaId` igual a ese id; y el resultado de `trabajo` se devuelve tras confirmar la
-    transacción. _(crítico)_
+    transacción. _(crítico)_ _(ampliado por los criterios 149 y 151, ataque ronda 10: "tras confirmar" exige que la
+    transacción siga viva y sin abortar al terminar `trabajo`; si no, rechaza con `ErrorTransaccionAbortada`)_
 22. Dado que `trabajo` lanza un error, entonces la transacción se revierte por completo (las filas que insertó en
     `auditoria` o `configuraciones` no quedan) y `conAcademia` rechaza con ese mismo error. Lo mismo en
-    `comoPlataforma`. _(crítico)_
+    `comoPlataforma`. _(crítico)_ _(complementado por los criterios 149 y 151, ataque ronda 10: si `trabajo` atrapa un
+    error de la base y termina bien, también se rechaza)_
 23. Dada la API con `DATABASE_POOL_MAX=1`, cuando termina `conAcademia(A, …)`, bien o con error, entonces un
     `comoPlataforma` posterior lee `current_setting('app.academia_id', true)` vacío o nulo; y cuando termina
     `comoPlataforma`, un `conAcademia(B, …)` posterior lee `app.plataforma` distinto de `si`. Ninguna conexión del
@@ -287,7 +297,8 @@ de plataforma devuelve 2 filas y `superadmins`, 1).
     `ErrorAcademiaSuspendida`. En ambos casos no ejecuta `trabajo`. Si esos errores llegan al filtro de la API, se
     responden como 404 `ACADEMIA_NO_ENCONTRADA` y 403 `ACADEMIA_SUSPENDIDA`. _(crítico)_
 26. Cuando se llama a `baseDatos.comoPlataforma(trabajo)`, entonces `trabajo` corre en una transacción con
-    `app.plataforma` igual a `si` y sin `app.academia_id` (vacío o nulo). _(crítico)_
+    `app.plataforma` igual a `si` y sin `app.academia_id` (vacío o nulo). _(crítico)_ _(ampliado por los criterios
+    149 y 151, ataque ronda 10: devuelve el resultado de `trabajo` solo si la transacción se confirma)_
 27. Dadas las opciones `{ aislamiento: 'Serializable' }` (o `'RepeatableRead'`, `'ReadCommitted'`), entonces la
     transacción de `conAcademia` y de `comoPlataforma` corre con ese nivel (`SHOW transaction_isolation`). Lo usarán
     el aforo y la caja. _(prueba obligatoria)_
@@ -303,17 +314,19 @@ de plataforma devuelve 2 filas y `superadmins`, 1).
     entonces se inserta en `auditoria` una fila con `academia_id` igual a `tx.academiaId`, `fecha_hora` igual a
     `RELOJ.ahora()` y los campos de la entrada (`actorTipo`, `actorId`, `accion`, `entidad`, `entidadId`,
     `datosAntes`, `datosDespues`, `motivo`, `ip`). La entrada no tiene campo de academia: no se puede auditar en otra.
-    _(crítico)_
+    _(crítico)_ _(ampliado por el criterio 152, ataque ronda 10: la `ip` se guarda normalizada, sin sufijo de zona
+    IPv6, y una IP que no es válida hace fallar la operación)_
 30. Dada una operación que audita, cuando la transacción se revierte, entonces su registro de auditoría tampoco
     queda; y cuando la inserción de auditoría falla, la operación completa falla. Prueba: con un disparador temporal
     en `auditoria_plataforma` que lanza un error, `POST /api/plataforma/academias` responde 500 y la academia no
     existe. _(crítico)_
 31. Dada una transacción de `comoPlataforma`, cuando se llama a `auditoria.registrarEnPlataforma(tx, entrada)`,
-    entonces se inserta en `auditoria_plataforma` con `fecha_hora` igual a `RELOJ.ahora()`. _(crítico)_
+    entonces se inserta en `auditoria_plataforma` con `fecha_hora` igual a `RELOJ.ahora()`. _(crítico)_ _(ampliado
+    por el criterio 152, ataque ronda 10: la `ip`, como en el 29)_
 32. Dadas las operaciones de esta historia, entonces quedan en `auditoria_plataforma`, con `entidad` y `entidad_id`
     (el id):
     - `ACADEMIA_CREADA`: actor `SUPERADMIN` y su id; `datos_despues` con `id`, `nombre`, `nombreCorto` y `estado`;
-      `ip` de la petición;
+      `ip` de la petición (normalizada por el criterio 152, ataque ronda 10);
     - `ACADEMIA_SUSPENDIDA`: `datos_antes` `{ "estado": "ACTIVA" }`, `datos_despues` `{ "estado": "SUSPENDIDA" }`,
       `motivo`, actor e `ip`;
     - `ACADEMIA_REACTIVADA`: lo inverso, con `motivo` si se indicó;
@@ -802,7 +815,8 @@ negocio nuevas, y no cambian el sentido de los criterios 1 a 79: los que amplía
     dueño no es superusuario (la nube), `auditoria` y `configuraciones` devuelven 0 filas. Toda transacción de
     academia que agregue un comando en el futuro fija también los dos valores. Contrato para la prueba:
     `crearClienteDelDueno(url: string): PrismaClient` y `enPlataforma(cliente, trabajo)` exportados de
-    `backend/src/cli/conexion.ts`. _(crítico)_
+    `backend/src/cli/conexion.ts`. _(crítico)_ _(ampliado por los criterios 150 y 151, ataque ronda 10: `enPlataforma`
+    devuelve el resultado de `trabajo` solo si la transacción se confirma)_
 91. **Ningún secreto de prueba válido en producción queda en el repositorio** _(ataque ronda 2, O1; complementa el
     criterio 79)_. Dadas las pruebas del repositorio (`backend/test/`, `**/*.test.ts`, `**/*.test.mjs`, `e2e/`),
     entonces todo secreto de firma que cumpla las reglas de producción del criterio 79 (fuera de la lista de secretos
@@ -2262,6 +2276,115 @@ Todos son _(crítico)_.
      función del hook que lee y valida la URL de la app, `leerUrlAppParaRol` (P-35): con cada diferencia lanza un error que nombra las dos
      variables y la parte, sin la contraseña, y no ejecuta `psql`. _(crítico)_
 
+### S. Correcciones del ataque adversarial, ronda 10
+
+Criterios agregados tras la ronda 10 del ataque (12/11/2026, sobre el commit `e15707c`). La ronda encontró una falla alta
+(una transacción que PostgreSQL revirtió se reportaba como confirmada) y dos observaciones (la fecha de negocio en SQL y la
+IP con zona IPv6). Son decisiones técnicas del orquestador y del especificador, no reglas de negocio nuevas. La observación
+O1 (fecha de negocio en SQL) no lleva criterio: es una nota para las historias siguientes (plan, sección 22). Donde un
+criterio amplía uno anterior lo dice, y el anterior queda marcado "(… ataque ronda 10)", sin borrar su texto. Contrato
+nuevo: precisiones P-36 y P-37. Todos son _(crítico)_.
+
+149. **Una transacción abortada nunca se reporta como confirmada en `BaseDatos`** _(ataque ronda 10, F1; **amplía** los
+     criterios 21 y 26 y complementa el 22; decisión del orquestador)_. Dado que, si una sentencia falla dentro de `trabajo`
+     y `trabajo` atrapa el error y termina bien (un reintento que atrapa `esViolacionDeUnicidad`, un `.catch(() =>
+     undefined)`, un `try`/`catch` vacío), PostgreSQL deja la transacción abortada; que Prisma 7 envía `COMMIT` y
+     PostgreSQL responde con la etiqueta `ROLLBACK` sin error; y que así `conAcademia` y `comoPlataforma` resolvían con el
+     valor de `trabajo` aunque todo lo escrito, incluida la auditoría, se había perdido (lo mismo con una consulta enviada
+     sin `await` que falla después de que `trabajo` termina), entonces:
+     - `conAcademia`, `comoPlataforma` y `resolverAcademia` devuelven el valor de `trabajo` solo si, después de que
+       `trabajo` termina bien, de que se asientan (se resuelven o rechazan) todas las consultas que `trabajo` envió por el
+       envoltorio, con o sin `await`, y antes de pedir la confirmación, la transacción sigue activa y sin abortar;
+     - si quedó abortada, rechazan con `ErrorTransaccionAbortada` (P-36; 500 `ERROR_INTERNO` en la API), Prisma la revierte
+       y no queda nada escrito; nunca devuelven el valor de `trabajo`;
+     - si `trabajo` lanza un error, nada cambia: rechazan con ese mismo error (criterio 22), no con
+       `ErrorTransaccionAbortada`;
+     - un error en la propia confirmación (por ejemplo, una falla de serialización con `Serializable`, criterio 27) sigue
+       rechazando con ese error, como hoy;
+     - el camino normal no cambia: el mismo valor devuelto, las mismas filas escritas y una sola transacción; la
+       comprobación es una sentencia más en la misma transacción y conexión, sin valores que vengan de `trabajo`; y siguen
+       pasando las pruebas protegidas de las rondas anteriores (promesas nativas sin claves propias, criterio 106; contexto
+       asíncrono, 134; tiempos de espera y de duración);
+     - el registro técnico del rechazo dice que la transacción quedó abortada por un error de la base que `trabajo` no
+       propagó y, si se conoce, el SQLSTATE; nunca los parámetros de las consultas, la URL ni la contraseña.
+
+     Prueba de integración con la API de pruebas, las academias A y B (`crearDatosDeAislamiento`) y `BaseDatos` y
+     `AuditoriaService` tomados de la app. En cada variante, `trabajo` primero escribe (en `conAcademia(A, …)`: una fila
+     nueva de `configuraciones` con la clave `prueba_r10_<n>` y un registro con `registrarEnAcademia`; en `comoPlataforma`:
+     una academia nueva con el nombre corto `prueba-r10-<n>` y un registro con `registrarEnPlataforma`) y después devuelve
+     un valor reconocible. Entonces la llamada rechaza con `ErrorTransaccionAbortada` y, leído como dueño con una conexión
+     nueva, no existen la fila, la academia ni el registro de auditoría:
+     1. **reintento que atrapa la unicidad:** después de escribir, inserta un duplicado sin `ON CONFLICT` (en
+        `conAcademia`, una clave de `configuraciones` de A que ya existe; en `comoPlataforma`, una academia con el nombre
+        corto de A), atrapa el error con `esViolacionDeUnicidad` y devuelve el valor;
+     2. **error atrapado:** `` await tx.cliente.$queryRaw`SELECT 1/0` `` dentro de un `try`/`catch` vacío, y la misma
+        consulta con `.catch(() => undefined)`; devuelve el valor;
+     3. **consulta sin `await`:** envía sin esperarla, con `.catch(() => undefined)`, una consulta que tarda unos 200 ms y
+        luego falla (orientativo: `SELECT 1 / (SELECT 0 FROM pg_catalog.pg_sleep(0.2))`) y devuelve el valor de
+        inmediato; la prueba comprueba además que `trabajo` terminó antes de que la consulta fallara; y la misma variante
+        con la consulta de un modelo (orientativo: `tx.cliente.configuracion.create(…)` con una clave que ya existe);
+     4. **por la API:** un controlador de prueba (opción `controladores` de `crearAppDePruebas`) cuya ruta llama a
+        `comoPlataforma` con la variante 1 responde 500 `ERROR_INTERNO` con el formato común de error, y ni la academia ni
+        su registro existen.
+
+     Controles: el mismo `trabajo` sin el paso que falla resuelve con el valor y las filas quedan; un `trabajo` que relanza
+     el error atrapado rechaza con ese error (`codigoDeErrorDeBase` da `23505` o `22012`), no con
+     `ErrorTransaccionAbortada`; y con `DATABASE_POOL_MAX=1`, después de cada variante, un `conAcademia(B, …)` en la misma
+     conexión resuelve, lee su propio contexto (criterio 23) y no ve nada de la variante. _(crítico)_
+150. **Lo mismo en los comandos y la semilla (`enPlataforma`)** _(ataque ronda 10, F1; **amplía** el criterio 90 y el
+     contrato de `enPlataforma`, P-17 y P-23; decisión del orquestador)_. Dada una transacción de
+     `enPlataforma(cliente, trabajo)`, entonces devuelve el valor de `trabajo` solo si, después de que `trabajo` termina
+     bien y antes de pedir la confirmación, la transacción sigue activa y sin abortar; si no, rechaza con
+     `ErrorTransaccionAbortada` (la misma clase de P-36) y no queda nada escrito; si `trabajo` lanza, rechaza con ese
+     error, como hoy. El comando y la semilla terminan con código 1 ante ese rechazo, como ante cualquier otro error.
+     `trabajo` sigue recibiendo la transacción completa de Prisma (P-24). Prueba de integración con
+     `crearClienteDelDueno(<URL del dueño de pruebas>, { max: 1 })`: las variantes 1 a 3 del criterio 149 (sin la del
+     modelo en la 3; ver "Riesgos aceptados"), escribiendo una academia nueva con `tx.$executeRaw` y un registro con
+     `insertarEnAuditoriaPlataforma`; en la 3, la consulta sin `await` se envía con `` tx.$executeRaw`…`.catch(() =>
+     undefined) `` (una `PrismaPromise` sin `then` ni `catch` no se envía). En cada una rechaza con
+     `ErrorTransaccionAbortada` y, leído como dueño con una conexión nueva, no queda nada. Controles como en el 149, y
+     después de cada variante otro `enPlataforma` con el mismo cliente resuelve. _(crítico)_
+151. **Un `ROLLBACK` o un `COMMIT` escritos dentro de `trabajo` tampoco se reportan como éxito** _(ataque ronda 10, F1,
+     variante del especificador; complementa los criterios 84, 149 y 150)_. Dado que el lint del criterio 84 prohíbe
+     `COMMIT`, `END`, `ROLLBACK`, `ABORT` y `BEGIN` como sentencia fuera de `infraestructura/prisma/`, pero el lint es la
+     segunda capa, y que después de un `ROLLBACK` o un `COMMIT` escritos dentro de `trabajo` lo que sigue corre fuera de
+     la transacción (cada sentencia se confirma sola, sin los valores de contexto ni los parámetros de la primera
+     sentencia) y el `COMMIT` final de Prisma solo produce un aviso, entonces la comprobación de los criterios 149 y 150
+     verifica además que sigue abierta la misma transacción que fijó la primera sentencia, con una marca aleatoria por
+     transacción que la primera sentencia fija con `set_config(…, true)` (plan, sección 22); si no es la misma, `conAcademia`,
+     `comoPlataforma`, `resolverAcademia` y `enPlataforma` rechazan con `ErrorTransaccionAbortada`. Prueba (el `trabajo`
+     de la prueba no pasa por el lint): en `conAcademia(A, …)`, `comoPlataforma` y `enPlataforma`, `trabajo` escribe,
+     ejecuta `ROLLBACK` con `$executeRaw` y devuelve un valor: rechaza con `ErrorTransaccionAbortada` y no queda nada
+     escrito; en `conAcademia(A, …)`, `trabajo` escribe, ejecuta `COMMIT` y devuelve: rechaza con
+     `ErrorTransaccionAbortada` (lo escrito antes del `COMMIT` queda confirmado; la prueba no exige lo contrario, ver
+     "Riesgos aceptados"). Control de la marca: una variable `app.transaccion` fijada a nivel de sesión por un `trabajo`
+     anterior en la misma conexión (`set_config(…, false)`, con `DATABASE_POOL_MAX=1`) no hace pasar la comprobación tras
+     un `ROLLBACK`. Después de cada caso, con `DATABASE_POOL_MAX=1`, un `conAcademia(B, …)` resuelve con su propio
+     contexto. _(crítico)_
+152. **IP de la auditoría sin zona IPv6; una IP que no se puede guardar hace fallar la operación** _(ataque ronda 10, O2;
+     **amplía** los criterios 29, 31 y 32; decisión del especificador, opción (a))_. Dado que Node entrega las direcciones
+     IPv6 de enlace local con su zona (`fe80::1%eth0`), que la columna `inet` no admite zonas y que hoy esa IP hace fallar
+     la auditoría y la operación con 500, entonces `ipParaAuditoria(ip)` (P-37), que aplican
+     `insertarEnAuditoriaDeAcademia` e `insertarEnAuditoriaPlataforma` (y por ellas `registrarEnAcademia`,
+     `registrarEnPlataforma`, los comandos y la semilla), da:
+     - con `null` o `undefined`: `null`, como hoy (actor `SISTEMA` sin IP, criterio 32);
+     - con una IPv4 (`203.0.113.5`) o una IPv6 sin zona, incluida la IPv4 mapeada (`::ffff:203.0.113.5`) y `::1`: el mismo
+       texto, sin cambios;
+     - con un texto que contiene `%` y cuya parte anterior al primer `%` es una IPv6 válida: esa parte (`fe80::1%eth0` y
+       `fe80::1%25eth0` dan `fe80::1`);
+     - con cualquier otro texto (vacío, solo espacios, una IP con espacios alrededor, `no-es-ip`, `203.0.113.5%eth0`,
+       `%eth0`, `zz::1%eth0`): lanza un error cuyo mensaje no contiene el texto recibido. La operación entera falla (500
+       `ERROR_INTERNO` en la API; código 1 en los comandos) y no queda nada escrito, ni la operación ni su auditoría
+       (criterio 30). Nunca se guarda `NULL` en lugar de una IP recibida que no se pudo normalizar.
+
+     Si PostgreSQL rechazara una IP que `ipParaAuditoria` aceptó, la operación también falla (como hoy): las dos capas
+     fallan cerradas. Prueba unitaria de `ipParaAuditoria` con cada caso de la lista. Prueba de integración: con
+     `AcademiasService` de la app, `crear(datos, superadmin, 'fe80::1%eth0')` crea la academia y su registro de
+     `auditoria_plataforma` tiene `host(ip) = 'fe80::1'`; en `conAcademia(A, …)`, `registrarEnAcademia` con
+     `'::ffff:203.0.113.5'` guarda `host(ip) = '::ffff:203.0.113.5'`; y `crear(datos, superadmin, 'no-es-ip')` rechaza, y
+     leído como dueño no existen la academia ni el registro. Las pruebas protegidas anteriores que auditan la IP de
+     `supertest` (`::ffff:127.0.0.1` o `127.0.0.1`) no cambian de resultado. _(crítico)_
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -2348,6 +2471,13 @@ Todos son _(crítico)_.
 - **Puerto de Docker cambiado en el `.env`** _(ataque ronda 9)_: si el responsable cambia el puerto en `DATABASE_URL` y
   no en `DATABASE_URL_APP`, `db:crear` se detiene y dice qué parte corregir (criterio 148), en lugar de dejar la API
   apuntando a otro servidor.
+- **Duplicado esperado dentro de una transacción** _(ataque ronda 10)_: atrapar el error de la base y seguir no es
+  posible (la transacción queda abortada) y desde el criterio 149 hace rechazar la operación. Un duplicado que se espera
+  (idempotencia, nombre corto en uso) se resuelve con `INSERT … ON CONFLICT DO NOTHING RETURNING`, como
+  `AcademiasService.crear`; `esViolacionDeUnicidad` sirve fuera de la transacción, sobre el rechazo de `conAcademia` o
+  `comoPlataforma`, para responder 409 o reintentar con una transacción nueva (plan, nota O3 ampliada).
+- **Superadmin que entra desde la red local por IPv6 de enlace local** _(ataque ronda 10)_: su IP llega con zona
+  (`fe80::…%eth0`) y se audita sin ella (criterio 152); en producción, detrás del proxy del hosting, no ocurre.
 
 ## Reglas de negocio aplicables
 
@@ -2423,6 +2553,7 @@ class BaseDatos {
 class ErrorAcademiaNoEncontrada /* 404 ACADEMIA_NO_ENCONTRADA */ {}
 class ErrorAcademiaSuspendida /* 403 ACADEMIA_SUSPENDIDA */ {}
 class ErrorRolBaseDatosInseguro /* 500 ERROR_INTERNO */ {}
+class ErrorTransaccionAbortada /* 500 ERROR_INTERNO; ataque ronda 10, criterios 149 a 151, P-36 */ {}
 ```
 
 Exportado desde `backend/src/modulos/auditoria/index.ts`:
@@ -2443,6 +2574,7 @@ class AuditoriaService {
   registrarEnAcademia(tx: TransaccionAcademia, entrada: EntradaAuditoria): Promise<void>;
   registrarEnPlataforma(tx: TransaccionPlataforma, entrada: EntradaAuditoria): Promise<void>;
 }
+function ipParaAuditoria(ip: string | null | undefined): string | null; // ataque ronda 10, criterio 152, P-37
 ```
 
 `ErrorNegocio(estado: number, codigo: string, mensaje: string, detalles?: unknown)` vive en
@@ -2960,6 +3092,28 @@ _(contrato de la ronda 8 del ataque, 12/11/2026; criterios 141 a 143)_. No son r
   pruebas buscan `DATABASE_URL_APP`, `DATABASE_URL` (no solo como parte de `DATABASE_URL_APP`) y la palabra de cada parte
   (`servidor`, `puerto`, `base`), y que no aparezcan la contraseña ni la URL.
 
+_(contrato de la ronda 10 del ataque, 12/11/2026; criterios 149 a 152)_. No son reglas de negocio nuevas.
+
+- **P-36. Transacción abortada (criterios 149 a 151).** `backend/src/infraestructura/prisma/errores.ts` define y
+  `backend/src/infraestructura/prisma/index.ts` exporta:
+
+  ```ts
+  export class ErrorTransaccionAbortada extends ErrorNegocio {
+    constructor(opciones?: { readonly cause?: unknown }); // 500 'ERROR_INTERNO'; name 'ErrorTransaccionAbortada'
+  }
+  ```
+
+  `BaseDatos` (`conAcademia`, `comoPlataforma` y `resolverAcademia`) y `enPlataforma` (`backend/src/cli/conexion.ts`, que
+  la importa de `../infraestructura/prisma`) rechazan con una instancia de esta clase, la misma que importan las pruebas.
+  Las firmas de `conAcademia`, `comoPlataforma`, `resolverAcademia`, `enPlataforma` y `crearClienteDelDueno` no cambian.
+  `cause`, si se pasa, es el error de la sentencia de comprobación (con su SQLSTATE `25P02`); las pruebas no lo exigen. El
+  mensaje es solo para el registro técnico (el filtro responde el mensaje genérico de 500, como con
+  `ErrorRolBaseDatosInseguro`).
+- **P-37. IP de la auditoría (criterio 152).** `backend/src/modulos/auditoria/index.ts` exporta
+  `ipParaAuditoria(ip: string | null | undefined): string | null` (función pura, sin Nest; orientativo:
+  `backend/src/modulos/auditoria/ip.ts`, con `isIP` e `isIPv6` de `node:net`). Lanza un `Error` (no un `ErrorNegocio`:
+  es un 500) cuyo mensaje no contiene el texto recibido. `EntradaAuditoria.ip` conserva su tipo.
+
 ## Cambios al modelo de datos
 
 Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados por PostgreSQL
@@ -3168,6 +3322,27 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
     fija en la primera sentencia (criterio 147 y riesgo aceptado "Parámetros de sesión que no se fijan"); la historia que
     cree el primer índice GIN agrega `gin_fuzzy_search_limit = 0` a la primera sentencia; los montos no usan el tipo
     `money` ni `to_char` sin fijar la configuración regional.
+- **Ronda 10 del ataque (criterios 149 a 152):**
+  - la primera sentencia de `BaseDatos` y de `enPlataforma` fija además `app.transaccion` con una marca aleatoria, y cada
+    transacción que termina bien ejecuta una sentencia más antes de confirmar (criterios 149 a 151). Las pruebas
+    protegidas de los criterios 72, 90, 98, 101, 106, 107, 121, 122, 134, 146 y 147 no cambian de resultado: ninguna
+    compara el texto de la primera sentencia, ni lee `app.transaccion`, ni cuenta las sentencias enviadas por
+    `BaseDatos` (la de comprobación no pasa por el envoltorio y se envía después de `terminar()`, así que "una llamada
+    después de terminar no envía nada", P-26, sigue siendo cierto para el envoltorio). Si alguna cambiara, el
+    test-writer o el backend se detienen e informan;
+  - el criterio 22 no cambia: un `trabajo` que lanza sigue rechazando con su propio error;
+  - en `cli/`, la regla del criterio 83 ya admite `set_config('app.transaccion', <parámetro>, true)` (primer argumento
+    literal que empieza por `app.` y tercero `true`); no hay cambio de lint;
+  - la nota O3 de la ronda 6 del plan (idempotencia con `esViolacionDeUnicidad`) queda ampliada: dentro de `trabajo`, el
+    duplicado esperado se resuelve con `INSERT … ON CONFLICT DO NOTHING RETURNING`; `esViolacionDeUnicidad` solo fuera de
+    la transacción (plan, sección 22). `AcademiasService.crear` ya lo hace así; ningún servicio de 001 atrapa errores de
+    la base dentro de `trabajo` (si el backend encuentra alguno, lo cambia a esa forma);
+  - `ipParaAuditoria` cambia solo las IP con zona (antes 500, ahora se guardan sin la zona) y los textos inválidos (antes
+    500 por PostgreSQL, ahora 500 por la función); las IP de `supertest` y `null` no cambian;
+  - las historias siguientes: ningún `trabajo` atrapa un error de la base para seguir (criterio 149); los duplicados
+    esperados van con `ON CONFLICT`; la fecha de negocio no sale de `CURRENT_DATE` ni de `now()::date` (la sesión está en
+    UTC, criterio 98): se calcula en America/Lima con `@date-fns/tz` y se pasa como parámetro, o con
+    `AT TIME ZONE 'America/Lima'` (plan, sección 22, nota O1; el documentador lo agrega a `docs/arquitectura.md`, T24).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -3386,6 +3561,20 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   síncronas con `remote_apply`, la API confirma con `on` (espera a que la réplica tenga la transacción en su disco, no a
   que la aplique). La durabilidad es la misma; lo único que cambia es si una lectura en la réplica, justo después, ve el
   cambio. La API no lee de réplicas. Se revisa con el hosting (D-21).
+- **Lo confirmado por un `COMMIT` escrito dentro de `trabajo`** _(ataque ronda 10, criterio 151)_: la operación se
+  rechaza con `ErrorTransaccionAbortada`, pero lo escrito antes de ese `COMMIT` ya quedó confirmado y no se puede deshacer
+  (lo que sigue corre fuera de la transacción). Lo prohíbe el lint del criterio 84 y lo buscan el revisor y el
+  adversarial; el criterio 151 asegura que, al menos, nunca se responde "éxito".
+- **Consulta de un modelo sin `await` en `enPlataforma`** _(ataque ronda 10, criterio 150)_: `enPlataforma` entrega la
+  transacción completa de Prisma (P-24), sin el envoltorio que registra las consultas enviadas, así que solo puede ceder
+  un turno antes de la comprobación (plan, sección 22). Una consulta de un modelo enviada sin `await` justo antes de
+  terminar `trabajo` podría llegar a la conexión después de la comprobación; si falla, el comando informaría éxito. Los
+  comandos y la semilla los escribe el equipo, no reciben entradas de terceros y no usan consultas sin `await`; lo busca
+  el revisor. En la API (criterio 149) no hay este riesgo: el envoltorio espera todas las consultas enviadas.
+- **IP vacía o ausente** _(ataque ronda 10, criterio 152)_: si Express no da `req.ip` (el socket ya se cerró), el
+  controlador pasa `null` y se audita sin IP, como hasta ahora; quien la provoca corta su propia conexión y no recibe la
+  respuesta. Sin `trust proxy` (plan, "Límite por IP"), el cliente no elige el texto de la IP; si el hosting lo activa,
+  un texto inválido hace fallar la operación (criterio 152), nunca la deja sin IP.
 - **Clave de ejemplo del superadmin en `.env.example`:** es pública y solo sirve en desarrollo; la semilla no corre
   en producción y el comando del criterio 34 la reemplaza.
 - **Cookie sin `Secure` fuera de producción:** necesario para `http://localhost`; en producción va con `Secure`
@@ -3690,9 +3879,36 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   nombres del servidor (`localhost` y `127.0.0.1` pueden ser servidores distintos en Windows, donde `localhost` puede
   resolverse a `::1`; `.env.example` ya usa `127.0.0.1` en las tres).
 
+### Decisiones técnicas tras el ataque, ronda 10 (12/11/2026)
+
+- **Una sentencia de comprobación en la misma transacción, después de `trabajo` y antes de confirmar** (criterios 149 y
+  150; decisión del orquestador, mecanismo del especificador). La sentencia lee una marca aleatoria que la primera
+  sentencia fijó con `set_config(…, true)`: falla con `25P02` si la transacción está abortada y devuelve otro valor si un
+  `ROLLBACK` o un `COMMIT` escritos la cerraron (criterio 151). Alternativas descartadas: leer la etiqueta del `COMMIT`
+  (el adaptador de Prisma la descarta; habría que envolver el pool de `pg` con código propio, que depende de detalles
+  internos del adaptador y de un paquete fuera de la lista del criterio 127); registrar en el envoltorio los errores de
+  las consultas y rechazar si hubo alguno (no cubre `enPlataforma`, que entrega la transacción completa, ni un
+  `ROLLBACK` escrito, y rechazaría transacciones que sí se pueden confirmar); y prohibir por lint todo `catch` dentro de
+  `trabajo` (no se puede seguir a través de funciones y alias, y prohibiría atrapar errores que no son de la base).
+- **El envoltorio espera las consultas que envió antes de comprobar** (criterio 149). Alternativa descartada: confiar en
+  el orden de la cola de la conexión (una consulta de un modelo recorre más pasos dentro de Prisma que una cruda y puede
+  llegar después de la comprobación).
+- **`ErrorTransaccionAbortada` propio, 500 `ERROR_INTERNO`** (P-36). Alternativa descartada: relanzar el error original
+  (`trabajo` ya lo atrapó y puede no conocerse, y en el caso del `ROLLBACK` escrito no hay error original); un 500 es lo
+  correcto porque es un error de programación, no de la entrada.
+- **IP con zona: se quita la zona; una IP que sigue siendo inválida hace fallar la operación** (criterio 152, opción (a);
+  decisión del especificador). RN-22 y RNF-06 piden una auditoría completa (quién, cuándo y qué), y CLAUDE.md la exige
+  para toda operación de caja, pagos, horarios y ajustes. Alternativa descartada, opción (b): guardar `NULL` cuando la IP
+  no es válida; quien controle el texto de la IP (hoy nadie; mañana, si el hosting activa `trust proxy`, cualquiera con
+  `X-Forwarded-For`) podría registrar sus operaciones sin IP y evadir esa parte de la auditoría. Con (a), lo peor que
+  logra es que falle su propia operación, sin nada escrito.
+- **Los duplicados esperados se resuelven con `ON CONFLICT DO NOTHING RETURNING`** (plan, nota O3 ampliada). Alternativa
+  descartada: atrapar `esViolacionDeUnicidad` dentro de `trabajo` y seguir (PostgreSQL deja la transacción abortada; un
+  `SAVEPOINT` lo permitiría, pero el lint del criterio 84 lo prohíbe y agregarlo es otra superficie).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 9 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 10 del ataque son decisiones técnicas y no abren preguntas de
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").

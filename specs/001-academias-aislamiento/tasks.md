@@ -446,11 +446,51 @@ Fallas F1 (alta) y F2 (media) y observaciones O1 y O2 de la ronda 9 (sobre `532e
       contexto, codificación y otros parámetros de sesión por cada vía, y diferencias entre `DATABASE_URL_APP` y
       `DATABASE_URL`); si hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 10 (12/11/2026)
+
+Falla F1 (alta) y observaciones O1 y O2 de la ronda 10 (sobre `e15707c`); criterios 149 a 152 de `spec.md` (sección S) y
+precisiones P-36 y P-37. Plan, sección 22 (con la nota O3 ampliada y la nota O1, fecha de negocio en SQL, que no lleva
+criterio).
+
+- [ ] T115 · test-writer · Pruebas protegidas en rojo de los criterios 149 a 152 (archivos en "Protegidas del ataque ronda
+      10" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: en `conAcademia` y
+      `comoPlataforma`, las variantes reintento que atrapa `esViolacionDeUnicidad` tras una escritura, `SELECT 1/0`
+      atrapado (con `try`/`catch` y con `.catch`), consulta sin `await` que falla después de que `trabajo` termina (cruda
+      y de un modelo) y la ruta de un controlador de prueba que responde 500, con sus controles y la conexión sana después
+      (149); las variantes en `enPlataforma` (150); `ROLLBACK` y `COMMIT` escritos dentro de `trabajo` y el control de la
+      marca (151); y `ipParaAuditoria` unitaria más la integración con `AcademiasService.crear` y `registrarEnAcademia`
+      (152). Comprobar que ninguna protegida anterior cambia de resultado por estas pruebas (si alguna cambiara,
+      detenerse e informar). Commit: "Pruebas protegidas (001), ataque ronda 10: transacción abortada reportada como
+      éxito e IP con zona en la auditoría (en rojo)" (criterios 149 a 152)
+- [ ] T116 · tester · Confirmar que T115 falla por la razón esperada: `conAcademia`, `comoPlataforma` y `enPlataforma`
+      resuelven con el valor de `trabajo` en vez de rechazar, y `ErrorTransaccionAbortada` no existe (149 a 151);
+      `ipParaAuditoria` no existe y `fe80::1%eth0` hace fallar `crear` con 500 (152). Se informan como verdes por diseño:
+      los controles (camino normal, `trabajo` que relanza el error, conexión sana después) y lo escrito antes de un
+      `COMMIT` del 151
+- [ ] T117 · backend · `ErrorTransaccionAbortada` en `errores.ts` y exportada en `index.ts` (P-36); marca
+      `app.transaccion` en la primera sentencia de `#fijarContexto`; `asentar()` en `envoltorio.ts`;
+      `comprobarTransaccionViva` y su uso en `#transaccion` de `base-datos.ts` después de `terminar()`, solo en el camino
+      bueno; registro técnico sin parámetros ni URL (plan, sección 22) (criterios 149, 151)
+- [ ] T118 · backend · `enPlataforma` (`cli/conexion.ts`): la marca en su primera sentencia, ceder un turno y
+      `comprobarTransaccionViva` antes de devolver; comentario actualizado (plan, sección 22) (criterios 150, 151)
+- [ ] T119 · backend · `ipParaAuditoria` en `backend/src/modulos/auditoria/` (P-37), exportada en su `index`, y usada en
+      `insertarEnAuditoriaDeAcademia` e `insertarEnAuditoriaPlataforma` (criterio 152)
+- [ ] T120 · backend · Revisar que ningún servicio ni comando de 001 atrape errores de la base dentro de `trabajo` para
+      seguir; si hay alguno, pasarlo a `ON CONFLICT DO NOTHING RETURNING` o dejar salir el error (plan, nota O3 ampliada)
+      (criterio 149)
+- [ ] T121 · orquestador · `git diff` desde el commit de T115: T117 a T120 no tocaron pruebas protegidas
+- [ ] T122 · adversarial · Ronda 11 sobre todo lo anterior, en especial 149 a 152 (errores atrapados dentro de
+      `trabajo` por cualquier camino, consultas sin `await` crudas y de modelos, `ROLLBACK`, `COMMIT` y `SAVEPOINT`
+      escritos, errores en la confirmación, la marca de la transacción, la conexión del pool después de cada caso, e IP
+      con zona, mapeadas o inválidas en la auditoría); si hay fallas, se repite el ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
       Docker se cambia también en `DATABASE_URL_APP`, criterio 148), `README.md` (qué está construido) y las notas
-      de 001 y 002 en `specs/backlog.md`: el primer administrador de cada academia pasa de 001 a 002 (DR-1)
+      de 001 y 002 en `specs/backlog.md`: el primer administrador de cada academia pasa de 001 a 002 (DR-1). Desde la
+      ronda 10: la sección "Fechas y horas de negocio (America/Lima)" de `docs/arquitectura.md`, con el texto propuesto
+      en el plan, sección 22, nota O1
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)

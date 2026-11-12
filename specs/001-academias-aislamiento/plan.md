@@ -637,6 +637,13 @@ La reutiliza 002 para los usuarios de academia.
     (148, la función del hook de P-35);
   - adaptación de las pruebas protegidas anteriores que ejecutan `db:crear` con una `DATABASE_URL_APP` sobre otra base
     ("Impacto en especificaciones anteriores", ronda 9), en el mismo commit.
+- **Protegidas del ataque ronda 10 (test-writer)** _(criterios 149 a 152; nombres orientativos)_:
+  - `aislamiento/transaccion-abortada.test.ts` (149: variantes 1 a 3 en `conAcademia` y `comoPlataforma`, la 4 con un
+    controlador de prueba, y los controles; 151: `ROLLBACK` y `COMMIT` escritos en `conAcademia` y `comoPlataforma`, y el
+    control de la marca);
+  - `cli/transaccion-abortada-ronda10.test.ts` (150 y el caso `ROLLBACK` del 151 en `enPlataforma`);
+  - `backend/src/modulos/auditoria/ip.test.ts` (152, unitaria de `ipParaAuditoria`) y
+    `aislamiento/ip-auditoria.test.ts` (152, integración con `AcademiasService` y `registrarEnAcademia`).
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -1270,6 +1277,9 @@ agregan a la lista de funciones prohibidas del criterio 94 (la misma detección 
   el cliente nunca lo envía. Las claves de idempotencia que manda el cliente (doble clic o reintento en cobros,
   verificación y asistencia; `CLAUDE.md`) van en una columna propia con `UNIQUE (academia_id, clave)`, y el duplicado se
   detecta con `esViolacionDeUnicidad` (criterio 114). Así una clave repetida en otra academia no choca ni revela nada.
+  _(Ampliada por la ronda 10 del ataque, criterio 149: dentro de `trabajo`, el duplicado esperado se resuelve con
+  `INSERT … ON CONFLICT DO NOTHING RETURNING`, no atrapando el error; `esViolacionDeUnicidad` sirve fuera de la
+  transacción. Detalle en la sección 22.)_
 - **O4. Valores de sesión.** `lastval()` y `currval()` devuelven el último valor obtenido **en la sesión**, que la
   conexión del pool comparte entre academias: se usa `INSERT … RETURNING` (el lint los prohíbe desde el criterio 136).
 
@@ -1556,6 +1566,129 @@ pg_catalog.set_config('transform_null_equals', 'off', true)
   DATABASE_URL_PRUEBAS y DATABASE_URL_APP". `env:completar` no cambia los `.env` existentes; la guía local (T24) lo
   menciona.
 
+### 22. Correcciones del ataque, ronda 10 (criterios 149 a 152)
+
+La ronda 10 encontró una falla alta: si una sentencia falla dentro de `trabajo` y `trabajo` atrapa el error, PostgreSQL deja
+la transacción abortada, el `COMMIT` de Prisma recibe la etiqueta `ROLLBACK` sin error, y `conAcademia`, `comoPlataforma` y
+`enPlataforma` devolvían el valor de `trabajo` como si todo se hubiera guardado. Lo que corrige: 149 a 151 agregan una
+comprobación al final de cada transacción; 152 normaliza la IP de la auditoría. No hay migraciones nuevas. El código de
+producción que cambia: `base-datos.ts`, `envoltorio.ts`, `errores.ts` e `index.ts` de `infraestructura/prisma/`,
+`cli/conexion.ts`, y `insercion.ts` e `index.ts` de `modulos/auditoria/` más el archivo nuevo de la IP.
+
+**Marca de la transacción (criterio 151).** La primera sentencia (`#fijarContexto` en `base-datos.ts` y la de
+`enPlataforma`) agrega `pg_catalog.set_config('app.transaccion', ${marca}, true)`, con `marca = randomUUID()` de
+`node:crypto` por transacción (texto ASCII, como pide el criterio 146). `#fijarContexto` recibe la marca en `contexto`;
+`#comprobarRol` también la fija (no hace falta que la compruebe: su trabajo no atrapa errores).
+
+**Comprobación (criterios 149 y 150).** Orientativo, en `#transaccion`:
+
+```ts
+return this.#prisma.$transaction(async (tx) => {
+  const marca = randomUUID();
+  await this.#fijarContexto(tx, { ...contexto, marca });
+  const { cliente, terminar, ejecutar, asentar } = envolver(tx);
+  let resultado: T;
+  try {
+    resultado = await ejecutar(() => trabajo(cliente));
+  } finally {
+    terminar();
+  }
+  await asentar();                      // solo en el camino bueno: espera las consultas enviadas sin await
+  await comprobarTransaccionViva(tx, marca);
+  return resultado;
+}, { … });
+```
+
+- `comprobarTransaccionViva(tx, marca)` (interna de `infraestructura/prisma/`, la usan `base-datos.ts` y `cli/conexion.ts`;
+  se puede exportar desde el `index` o desde un archivo que `cli/` importe): ejecuta
+  `` SELECT pg_catalog.current_setting('app.transaccion', true) AS marca `` con el cliente crudo de la transacción (no con
+  el envoltorio, que ya está apagado). Si la consulta rechaza con `codigoDeErrorDeBase(error) === '25P02'`, lanza
+  `new ErrorTransaccionAbortada({ cause: error })`; si rechaza con otro error (conexión perdida, tiempo agotado), lo
+  relanza tal cual; si la marca leída no es exactamente `marca` (nula, vacía u otra), lanza `ErrorTransaccionAbortada`. Al
+  lanzar dentro del callback, Prisma envía `ROLLBACK` (sobre una transacción ya cerrada, PostgreSQL solo avisa) y
+  `$transaction` rechaza con ese error.
+- La comprobación va **fuera** de `ejecutar` y después de `terminar()`: no pasa por el envoltorio, así que la prueba de
+  P-26 ("una llamada después de terminar no envía nada") sigue valiendo para el envoltorio.
+- Si `trabajo` lanza, no se ejecuta ni `asentar` ni la comprobación: el error sale tal cual (criterio 22).
+- Un error en el `COMMIT` mismo (serialización, restricción diferida) lo sigue lanzando Prisma, como hoy.
+- Registro técnico: `BaseDatos` registra con `this.registro.error` (o `warn`) un mensaje fijo, por ejemplo "La transacción
+  quedó abortada por un error de la base que el trabajo atrapó y no propagó; no se confirmó nada.", más el SQLSTATE de
+  `cause` si lo hay; nunca el mensaje completo del error de Prisma (puede llevar valores) ni la URL.
+
+**`asentar` en el envoltorio (criterio 149).** `envolver(tx)` agrega a lo que devuelve (interno, orientativo)
+`asentar(): Promise<void>`. `enviar` guarda cada promesa interna en un `Set` privado y la quita al asentarse; `asentar`
+espera `Promise.allSettled` de las que haya (como `terminar()` ya corrió, no entran nuevas). Notas:
+
+- Lo que se guarda es una promesa derivada (`p.then(nada, nada)`) o la propia promesa interna, nunca la que se devuelve
+  a `trabajo`: la promesa devuelta sigue sin claves propias (criterio 106).
+- Al quedar manejada por el seguimiento, una consulta sin `await` que falla ya no produce un `unhandledRejection` en el
+  proceso (hoy podría terminarlo); el fallo se informa por el rechazo de la transacción, que es más útil.
+- Si una consulta enviada sin `await` tarda más que `DURACION_MAXIMA_MS`, Prisma corta la transacción por tiempo y
+  rechaza, como hoy.
+
+**`enPlataforma` (criterio 150).** La misma marca en su primera sentencia y, después de `trabajo`, ceder un turno
+(`await new Promise((r) => setImmediate(r))`) para que las consultas enviadas sin `await` lleguen a la cola de la conexión,
+y `comprobarTransaccionViva(tx, marca)`. No se envuelve `tx` (P-24): el riesgo que queda está en "Riesgos aceptados"
+("Consulta de un modelo sin `await` en `enPlataforma`"). `ErrorTransaccionAbortada` se importa de
+`../infraestructura/prisma` (como `cerrarCursores`). El comando y la semilla ya terminan con código 1 ante un error de
+`enPlataforma`; no cambian.
+
+**Lint.** En `cli/`, `pg_catalog.set_config('app.transaccion', ${marca}, true)` ya pasa la regla del criterio 83 (primer
+argumento literal `app.…`, tercero `true`). `infraestructura/prisma/` está fuera de esas reglas. Si alguna prueba de lint
+protegida dijera lo contrario, el backend se detiene e informa.
+
+**IP de la auditoría (criterio 152).** `backend/src/modulos/auditoria/ip.ts` (orientativo):
+
+```ts
+import { isIP, isIPv6 } from 'node:net';
+export function ipParaAuditoria(ip: string | null | undefined): string | null {
+  if (ip === null || ip === undefined) return null;
+  const corte = ip.indexOf('%');
+  const sinZona = corte === -1 ? ip : ip.slice(0, corte);
+  const valida = corte === -1 ? isIP(sinZona) !== 0 : isIPv6(sinZona);
+  if (!valida) throw new Error('La IP de la petición no es válida para la auditoría.');
+  return sinZona;
+}
+```
+
+`isIP` rechaza los espacios alrededor y el texto vacío. `insertarEnAuditoriaDeAcademia` e `insertarEnAuditoriaPlataforma`
+pasan `ipParaAuditoria(entrada.ip)` en lugar de `entrada.ip ?? null`; la conversión ocurre antes de enviar el `INSERT`, así
+que el error sale de `trabajo` y la transacción se revierte (criterio 30). El `index` de `auditoria` la exporta. `node:net`
+es un módulo de Node y no cuenta para las listas de dependencias (criterios 127 a 129).
+
+**Notas para las historias siguientes (sin criterio propio; ataque ronda 10).**
+
+- **O3 (ampliada). Duplicados esperados dentro de una transacción.** Atrapar un error de la base dentro de `trabajo` y
+  seguir no es posible: PostgreSQL deja la transacción abortada, y desde el criterio 149 la operación se rechaza con
+  `ErrorTransaccionAbortada`. Un duplicado que se espera (clave de idempotencia de un cobro, una verificación o una
+  asistencia; un nombre corto en uso) se resuelve con `INSERT … ON CONFLICT (…) DO NOTHING RETURNING …` y se mira si
+  volvió una fila, como `AcademiasService.crear`; para devolver el resultado del primer intento, se lee la fila existente
+  en la misma transacción (`SELECT … WHERE academia_id = … AND clave = …`). `esViolacionDeUnicidad` sirve **fuera** de
+  la transacción, sobre el rechazo de `conAcademia` o `comoPlataforma`, para responder 409 o reintentar con una
+  transacción nueva. Lo mismo para cualquier otro error de la base: o se evita con la forma de la sentencia, o se deja
+  salir de `trabajo`.
+- **O1. Fecha de negocio en SQL.** La sesión de la API, de los comandos y de la semilla está en UTC (criterio 98).
+  `now()` y los `timestamptz` son instantes correctos, pero `CURRENT_DATE`, `now()::date`, `date_trunc('day', now())`,
+  `LOCALTIME` o `extract(hour from now())` dan el día y la hora de UTC: después de las 19:00 de Lima ya es el día
+  siguiente, y el último día del mes después de las 19:00 ya es el mes siguiente. En las historias de asistencia, caja y
+  mensualidades, la fecha de negocio se calcula en el código con `@date-fns/tz` en `America/Lima` a partir de
+  `RELOJ.ahora()` y se pasa como parámetro (`${fecha}::date`), o, si tiene que ser en SQL, con
+  `(… AT TIME ZONE 'America/Lima')`. El revisor y el adversarial lo buscan. Texto propuesto para `docs/arquitectura.md`
+  (lo agrega el documentador en el cierre, T24), como sección nueva después de "Varias academias":
+
+  > ## Fechas y horas de negocio (America/Lima)
+  >
+  > - Las fechas y horas de negocio (el día de una asistencia o de una caja, el mes de una mensualidad, un vencimiento,
+  >   si una clase ya empezó) se deciden en la zona America/Lima (RNF-12), nunca en la del servidor.
+  > - La conexión de la API con PostgreSQL trabaja en UTC (spec 001, criterio 98). Los instantes (`now()`, columnas
+  >   `timestamptz`) son correctos, pero `CURRENT_DATE`, `now()::date`, `date_trunc('day', now())` y `LOCALTIME` dan el
+  >   día y la hora de UTC: desde las 19:00 de Lima ya es el día siguiente.
+  > - Por eso la fecha de negocio se calcula en el código, con `@date-fns/tz` en `America/Lima` a partir de la hora del
+  >   reloj inyectable (`RELOJ`), y se pasa a la consulta como parámetro. Si tiene que calcularse en SQL, se escribe la
+  >   zona: `(now() AT TIME ZONE 'America/Lima')::date`.
+  > - Las pruebas de estos cálculos fijan la hora con `RELOJ` en los bordes: 18:59 y 19:00 de Lima, fin de mes y la
+  >   clase de 19:00 a 20:00.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -1638,6 +1771,11 @@ pg_catalog.set_config('transform_null_equals', 'off', true)
 | `client_encoding`, `synchronous_commit`, `array_nulls` y `transform_null_equals` en la primera sentencia (criterios 146 y 147) | Rechazarlos en `options`; fijar todos los parámetros de sesión | No cubre la conexión, la base ni el servidor; muchos fallan cerrados o exigen superusuario |
 | `synchronous_commit = 'on'` fijo (criterio 147) | Aceptar `remote_write` y `remote_apply` | Más código para una diferencia que no es de durabilidad |
 | `db:crear` y el hook comparan servidor, puerto y base de `DATABASE_URL_APP` con `DATABASE_URL`, sin resolver nombres (criterio 148) | Revisar la base de `DATABASE_URL_APP`; resolver `localhost` | Dos bases distintas son un error del `.env`; en Windows `localhost` puede ser `::1` |
+| Sentencia de comprobación con marca aleatoria `app.transaccion` antes de confirmar (ataque ronda 10, criterios 149 a 151) | Leer la etiqueta del `COMMIT`; registrar errores en el envoltorio; prohibir `catch` por lint | El adaptador descarta la etiqueta; el envoltorio no cubre `enPlataforma` ni un `ROLLBACK` escrito; el lint no sigue funciones ni alias |
+| El envoltorio espera sus consultas enviadas antes de comprobar (criterio 149) | Confiar en el orden de la cola de la conexión | Una consulta de un modelo recorre más pasos en Prisma y puede llegar después |
+| `ErrorTransaccionAbortada`, 500 (P-36) | Relanzar el error original | `trabajo` ya lo atrapó; con un `ROLLBACK` escrito no hay error original |
+| IP sin zona; inválida = la operación falla (criterio 152, opción a) | Guardar `NULL` si no es válida (opción b) | RN-22: con (b), quien controle el texto de la IP registraría operaciones sin IP |
+| Duplicados esperados con `ON CONFLICT DO NOTHING RETURNING` (nota O3 ampliada) | Atrapar `esViolacionDeUnicidad` dentro de `trabajo`; `SAVEPOINT` | La transacción queda abortada; `SAVEPOINT` está prohibido por el criterio 84 |
 
 ## Migraciones
 
@@ -1664,6 +1802,8 @@ pg_catalog.set_config('transform_null_equals', 'off', true)
 - Ronda 9: sin migraciones nuevas. `app_academia_actual()` y `app_es_plataforma()` ya son `STABLE` y `resolver_academia`
   es `VOLATILE` (criterio 144); los parámetros de los criterios 146 y 147 se fijan por transacción, y el 148 es de los
   scripts. Si una prueba del 144 señalara algo, se corrige con una migración nueva.
+- Ronda 10: sin migraciones nuevas. `app.transaccion` es una variable propia que se fija por transacción, y la IP se
+  normaliza en el código; la columna `ip` sigue siendo `inet`.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -1756,5 +1896,13 @@ pg_catalog.set_config('transform_null_equals', 'off', true)
   miembro de `aquagestion_app`; en la nube se omite con aviso y corre en Docker y en la CI.
 - **Texto de `pg_get_expr` entre versiones** _(ataque ronda 6, criterio 132)_: la forma de los paréntesis puede variar
   entre versiones mayores de PostgreSQL; la autocomprobación con los ejemplos lo detecta al cambiar de versión (hoy la 16).
+- **Comportamiento de Prisma 7 ante una transacción abortada** _(ataque ronda 10)_: el diseño supone que una sentencia
+  sobre una transacción abortada rechaza con un error cuyo SQLSTATE `codigoDeErrorDeBase` reconoce (`25P02`) y que, al
+  lanzar dentro del callback, Prisma revierte y rechaza con ese error aunque PostgreSQL ya haya cerrado la transacción (caso
+  del `ROLLBACK` escrito). Si el SQLSTATE no llega o Prisma se comporta distinto, el backend se detiene e informa en vez de
+  adivinar (la marca sigue detectando el caso: falla cerrada).
+- **Una sentencia más por transacción** _(ataque ronda 10)_: cuesta un viaje a la base en cada operación que termina bien
+  (como `CLOSE ALL`, criterio 101); se acepta. Si alguna prueba protegida anterior con tiempos ajustados (criterios 24, 106
+  o 134) cambiara de resultado, el backend se detiene e informa.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.
