@@ -46,6 +46,11 @@ ampliados o precisados.
 Tras la ronda 15 se agregaron los criterios 165 y 166 (sección X de `spec.md`) y una precisión de P-42; sus tareas son
 T155 a T162, antes del cierre. Los criterios 157, 161, 162 y 163 quedaron ampliados o precisados.
 
+Tras la ronda 16 se agregaron los criterios 167 y 168 (sección Y de `spec.md`) y una precisión de P-42; sus tareas son
+T163 a T169, antes del cierre. Los criterios 162 y 165 quedaron precisados o ampliados, y se corrigieron los riesgos
+aceptados "Errores de la base fuera del alcance de la búsqueda" y "Diagnóstico perdido en errores grandes". Pregunta
+técnica R16-1 pendiente, a decidir antes de T163.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -716,6 +721,52 @@ cuando no copia el de la base, en lugar de "nunca `message`", porque cuatro prue
       `name` y `constructor` alterados; `mensajeSeguro` en comandos y semilla; errores reales de Prisma o del adaptador con
       un `name` fuera de la lista; y que las protegidas anteriores sigan igual); si hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 16 (12/11/2026)
+
+Falla F1 (media) y observación O1 (media-baja) de la ronda 16 (sobre `8b503d2`); criterios 167 y 168 de `spec.md` (sección
+Y) y precisión de P-42. Plan, sección 28. Nota para el orquestador: la pregunta técnica R16-1 (spec, "Preguntas
+abiertas": qué se registra de un `Error` que lleva un binario) fija el resultado de (t1) y (t2) del criterio 167; conviene
+decidirla antes de T163. Si se acepta la propuesta, el especificador ajusta el criterio 167 antes de T163.
+
+- [ ] T163 · test-writer · Pruebas protegidas en rojo de los criterios 167 y 168 (archivos en "Protegidas del ataque ronda
+      16" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: las unitarias (t1) a
+      (t9) de `errorParaRegistro` con `base16`, el límite de 200 ms por llamada medido tras la llamada de calentamiento y
+      (t1) con `FiltroErrores` real y límite de 1000 ms; (t10) con `mensajeSeguro`; y (t11), el proceso hijo con
+      `--max-old-space-size=256 --import tsx` (167); las unitarias (g1) a (g6) con la comprobación previa de que pino
+      muestra el valor con el error original y la función espía sin llamadas; el manejador de P-40 con (g1) y (g3);
+      `mensajeSeguro` con (g1) y (g3); el error real de `auditoria.create` en `conAcademia(A, …)` (con la comprobación
+      previa de que su mensaje lleva el valor) dentro de (g1) y (g3), y las rutas (a4) y (a5) de un controlador de prueba
+      con el registro de la app capturado (168). Comprobar que ninguna protegida anterior cambia de resultado por estas
+      pruebas, en especial `registro-de-errores-ronda15.test.ts` ((u12) y (u14)) y `registro-de-errores.test.ts` (si alguna
+      cambiara, detenerse e informar; si `tsx` no carga el módulo en el hijo, detenerse e informar). Commit: "Pruebas
+      protegidas (001), ataque ronda 16: costo acotado del registro de errores y cause por su nombre (en rojo)"
+      (criterios 167 y 168)
+- [ ] T164 · tester · Confirmar que T163 falla por la razón esperada: con `8b503d2`, (t1) a (t4), (t7) y el `Proxy` de un
+      `Buffer` de (t9) pasan del límite de tiempo; (t6) da `truncado` sin `mensaje`; en (t11) el hijo termina por falta de
+      memoria (167); (g1) a (g5), el manejador, `mensajeSeguro` con (g3) y los registros de las rutas (a4) y (a5) contienen
+      `44556677`, `penicilina-r16` o `invalid input syntax`, o la función espía se llamó (168). Se informan como verdes por
+      diseño, si ya pasan: (t5), (t8), las falsas hojas de (t9) sin el `Proxy` de un `Buffer`, (t10) con (t1), (g6) con el
+      getter que devuelve `new Error('otra')` y con `errors` función, y `mensajeSeguro` con (g1). Informar las medidas de
+      tiempo de cada caso con `8b503d2`
+- [ ] T165 · backend · `registro-de-errores.ts`: `esHojaBinaria` por la ranura interna (`ArrayBuffer.isView`,
+      `types.isAnyArrayBuffer`), `clavesDe` con `length` antes de listar, `Reflect.ownKeys` antes de `for…in` y corte de
+      `for…in` al pasar el tope, sin colecciones de más de 101 claves; las hojas no cuentan como visitadas (plan, sección
+      28) (criterio 167)
+- [ ] T166 · backend · `buscarErroresDeLaBase`: `cause` y `errors` leídos por su nombre en cada objeto visitado, fuera
+      del tope de claves; `cause` función (listada o por su nombre) es falla cerrada sin llamarla; `errors` función ni se
+      llama ni se recorre; `convertir`, `mensaje-seguro.ts`, `filtro-errores.ts`, `rechazos.ts` y `main.ts` sin cambios;
+      `npm run lint` en verde sin apagar reglas (plan, sección 28) (criterio 168)
+- [ ] T167 · backend · Revisar que ningún error de 001 lleve un `Buffer`, una copia de un arreglo o de un `Buffer` en un
+      objeto plano, ni una `cause` función; si hay alguno, corregirlo con una clave o un resumen (plan, sección 28, nota
+      para el revisor) (criterios 167 y 168)
+- [ ] T168 · orquestador · `git diff` desde el commit de T163: T165 a T167 no tocaron pruebas protegidas
+- [ ] T169 · adversarial · Ronda 17 sobre todo lo anterior, en especial 167 y 168 (valores grandes que todavía cuesten
+      tiempo o memoria al registrar: objetos con forma de arreglo sin `length`, prototipos con muchas enumerables,
+      `Proxy` con trampas costosas, binarios en `vm` o de otro contexto, falsas hojas que escondan un error de la base;
+      `cause` y `errors` por getters que alternan, funciones, `Proxy`; errores de la base que pino, pino-http, nestjs-pino,
+      `console.error` o `util.inspect` aún muestren por otro nombre o forma; y que las protegidas anteriores sigan igual);
+      si hay fallas, se repite el ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
@@ -729,7 +780,8 @@ cuando no copia el de la base, en lugar de "nunca `message`", porque cuatro prue
       cargas masivas con `createMany` o `$executeRaw`). Desde la ronda 14: las dos viñetas del plan, sección 26 (toda
       promesa esperada dentro de la transacción y nada de funciones `async` en temporizadores; la pila sin el mensaje).
       Desde la ronda 15: las dos viñetas del plan, sección 27 (envolver errores con un mensaje propio y `{ cause }`; sin
-      `money`)
+      `money`). Desde la ronda 16: la viñeta del plan, sección 28 (un error no lleva el contenido de un archivo ni una
+      `cause` función)
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)

@@ -695,6 +695,20 @@ La reutiliza 002 para los usuarios de academia.
   - `aislamiento/registro-sin-datos-ronda15.test.ts` (165 con el error real de `auditoria.create`: comprobación previa de
     que el valor está en su mensaje, `errorParaRegistro` dentro de (u1), (u2), (u8) y (u10), y las rutas (a1) a (a3) de un
     controlador de prueba con el registro capturado).
+- **Protegidas del ataque ronda 16 (test-writer)** _(criterios 167 y 168; nombres orientativos)_:
+  - `backend/src/infraestructura/prisma/registro-de-errores-ronda16.test.ts` (167, unitarias (t1) a (t9) de
+    `errorParaRegistro` con límite de 200 ms por llamada, medidas con `performance.now()` tras una llamada de
+    calentamiento, y (t1) con `FiltroErrores` real con límite de 1000 ms; 168, unitarias (g1) a (g6) con la comprobación
+    previa de que pino muestra el valor con el error original, la función espía de (g3), (g4) y (g5) sin llamadas, y las
+    comprobaciones con `util.inspect` con `showHidden`, `JSON.stringify` y un `pino` con destino en memoria);
+  - `backend/src/infraestructura/prisma/registro-de-errores-memoria-ronda16.test.ts` y el script del hijo en
+    `backend/test/utilidades/registro-grande-hijo.ts` (167, (t11): `process.execPath` con `--max-old-space-size=256
+    --import tsx`, código de salida y resultados por la salida estándar);
+  - `backend/src/infraestructura/proceso/rechazos-ronda16.test.ts` (168, manejador de P-40 con (g1) y (g3));
+  - `backend/src/cli/mensaje-seguro-ronda16.test.ts` (167, (t10); 168, `mensajeSeguro` con (g1) y (g3));
+  - `aislamiento/registro-sin-datos-ronda16.test.ts` (168 con el error real de `auditoria.create`: comprobación previa de
+    que el valor está en su mensaje, `errorParaRegistro` dentro de (g1) y (g3), y las rutas (a4) y (a5) de un controlador
+    de prueba con el registro de la app capturado).
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -2474,8 +2488,12 @@ function buscarErroresDeLaBase(raiz: object): Busqueda {
 }
 ```
 
+- _(Reemplazados `clavesDe` y el bucle de búsqueda por los de la sección 28, ataque ronda 16, criterios 167 y 168: este
+  `clavesDe` junta todas las claves antes de comparar con el tope (F1), y la búsqueda no lee `cause` ni `errors` por su
+  nombre (O1).)_
 - `esObjeto` es el de hoy (`typeof 'object'` y no `null`): las funciones no se recorren (riesgo aceptado "Errores de la
-  base fuera del alcance de la búsqueda").
+  base fuera del alcance de la búsqueda"). _(Precisado tras la ronda 16, criterio 168: sigue sin recorrerse ninguna
+  función, pero una `cause` que es una función es falla cerrada; sección 28.)_
 - La regla `guard-for-in` puede no estar activa; si no lo está, el comentario sobra. Si el lint señala `for…in` por otra
   regla, se usa la forma equivalente con `Object.getPrototypeOf` y `Object.keys` en cada prototipo (sin `Object.prototype`).
 
@@ -2574,7 +2592,8 @@ export function errorParaRegistro(error: unknown): unknown {
   `textos`; su mensaje no se compara: es un getter hostil). Lo nota el adversarial si importa.
 - `limpio(error)` es el de hoy, con `tipo` del criterio 166.
 - La búsqueda cuesta un recorrido acotado del error solo cuando se registra (500, rechazo sin manejar, arranque, comandos):
-  no está en el camino de las peticiones que terminan bien.
+  no está en el camino de las peticiones que terminan bien. _(Corregido tras la ronda 16, F1: no estaba acotado; las claves
+  se juntaban todas antes de comparar con el tope. Sección 28, criterio 167.)_
 
 **`tipo` de la lista cerrada (criterio 166).**
 
@@ -2644,6 +2663,118 @@ de la ronda 14:
 >   { cause: error })`, no `new InternalServerErrorException(error)`. El registro técnico limpia igual el error de la base
 >   en cualquier propiedad (spec 001, criterio 165), pero solo con `{ cause }` se conserva el mensaje propio.
 > - No se usa el tipo `money` de PostgreSQL: los montos van en `numeric` y `Decimal`.
+
+### 28. Correcciones del ataque, ronda 16 (criterios 167 y 168)
+
+La ronda 16 (sobre `8b503d2`) encontró una falla media (F1: `clavesDe` junta todas las claves de un objeto antes de
+comparar con el tope de 100; un `Buffer` de 5 MB en el grafo de un error bloqueó el event loop 6,9 s y usó 707 MB, y con
+256 MB el proceso cayó) y una observación media-baja (O1: pino lee `cause` por su nombre, también como getter heredado, y
+la llama si es una función; la búsqueda no la veía). Lo que corrige: 167 acota el costo de la búsqueda (hojas binarias,
+falla cerrada por `length`, corte de la enumeración); 168 lee `cause` y `errors` por su nombre en cada objeto visitado y
+trata una `cause` función como falla cerrada. No hay migraciones nuevas. Pregunta técnica pendiente R16-1 (spec,
+"Preguntas abiertas"): si se acepta su propuesta, cambia el final de `errorParaRegistro` (abajo) antes de T163.
+
+Código de producción que cambia: solo `backend/src/infraestructura/prisma/registro-de-errores.ts` (`clavesDe` y
+`buscarErroresDeLaBase`). `convertir`, `mensajesDeLaBase`, `limpio`, `mensaje-seguro.ts`, `filtro-errores.ts`,
+`rechazos.ts`, `main.ts` e `index.ts` no cambian.
+
+**Hojas, `length` y claves (criterio 167).** Orientativo:
+
+```ts
+import { types } from 'node:util';
+
+/** Binarios por la ranura interna del motor; nunca por instanceof, prototipo ni Symbol.toStringTag (criterio 167). */
+const esHojaBinaria = (valor: object): boolean => ArrayBuffer.isView(valor) || types.isAnyArrayBuffer(valor);
+
+/**
+ * Las claves de `objeto` (propias, texto y Symbol, enumerables o no, y enumerables heredadas), o `undefined` si pasan del
+ * tope o no se dejan listar (falla cerrada). Nunca junta más de CLAVES_MAXIMAS + 1 claves ni recorre `for…in` de más.
+ */
+function clavesDe(objeto: object): PropertyKey[] | undefined {
+  const largo = leerClave(objeto, 'length');
+  if (typeof largo === 'number' && largo > CLAVES_MAXIMAS) return undefined;   // arreglos, String, con forma de arreglo
+  let propias: PropertyKey[];
+  try { propias = Reflect.ownKeys(objeto); } catch { return undefined; }
+  if (propias.length > CLAVES_MAXIMAS) return undefined;                        // sin recorrer for…in
+  const claves = new Set<PropertyKey>(propias);
+  try {
+    for (const clave in objeto) {
+      claves.add(clave);
+      if (claves.size > CLAVES_MAXIMAS) return undefined;                       // corte
+    }
+  } catch { return undefined; }
+  return [...claves];
+}
+```
+
+- `leerClave` es el de hoy (`Reflect.get` sin dejar que un getter lance). Con un `Proxy` sin trampa `get`, `length` es
+  el del destino; con una trampa que lanza, `undefined` (sigue con las claves, que pueden lanzar: falla cerrada).
+- Un `Proxy` de un `Buffer` no es una hoja (`ArrayBuffer.isView` da falso) y su `length` pasa del tope: falla cerrada sin
+  listar (caso (t9)).
+- `Object.create(Uint8Array.prototype)`: no es una hoja; leer su `length` lanza (el getter del prototipo exige la ranura)
+  y se toma como sin `length`; se recorre normal (caso (t9)).
+- `types.isAnyArrayBuffer` es de `node:util/types` (también `require('node:util').types`); funciona entre contextos de
+  `vm`, a diferencia de `instanceof`.
+
+**`cause` y `errors` por su nombre; `cause` función (criterio 168).** El bucle de `buscarErroresDeLaBase` (orientativo):
+
+```ts
+for (const objeto of pendientes) {
+  const claves = clavesDe(objeto);
+  if (claves === undefined) return { deLaBase, agotada: true };
+  const valores: unknown[] = [];
+  for (const clave of claves) {
+    const valor = leerClave(objeto, clave);
+    if (clave === 'cause' && typeof valor === 'function') return { deLaBase, agotada: true };
+    valores.push(valor);
+  }
+  const causa = leerClave(objeto, 'cause');                 // por su nombre: getters y heredadas incluidas
+  if (typeof causa === 'function') return { deLaBase, agotada: true };   // nunca se llama
+  valores.push(causa, leerClave(objeto, 'errors'));          // `errors` función: no es objeto, no se recorre
+  for (const valor of valores) {
+    if (!esObjeto(valor) || vistos.has(valor)) continue;
+    vistos.add(valor);
+    if (esHojaBinaria(valor)) continue;                     // criterio 167: no cuenta como visitado
+    if (valor instanceof CausaLimpia) continue;
+    if (esErrorDeBase(valor)) { deLaBase.push(valor); continue; }
+    visitados += 1;
+    if (nivel + 1 > PROFUNDIDAD_MAXIMA || visitados > OBJETOS_MAXIMOS) return { deLaBase, agotada: true };
+    siguientes.push(valor);
+  }
+}
+```
+
+- La raíz (el error recibido) pasa por el mismo bucle: su `length`, sus claves, su `cause` por nombre. Si la raíz misma
+  fuera una hoja binaria no llegaría aquí (no es un `Error`).
+- `cause` y `errors` leídos por su nombre no cuentan para el tope de claves (son dos lecturas fijas por objeto). Si ya
+  estaban entre las claves listadas, el `WeakSet` de vistos evita procesar dos veces el mismo valor; un getter que devuelve
+  otro objeto en la segunda lectura lo agrega como uno más (con los topes).
+- La comprobación de la función se hace sobre las dos lecturas (la listada y la por nombre): un getter hostil que alterne
+  no la esquiva en ninguna.
+- `convertir` no cambia: ya lee `cause` y `errors` con `leerSeguro`, que incluye getters heredados. Con una `cause`
+  función nunca se llega a convertir (la búsqueda falló cerrada antes).
+- `esErrorDeBase` y `datosSeguros` leen `cause` sin llamarla (ya era así); no cambian.
+
+**Pruebas de tiempo y memoria (criterio 167).** En la prueba, cada caso hace `errorParaRegistro(new
+Error('calentamiento'))`, construye el valor grande, toma `performance.now()`, llama una vez y vuelve a tomar el tiempo;
+el límite es 200 ms (1000 ms para `FiltroErrores` con pino en (t1)). El hijo de (t11) importa
+`backend/src/infraestructura/prisma/index.ts` con `tsx` (ya es dependencia del backend: lo usa `superadmin`), imprime
+una línea JSON por caso (`{ caso, mismo: boolean, truncado: boolean }`) y la prueba la compara; `timeout` del hijo de 60 s.
+Las pruebas no dependen de la zona horaria ni del sistema operativo.
+
+**Revisión de 001.** Se espera que ningún error de 001 lleve un `Buffer`, una copia de un arreglo grande ni una `cause`
+función (hoy no hay ninguno); si el revisor encuentra uno, se corrige guardando una clave o un resumen.
+
+**Nota para el revisor (cada historia, ronda 16).** Un error nunca lleva el contenido de un archivo (se guarda la clave
+de `AlmacenArchivos`, D-19), ni una copia de un `Buffer` o de un arreglo en un objeto plano (`{ ...buffer }`,
+`Object.assign({}, lista)`), ni una `cause` que sea una función (riesgos aceptados "Contenido de un binario en el
+registro" y "Objetos sin `length` con millones de claves").
+
+Texto propuesto para `docs/arquitectura.md` (lo agrega el documentador en el cierre, T24), a continuación de las viñetas
+de la ronda 15:
+
+> - Un error no lleva el contenido de un archivo ni copias de listas grandes: se guarda la clave del archivo en
+>   `AlmacenArchivos`. La `cause` de un error es un valor, nunca una función.
 
 ## Decisiones
 
@@ -2754,13 +2885,20 @@ de la ronda 14:
 | Funciones `async` en el lugar pasadas a `nextTick`, `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask`, en la regla propia, por nombre de la propiedad (criterio 164) | Más opciones de `no-misused-promises`; `no-restricted-syntax`; prohibir esas funciones | No revisa parámetros `Function`; se pisaría con la regla del reloj; `asentar()` y los temporizadores legítimos las usan |
 | La regla mira a través de `as`, `satisfies`, `!` y `<T>` (criterio 164) | Dejarlo a la revisión | Es la evasión más simple de una regla sin tipos y cuesta unas líneas |
 | Errores de la base buscados en todo el grafo del error: propias (enumerables o no, con `Symbol`) y enumerables heredadas (ataque ronda 15, criterio 165) | Agregar `response` y `options` a `cause` y `errors`; serializador `err` propio de pino; limpiar solo en el filtro | Caso por caso, la siguiente librería usa otro nombre; pino no cubre `console.error` ni `mensajeSeguro` y cambiaría el registro de todo `Error` común; el manejador y el arranque también registran |
-| Topes de 10 niveles, 200 objetos y 100 claves con falla cerrada (criterio 165) | Sin topes; devolver el error tal cual al agotarlos | Un getter que crea objetos o un arreglo enorme colgarían el registro; el error de la base podía estar más abajo |
+| Topes de 10 niveles, 200 objetos y 100 claves con falla cerrada (criterio 165; aplicados sin listar de más desde la ronda 16, criterio 167) | Sin topes; devolver el error tal cual al agotarlos | Un getter que crea objetos o un arreglo enorme colgarían el registro; el error de la base podía estar más abajo |
 | `mensaje` del `Error` que lleva uno de la base solo si no copia su mensaje, por inclusión en los dos sentidos (criterio 165) | Nunca `mensaje` (indicación del orquestador); comparar por líneas | Cambiaría el resultado de cuatro protegidas de 162 y 163; las líneas cortas de Prisma (`{`, `}`) quitarían casi todo mensaje propio |
 | `pila` de esos errores con la regla del 163, omitida si `message` o `stack` contienen el mensaje de la base (criterio 165) | La pila completa; nunca pila | El encabezado lleva el mensaje de Prisma en el patrón de Nest; se perdería dónde se lanzó la excepción |
 | `tipo` de un `Error` que no es de la base: `name` igual al de su constructor (criterio 165) | Lista cerrada de la base; lista de excepciones de Nest y propias; el patrón de hoy | Daría `ErrorDeBase` a una excepción de Nest y cambiaría una protegida; se queda corta con cada historia; un `name` asignado a mano pasaría |
 | `tipo` de un error de la base de la lista cerrada de P-42, con `ErrorDeBase` para lo demás (criterio 166) | El patrón de hoy | Es la observación O1: un `name` con datos llegaba al registro |
 | Sin `money` en las consultas, como regla del plan (O2) | `DecimalError` como error de la base; limpiar todo `Error` común | No es de la base y no se sabe si lleva un valor; perdería el diagnóstico de los errores propios |
 | Formas de lint de la ronda 15 al riesgo aceptado (decisión del orquestador) | Ampliar otra vez la regla propia | Alias y formas hostiles sin fin; las cubren la regla para el equipo y el revisor |
+| Binarios como hojas, reconocidos por la ranura interna (`ArrayBuffer.isView`, `types.isAnyArrayBuffer`) (ataque ronda 16, criterio 167) | Recorrerlos; falla cerrada ante cualquier binario; reconocerlos con `instanceof` o `Symbol.toStringTag` | Es la falla; perdería el diagnóstico de todo error con un archivo; un objeto común puede imitar el prototipo o la etiqueta para esconder un error de la base |
+| `length` numérico mayor que 100: falla cerrada sin listar (criterio 167) | Contar con `Reflect.ownKeys` | Crea millones de cadenas: es la falla |
+| `Reflect.ownKeys` antes de `for…in`, y `for…in` cortado al pasar el tope (criterio 167; precisión del especificador a "no materializar") | `Object.keys` u `Object.getOwnPropertyNames`; materializar y comparar | También entregan la lista entera; en JavaScript no hay enumeración por partes de las claves propias |
+| Límite de 200 ms por llamada y memoria en un hijo con `--max-old-space-size=256` (criterio 167) | Límites ajustados; medir `heapUsed` | Pruebas inestables en una CI lenta o en Windows; el recolector hace no determinista la medida |
+| `cause` y `errors` por su nombre en cada objeto visitado (ataque ronda 16, criterio 168) | Solo en el error recibido; todos los getters heredados | pino las lee en cada causa y en cada error de `errors`; pino no lee los demás getters y se ejecutaría código ajeno sin necesidad |
+| `cause` función: falla cerrada sin llamarla (criterio 168) | Llamarla y buscar en el resultado; ignorarla | Ejecuta código ajeno al registrar (puede lanzar, colgar, tener efectos o devolver otra cosa a pino); pino la llama |
+| `errors` función: ni se llama ni es falla cerrada (criterio 168) | Falla cerrada también | pino no la llama ni la serializa; se perdería diagnóstico sin motivo |
 
 ## Migraciones
 
@@ -2953,5 +3091,20 @@ de la ronda 14:
 - **Costo de la búsqueda en el registro** _(ataque ronda 15, criterio 165)_: hasta 200 objetos y 100 claves por objeto en
   cada registro de un 5xx o de un rechazo sin manejar; despreciable frente a la petición que falló, y no corre en las que
   terminan bien. Si una prueba protegida con tiempos ajustados cambiara de resultado, el backend se detiene e informa.
+  _(Corregido tras la ronda 16, F1, criterio 167: no era así; el tope se comparaba después de juntar todas las claves, y
+  un `Buffer` de 5 MB costaba 6,9 s y 707 MB. Desde la sección 28, el trabajo por objeto es de 101 claves como máximo,
+  salvo lo que el motor tarde en entregar `Reflect.ownKeys` de un objeto sin `length` con muchas claves (riesgo aceptado
+  "Objetos sin `length` con millones de claves" de la spec).)_
+- **Tiempos de las pruebas en la CI** _(ataque ronda 16, criterio 167)_: el límite de 200 ms por llamada supone que
+  `Reflect.ownKeys` de un objeto de 500 000 claves con nombre ((t5)) y la lectura de `length` tardan bastante menos. Si en
+  la CI de Windows algún caso pasa del límite con el código corregido, el backend se detiene e informa con las medidas; no
+  se sube el límite ni se achica el caso sin una decisión nueva.
+- **`tsx` en el proceso hijo** _(ataque ronda 16, criterio 167)_: (t11) supone que `registro-de-errores.ts` y el cliente
+  generado de Prisma cargan con `--import tsx` en Node 22, como `superadmin`. Si no cargan, el test-writer se detiene e
+  informa (alternativa: compilar con `tsc` como `rechazos-proceso.test.ts`, más lento).
+- **Clases de prueba con `cause` como getter o método** _(ataque ronda 16, criterio 168)_: TypeScript rechaza sobrescribir
+  la propiedad `cause` de `Error` con un accessor o un método (TS2610/TS2425); la prueba los define con
+  `Object.defineProperty` sobre el prototipo, que es lo que haría el código compilado. No es una diferencia de
+  comportamiento.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.
