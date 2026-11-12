@@ -874,7 +874,9 @@ T176.
       verdes por diseño, si ya pasan: (s5), (c1), (c6), el caso ajustado de `lectura-env-ronda17.test.ts` (las utilidades
       se corrigen en el mismo commit; comprobar con `git show d8b5cdd:backend/test/utilidades/base-pruebas.ts` que antes
       usaban `parseEnv`) y `lectura-env-ronda18.test.ts`. Informar cuántos textos de (f) difieren con `d8b5cdd`, cuántos
-      acepta el lector mínimo en (h7) y qué casos se omitieron y con qué motivo
+      acepta el lector mínimo en (h7) y qué casos se omitieron y con qué motivo. _(Precisión del orquestador (ronda 18),
+      tras la comprobación del tester: en (s1), (s2) y (h4) fallaban solo (d1), (d2), (d5) y (d7); (d3), (d4) y (d6) ya
+      pasaban con `d8b5cdd`. Ver `spec.md`, criterio 172.)_
 - [ ] T178 · backend · `scripts/package.json` con `dotenv` (mismo rango que el backend) y `package-lock.json` por
       `npm install`; `scripts/lib/entorno.mjs`: `analizarEnv` = `dotenv.parse` cargado al primer uso con `createRequire`,
       error que nombra `dotenv` y pide `npm ci` si falta, sin `parseEnv`; `scripts/completar-env.mjs`: existentes = solo

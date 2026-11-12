@@ -3027,6 +3027,12 @@ el backend carga el `.env`; O2: mayúsculas en Windows, riesgo aceptado). La dec
 vez de perseguir diferencias: **un solo analizador, `dotenv.parse`**. No hay migraciones nuevas ni cambios en
 `packages/` ni `frontend/`.
 
+_(Precisión del orquestador (ronda 18), tras la comprobación del tester; no cambia el diseño: "tomaban la primera" es
+inexacto, `parseEnv('A=1\nA=2').A` da `'2'`. La diferencia viene de que `parseEnv` no lee la segunda línea como
+`DATABASE_URL`: en (d1) y (d2) el U+FEFF o el U+00A0 queda pegado a la clave, en (d5) no acepta `CLAVE: valor` y (d7) es
+F2. Con `d8b5cdd`, (s1), (s2) y (h4) fallaban solo en (d1), (d2), (d5) y (d7); (d3), (d4) y (d6) ya pasaban. Detalle en
+`spec.md`, AA.)_
+
 Código que cambia: `scripts/package.json` y `package-lock.json`, `scripts/lib/entorno.mjs`, `scripts/completar-env.mjs` y
 `.claude/hooks/preparar-sesion.mjs` (backend, T178 y T179); `backend/src/infraestructura/entorno/opciones-dotenv.ts`
 (nuevo), `cargar-env.ts`, `backend/src/cli/conexion.ts`, `backend/prisma.config.ts` y `e2e/playwright.config.ts`

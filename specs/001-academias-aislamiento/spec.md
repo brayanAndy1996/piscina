@@ -3614,7 +3614,10 @@ Todos son _(crítico)_ (justificación en "Clasificación de ruta crítica", Z).
      admite un salto de línea entre la clave y el `=`. Lo corrige el criterio 172; de las pruebas de este criterio cambian
      la prueba estática de `parseEnv` (la lista de permitidos queda vacía) y, en `lectura-env-ronda17.test.ts`, el caso
      "un U+FEFF que no está al principio no se quita" (ahora `DATABASE_URL` se lee, como en `dotenv`); detalle en el
-     criterio 172.)_
+     criterio 172.)_ _(Precisión del orquestador (ronda 18): "`parseEnv` toma la primera" es inexacto; con una clave
+     repetida que lee, `parseEnv` también se queda con la última. La diferencia viene de que `parseEnv` no lee como
+     `DATABASE_URL` la línea con un U+FEFF o un U+00A0 pegado a la clave, ni la sintaxis `CLAVE: valor`; detalle en la
+     introducción de AA.)_
 170. **`env:completar` no agrega una variable que el backend ya lee y no cambia el `.env` salvo lo que agrega** _(ataque
      ronda 17, F1; **amplía** el criterio 63; decisión del orquestador, forma del especificador; R17-1 y R17-2, valores
      provisionales; D-26)_. Dado que, con el `.env` de (e1), `completarEnv` agregaba al final la `DATABASE_URL` de `.env.example` y
@@ -3744,6 +3747,14 @@ entorno (`DOTENV_OVERRIDE`, `DOTENV_PATH`, `DOTENV_ENCODING`, `DOTENV_FAST`, `DO
 `database_url=…` en el `.env`, `env:completar` agrega `DATABASE_URL` y dice "Se agregaron" aunque los dos lados ya leían
 lo mismo (bajo impacto).
 
+_(Precisión del orquestador (ronda 18), tras la comprobación del tester; no cambia criterios ni pruebas: "`parseEnv`
+toma la primera" es inexacto. Con una clave repetida que los dos leen, `parseEnv` también se queda con la última
+(`parseEnv('A=1\nA=2').A` da `'2'`). La diferencia de F1 no viene de cuál ocurrencia gana, sino de que `parseEnv` no lee
+la segunda línea como `DATABASE_URL`: en (d1) y (d2), el U+FEFF o el U+00A0 queda pegado a la clave (lee otra clave,
+`﻿DATABASE_URL` o ` DATABASE_URL`), así que el único valor de `DATABASE_URL` que ve es el de la primera línea;
+en (d5), `parseEnv` no acepta la sintaxis `CLAVE: valor`; y (d7) es F2 (el salto de línea entre la clave y el `=`). El
+efecto descrito arriba (scripts con `5432`, backend con `5433`) sí es el observado.)_
+
 **Decisión del orquestador (corrección de fondo, para cerrar la familia en vez de perseguir diferencias entre dos
 analizadores):** los scripts, el hook y las utilidades de prueba leen el `.env` con el mismo analizador que el backend,
 `dotenv.parse`, de la misma versión instalada; `env:completar` da por existente exactamente lo que `dotenv.parse` lee; el
@@ -3824,7 +3835,11 @@ crítica", AA).
      `analizarEnv('A=1')` lanza un `Error` cuyo mensaje contiene `dotenv` y `npm`; (s6) la prueba estática de arriba. Con el
      código de `d8b5cdd`: (s1) fallaba en (d1) a (d7) y en parte de (f), (s2) y (s3) daban `URL_5432` o nada, (s4) fallaba
      (`scripts` no declara `dotenv`) y (s6) encontraba `parseEnv` en cuatro archivos; (s5) puede pasar ya (el tester lo
-     informa).
+     informa). _(Precisión del orquestador (ronda 18), tras la comprobación del tester (T177); no cambia criterios ni
+     pruebas: con `d8b5cdd`, en (s1), (s2) y (h4) del criterio 174 fallaban solo (d1), (d2), (d5) y (d7); (d3), (d4) y
+     (d6) ya pasaban, porque en esos textos `parseEnv` también lee la segunda línea como `DATABASE_URL` y, como `dotenv`,
+     se queda con la última. (s3) se comprueba con las utilidades ya corregidas en el mismo commit (verde por diseño,
+     T177). La causa de cada diferencia está en la precisión de la introducción de AA.)_
 
      **Pruebas protegidas de la ronda 17 que cambian** (las ajusta el test-writer en el commit de pruebas protegidas de la
      ronda 18; ninguna otra cambia de resultado, y si alguna cambiara, el test-writer o el backend se detienen e informan):
@@ -6582,6 +6597,14 @@ _(Ronda 18: las dos primeras decisiones de esta lista se reemplazan; ver abajo. 
 - **O2 queda como riesgo aceptado** (especificador, R18-4): los dos lados leen lo mismo; solo el mensaje engaña.
   Alternativa descartada: comparar sin mayúsculas en Windows (el mismo `.env` daría resultados distintos según el
   sistema).
+- **La corrección de las utilidades de prueba va en el commit de pruebas protegidas** (T176; decisión del orquestador,
+  como en T170 de la ronda 17). El cambio de `backend/test/utilidades/base-pruebas.ts` y `base-datos.ts` (leer con
+  `dotenv.parse`, sin la línea del BOM) va en el mismo commit que las pruebas protegidas en rojo de los criterios 172 a
+  175, aunque es código y no prueba: son utilidades de las pruebas, no código de la aplicación, y su prueba
+  (`lectura-env-ronda18.test.ts`, (s3)) queda verde por diseño. Se aceptó porque el tester comprobó que la prueba
+  discrimina: con las utilidades de `d8b5cdd`, que leían con `parseEnv`, la misma prueba falla. Alternativa descartada:
+  un commit de implementación aparte para las utilidades (el `git diff` de T181 las vería como protegidas tocadas por la
+  implementación, y no hay código de la aplicación que esperar).
 
 ## Preguntas abiertas
 
