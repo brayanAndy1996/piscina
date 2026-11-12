@@ -698,7 +698,8 @@ La reutiliza 002 para los usuarios de academia.
 - **Protegidas del ataque ronda 16 (test-writer)** _(criterios 167 y 168; nombres orientativos)_:
   - `backend/src/infraestructura/prisma/registro-de-errores-ronda16.test.ts` (167, unitarias (t1) a (t9) de
     `errorParaRegistro` con límite de 200 ms por llamada, medidas con `performance.now()` tras una llamada de
-    calentamiento, y (t1) con `FiltroErrores` real con límite de 1000 ms; 168, unitarias (g1) a (g6) con la comprobación
+    calentamiento, y (t1) con `FiltroErrores` real con límite de 1000 ms; (t1) y (t2) comprueban además que el
+    resultado y lo registrado no llevan el binario (R16-1); 168, unitarias (g1) a (g6) con la comprobación
     previa de que pino muestra el valor con el error original, la función espía de (g3), (g4) y (g5) sin llamadas, y las
     comprobaciones con `util.inspect` con `showHidden`, `JSON.stringify` y un `pino` con destino en memoria);
   - `backend/src/infraestructura/prisma/registro-de-errores-memoria-ronda16.test.ts` y el script del hijo en
@@ -2671,12 +2672,13 @@ comparar con el tope de 100; un `Buffer` de 5 MB en el grafo de un error bloque�
 256 MB el proceso cayó) y una observación media-baja (O1: pino lee `cause` por su nombre, también como getter heredado, y
 la llama si es una función; la búsqueda no la veía). Lo que corrige: 167 acota el costo de la búsqueda (hojas binarias,
 falla cerrada por `length`, corte de la enumeración); 168 lee `cause` y `errors` por su nombre en cada objeto visitado y
-trata una `cause` función como falla cerrada. No hay migraciones nuevas. Pregunta técnica pendiente R16-1 (spec,
-"Preguntas abiertas"): si se acepta su propuesta, cambia el final de `errorParaRegistro` (abajo) antes de T163.
+trata una `cause` función como falla cerrada. No hay migraciones nuevas. La pregunta técnica R16-1 la resolvió el
+orquestador antes de T163 aceptando la propuesta: un error con un binario en su grafo se registra convertido, sin el
+binario, aunque no lleve errores de la base (abajo, "Binario en el grafo").
 
-Código de producción que cambia: solo `backend/src/infraestructura/prisma/registro-de-errores.ts` (`clavesDe` y
-`buscarErroresDeLaBase`). `convertir`, `mensajesDeLaBase`, `limpio`, `mensaje-seguro.ts`, `filtro-errores.ts`,
-`rechazos.ts`, `main.ts` e `index.ts` no cambian.
+Código de producción que cambia: solo `backend/src/infraestructura/prisma/registro-de-errores.ts` (`clavesDe`,
+`buscarErroresDeLaBase` y la condición del final de `errorParaRegistro`). `convertir`, `mensajesDeLaBase`, `limpio`,
+`mensaje-seguro.ts`, `filtro-errores.ts`, `rechazos.ts`, `main.ts` e `index.ts` no cambian.
 
 **Hojas, `length` y claves (criterio 167).** Orientativo:
 
@@ -2734,7 +2736,7 @@ for (const objeto of pendientes) {
   for (const valor of valores) {
     if (!esObjeto(valor) || vistos.has(valor)) continue;
     vistos.add(valor);
-    if (esHojaBinaria(valor)) continue;                     // criterio 167: no cuenta como visitado
+    if (esHojaBinaria(valor)) { conBinarios = true; continue; }   // criterio 167: no cuenta como visitado; R16-1
     if (valor instanceof CausaLimpia) continue;
     if (esErrorDeBase(valor)) { deLaBase.push(valor); continue; }
     visitados += 1;
@@ -2755,11 +2757,34 @@ for (const objeto of pendientes) {
   función nunca se llega a convertir (la búsqueda falló cerrada antes).
 - `esErrorDeBase` y `datosSeguros` leen `cause` sin llamarla (ya era así); no cambian.
 
+**Binario en el grafo (criterio 167, R16-1).** `Busqueda` gana `conBinarios: boolean` (verdadero si la búsqueda saltó
+al menos una hoja binaria; se devuelve también en las salidas por falla cerrada, donde no cambia nada). El final de
+`errorParaRegistro` (orientativo):
+
+```ts
+const { deLaBase, agotada, conBinarios } = buscarErroresDeLaBase(error);
+if (deLaBase.length === 0 && !agotada && !conBinarios) return error;   // sin nada que quitar: el mismo, como hoy
+if (agotada) { /* falla cerrada, como hoy */ }
+const contexto: Contexto = { mensajes: mensajesDeLaBase(deLaBase), colocados: new Set(), enCadena: new WeakSet() };
+// … convertir y erroresDeLaBase, como hoy (sin errores de la base: textos vacíos y verificables, así que `mensaje` y
+// `pila` se conservan con sus reglas, y no hay `erroresDeLaBase`)
+```
+
+- `convertir` no cambia: nunca copia propiedades que no sean `cause` o `errors`, así que el binario no puede salir; un
+  binario que es directamente la `cause` o un elemento de `errors` sale como `{ tipo: 'object' }` (no es un `Error`).
+- `mensajeSeguro` no cambia: con el objeto convertido usa su `mensaje` ((t10) con el error interior de (t1) da
+  `No se pudo subir el comprobante`).
+- Las protegidas anteriores no tienen binarios en el grafo de un error (revisado: ninguna usa `Buffer` ni arreglos
+  tipados con `errorParaRegistro`), así que su resultado no cambia.
+
 **Pruebas de tiempo y memoria (criterio 167).** En la prueba, cada caso hace `errorParaRegistro(new
 Error('calentamiento'))`, construye el valor grande, toma `performance.now()`, llama una vez y vuelve a tomar el tiempo;
 el límite es 200 ms (1000 ms para `FiltroErrores` con pino en (t1)). El hijo de (t11) importa
 `backend/src/infraestructura/prisma/index.ts` con `tsx` (ya es dependencia del backend: lo usa `superadmin`), imprime
-una línea JSON por caso (`{ caso, mismo: boolean, truncado: boolean }`) y la prueba la compara; `timeout` del hijo de 60 s.
+una línea JSON por caso (`{ caso, mismo: boolean, truncado: boolean, conMensaje: boolean }`) y la prueba la compara
+((t1): `mismo: false`, `truncado: false`, `conMensaje: true`; (t3) y (t4): `truncado: true`); `timeout` del hijo de 60 s.
+Para "sin el binario", la prueba recorre el resultado (objetos y arreglos, con un conjunto de vistos) y comprueba que
+ningún valor cumple `ArrayBuffer.isView` ni `types.isAnyArrayBuffer`.
 Las pruebas no dependen de la zona horaria ni del sistema operativo.
 
 **Revisión de 001.** Se espera que ningún error de 001 lleve un `Buffer`, una copia de un arreglo grande ni una `cause`
@@ -2768,7 +2793,8 @@ función (hoy no hay ninguno); si el revisor encuentra uno, se corrige guardando
 **Nota para el revisor (cada historia, ronda 16).** Un error nunca lleva el contenido de un archivo (se guarda la clave
 de `AlmacenArchivos`, D-19), ni una copia de un `Buffer` o de un arreglo en un objeto plano (`{ ...buffer }`,
 `Object.assign({}, lista)`), ni una `cause` que sea una función (riesgos aceptados "Contenido de un binario en el
-registro" y "Objetos sin `length` con millones de claves").
+registro" y "Objetos sin `length` con millones de claves"). Desde R16-1 el registro ya no escribe un binario, pero la regla
+sigue: tampoco el contenido de un archivo como texto (por ejemplo, en base64), que sí saldría.
 
 Texto propuesto para `docs/arquitectura.md` (lo agrega el documentador en el cierre, T24), a continuación de las viñetas
 de la ronda 15:
@@ -2893,6 +2919,7 @@ de la ronda 15:
 | Sin `money` en las consultas, como regla del plan (O2) | `DecimalError` como error de la base; limpiar todo `Error` común | No es de la base y no se sabe si lleva un valor; perdería el diagnóstico de los errores propios |
 | Formas de lint de la ronda 15 al riesgo aceptado (decisión del orquestador) | Ampliar otra vez la regla propia | Alias y formas hostiles sin fin; las cubren la regla para el equipo y el revisor |
 | Binarios como hojas, reconocidos por la ranura interna (`ArrayBuffer.isView`, `types.isAnyArrayBuffer`) (ataque ronda 16, criterio 167) | Recorrerlos; falla cerrada ante cualquier binario; reconocerlos con `instanceof` o `Symbol.toStringTag` | Es la falla; perdería el diagnóstico de todo error con un archivo; un objeto común puede imitar el prototipo o la etiqueta para esconder un error de la base |
+| Un error con un binario en su grafo se registra convertido (`tipo`, `mensaje`, `pila`, `causa`, `errores`), sin el binario, aunque no lleve errores de la base (R16-1, decisión del orquestador sobre la propuesta del especificador; criterio 167) | Devolver el mismo error; falla cerrada `truncado` | pino escribiría el archivo entero (un comprobante con datos personales, en una línea de decenas de MB); se perderían el mensaje y la pila sin necesidad |
 | `length` numérico mayor que 100: falla cerrada sin listar (criterio 167) | Contar con `Reflect.ownKeys` | Crea millones de cadenas: es la falla |
 | `Reflect.ownKeys` antes de `for…in`, y `for…in` cortado al pasar el tope (criterio 167; precisión del especificador a "no materializar") | `Object.keys` u `Object.getOwnPropertyNames`; materializar y comparar | También entregan la lista entera; en JavaScript no hay enumeración por partes de las claves propias |
 | Límite de 200 ms por llamada y memoria en un hijo con `--max-old-space-size=256` (criterio 167) | Límites ajustados; medir `heapUsed` | Pruebas inestables en una CI lenta o en Windows; el recolector hace no determinista la medida |

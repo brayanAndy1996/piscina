@@ -48,8 +48,9 @@ T155 a T162, antes del cierre. Los criterios 157, 161, 162 y 163 quedaron amplia
 
 Tras la ronda 16 se agregaron los criterios 167 y 168 (sección Y de `spec.md`) y una precisión de P-42; sus tareas son
 T163 a T169, antes del cierre. Los criterios 162 y 165 quedaron precisados o ampliados, y se corrigieron los riesgos
-aceptados "Errores de la base fuera del alcance de la búsqueda" y "Diagnóstico perdido en errores grandes". Pregunta
-técnica R16-1 pendiente, a decidir antes de T163.
+aceptados "Errores de la base fuera del alcance de la búsqueda" y "Diagnóstico perdido en errores grandes". La pregunta
+técnica R16-1 la resolvió el orquestador antes de T163 (un error con un binario se registra convertido, sin el binario;
+criterio 167).
 
 ## Pruebas protegidas (en rojo)
 
@@ -724,14 +725,15 @@ cuando no copia el de la base, en lugar de "nunca `message`", porque cuatro prue
 ## Ataque adversarial, ronda 16 (12/11/2026)
 
 Falla F1 (media) y observación O1 (media-baja) de la ronda 16 (sobre `8b503d2`); criterios 167 y 168 de `spec.md` (sección
-Y) y precisión de P-42. Plan, sección 28. Nota para el orquestador: la pregunta técnica R16-1 (spec, "Preguntas
-abiertas": qué se registra de un `Error` que lleva un binario) fija el resultado de (t1) y (t2) del criterio 167; conviene
-decidirla antes de T163. Si se acepta la propuesta, el especificador ajusta el criterio 167 antes de T163.
+Y) y precisión de P-42. Plan, sección 28. La pregunta técnica R16-1 (qué se registra de un `Error` que lleva un binario)
+quedó resuelta por el orquestador antes de T163 con la propuesta del especificador: se registra convertido, sin el
+binario, aunque no lleve errores de la base; el criterio 167, (t1), (t2) y (t11) ya lo reflejan.
 
 - [ ] T163 · test-writer · Pruebas protegidas en rojo de los criterios 167 y 168 (archivos en "Protegidas del ataque ronda
       16" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: las unitarias (t1) a
       (t9) de `errorParaRegistro` con `base16`, el límite de 200 ms por llamada medido tras la llamada de calentamiento y
-      (t1) con `FiltroErrores` real y límite de 1000 ms; (t10) con `mensajeSeguro`; y (t11), el proceso hijo con
+      (t1) con `FiltroErrores` real y límite de 1000 ms; en (t1) y (t2), el resultado convertido y lo registrado sin el
+      binario ni su contenido (R16-1); (t10) con `mensajeSeguro`; y (t11), el proceso hijo con
       `--max-old-space-size=256 --import tsx` (167); las unitarias (g1) a (g6) con la comprobación previa de que pino
       muestra el valor con el error original y la función espía sin llamadas; el manejador de P-40 con (g1) y (g3);
       `mensajeSeguro` con (g1) y (g3); el error real de `auditoria.create` en `conAcademia(A, …)` (con la comprobación
@@ -742,16 +744,18 @@ decidirla antes de T163. Si se acepta la propuesta, el especificador ajusta el c
       protegidas (001), ataque ronda 16: costo acotado del registro de errores y cause por su nombre (en rojo)"
       (criterios 167 y 168)
 - [ ] T164 · tester · Confirmar que T163 falla por la razón esperada: con `8b503d2`, (t1) a (t4), (t7) y el `Proxy` de un
-      `Buffer` de (t9) pasan del límite de tiempo; (t6) da `truncado` sin `mensaje`; en (t11) el hijo termina por falta de
-      memoria (167); (g1) a (g5), el manejador, `mensajeSeguro` con (g3) y los registros de las rutas (a4) y (a5) contienen
+      `Buffer` de (t9) pasan del límite de tiempo; (t1) y (t2) dan `truncado` o el mismo objeto en lugar del objeto
+      convertido sin el binario; (t6) da `truncado` sin `mensaje`; (t10) con (t1) empieza con `error sin detalles`; en
+      (t11) el hijo termina por falta de memoria (167); (g1) a (g5), el manejador, `mensajeSeguro` con (g3) y los registros de las rutas (a4) y (a5) contienen
       `44556677`, `penicilina-r16` o `invalid input syntax`, o la función espía se llamó (168). Se informan como verdes por
-      diseño, si ya pasan: (t5), (t8), las falsas hojas de (t9) sin el `Proxy` de un `Buffer`, (t10) con (t1), (g6) con el
+      diseño, si ya pasan: (t5), (t8), las falsas hojas de (t9) sin el `Proxy` de un `Buffer`, (g6) con el
       getter que devuelve `new Error('otra')` y con `errors` función, y `mensajeSeguro` con (g1). Informar las medidas de
       tiempo de cada caso con `8b503d2`
 - [ ] T165 · backend · `registro-de-errores.ts`: `esHojaBinaria` por la ranura interna (`ArrayBuffer.isView`,
       `types.isAnyArrayBuffer`), `clavesDe` con `length` antes de listar, `Reflect.ownKeys` antes de `for…in` y corte de
-      `for…in` al pasar el tope, sin colecciones de más de 101 claves; las hojas no cuentan como visitadas (plan, sección
-      28) (criterio 167)
+      `for…in` al pasar el tope, sin colecciones de más de 101 claves; las hojas no cuentan como visitadas; la búsqueda
+      devuelve `conBinarios` y `errorParaRegistro` convierte (sin el binario) el error que lleva alguno aunque no tenga
+      errores de la base (R16-1) (plan, sección 28) (criterio 167)
 - [ ] T166 · backend · `buscarErroresDeLaBase`: `cause` y `errors` leídos por su nombre en cada objeto visitado, fuera
       del tope de claves; `cause` función (listada o por su nombre) es falla cerrada sin llamarla; `errors` función ni se
       llama ni se recorre; `convertir`, `mensaje-seguro.ts`, `filtro-errores.ts`, `rechazos.ts` y `main.ts` sin cambios;

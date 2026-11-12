@@ -180,7 +180,8 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
 - **Y. Correcciones del ataque, ronda 16 (167 y 168):**
   - 167: disponibilidad de todas las academias a la vez; registrar un 500 cuyo error lleva un archivo, un arreglo o un
     texto grandes (un comprobante de 5 MB, HU-08) bloqueaba el proceso varios segundos y podía tumbarlo por falta de
-    memoria, cortando las peticiones en curso de todas las academias (cobros y verificaciones incluidos).
+    memoria, cortando las peticiones en curso de todas las academias (cobros y verificaciones incluidos); y datos
+    sensibles (Ley 29733, R16-1): el contenido de un comprobante guardado en un error no debe llegar al registro técnico.
   - 168: datos sensibles (Ley 29733, RNF-05); un error de Prisma guardado como `cause` detrás de un getter heredado, o
     devuelto por una `cause` que es una función, llegaba entero al registro técnico (pino lo lee por su nombre), con el DNI
     o la alergia.
@@ -3145,7 +3146,8 @@ _(crítico)_.
      búsqueda, de los topes y de la regla de `mensaje` del especificador; RNF-05 y Ley 29733)_ _(**precisado** por el
      criterio 167, ataque ronda 16, F1: los topes se aplican sin listar de más: los binarios (`Buffer`, arreglos tipados,
      `DataView`, `ArrayBuffer`, `SharedArrayBuffer`) son hojas, un objeto con `length` numérico mayor que 100 es falla
-     cerrada sin listar sus claves, y la enumeración se corta al pasar el tope; y **ampliado** por el criterio 168, O1: en
+     cerrada sin listar sus claves, y la enumeración se corta al pasar el tope; y, por R16-1, la viñeta "si no encuentra
+     ninguno" ya no devuelve el mismo error si la búsqueda encontró un binario: lo convierte, sin el binario; y **ampliado** por el criterio 168, O1: en
      cada objeto visitado se leen además `cause` y `errors` por su nombre, también como getters heredados, y una `cause` que
      es una función es falla cerrada sin llamarla)_. Dado que el patrón habitual de
      NestJS `catch (error) { throw new InternalServerErrorException(error); }` (también `new HttpException(error, 503)`,
@@ -3312,13 +3314,15 @@ descrito). Son decisiones técnicas del orquestador (F1: hojas binarias, falla c
 enumeración; O1: `cause` y `errors` por su nombre y falla cerrada con una `cause` función) y del especificador (cómo se
 reconocen las hojas, en qué objetos se leen `cause` y `errors`, `errors` como función, pruebas de tiempo y de memoria), no
 reglas de negocio nuevas. Donde un criterio amplía o precisa uno anterior lo dice, y el anterior queda marcado
-"(… ataque ronda 16)", sin borrar su texto. Contrato: precisión de P-42 (firmas sin cambios). Queda la pregunta técnica
-R16-1 (contenido de un binario en el registro; "Preguntas abiertas"), que conviene decidir antes de escribir las pruebas
-(T163). Todos son _(crítico)_.
+"(… ataque ronda 16)", sin borrar su texto. Contrato: precisión de P-42 (firmas sin cambios). La pregunta técnica R16-1
+(contenido de un binario en el registro) la resolvió el orquestador el 12/11/2026, antes de las pruebas, con la propuesta
+del especificador: un `Error` con un binario en su grafo se registra convertido, sin el binario (criterio 167). Todos son
+_(crítico)_.
 
 167. **La búsqueda en el grafo del error tiene un costo acotado, sea cual sea el tamaño de los valores** _(ataque ronda 16,
-     F1; **precisa** los topes del criterio 165 y P-42; decisión del orquestador, forma del especificador; disponibilidad de
-     todas las academias (criterio 157) y RNF-05)_. Dado que `clavesDe` juntaba todas las claves de un objeto
+     F1; **precisa** los topes del criterio 165 y P-42; decisión del orquestador, forma del especificador; R16-1, decisión
+     del orquestador sobre la propuesta del especificador; disponibilidad de todas las academias (criterio 157), RNF-05 y
+     Ley 29733)_. Dado que `clavesDe` juntaba todas las claves de un objeto
      (`Reflect.ownKeys`, luego `for…in`, en un `Set`) y solo después las comparaba con el tope de 100, y que un `Buffer`, un
      `Uint8Array`, un arreglo denso o un objeto `String` grandes en el grafo de cualquier `Error`, aunque no lleve ningún
      error de la base, costaban segundos y cientos de MB (reproducido en unidad: `filtro.catch(new
@@ -3334,9 +3338,17 @@ R16-1 (contenido de un binario en el registro; "Preguntas abiertas"), que convie
        interna del motor (`ArrayBuffer.isView` y `types.isAnyArrayBuffer` de `node:util`), nunca por `instanceof`, por el
        prototipo ni por `Symbol.toStringTag`: un objeto común con `[Symbol.toStringTag]: 'ArrayBuffer'`, uno creado con
        `Object.create(Uint8Array.prototype)` o un `Proxy` de un `Buffer` no son hojas y se recorren con las reglas de
-       siempre. Si en el grafo no hay errores de la base y no se agota ningún tope, el resultado sigue siendo el mismo
-       error (criterio 165) _(pendiente de la pregunta abierta R16-1: si se acepta su propuesta, este punto cambia antes de
-       escribir las pruebas)_;
+       siempre;
+     - **un `Error` con un binario no sale tal cual** _(R16-1)_: si la búsqueda encuentra al menos una hoja binaria en el
+       grafo (en cualquier propiedad, a cualquier nivel dentro de los topes), `errorParaRegistro` no devuelve el mismo
+       error aunque no haya errores de la base: devuelve la forma convertida del criterio 165 (`tipo`, `mensaje`, `pila`,
+       `causa`, `errores` y, si los hay, `erroresDeLaBase`; nunca las demás propiedades), con las mismas reglas de
+       `mensaje` y `pila` (sin errores de la base encontrados, el `mensaje` y la `pila` se conservan) y la misma conversión
+       de `causa` y `errores` (un binario que es directamente la `cause` o un elemento de `errors` sale como `{ tipo:
+       'object' }`). El contenido del binario nunca llega al resultado, ni sus propiedades. Si además se agota un tope, manda
+       la falla cerrada (`{ tipo, truncado: true, erroresDeLaBase? }`). Sin binarios, sin errores de la base y sin topes
+       agotados, sigue siendo el mismo error (criterio 165). Regla para el equipo, igual: un error nunca lleva el contenido de
+       un archivo; lleva su clave en `AlmacenArchivos` (D-19);
      - **objetos con `length` grande:** antes de listar las claves de un objeto que no es una hoja, se lee su `length` (sin
        dejar que un getter lance; el que lanza cuenta como sin `length`). Si es un `number` mayor que el tope de claves
        (100; también `Infinity`), la búsqueda falla cerrada sin listar sus claves: `{ tipo, truncado: true }` y, si ya
@@ -3351,8 +3363,8 @@ R16-1 (contenido de un binario en el registro; "Preguntas abiertas"), que convie
        de las claves propias de una vez y `for…in` las junta dentro del motor antes de dar la primera: en JavaScript no hay
        forma de pedirlas por partes. Por eso se mira antes `length` y se deja `for…in` para el final; lo que queda es el
        riesgo aceptado "Objetos sin `length` con millones de claves".)
-     - **no cambia:** los topes de 10 niveles, 200 objetos y 100 claves por objeto, cuándo se devuelve el mismo error, la
-       forma del objeto convertido (`tipo`, `mensaje`, `pila`, `causa`, `errores`, `erroresDeLaBase`, `truncado`), la falla
+     - **no cambia:** los topes de 10 niveles, 200 objetos y 100 claves por objeto, cuándo se devuelve el mismo error (salvo
+       con un binario en el grafo, arriba), la forma del objeto convertido (`tipo`, `mensaje`, `pila`, `causa`, `errores`, `erroresDeLaBase`, `truncado`), la falla
        cerrada y `mensajeSeguro` (criterio 165).
 
      Pruebas unitarias (P-42), con el error falso `base16` (igual que `base` del criterio 165, con `penicilina-r16` en lugar
@@ -3361,15 +3373,26 @@ R16-1 (contenido de un binario en el registro; "Preguntas abiertas"), que convie
      construcción del valor grande queda fuera de la medida; el límite es **200 ms** (holgado: las reproducciones tardaban de
      1,8 a 7,3 s). Donde el resultado no es el mismo objeto, no contiene `44556677`, `penicilina-r16` ni `invalid input
      syntax` con `util.inspect` (`depth: null`, `showHidden: true`), `JSON.stringify` ni lo que escribe un `pino` con destino
-     en memoria y sus serializadores por defecto al registrar `{ err: resultado }`:
+     en memoria y sus serializadores por defecto al registrar `{ err: resultado }`. **Sin el binario** (R16-1): en los
+     casos con un binario, ningún valor del resultado, a ninguna profundidad, es un binario (`ArrayBuffer.isView` o
+     `types.isAnyArrayBuffer`), ninguna clave del resultado se llama `archivo`, `datos`, `crudo`, `vista` ni `compartido`, y
+     `JSON.stringify(resultado)` y la línea que escribe pino miden menos de 10 000 caracteres y no contienen `"type":"Buffer"`:
      (t1) **reproducción:** `new InternalServerErrorException('No se pudo procesar el comprobante', { cause:
-     Object.assign(new Error('No se pudo subir el comprobante'), { archivo: Buffer.alloc(5 * 1024 * 1024) }) })`: el mismo
-     objeto (`toBe`) en menos de 200 ms; y `FiltroErrores` real con esa excepción (como en las pruebas del filtro de
-     errores, con un `ArgumentsHost` falso y el registro en memoria) responde 500 `ERROR_INTERNO` y la llamada a `catch`
-     termina en menos de **1000 ms** (incluye que pino escriba la excepción); (t2) **otras hojas:**
-     `Object.assign(new Error('binarios r16'), { datos: new Uint8Array(5 * 1024 * 1024), crudo: new ArrayBuffer(5 * 1024 *
-     1024), vista: new DataView(new ArrayBuffer(5 * 1024 * 1024)), compartido: new SharedArrayBuffer(5 * 1024 * 1024) })`:
-     el mismo objeto en menos de 200 ms; (t3) **arreglo grande:** `Object.assign(new Error('lista r16'), { lista: new
+     Object.assign(new Error('No se pudo subir el comprobante'), { archivo: Buffer.alloc(5 * 1024 * 1024, 'COMPROBANTE-R16
+     DNI 44556677 ') }) })`: no es el mismo objeto; `tipo: 'InternalServerErrorException'`, `mensaje: 'No se pudo procesar
+     el comprobante'`, `causa` con `tipo: 'Error'` y `mensaje: 'No se pudo subir el comprobante'`, sin `truncado` ni
+     `erroresDeLaBase`; las claves del nivel superior, entre `tipo`, `mensaje`, `pila` y `causa`, y las de `causa`, entre
+     `tipo`, `mensaje` y `pila`; sin el binario; ni `44556677` ni `COMPROBANTE-R16` en `util.inspect`, `JSON.stringify` ni
+     pino; en menos de 200 ms. Y `FiltroErrores` real con esa excepción (como en las pruebas del filtro de errores, con un
+     `ArgumentsHost` falso y el registro en memoria) responde 500 `ERROR_INTERNO`, la llamada a `catch` termina en menos de
+     **1000 ms** (incluye que pino escriba el registro) y lo registrado mide menos de 10 000 caracteres, no contiene
+     `"type":"Buffer"`, `44556677` ni `COMPROBANTE-R16` y su `err` tiene `mensaje: 'No se pudo procesar el comprobante'`;
+     (t2) **otras hojas:** `Object.assign(new Error('binarios r16'), { datos: new Uint8Array(5 * 1024 * 1024), crudo: new
+     ArrayBuffer(5 * 1024 * 1024), vista: new DataView(new ArrayBuffer(5 * 1024 * 1024)), compartido: new
+     SharedArrayBuffer(5 * 1024 * 1024) })`: no es el mismo objeto; exactamente `tipo: 'Error'`, `mensaje: 'binarios r16'` y,
+     si la tiene, `pila` (ninguna otra clave); sin el binario; en menos de 200 ms; y cada uno de los cuatro binarios, solo
+     y con 16 bytes, como propiedad de un `Error`: también convertido (no depende del tamaño); y `new Error('directo r16',
+     { cause: Buffer.alloc(16) })`: convertido, con `causa: { tipo: 'object' }`; (t3) **arreglo grande:** `Object.assign(new Error('lista r16'), { lista: new
      Array(2_000_000).fill(0) })` y con `new Array(2_000_000)` (disperso): `{ tipo: 'Error', truncado: true }` (sin otras
      claves) en menos de 200 ms; (t4) **`String` grande:** `Object.assign(new Error('texto r16'), { texto: new
      String('x'.repeat(5_000_000)) })`: `{ tipo: 'Error', truncado: true }` en menos de 200 ms; (t5) **muchas claves con
@@ -3391,10 +3414,12 @@ R16-1 (contenido de un binario en el registro; "Preguntas abiertas"), que convie
      comprobante`; con el de (t3), empieza con `error sin detalles`; las dos en menos de 200 ms. **Memoria:** (t11) un
      proceso hijo (`process.execPath` con `--max-old-space-size=256 --import tsx` y un script de prueba en
      `backend/test/utilidades/`, nombre orientativo) ejecuta `errorParaRegistro` con (t1) (solo la excepción), (t3) y (t4)
-     y escribe por la salida estándar si cada resultado es el mismo objeto o `truncado`: termina con código 0 y escribe lo
-     esperado (si el módulo no carga con `tsx` en el hijo, el test-writer se detiene e informa). Con el código de
-     `8b503d2`, (t1) a (t4), (t7) y la parte de `Proxy` de (t9) pasaban del límite de tiempo, (t6) daba `truncado` sin
-     `mensaje` y en (t11) el hijo terminaba por falta de memoria; (t5) y (t8) pueden pasar ya (el tester los informa). Siguen
+     y escribe por la salida estándar, por cada caso, si el resultado es el mismo objeto, si tiene `truncado` y si tiene
+     `mensaje`: termina con código 0 y escribe lo esperado ((t1) convertido con `mensaje`; (t3) y (t4) `truncado`) (si el
+     módulo no carga con `tsx` en el hijo, el test-writer se detiene e informa). Con el código de `8b503d2`, (t1) a (t4),
+     (t7) y la parte de `Proxy` de (t9) pasaban del límite de tiempo, (t1), (t2) y (t10) con (t1) daban `truncado` o el
+     mismo objeto, (t6) daba `truncado` sin `mensaje` y en (t11) el hijo terminaba por falta de memoria; (t5) y (t8) pueden
+     pasar ya (el tester los informa). Siguen
      pasando sin cambiar de resultado las protegidas de los criterios 157 y 161 a 166 (`registro-de-errores.test.ts`,
      `registro-de-errores-ronda14.test.ts`, `registro-de-errores-ronda15.test.ts` —en especial los casos (u12): la lista de
      1000 objetos, el árbol de más de 200, el getter infinito y el `Proxy` cuyo `ownKeys` lanza—,
@@ -3608,7 +3633,8 @@ R16-1 (contenido de un binario en el registro; "Preguntas abiertas"), que convie
   `length` numérico mayor que 100 se corta sin listar sus claves, en milisegundos; los binarios son hojas.)_
 - **Un archivo grande dentro de un error** _(ataque ronda 16, F1)_: un `Buffer`, un arreglo tipado, un `DataView`, un
   `ArrayBuffer` o un `SharedArrayBuffer` no se recorren (hojas, criterio 167): registrar el error cuesta lo mismo que sin
-  el archivo. Sin errores de la base en el grafo, sale el mismo error (pendiente de la pregunta abierta R16-1). Un arreglo
+  el archivo. Aunque no haya errores de la base en el grafo, el error sale convertido (tipo, mensaje, pila, causa y
+  errores), nunca con el archivo ni con sus propiedades (R16-1). Un arreglo
   de millones de elementos o un `new String` enorme dan `truncado: true` sin recorrerlos.
 - **`cause` como getter heredado o como función** _(ataque ronda 16, O1)_: un error de la base detrás de un getter
   `cause` o `errors` del prototipo se encuentra y se limpia; una `cause` que es una función (estilo VError) da `truncado:
@@ -4459,7 +4485,7 @@ _(contrato de la ronda 16 del ataque, 12/11/2026; criterios 167 y 168)_. No son 
   `ErrorConvertido` no cambian. La búsqueda de `errorParaRegistro`, en cada objeto que visita:
   1. **hoja binaria** (`ArrayBuffer.isView(valor)` o `types.isAnyArrayBuffer(valor)` de `node:util`; nunca `instanceof`,
      prototipo ni `Symbol.toStringTag`): no es un error de la base, no se lee nada de ella, no se entra ni cuenta como
-     objeto visitado;
+     objeto visitado; la búsqueda anota que encontró al menos una (R16-1);
   2. **`length`:** si `Reflect.get(objeto, 'length')` (sin dejar que lance) es un `number` mayor que 100, falla cerrada
      sin listar claves;
   3. **claves:** `Reflect.ownKeys(objeto)`; más de 100, falla cerrada sin `for…in`; si no, `for…in` agrega las
@@ -4470,8 +4496,11 @@ _(contrato de la ronda 16 del ataque, 12/11/2026; criterios 167 y 168)_. No son 
   5. **`cause` función** (por su nombre o como clave listada): falla cerrada, sin llamarla. Un `errors` función no se
      llama, no se recorre y no es falla cerrada.
 
-  La falla cerrada es la del criterio 165: `{ tipo, truncado: true, erroresDeLaBase? }`. Sin errores de la base en el
-  grafo y sin falla cerrada, el mismo error (con hojas binarias incluidas; pendiente de la pregunta abierta R16-1).
+  La falla cerrada es la del criterio 165: `{ tipo, truncado: true, erroresDeLaBase? }`. Resultado: con falla cerrada,
+  esa forma; si no, con errores de la base **o con al menos una hoja binaria** en el grafo (R16-1), `ErrorConvertido`
+  (criterio 165; sin errores de la base, `mensaje` y `pila` se conservan con sus reglas, y sin `erroresDeLaBase`); sin
+  ninguno de los dos, el mismo error. Un binario nunca aparece en el resultado (en `causa` o `errores`, `{ tipo:
+  'object' }`).
 
 ## Cambios al modelo de datos
 
@@ -5135,7 +5164,10 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   los getters heredados no enumerables con **otro** nombre (pino no los lee), un `WeakRef` y, desde el criterio 167, una
   propiedad con nombre agregada a un `Buffer` o a un arreglo tipado (hojas binarias: pino serializaría las de un arreglo
   tipado que no es `Buffer` y `util.inspect` las de los dos). Se acepta por las mismas razones: formas que nadie usa para
-  guardar un error, y el revisor las busca.)_
+  guardar un error, y el revisor las busca.)_ _(Precisado por R16-1, criterio 167: un error con un binario en su grafo se
+  registra convertido, así que el binario y las propiedades agregadas a él ya no llegan al registro; lo único que queda de
+  ese caso es que el mensaje de un error de la base escondido ahí no se compara con el `mensaje` de los demás, lo que solo
+  importa si además un error propio copia ese mensaje: riesgo aceptado "Mensajes propios que copian el de Prisma".)_
 - **Diagnóstico perdido en errores grandes** _(ataque ronda 15, criterio 165)_: un error cuyo grafo pasa de 10 niveles,
   200 objetos o 100 claves en un objeto (por ejemplo, uno que guarde una petición HTTP entera o un `Buffer`) se registra solo
   con su tipo y `truncado: true`, aunque no lleve ningún dato de la base. Se acepta: falla cerrada; si una historia
@@ -5144,7 +5176,7 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   todas: con un `Buffer` de 5 MB en el error, registrar un 500 bloqueaba el proceso 6,9 s y usaba 707 MB, y con 256 MB de
   memoria el proceso caía, cortando las peticiones en curso de todas las academias; un arreglo de 2 millones, 1,8 s; un
   `new String` de 5 millones, 7,3 s. Desde la ronda 16 el costo está acotado: los binarios son hojas (el error se registra
-  como si no los llevara; pregunta abierta R16-1 sobre su contenido), los arreglos, objetos `String` y objetos con
+  convertido, con su tipo, mensaje, pila y causas, sin el binario: R16-1), los arreglos, objetos `String` y objetos con
   `length` mayor que 100 se cortan sin listarlos y la enumeración se corta al pasar el tope. Sigue la pérdida de
   diagnóstico para esos casos y para los grafos de más de 10 niveles o 200 objetos. Lo que queda del costo está en
   "Objetos sin `length` con millones de claves".)_
@@ -5156,13 +5188,19 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   pasan del tope. Se acepta: nadie guarda así un dato en un error; el criterio 167 cubre las formas en que llegan datos
   grandes de verdad (binarios, arreglos y textos). Regla para el equipo: un error no lleva copias de un archivo ni de una
   lista; el revisor busca `...` y `Object.assign({}, …)` de un `Buffer` o arreglo dentro de un error.
-- **Contenido de un binario en el registro** _(ataque ronda 16, criterio 167; pendiente de la pregunta abierta R16-1)_:
+- **Contenido de un binario en el registro** _(ataque ronda 16, criterio 167; pregunta R16-1, ya resuelta: ver la nota al
+  final)_:
   con los binarios como hojas, un `Error` sin errores de la base que lleva un archivo en cualquier propiedad se devuelve
   tal cual y pino escribe su contenido (`{"type":"Buffer","data":[…]}`, millones de números en una línea de decenas de
   MB). Si el archivo es un comprobante (HU-08), con nombre, teléfono o DNI de quien pagó, esos datos quedan en el registro
   técnico (Ley 29733). Hasta la ronda 15 ese caso salía como `truncado` (lento, pero sin el contenido). Provisional
   (decisión del orquestador): hoja y mismo error. Regla para el equipo mientras tanto: un error nunca lleva el contenido
   de un archivo; lleva su clave en `AlmacenArchivos` (D-19). Lo busca el revisor desde la historia de comprobantes.
+  _(Corregido por R16-1, decisión del orquestador del 12/11/2026: ya no es un riesgo para los binarios. Un error con un
+  binario en su grafo se registra convertido (tipo, mensaje, pila, causas), sin el binario, aunque no lleve errores de la
+  base (criterio 167). Queda, y se acepta: el contenido de un archivo guardado en un error **como texto** (por ejemplo, en
+  base64 en una propiedad) no es un binario y sale con el error, como cualquier otra propiedad de un `Error` común. La regla
+  para el equipo sigue igual: un error nunca lleva el contenido de un archivo, en ninguna forma; lo busca el revisor.)_
 - **Tipo `money` en consultas** _(ataque ronda 15, O2)_: `` $queryRaw`SELECT ${'44556677'}::money` `` rechaza con un
   `Error` común de `decimal.js` (`[DecimalError] Invalid argument: 44,556,677.00`), que no es un error de la base y se
   registraría con el valor. Hoy nada usa `money`. Regla para todas las historias (plan, sección 27): no se usa el tipo
@@ -5719,7 +5757,15 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   recorrerlo es lo que costaba segundos. Forma del especificador: se reconocen por la ranura interna (`ArrayBuffer.isView`,
   `types.isAnyArrayBuffer`), no por `instanceof`, prototipo ni `Symbol.toStringTag`, que un objeto común puede imitar para
   esconder un error de la base. Alternativas descartadas: recorrerlos (es la falla); falla cerrada ante cualquier binario
-  (perdería el diagnóstico de todo error que lleve un archivo). Queda la pregunta R16-1 sobre su contenido.
+  (perdería el diagnóstico de todo error que lleve un archivo). Queda la pregunta R16-1 sobre su contenido. _(Resuelta
+  abajo: R16-1.)_
+- **R16-1: un `Error` con un binario en su grafo se registra convertido, sin el binario** (criterio 167; decisión del
+  orquestador del 12/11/2026 sobre la propuesta del especificador). Aunque no haya errores de la base, `errorParaRegistro`
+  devuelve la forma convertida del criterio 165 (`tipo`, `mensaje`, `pila`, `causa`, `errores`), sin las demás
+  propiedades: el contenido de un archivo (un comprobante con datos personales, HU-08, Ley 29733) no llega al registro y
+  no hay líneas de decenas de MB; se conservan el mensaje y la pila; el binario sigue sin recorrerse (costo acotado). Se
+  mantiene la regla para el equipo: un error nunca lleva el contenido de un archivo. Alternativas descartadas: devolver el
+  mismo error (pino escribe el archivo entero); falla cerrada `truncado` (perdería el mensaje y la pila sin necesidad).
 - **`length` numérico mayor que el tope: falla cerrada sin listar** (criterio 167, F1 (b); decisión del orquestador). Es
   la forma barata de saber que un arreglo o un `String` pasan del tope. Alternativa descartada: contar con
   `Reflect.ownKeys` (es la falla: crea millones de cadenas).
@@ -5751,8 +5797,8 @@ DR-10 en "Decisiones"). Las correcciones de las rondas 1 a 16 del ataque son dec
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").
 
-Pregunta técnica para el orquestador (ronda 16), **a decidir antes de T163** porque fija el resultado de pruebas
-protegidas:
+Pregunta técnica de la ronda 16, **resuelta** por el orquestador el 12/11/2026, antes de T163: se aceptó la propuesta
+(criterio 167 y "Decisiones técnicas tras el ataque, ronda 16", R16-1). Se conserva el texto:
 
 - **R16-1. ¿Qué se registra de un `Error` sin errores de la base que lleva un binario?** Con la decisión F1 (a), sale el
   mismo error y pino escribe el contenido del archivo (riesgo aceptado "Contenido de un binario en el registro"): un
