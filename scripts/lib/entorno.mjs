@@ -1,8 +1,9 @@
-// Lectura del .env de la raíz y utilidades para las URL de PostgreSQL. Solo módulos de Node (más `pg` en quien lo use).
+// Lectura del .env de la raíz y utilidades para las URL de PostgreSQL. Solo módulos de Node (más `pg` en quien lo use);
+// `dotenv` se carga al primer uso (sin `import` estático: el hook de sesión importa este módulo antes de `npm ci`).
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseEnv } from 'node:util';
 
 export const raizProyecto = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -11,18 +12,38 @@ const BOM = '\uFEFF';
 
 /**
  * Quita un U+FEFF solo si es el primer carácter del texto; ninguno más (spec 001, criterio 169, P-43). Un `.env` guardado
- * con BOM (PowerShell 5.1) lo trae al principio, y `dotenv` (el que usa el backend) lo descarta.
+ * con BOM (PowerShell 5.1) lo trae al principio; lo usa `completarEnv` para decidir el salto de línea inicial.
  */
 export function quitarBom(texto) {
   return texto.startsWith(BOM) ? texto.slice(1) : texto;
 }
 
+let dotenvCargado = null;
+
 /**
- * `parseEnv(quitarBom(texto))`: la lectura que usan todos los scripts de un `.env` o de `.env.example`, de modo que la
- * primera clave no lleve el BOM pegado (spec 001, criterio 169, P-43).
+ * El paquete `dotenv`, cargado la primera vez que hace falta con `createRequire` (desde `scripts/lib/` encuentra el del
+ * espacio de trabajo `scripts` o el de la raíz). Si falta, lanza pidiendo `npm ci`. Solo se guarda el módulo cargado, no el
+ * fallo: si falta, cada llamada lo vuelve a intentar (spec 001, criterio 172, P-45).
+ */
+function cargarDotenv() {
+  if (dotenvCargado) return dotenvCargado;
+  try {
+    dotenvCargado = createRequire(import.meta.url)('dotenv');
+  } catch {
+    throw new Error(
+      'Falta el paquete dotenv, con el que se lee el .env. Ejecuta npm ci (o npm install) y vuelve a intentarlo.',
+    );
+  }
+  return dotenvCargado;
+}
+
+/**
+ * `dotenv.parse(texto)`, sin opciones: el mismo analizador que usa el backend, de modo que los scripts, el hook, las
+ * utilidades de prueba y la API lean los mismos valores del `.env` (spec 001, criterio 172, P-45). `dotenv` descarta por sí
+ * mismo un U+FEFF inicial.
  */
 export function analizarEnv(texto) {
-  return parseEnv(quitarBom(texto));
+  return cargarDotenv().parse(texto);
 }
 
 // Líneas separadas por \n, \r, U+2028 o U+2029; en cada una, tras quitar los espacios del principio (los de `\s` de
