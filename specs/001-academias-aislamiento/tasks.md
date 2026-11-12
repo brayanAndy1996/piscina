@@ -404,9 +404,52 @@ P-34. O2 y O3 quedan como notas en la sección 20 del plan. La ronda no encontr�
       extensiones, tipos y otros objetos de extensiones, parámetros de la URL y diferencias entre los lectores de URL); si
       hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 9 (12/11/2026)
+
+Fallas F1 (alta) y F2 (media) y observaciones O1 y O2 de la ronda 9 (sobre `532eee4`); criterios 144 a 148 de `spec.md`
+(sección R) y precisión P-35. Plan, sección 21.
+
+- [ ] T107 · test-writer · Pruebas protegidas en rojo de los criterios 144 a 148 (archivos en "Protegidas del ataque ronda
+      9" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: catálogo de volatilidad y
+      cuerpo de las funciones con su autocomprobación (144); plan guardado con la API en `DATABASE_POOL_MAX=1` y
+      autocomprobación con `app_academia_actual()` en `IMMUTABLE` (145); `client_encoding` con la vía (a) en `BaseDatos`,
+      en `POST /api/plataforma/academias` y en `enPlataforma` (146); `synchronous_commit`, `array_nulls` y
+      `transform_null_equals` con las vías (a) y (b) (147); la regla de `cli/` para las cuatro llamadas nuevas (146 y 147);
+      y `diferenciasConDesarrollo`, `db:crear` y la función del hook de P-35 (148). En el mismo commit: adaptar la
+      `DATABASE_URL_APP` de las pruebas protegidas anteriores que ejecutan `db:crear`, `db:preparar`, `crearBases` o el paso
+      3b del hook al servidor, el puerto y la base de su `DATABASE_URL` ("Impacto en especificaciones anteriores", ronda 9),
+      sin cambiar lo que comprueban; comprobar que ningún ejemplo de las protegidas de lint anteriores cambia de resultado
+      (si alguno cambiara, detenerse e informar). Commit: "Pruebas protegidas (001), ataque ronda 9: volatilidad de las
+      funciones de contexto, client_encoding y parámetros de integridad, y DATABASE_URL_APP en db:crear (en rojo)"
+      (criterios 144 a 148)
+- [ ] T108 · tester · Confirmar que T107 falla por la razón esperada: el texto con `Ñandú` se guarda alterado y
+      `current_setting('client_encoding')` no es `UTF8` (146); `synchronous_commit`, `array_nulls` y
+      `transform_null_equals` llegan contaminados (147); la regla de `cli/` rechaza las cuatro llamadas nuevas (146 y
+      147); `diferenciasConDesarrollo` no existe y `db:crear` acepta otra base (148). Se informan como verdes por diseño:
+      las pruebas de catálogo y de ejecución de 144 y 145 y sus autocomprobaciones (las funciones ya son `STABLE`; la
+      autocomprobación debe detectar el caso `IMMUTABLE`), los controles y las pruebas anteriores adaptadas. Lo que exige
+      superusuario (la autocomprobación del 145 con `SET LOCAL ROLE` en Docker y la CI) se confirma en la CI de Linux o en
+      Docker si en la nube se omite
+- [ ] T109 · backend · Primera sentencia de `#transaccion` (`base-datos.ts`) y de `enPlataforma` (`cli/conexion.ts`) con
+      `client_encoding`, `synchronous_commit`, `array_nulls` y `transform_null_equals`, y sus comentarios (plan, sección
+      21) (criterios 146, 147)
+- [ ] T110 · backend · Regla de lint de `cli/`: las cuatro llamadas nuevas a `set_config` en la lista cerrada, con la
+      misma comparación que las de los criterios 98, 107, 121 y 122 (criterios 146, 147)
+- [ ] T111 · backend · `diferenciasConDesarrollo` en `scripts/lib/entorno.mjs` (P-35); llamada en `crearBases` antes de
+      conectarse; función exportada del hook con la lectura y validación de `DATABASE_URL_APP`, usada en el paso 3b; y el
+      comentario de `POSTGRES_PUERTO` en `.env.example` (criterio 148)
+- [ ] T112 · backend · Si las pruebas de 144 o 145 señalan algo con las migraciones actuales, corregirlo con una migración
+      nueva (sin editar las aplicadas) (criterios 144, 145)
+- [ ] T113 · orquestador · `git diff` desde el commit de T107: T109 a T112 no tocaron pruebas protegidas
+- [ ] T114 · adversarial · Ronda 10 sobre todo lo anterior, en especial 144 a 148 (volatilidad y cuerpo de las funciones de
+      contexto, planes guardados y sentencias preparadas en la conexión del pool, funciones auxiliares que leen el
+      contexto, codificación y otros parámetros de sesión por cada vía, y diferencias entre `DATABASE_URL_APP` y
+      `DATABASE_URL`); si hay fallas, se repite el ciclo
+
 ## Cierre
 
-- [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67), `README.md` (qué está construido) y las notas
+- [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
+      Docker se cambia también en `DATABASE_URL_APP`, criterio 148), `README.md` (qué está construido) y las notas
       de 001 y 002 en `specs/backlog.md`: el primer administrador de cada academia pasa de 001 a 002 (DR-1)
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de

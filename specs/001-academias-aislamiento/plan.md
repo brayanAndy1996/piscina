@@ -625,6 +625,18 @@ La reutiliza 002 para los usuarios de academia.
     `leerUrlsBases`); `scripts/test/integracion/url-consulta-ronda8.test.mjs` (143, `db:crear`);
     `backend/src/cli/url-consulta-ronda8.test.ts` o una prueba de integración con proceso (143, comando y semilla); y un
     caso en `scripts/test/preparar-sesion.test.mjs` o en un archivo nuevo (143, hook).
+- **Protegidas del ataque ronda 9 (test-writer)** _(criterios 144 a 148; nombres orientativos)_:
+  - `aislamiento/catalogo-volatilidad.test.ts` (144, catálogo y autocomprobación) y
+    `aislamiento/plan-guardado.test.ts` (145, con la API en `DATABASE_POOL_MAX=1` y autocomprobación con la función en
+    `IMMUTABLE`);
+  - `aislamiento/codificacion-cliente.test.ts` (146) y `aislamiento/parametros-integridad.test.ts` (147), más los casos de
+    `enPlataforma` en `cli/contexto-comandos-ronda9.test.ts`;
+  - casos de la regla de `cli/` en `eslint/regla-sql-sesion-ronda9.test.mjs` (146 y 147);
+  - `scripts/test/entorno-ronda9.test.mjs` (148, unitaria de `diferenciasConDesarrollo`),
+    `scripts/test/integracion/url-app-ronda9.test.mjs` (148, `db:crear`) y `scripts/test/preparar-sesion-ronda9.test.mjs`
+    (148, la función del hook de P-35);
+  - adaptación de las pruebas protegidas anteriores que ejecutan `db:crear` con una `DATABASE_URL_APP` sobre otra base
+    ("Impacto en especificaciones anteriores", ronda 9), en el mismo commit.
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -1436,6 +1448,113 @@ ajusta igual.
 - **O2. Repositorio por transacción.** Ya está en la nota O1 de la ronda 7: repositorios sin estado, con `tx` como
   parámetro.
 
+### 21. Correcciones del ataque, ronda 9 (criterios 144 a 148)
+
+La ronda 9 encontró una falla alta: nada impedía marcar `IMMUTABLE` las funciones de contexto, y con eso un plan guardado
+en una conexión del pool mezcla academias sin que falle ninguna prueba. Lo que corrige: 144 y 145 son guardas (catálogo y
+ejecución) que pasan desde el principio, porque las dos funciones ya son `STABLE`; 146 y 147 agregan cuatro parámetros a la
+primera sentencia; 148 agrega una comprobación a `db:crear` y al hook. No hay migraciones nuevas. El código de producción que
+cambia: `base-datos.ts`, `cli/conexion.ts`, la regla de lint de `cli/`, `scripts/lib/entorno.mjs`, `scripts/crear-bases.mjs`,
+el hook y el comentario de `.env.example`.
+
+**Volatilidad en el catálogo (criterio 144).** En `backend/test/utilidades/catalogo.ts` o en la propia prueba (orientativo):
+
+```sql
+-- funciones de las que depende una política, fuera de pg_catalog, que son IMMUTABLE
+SELECT DISTINCT n.nspname, p.proname, pg_catalog.pg_get_function_identity_arguments(p.oid) AS argumentos, p.provolatile
+  FROM pg_catalog.pg_depend d
+  JOIN pg_catalog.pg_proc p ON p.oid = d.refobjid
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE d.classid = 'pg_catalog.pg_policy'::pg_catalog.regclass
+   AND d.refclassid = 'pg_catalog.pg_proc'::pg_catalog.regclass
+   AND n.nspname <> 'pg_catalog'
+   AND p.provolatile = 'i';
+
+-- funciones propias que leen el contexto, IMMUTABLE (cuarta viñeta)
+SELECT n.nspname, p.proname, pg_catalog.pg_get_function_identity_arguments(p.oid) AS argumentos
+  FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE <esquemasRevisados> AND NOT <funcionDeExtension>
+   AND p.provolatile = 'i'
+   AND p.prosrc ~* '(current_setting|app_academia_actual|app_es_plataforma)';
+```
+
+- Los operadores (`=` sobre `uuid`) quedan como dependencias hacia `pg_operator`, no hacia `pg_proc`, y son de `pg_catalog`:
+  no entran.
+- Cuerpo: comparar en TypeScript `prosrc.replace(/\s+/g, ' ').trim()` con el texto exacto del criterio, más `prolang` (por
+  `pg_language.lanname = 'sql'`), `prosecdef`, `proconfig IS NULL`, `prorettype::regtype::text` (`uuid`, `boolean`) y
+  `pronargs = 0`. El texto esperado se escribe en la prueba, no se lee de la migración.
+- Autocomprobación: todo dentro de una transacción del dueño que se revierte, con un `SAVEPOINT` por caso y
+  `ROLLBACK TO SAVEPOINT` después de consultar. `ALTER FUNCTION` exige ser el dueño de la función (lo es el dueño de las
+  migraciones, también en la nube). La política de ejemplo: tabla `prueba_r9_tabla (academia_id uuid)` con RLS, función
+  `prueba_r9_inmutable() RETURNS uuid LANGUAGE sql IMMUTABLE AS $$ SELECT NULL::uuid $$` y
+  `CREATE POLICY … USING (academia_id = prueba_r9_inmutable())`.
+
+**Plan guardado (criterio 145).**
+
+- Función de disparador (orientativa):
+
+  ```sql
+  CREATE FUNCTION public.prueba_r9_academias_vistas() RETURNS trigger LANGUAGE plpgsql AS $$
+  BEGIN
+    IF NEW.clave LIKE 'prueba\_r9\_%' THEN
+      NEW.valor := COALESCE((SELECT pg_catalog.jsonb_agg(DISTINCT c.academia_id ORDER BY c.academia_id)
+                               FROM public.configuraciones c WHERE c.clave LIKE 'prueba\_r9\_%'), '[]'::jsonb);
+    END IF;
+    RETURN NEW;
+  END $$;
+  REVOKE EXECUTE ON FUNCTION public.prueba_r9_academias_vistas() FROM PUBLIC;
+  CREATE TRIGGER prueba_r9_academias_vistas BEFORE INSERT ON public.configuraciones
+    FOR EACH ROW EXECUTE FUNCTION public.prueba_r9_academias_vistas();
+  ```
+
+  PostgreSQL no comprueba `EXECUTE` al disparar (solo al crear el disparador), así que la app la ejecuta sin tenerlo, y
+  la comprobación del rol (criterio 130) no la ve (si al escribir la prueba resultara que sí lo exige, el test-writer se
+  detiene e informa antes de conceder nada a la app). Las claves cumplen el `CHECK` de `configuraciones`
+  (`^[a-z][a-z0-9_]{0,63}$`).
+- La consulta del disparador no tiene parámetros, así que plpgsql usa un plan genérico desde la primera ejecución; si
+  tuviera parámetros, lo elige desde la 6.ª. Las 12 ejecuciones alternadas cubren los dos casos.
+- La API de pruebas: una nueva, con `DATABASE_POOL_MAX=1`; `conAcademia` desde `app.get(BaseDatos)`, con
+  `tx.cliente.$queryRaw` para el `INSERT … RETURNING valor`. Restauración en `finally`: `DROP TRIGGER`, `DROP FUNCTION` y
+  borrar las filas `prueba_r9_%` como dueño con el contexto de cada academia (en la nube, el dueño pasa por RLS).
+- Las pruebas de integración del backend corren en serie (`fileParallelism: false`), pero las de los scripts pueden correr
+  a la vez: por eso la función va con `EXECUTE` revocado (un `db:crear` de otra prueba no la cuenta) y el disparador solo
+  actúa sobre las claves `prueba_r9_`.
+- Autocomprobación: en la transacción del dueño, la detección de "dueño superusuario o con `BYPASSRLS`" se hace con
+  `SELECT rolsuper OR rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user`. `SET LOCAL ROLE` exige ser
+  miembro del rol o superusuario: en Docker y la CI el dueño es superusuario.
+
+**Primera sentencia (criterios 146 y 147).** En `#transaccion` de `base-datos.ts` (y en la comprobación del rol, que usa
+la misma) y en `enPlataforma` de `cli/conexion.ts`, se agregan a la sentencia actual:
+
+```sql
+pg_catalog.set_config('client_encoding', 'UTF8', true),
+pg_catalog.set_config('synchronous_commit', 'on', true),
+pg_catalog.set_config('array_nulls', 'on', true),
+pg_catalog.set_config('transform_null_equals', 'off', true)
+```
+
+- `client_encoding` cambia la conversión desde el mensaje siguiente; la propia primera sentencia es ASCII. Al terminar la
+  transacción, la sesión vuelve al valor anterior y PostgreSQL envía un `ParameterStatus`; `pg` no cambia su
+  decodificación por eso (siempre UTF-8), y la transacción siguiente lo fija otra vez antes de enviar texto. Si
+  PostgreSQL 16 o el adaptador rechazaran el cambio local de `client_encoding`, el backend se detiene e informa.
+- `synchronous_commit` se puede fijar por transacción (es su uso normal); vale para la confirmación de esa transacción.
+- Regla de lint de `cli/` (`eslint/regla-sql-sesion.mjs` o donde estén las llamadas admitidas de los criterios 98, 107,
+  121 y 122): agregar los cuatro pares nombre/valor a la lista cerrada, con la misma comparación (nombre sin distinguir
+  mayúsculas, valor exacto, tercer argumento `true`, con o sin `pg_catalog.`).
+- Actualizar el comentario de `enPlataforma` y el de `#transaccion` con los parámetros nuevos.
+
+**`DATABASE_URL_APP` sobre la base de desarrollo (criterio 148).**
+
+- `diferenciasConDesarrollo(app, desarrollo)` en `scripts/lib/entorno.mjs` (P-35): tres comparaciones, sin dependencias.
+- `crearBases`: después de las dos comprobaciones del usuario y de la validación de nombres de base, antes de
+  `new pg.Client`. Mensaje orientativo: "DATABASE_URL_APP debe apuntar al mismo servidor, puerto y base que DATABASE_URL
+  (difieren: base). Corrige DATABASE_URL_APP en el .env: la API usaría otra base que la que revisa db:crear."
+- Hook: extraer de la rama 3b a una función exportada (P-35) la lectura de `DATABASE_URL_APP`, las dos comprobaciones del
+  usuario y la nueva; la rama la llama dentro de su `try` y, con error, `mal('Rol de la aplicación', …)` como hoy.
+- `.env.example`: el comentario de `POSTGRES_PUERTO` pasa a decir "cambia también el puerto en DATABASE_URL,
+  DATABASE_URL_PRUEBAS y DATABASE_URL_APP". `env:completar` no cambia los `.env` existentes; la guía local (T24) lo
+  menciona.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -1513,6 +1632,11 @@ ajusta igual.
 | Esquemas de extensiones revisados; solo se excluyen los objetos de extensión (ataque ronda 8, criterios 141 y 142) | Excluir el esquema entero; lista fija de esquemas del hosting | Una tabla propia dentro del esquema quedaba fuera de todas las guardas; la lista depende del proveedor y no cubre `ALTER EXTENSION … ADD SCHEMA` |
 | Tipo compuesto de extensión reconocido por su `reltype` (criterio 141) | No contar nunca los tipos compuestos; contarlos como propios | Cambiaría el sentido del criterio 130; rechazaría sin motivo esquemas como `topology` |
 | Rechazar `user`, `host`, `hostaddr`, `password`, `port`, `dbname` y `database` en la cadena de consulta (criterio 143) | Leer la URL con `pg-connection-string` en `db:crear`; rechazar toda cadena de consulta | El hook no carga `node_modules` y la URL seguiría siendo ambigua; `options` y `sslmode` son necesarios |
+| Volatilidad y cuerpo de las funciones de contexto en una prueba de catálogo, más una de ejecución (ataque ronda 9, criterios 144 y 145) | Solo la prueba de ejecución; marcarlas `VOLATILE` | Cuándo se usa el plan genérico depende de PostgreSQL; `VOLATILE` impide usar los índices por `academia_id` |
+| Funciones propias que leen el contexto revisadas por el texto de su cuerpo (criterio 144) | Solo `pg_depend` desde las políticas | `pg_depend` no registra las llamadas dentro de otra función |
+| `client_encoding`, `synchronous_commit`, `array_nulls` y `transform_null_equals` en la primera sentencia (criterios 146 y 147) | Rechazarlos en `options`; fijar todos los parámetros de sesión | No cubre la conexión, la base ni el servidor; muchos fallan cerrados o exigen superusuario |
+| `synchronous_commit = 'on'` fijo (criterio 147) | Aceptar `remote_write` y `remote_apply` | Más código para una diferencia que no es de durabilidad |
+| `db:crear` y el hook comparan servidor, puerto y base de `DATABASE_URL_APP` con `DATABASE_URL`, sin resolver nombres (criterio 148) | Revisar la base de `DATABASE_URL_APP`; resolver `localhost` | Dos bases distintas son un error del `.env`; en Windows `localhost` puede ser `::1` |
 
 ## Migraciones
 
@@ -1536,6 +1660,9 @@ ajusta igual.
 - Ronda 8: sin migraciones nuevas. Las migraciones no crean esquemas ni agregan nada a extensiones, así que la comprobación
   del rol y las pruebas de catálogo con los esquemas de extensiones (criterios 141 y 142) pasan sobre la base de pruebas; la
   validación de las URL (143) es de código.
+- Ronda 9: sin migraciones nuevas. `app_academia_actual()` y `app_es_plataforma()` ya son `STABLE` y `resolver_academia`
+  es `VOLATILE` (criterio 144); los parámetros de los criterios 146 y 147 se fijan por transacción, y el 148 es de los
+  scripts. Si una prueba del 144 señalara algo, se corrige con una migración nueva.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -1557,7 +1684,12 @@ ajusta igual.
   de Docker y en la CI, con el usuario del servicio (diseño, sección 1). Si `runuser` no está en la nube, el paso
   falla con el motivo (spec 000).
 - **Rendimiento de las políticas:** `app_academia_actual()` es `STABLE` y la comparación usa los índices que empiezan
-  por `academia_id`; las historias con tablas grandes deben crear esos índices.
+  por `academia_id`; las historias con tablas grandes deben crear esos índices. Marcarla `IMMUTABLE` para ganar
+  rendimiento mezcla academias (ataque ronda 9): lo impide el criterio 144; se usa la subconsulta del criterio 140.
+- **`client_encoding` local a la transacción** _(ataque ronda 9)_: se espera que PostgreSQL 16 lo acepte con
+  `set_config(…, true)` y que `pg` ignore el `ParameterStatus`; si no, el backend se detiene e informa (sección 21).
+- **Pruebas protegidas anteriores de `db:crear`** _(ataque ronda 9)_: el criterio 148 obliga a adaptar su
+  `DATABASE_URL_APP`; lo hace el test-writer en el commit de pruebas protegidas, sin cambiar lo que comprueban.
 - **Binarios de `@node-rs/argon2` en Windows:** primera dependencia nativa en uso; la CI de Windows lo detecta.
 - **Librería de JWT en CommonJS:** NestJS compila a CommonJS; elegir una librería que se pueda `require` (por ejemplo
   `jsonwebtoken` o `@nestjs/jwt`).

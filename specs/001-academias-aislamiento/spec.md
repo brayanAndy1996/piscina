@@ -121,6 +121,17 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   - 143: aislamiento; un parámetro `user`, `host` o `database` en la cadena de consulta de una URL hace que la API se
     conecte con otro rol o a otro servidor que el que `db:crear` revisó, y la comprobación del rol deja de valer como
     garantía.
+- **R. Correcciones del ataque, ronda 9 (144 a 148):**
+  - 144 y 145: aislamiento (D-23); con una función de contexto marcada `IMMUTABLE`, un plan guardado en una conexión del
+    pool conserva la academia con la que se planificó y entrega a otra academia sus filas, sin que ninguna otra prueba lo
+    note.
+  - 146: aislamiento y auditoría (RN-22); con otra `client_encoding` en la conexión, los nombres y motivos con tildes o
+    eñes se guardan alterados (`ÃandÃº`) y la auditoría deja de decir lo que pasó.
+  - 147: integridad de lo confirmado; con `synchronous_commit` en `off` un pago o un movimiento de caja que la API dio
+    por confirmado (historias siguientes) se pierde en una caída, y `array_nulls` o `transform_null_equals` cambian lo
+    que se escribe o qué filas toca una sentencia.
+  - 148: aislamiento; si `DATABASE_URL_APP` apunta a otra base u otro servidor, `db:crear` aprueba el rol en una base y
+    la API usa otra, y la comprobación de `db:crear` deja de valer como garantía (como en el 143).
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -173,6 +184,9 @@ crítica), 61 a 67 (semilla, `.env`, CI, guía, errores) y 68 a 71 (web y E2E).
    - si el usuario de `DATABASE_URL_APP` no es `aquagestion_app`, o es el mismo de `DATABASE_URL`, termina con
      código 1.
 
+   _(ampliado por el criterio 148, ataque ronda 9: también termina con código 1 si el servidor, el puerto o la base de
+   `DATABASE_URL_APP` no coinciden con los de `DATABASE_URL`)_
+
    Quién crea el rol en cada entorno (nube, Docker y CI): precisión P-11 del contrato.
 
    _(prueba obligatoria donde el usuario de la base pueda crear roles: CI y Docker; en la nube se omite con aviso)_
@@ -183,7 +197,9 @@ crítica), 61 a 67 (semilla, `.env`, CI, guía, errores) y 68 a 71 (web y E2E).
    crea `aquagestion_app` (si no existe) con `psql` como el usuario `postgres`, con los atributos del criterio 1 y la
    contraseña de `DATABASE_URL_APP`, antes de `db:crear`; nunca imprime la contraseña; si falta `DATABASE_URL_APP`,
    el paso falla y lo informa. Mantiene las reglas de la spec 000 (criterios 43 a 47). _(prueba unitaria de la
-   función que arma la sentencia; verificación del tester en la nube)_
+   función que arma la sentencia; verificación del tester en la nube)_ _(ampliado por el criterio 148, ataque ronda 9:
+   el paso también falla, sin crear ni consultar el rol, si el servidor, el puerto o la base de `DATABASE_URL_APP` no
+   coinciden con los de `DATABASE_URL`)_
 
 ### B. Seguridad a nivel de fila (RLS)
 
@@ -636,7 +652,8 @@ negocio nuevas, y no cambian el sentido de los criterios 1 a 79: los que amplía
     de ninguna tabla, con `GRANT CREATE ON DATABASE`, con `GRANT TEMPORARY ON DATABASE`, con `GRANT CREATE ON SCHEMA
     public`), donde el usuario de pruebas pueda crear roles (Docker y CI); en la nube se omite con aviso y sigue
     valiendo el caso del criterio 4. _(crítico)_
-81. **Rol inseguro: `db:crear` y el hook** _(ataque ronda 2, F1; complementa los criterios 6 y 8)_. Dado que el rol
+81. **Rol inseguro: `db:crear` y el hook** _(ataque ronda 2, F1; complementa los criterios 6 y 8)_ _(complementado por
+    el criterio 148, ataque ronda 9: lo que `db:crear` revisa es la base a la que apunta `DATABASE_URL_APP`)_. Dado que el rol
     `aquagestion_app` ya existe y cumple alguna condición del criterio 80 (en `db:crear`, evaluadas sobre la base de
     desarrollo y sobre la de pruebas, después de la revocación del criterio 82), cuando se ejecuta `npm run
     db:crear`, entonces termina con código 1, con un mensaje que nombra la condición y cómo corregirla (por ejemplo,
@@ -1090,7 +1107,9 @@ P-28. Todos son _(crítico)_.
      _(crítico)_
 107. **Parámetros de formato fijos en cada transacción** _(ataque ronda 4, F2; complementa los criterios 72, 90 y 98;
      **amplía** la excepción de `cli/` del criterio 98)_ _(excepción de `cli/` ampliada por los criterios 121 y 122, ataque
-     ronda 5: `search_path`, `standard_conforming_strings` y la forma con `pg_catalog.`)_. Dado que el adaptador de Prisma interpreta el texto que
+     ronda 5: `search_path`, `standard_conforming_strings` y la forma con `pg_catalog.`)_ _(primera sentencia y excepción
+     de `cli/` ampliadas por los criterios 146 y 147, ataque ronda 9: `client_encoding`, `synchronous_commit`,
+     `array_nulls` y `transform_null_equals`)_. Dado que el adaptador de Prisma interpreta el texto que
      devuelve PostgreSQL y que ese texto depende de la sesión, entonces toda transacción de `BaseDatos` (`conAcademia`,
      `comoPlataforma` y `resolverAcademia`) y de `enPlataforma` fija, local a la transacción (`set_config(…, true)`) y en
      la misma primera sentencia que fija el contexto y `TimeZone` (criterio 98), antes de `trabajo`:
@@ -1405,7 +1424,9 @@ justificación de cada elemento (como la lista del criterio 10):
 121. **`search_path` fijo en cada transacción** _(ataque ronda 5, F2 (a) y (c); complementa los criterios 72, 98 y 107;
      **amplía** la excepción de `cli/` del criterio 107)_ _(la preparación de su prueba se ajusta por el criterio 130,
      ataque ronda 6: el esquema `trampa` se crea después de la primera comprobación del rol; ver "Impacto en
-     especificaciones anteriores", ronda 6)_. Dado que el `search_path` de la conexión puede venir de
+     especificaciones anteriores", ronda 6)_ _(la lista de llamadas que la regla admite en `cli/` se amplía con las de
+     los criterios 146 y 147, ataque ronda 9, que también pasan con `pg_catalog.` delante)_. Dado que el `search_path` de
+     la conexión puede venir de
      `options` en la URL, de `ALTER DATABASE … SET`, de `ALTER ROLE ALL … SET` o del servidor, y que el valor por defecto
      (`"$user", public`) busca primero un esquema con el nombre del rol, entonces:
      - toda transacción de `BaseDatos` (`conAcademia`, `comoPlataforma` y `resolverAcademia`) y de `enPlataforma` fija
@@ -1459,7 +1480,9 @@ justificación de cada elemento (como la lista del criterio 10):
      y 107 con `pg_catalog.` delante; fallan `set_config('search_path', 'trampa, public', true)` y
      `set_config('search_path', 'pg_catalog, public, pg_temp', false)`. _(crítico)_
 122. **`standard_conforming_strings` en `on` en cada transacción** _(ataque ronda 5, O3; complementa los criterios 107 y
-     121; **amplía** la excepción de `cli/` del criterio 107)_. Dado que con `standard_conforming_strings = off` una `\`
+     121; **amplía** la excepción de `cli/` del criterio 107)_ _(ampliado por los criterios 146 y 147, ataque ronda 9: la
+     misma primera sentencia fija también `client_encoding`, `synchronous_commit`, `array_nulls` y
+     `transform_null_equals`)_. Dado que con `standard_conforming_strings = off` una `\`
      dentro de un literal SQL cambia de significado, y que el valor puede llegar por las mismas vías que los parámetros
      del criterio 107, entonces toda transacción de `BaseDatos` y de `enPlataforma` fija `standard_conforming_strings` en
      `on`, local a la transacción, en la misma primera sentencia (criterio 121); dentro de `trabajo`,
@@ -2071,6 +2094,172 @@ _(crítico)_.
      (`scripts/test/preparar-sesion.test.mjs` o un archivo nuevo): con cualquiera de las tres variables así, el paso falla
      nombrando la variable y sin el valor. _(crítico)_
 
+### R. Correcciones del ataque adversarial, ronda 9
+
+Criterios agregados tras la ronda 9 del ataque (12/11/2026, sobre el commit `532eee4`). La ronda encontró una falla alta
+(nada fija la volatilidad de las funciones de contexto: marcadas `IMMUTABLE`, un plan guardado mezcla academias en una
+conexión del pool con toda la suite en verde), una media (`client_encoding` no se fija por transacción) y dos observaciones
+(`synchronous_commit` y la parte principal de `DATABASE_URL_APP` en `db:crear`). Son decisiones técnicas del orquestador, no
+reglas de negocio nuevas; la revisión de los demás parámetros de sesión (O2) es del especificador. Donde un criterio amplía
+uno anterior lo dice, y el anterior queda marcado "(… ataque ronda 9)", sin borrar su texto. Contrato nuevo: precisión P-35.
+Todos son _(crítico)_.
+
+144. **Funciones de contexto `STABLE`, nunca `IMMUTABLE`** _(ataque ronda 9, F1; complementa los criterios 11, 12, 124 y
+     132; decisión del orquestador)_. Dado que PostgreSQL calcula una función `IMMUTABLE` al planificar y deja su valor como
+     constante en el plan, y que los planes genéricos que se guardan por sesión (los de plpgsql y las sentencias
+     preparadas) se reusan en la misma conexión del pool con otra academia (en la ronda 9, con `app_academia_actual()` en
+     `IMMUTABLE`, un disparador plpgsql que leía una tabla con RLS en el contexto de A devolvió filas de B a partir de la
+     6.ª ejecución, y toda la suite siguió en verde), entonces una prueba de catálogo sobre las migraciones aplicadas en la
+     base de pruebas falla, con un mensaje que nombra la función (esquema, nombre y argumentos) y su volatilidad, si:
+     - `public.app_academia_actual()` o `public.app_es_plataforma()` no tienen `pg_proc.provolatile = 's'` (`STABLE`; ni
+       `IMMUTABLE` ni `VOLATILE`, que impediría usar los índices que empiezan por `academia_id`);
+     - alguna función de la que depende una política (fila de `pg_catalog.pg_depend` con
+       `classid = 'pg_catalog.pg_policy'::regclass` y `refclassid = 'pg_catalog.pg_proc'::regclass`), de cualquier esquema
+       salvo `pg_catalog`, tiene `provolatile = 'i'`;
+     - alguna función de `FUNCIONES_APP` (P-31) tiene `provolatile = 'i'` (hoy `resolver_academia` es `VOLATILE` y así
+       sigue: fija `app.plataforma`);
+     - alguna función de los esquemas revisados (criterio 141) que no sea objeto de extensión y cuyo `prosrc` contenga, sin
+       distinguir mayúsculas, `current_setting`, `app_academia_actual` o `app_es_plataforma`, tiene `provolatile = 'i'`
+       (cubre una función auxiliar llamada dentro del cuerpo de otra, que `pg_depend` no registra);
+     - el cuerpo de las dos funciones no es el esperado: `prolang` es el de `sql`, `prosecdef` es falso, `proconfig` es
+       nulo, el tipo de retorno es `uuid` y `boolean` respectivamente, sin argumentos, y `prosrc`, con cada tramo de
+       espacios en blanco reducido a un espacio y sin espacios al principio ni al final, es exactamente
+       `SELECT CAST(NULLIF(pg_catalog.current_setting('app.academia_id', true), '') AS pg_catalog.uuid)` para
+       `app_academia_actual` y `SELECT COALESCE(pg_catalog.current_setting('app.plataforma', true), '') = 'si'` para
+       `app_es_plataforma` (el texto de la migración `20261111150000_academias_aislamiento`). Una historia que necesite
+       cambiarlas lo hace con una migración nueva y ajusta esta prueba protegida en su commit de pruebas protegidas.
+
+     Con las migraciones actuales pasa. Autocomprobación, como dueño, en una transacción que se revierte (cada caso en su
+     `SAVEPOINT`): con `ALTER FUNCTION public.app_academia_actual() IMMUTABLE`, la función aparece por la primera y la
+     segunda viñeta; con `ALTER FUNCTION public.app_es_plataforma() VOLATILE`, por la primera; una función de ejemplo
+     `public.prueba_r9_auxiliar() RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT pg_catalog.current_setting('app.academia_id', true) $$`,
+     sin políticas que la usen, aparece por la cuarta; una política de ejemplo sobre una tabla de ejemplo con RLS que usa
+     una función `IMMUTABLE` sin `current_setting` en el cuerpo aparece por la segunda; y `CREATE OR REPLACE FUNCTION
+     public.app_es_plataforma() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$` aparece por la quinta. _(crítico)_
+145. **Un plan guardado en la conexión no lleva la academia de otra transacción** _(ataque ronda 9, F1; complementa los
+     criterios 22, 72 y 144)_. Prueba de integración con la API de pruebas en `DATABASE_POOL_MAX=1` (una sola conexión) y
+     las academias A y B. Preparación, como dueño, restaurando al final también si la prueba falla: una fila de
+     `configuraciones` de A y otra de B con la clave `prueba_r9_semilla`; una función de disparador plpgsql
+     `public.prueba_r9_academias_vistas()`, con `EXECUTE` revocado a `PUBLIC` (así la comprobación del rol, criterio 130,
+     no la cuenta), que, solo cuando `NEW.clave` empieza por `prueba_r9_`, pone en `NEW.valor` el arreglo `jsonb` ordenado
+     de las `academia_id` distintas que ve en `configuraciones` entre las filas cuya clave empieza por `prueba_r9_`; y un
+     disparador `BEFORE INSERT … FOR EACH ROW` en `configuraciones` que la ejecuta. Entonces, en 12 transacciones seguidas
+     que alternan la academia (A, B, A, B, …), cada una un `conAcademia(X, …)` que inserta en `configuraciones` una fila con
+     una clave nueva `prueba_r9_<n>` y lee su `valor` con `RETURNING`:
+     - en cada una, `valor` es exactamente el arreglo con la sola academia X, y `current_setting('app.academia_id', true)`
+       dentro de `trabajo` es X;
+     - el mensaje de falla nombra el número de la ejecución, la academia del contexto y las academias vistas.
+
+     Autocomprobación, como dueño, en una transacción que se revierte: `ALTER FUNCTION public.app_academia_actual()
+     IMMUTABLE`, y la función, el disparador y las filas semilla creados dentro de la misma transacción; si el dueño es
+     superusuario o tiene `BYPASSRLS` (Docker y CI), `SET LOCAL ROLE aquagestion_app` (si no puede, la autocomprobación se
+     omite con aviso); si no (nube), sigue como dueño, que pasa por RLS por el `FORCE`. Luego las mismas 12 inserciones en
+     la misma conexión, alternando el contexto con `pg_catalog.set_config('app.academia_id', X, true)`: al menos una
+     devuelve en `valor` una academia distinta de la del contexto (el mecanismo detecta). Control, en otra transacción
+     revertida y sin el `ALTER`: ninguna lo hace. _(crítico)_
+146. **`client_encoding` en `UTF8` en cada transacción** _(ataque ronda 9, F2; **amplía** los criterios 107 y 122 y la
+     excepción de `cli/` de los criterios 107 y 121; decisión del orquestador)_. Dado que `@prisma/adapter-pg` y `pg` envían
+     y leen el texto siempre en UTF-8, y que con otra `client_encoding` en la sesión PostgreSQL convierte lo que recibe
+     como si viniera en esa codificación (en la ronda 9, tras un `set_config('client_encoding', 'LATIN1', false)` dejado en
+     la conexión, `Ñandú` se guardó como `ÃandÃº`, y la misma conexión lo leía bien porque la conversión de vuelta lo
+     deshacía), entonces:
+     - toda transacción de `BaseDatos` (`conAcademia`, `comoPlataforma`, `resolverAcademia` y la de la comprobación del
+       rol, criterio 121) y de `enPlataforma` fija `client_encoding` en `UTF8`, local a la transacción
+       (`pg_catalog.set_config('client_encoding', 'UTF8', true)`), en la misma primera sentencia de los criterios 98, 107,
+       121 y 122, antes de `trabajo`; dentro de `trabajo`, `current_setting('client_encoding')` es `UTF8`;
+     - la primera sentencia y sus parámetros tienen solo caracteres ASCII, así que se interpretan igual con cualquier
+       `client_encoding` (como el `\` en el criterio 122);
+     - en `backend/src/cli/`, la regla del criterio 83 admite además exactamente
+       `set_config('client_encoding', 'UTF8', true)`, con o sin `pg_catalog.` y sin distinguir mayúsculas en el nombre de
+       la variable (como en el criterio 98); otro valor (`'LATIN1'`, `'SQL_ASCII'`, `'utf8'`) o un tercer argumento
+       distinto de `true` sigue fallando, y fuera de `cli/` y de `infraestructura/prisma/` sigue prohibida toda llamada a
+       `set_config`.
+
+     Prueba de integración con la vía (a) del criterio 107, con la API de pruebas en `DATABASE_POOL_MAX=1`: un
+     `conAcademia(A, …)` cuyo `trabajo` ejecuta `set_config('client_encoding', 'LATIN1', false)` y confirma; después, en la
+     misma conexión:
+     - un `conAcademia(B, …)` inserta en `configuraciones` una fila con `valor` `{"nombre": "Ñandú"}`; dentro de ese
+       `trabajo`, `current_setting('client_encoding')` es `UTF8`; leída como dueño con una conexión nueva de `pg`,
+       `valor->>'nombre'` es exactamente `Ñandú` y su `octet_length` es 7;
+     - `POST /api/plataforma/academias` con el nombre `Academia Ñandú` responde 201 y, leído como dueño con una conexión
+       nueva, el nombre guardado en `academias` es exactamente `Academia Ñandú`, y también donde lo guarde su fila de
+       `auditoria_plataforma` (por ejemplo, `datos_despues->>'nombre'`), si lo guarda;
+     - en los comandos: con `crearClienteDelDueno(<URL del dueño de pruebas>, { max: 1 })`, un `enPlataforma` que deja
+       `client_encoding` en `LATIN1` con `set_config(…, false)` y otro que escribe `Ñandú` en una fila de prueba de
+       `auditoria_plataforma` (o crea una academia de prueba con ese nombre): dentro del segundo,
+       `current_setting('client_encoding')` es `UTF8`, y leído como dueño con una conexión nueva, el texto es exactamente
+       `Ñandú`.
+
+     Y la prueba de la regla de lint (como en el criterio 92): en `cli/` pasan la llamada nueva con y sin `pg_catalog.`;
+     fallan los otros valores y `set_config('client_encoding', 'UTF8', false)`. Las vías (b) a (e) del criterio 107 no son
+     obligatorias para este parámetro; si se agregan y la conexión no se puede abrir por el propio parámetro, el caso se
+     omite con aviso. _(crítico)_
+147. **Parámetros que cambian lo que se confirma o lo que se escribe, fijos en cada transacción** _(ataque ronda 9, O2;
+     **amplía** los criterios 107 y 122 y la excepción de `cli/` de los criterios 107 y 121; decisión del orquestador
+     sobre `synchronous_commit` y del especificador sobre los demás)_. Dado que `synchronous_commit` en `off` (o `local`)
+     hace que PostgreSQL responda a la confirmación antes de escribirla en el disco o en el servidor de réplica síncrono
+     (una caída del servidor pierde lo que la API ya dio por guardado; en las historias siguientes, un pago o un movimiento
+     de caja), que `array_nulls` en `off` hace que el elemento `NULL` de un arreglo escrito como texto se guarde como la
+     cadena `'NULL'` y no como un nulo, y que `transform_null_equals` en `on` convierte `x = NULL` en `x IS NULL` (un
+     `UPDATE` o `DELETE` con esa condición tocaría filas), y que los tres pueden llegar por `options` en la URL (que el
+     criterio 143 permite), por la conexión, por la base, por `ALTER ROLE ALL` o por el servidor, entonces:
+     - toda transacción de `BaseDatos` (con la de la comprobación del rol) y de `enPlataforma` fija, local a la transacción
+       y en la misma primera sentencia: `synchronous_commit = 'on'`, `array_nulls = 'on'` y `transform_null_equals = 'off'`;
+       dentro de `trabajo`, `current_setting` de cada uno da exactamente `on`, `on` y `off`;
+     - en `backend/src/cli/`, la regla del criterio 83 admite además exactamente
+       `set_config('synchronous_commit', 'on', true)`, `set_config('array_nulls', 'on', true)` y
+       `set_config('transform_null_equals', 'off', true)`, como en el criterio 146; otro valor (`'off'`, `'local'`,
+       `'remote_apply'` para el primero) o un tercer argumento distinto de `true` sigue fallando;
+     - los demás parámetros de sesión revisados no se fijan; cada uno, con su motivo, está en "Riesgos aceptados"
+       ("Parámetros de sesión que no se fijan", ronda 9).
+
+     Prueba de integración (como la del criterio 107), con la API de pruebas en `DATABASE_POOL_MAX=1` y una API nueva por
+     vía: (a) un `trabajo` anterior en la misma conexión con `set_config('synchronous_commit', 'off', false)`,
+     `set_config('array_nulls', 'off', false)` y `set_config('transform_null_equals', 'on', false)`, confirmado; (b)
+     `DATABASE_URL_APP` con `options` `-c synchronous_commit=off -c array_nulls=off -c transform_null_equals=on`
+     (codificado). En cada vía, dentro de `trabajo` (`conAcademia` y `comoPlataforma`):
+     - `current_setting` de los tres da `on`, `on` y `off`;
+     - `SELECT ('{a,NULL}'::text[])[2] IS NULL AS es_nulo` devuelve `true`;
+     - `SELECT count(*)::int AS n FROM (VALUES (NULL::int)) AS v(x) WHERE x = NULL` devuelve 0.
+
+     En los comandos: con `crearClienteDelDueno` y `max: 1`, la vía (a) en un `enPlataforma` anterior, y con la URL del
+     dueño con esas `options`, dentro de `enPlataforma` se cumplen las mismas tres viñetas. Y la prueba de la regla de lint
+     (como en el criterio 92): en `cli/` pasan las tres llamadas nuevas con y sin `pg_catalog.`; fallan
+     `set_config('synchronous_commit', 'off', true)`, `set_config('array_nulls', 'off', true)`,
+     `set_config('transform_null_equals', 'on', true)` y cualquiera de las tres con `false`. _(crítico)_
+148. **`DATABASE_URL_APP` apunta al servidor, el puerto y la base de `DATABASE_URL`** _(ataque ronda 9, O1; **amplía** los
+     criterios 6 y 8 y complementa el 81 y el 143; decisión del orquestador)_. Dado que `npm run db:crear` (y
+     `npm run db:preparar`, que lo usa) y el hook de sesión toman de `DATABASE_URL_APP` solo el usuario y la contraseña,
+     mientras que el servidor, el puerto y las bases que revisan salen de `DATABASE_URL` y `DATABASE_URL_PRUEBAS` (si
+     `DATABASE_URL_APP` apunta a otra base u otro servidor, `db:crear` aprueba el rol en una base y la API usa otra),
+     entonces, con las tres URL válidas (criterios 5 y 143):
+     - `db:crear` termina con código 1, antes de abrir ninguna conexión y sin crear ni modificar nada (ni el rol ni las
+       bases), si el servidor, el puerto o la base de `DATABASE_URL_APP` no coinciden con los de `DATABASE_URL`;
+     - en el hook de sesión, el paso "Rol de la aplicación" falla y lo informa, sin consultar ni crear el rol;
+     - se comparan las partes que devuelve `analizarUrlPostgres`: el servidor como texto, sin distinguir mayúsculas y sin
+       resolver nombres (`localhost` y `127.0.0.1` son distintos); el puerto como número (sin puerto es 5432, así que
+       `h/b` y `h:5432/b` coinciden); y la base exacta, ya decodificada (`aqua%5Fdev` y `aqua_dev` coinciden). No se
+       comparan el usuario ni la contraseña (deben ser distintos, criterio 6) ni la cadena de consulta (`options` y
+       `sslmode` pueden diferir);
+     - el mensaje nombra `DATABASE_URL_APP`, `DATABASE_URL` y cada parte que difiere (servidor, puerto o base), y pide
+       corregir `DATABASE_URL_APP`; no contiene la URL ni la contraseña de ninguna de las dos;
+     - no se compara con `DATABASE_URL_PRUEBAS`: en las pruebas, la URL de la app se arma con el usuario y la contraseña
+       de `DATABASE_URL_APP` y el servidor, el puerto y la base de `DATABASE_URL_PRUEBAS` (contrato, "Roles de PostgreSQL y
+       variables de entorno");
+     - la API no lo comprueba al arrancar: no recibe `DATABASE_URL` (criterios 5 y 99). En producción no se usa
+       `db:crear`; la guía de despliegue lo cubre con el hosting (D-21).
+
+     Función que decide: P-35. Prueba unitaria de `diferenciasConDesarrollo`: servidor distinto; `LOCALHOST` frente a
+     `localhost` (coinciden); `localhost` frente a `127.0.0.1` (difieren); sin puerto frente a `:5432` (coinciden); `:5433`
+     (difiere); base distinta; base codificada que coincide; las tres a la vez, en el orden servidor, puerto, base; y
+     `options` o `sslmode` distintos (coinciden). Prueba de integración de `db:crear` con `DATABASE_URL_APP` con el usuario
+     y la contraseña válidos y, por caso, otra base (`/otra_base_r9`), otro puerto y `localhost` en lugar de `127.0.0.1`
+     (o al revés, según la URL del caso): código 1; la salida nombra las dos variables y la parte, y no contiene la
+     contraseña ni la URL; y, leído como dueño, no se creó ninguna de las bases del caso que no existían. Control: la
+     misma parte principal que `DATABASE_URL` más `?sslmode=disable` en `DATABASE_URL_APP` pasa. Prueba unitaria de la
+     función del hook que lee y valida la URL de la app (P-35): con cada diferencia lanza un error que nombra las dos
+     variables y la parte, sin la contraseña, y no ejecuta `psql`. _(crítico)_
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -2149,6 +2338,14 @@ _(crítico)_.
 - **URL con parámetros en la cadena de consulta** _(ataque ronda 8)_: `?sslmode=require` y `?options=…` siguen valiendo;
   `?user=…`, `?host=…` o `?database=…` detienen la API, `db:crear`, el hook, el comando y la semilla con un mensaje que
   nombra la variable y el parámetro (criterio 143).
+- **Una función de contexto marcada `IMMUTABLE` "por rendimiento"** _(ataque ronda 9)_: la prueba de catálogo del
+  criterio 144 falla; la forma recomendada para que la función se evalúe una vez por consulta es la subconsulta
+  `(SELECT app_academia_actual())` del criterio 140, no cambiar su volatilidad.
+- **Hosting o `ALTER DATABASE` con otra `client_encoding` o con `synchronous_commit = off`** _(ataque ronda 9)_: no
+  afecta a la API ni a los comandos (criterios 146 y 147); sí a herramientas externas como `psql`.
+- **Puerto de Docker cambiado en el `.env`** _(ataque ronda 9)_: si el responsable cambia el puerto en `DATABASE_URL` y
+  no en `DATABASE_URL_APP`, `db:crear` se detiene y dice qué parte corregir (criterio 148), en lugar de dejar la API
+  apuntando a otro servidor.
 
 ## Reglas de negocio aplicables
 
@@ -2177,6 +2374,8 @@ _(crítico)_.
   true)`.
 - `app_academia_actual() returns uuid`: el valor de `app.academia_id`, o `NULL` si falta o está vacío.
 - `app_es_plataforma() returns boolean`: `true` solo si `app.plataforma` es exactamente `si`.
+- Las dos son `LANGUAGE sql STABLE`, sin `SECURITY DEFINER` ni cláusula `SET`, con el cuerpo de la migración; ninguna
+  función de la que dependa una política es `IMMUTABLE` (criterio 144) _(ataque ronda 9)_.
 - `resolver_academia(p_nombre_corto text) returns table (id uuid, nombre text, nombre_corto text, estado text)`:
   criterio 20. Cómo se implementa: precisión P-10.
 
@@ -2198,7 +2397,8 @@ En las pruebas, la URL de la app para la base de pruebas se arma con el usuario 
 `process.env` las variables `DATABASE_URL*` (salvo `DATABASE_URL_APP`), las `PG*` y `SUPERADMIN_CLAVE` (criterio 99,
 P-21) _(ataque ronda 3)_, sin distinguir mayúsculas (criterio 116) _(ataque ronda 4)_. Ninguna de las tres URL puede
 llevar `user`, `host`, `hostaddr`, `password`, `port`, `dbname` ni `database` en la cadena de consulta (criterio 143, P-34)
-_(ataque ronda 8)_.
+_(ataque ronda 8)_. En desarrollo, `DATABASE_URL_APP` apunta al mismo servidor, puerto y base que `DATABASE_URL`; si no,
+`db:crear` y el hook se detienen (criterio 148, P-35) _(ataque ronda 9)_.
 
 ### Servicios del backend (contrato para las pruebas)
 
@@ -2738,6 +2938,24 @@ _(contrato de la ronda 8 del ataque, 12/11/2026; criterios 141 a 143)_. No son r
   `leerUrlApp`, `leerUrlsBases`, `db:crear` y el hook), y el comando y la semilla antes de llamar a
   `crearClienteDelDueno`. El texto del mensaje es libre; las pruebas buscan el nombre de la variable y el del parámetro, y
   que no aparezcan el valor, la contraseña ni la URL.
+- **P-35. URL de la app sobre la base de desarrollo (criterio 148)** _(ataque ronda 9)_. `scripts/lib/entorno.mjs` exporta
+  (sigue importando solo módulos `node:*`):
+
+  ```js
+  function diferenciasConDesarrollo(app, desarrollo); // => Array<'servidor' | 'puerto' | 'base'>
+  // app y desarrollo: los objetos que devuelve analizarUrlPostgres ({ host, puerto, usuario, clave, base });
+  // las partes que difieren, en el orden servidor, puerto, base, sin repetir; [] si coinciden
+  ```
+
+  Compara `host` en minúsculas, `puerto` como número y `base` exacta; no mira `usuario`, `clave` ni la cadena de
+  consulta. `crearBases` (`scripts/crear-bases.mjs`) la llama después de `leerUrlsBases`, `leerUrlApp` y las
+  comprobaciones del usuario (criterio 6), antes de abrir la conexión; con alguna diferencia lanza un `Error` con el
+  mensaje del criterio 148. El hook (`.claude/hooks/preparar-sesion.mjs`) exporta una función (nombre orientativo:
+  `leerUrlAppParaRol(entorno, desarrollo)`) con lo que hoy hace el paso 3b antes de consultar el rol: lee
+  `DATABASE_URL_APP` con `leerUrlApp`, comprueba el usuario (criterio 6) y llama a `diferenciasConDesarrollo` con
+  `conexion.desarrollo`; lanza el error sin ejecutar `psql`, y el paso 3b la usa. El texto del mensaje es libre; las
+  pruebas buscan `DATABASE_URL_APP`, `DATABASE_URL` (no solo como parte de `DATABASE_URL_APP`) y la palabra de cada parte
+  (`servidor`, `puerto`, `base`), y que no aparezcan la contraseña ni la URL.
 
 ## Cambios al modelo de datos
 
@@ -2918,6 +3136,35 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
     rol y las pruebas de catálogo (criterios 141 y 142); las URL de despliegue llevan usuario, servidor, puerto y base en la
     parte principal (criterio 143); ningún servicio guarda resultados de consultas en propiedades compartidas sin la academia
     como clave (plan, nota O3 de la ronda 8).
+- **Ronda 9 del ataque (criterios 144 a 148):**
+  - la primera sentencia de `BaseDatos` y de `enPlataforma` fija cuatro parámetros más (criterios 146 y 147). Las pruebas
+    protegidas de los criterios 72, 90, 98, 101, 107, 121 y 122 no cambian de resultado: ninguna compara el texto exacto
+    de esa sentencia ni usa esos parámetros. Si alguna lo hiciera, el test-writer se detiene e informa;
+  - la regla del criterio 83 admite en `cli/` cuatro llamadas más a `set_config`. Si algún ejemplo de las pruebas
+    protegidas de lint de las rondas anteriores espera que falle una de esas cuatro llamadas exactas en `cli/`, el
+    test-writer se detiene e informa (los demás valores siguen fallando);
+  - **criterio 148 y pruebas protegidas anteriores de `db:crear`:** varias pruebas de integración de los scripts
+    ejecutan `db:crear` con una `DATABASE_URL` sobre bases temporales y una `DATABASE_URL_APP` sobre `…/aquagestion`
+    (por ejemplo, `scripts/test/integracion/rol-app.test.mjs`, `rol-app-ronda2.test.mjs`, `rol-app-ronda3.test.mjs`,
+    `rol-app-ronda5.test.mjs`, `rol-app-ronda6.test.mjs`, `rol-app-ronda7.test.mjs`, `rol-app-ronda8.test.mjs`,
+    `crear-bases.test.mjs`, `migraciones.test.mjs`, `url-consulta-ronda8.test.mjs` y
+    `scripts/test/integracion-aislada/rol-app-config.test.mjs`; la lista la confirma el test-writer buscando toda prueba
+    que ejecute `db:crear`, `db:preparar`, `crearBases` o el paso 3b del hook). Con el criterio 148 terminarían con código
+    1 por la diferencia de base. El test-writer las adapta en el commit de pruebas protegidas de la ronda 9: la
+    `DATABASE_URL_APP` de cada caso lleva el mismo servidor, puerto y base que la `DATABASE_URL` del caso (por ejemplo,
+    con `urlAppSobre(<DATABASE_URL del caso>, <URL de la app>)`), sin cambiar el usuario, la contraseña, la cadena de
+    consulta ni lo que cada caso comprueba (`db:crear` solo usaba de ella el usuario y la contraseña). Los casos del
+    criterio 143 que agregan `?user=` o `?host=` siguen fallando por el 143 (se valida antes). Si alguna prueba cambiara de
+    resultado por otra razón, el test-writer se detiene e informa;
+  - la API no cambia por el criterio 148, ni `validarEntorno` (criterio 5);
+  - las pruebas de los criterios 144 y 145 pasan desde el principio con las migraciones actuales (las dos funciones ya son
+    `STABLE`): son guardas contra un cambio futuro, con autocomprobación;
+  - las historias siguientes: toda función que use una política, o que lea `current_setting`, `app_academia_actual` o
+    `app_es_plataforma`, es `STABLE` o `VOLATILE`, nunca `IMMUTABLE` (criterio 144; por ejemplo, la función de usuario
+    actual que llegue con 002); un parámetro de sesión nuevo que cambie lo que se escribe o qué filas toca una sentencia se
+    fija en la primera sentencia (criterio 147 y riesgo aceptado "Parámetros de sesión que no se fijan"); la historia que
+    cree el primer índice GIN agrega `gin_fuzzy_search_limit = 0` a la primera sentencia; los montos no usan el tipo
+    `money` ni `to_char` sin fijar la configuración regional.
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -3098,6 +3345,44 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 - **Forma de las políticas leída como texto** _(ataque ronda 6)_: la prueba del criterio 132 analiza el texto que devuelve
   `pg_get_expr`, no el árbol interno de PostgreSQL. Con `search_path` fijado, un operador o una función de otro esquema
   aparecen calificados y no cumplen; la prueba de ejecución del criterio 133 es la segunda capa.
+- **Parámetros de sesión que no se fijan** _(ataque ronda 9, O2)_: la primera sentencia fija los que cambian cómo se
+  interpreta o se guarda lo que la API envía y recibe, o si lo confirmado queda en el disco (criterios 98, 107, 121, 122,
+  146 y 147). Los demás se dejan como lleguen, por estos motivos:
+  - **fallan cerrados** (la operación termina con error, sin escribir nada distinto): `default_transaction_read_only` y
+    `transaction_read_only` (toda escritura falla con `25006`; además, un `SELECT` que ya empezó no puede cambiarlos);
+    `row_security = off` (PostgreSQL lanza un error en vez de saltarse una política, y el rol con ese valor propio ya lo
+    rechaza el criterio 103); `statement_timeout`, `lock_timeout`, `idle_in_transaction_session_timeout` e
+    `idle_session_timeout` (cortan la operación y la transacción se revierte); `quote_all_identifiers` (solo cambia el
+    texto que devuelven las funciones del catálogo; en la comprobación del rol, una diferencia hace rechazar, nunca
+    aceptar);
+  - **no bajan las garantías:** `default_transaction_isolation` (PostgreSQL no tiene un nivel más débil que `READ
+    COMMITTED`: `READ UNCOMMITTED` se comporta igual, y cuando una historia pide otro nivel, Prisma lo fija en la
+    transacción con la opción `aislamiento`, criterio 27); `default_transaction_deferrable` (solo afecta a `SERIALIZABLE READ ONLY`);
+    `plan_cache_mode`, `enable_*`, `jit` y los de paralelismo (solo eligen el plan; con funciones `STABLE`, criterio 144,
+    no cambian el resultado);
+  - **no se usan en 001:** `gin_fuzzy_search_limit` (solo con índices GIN; la historia que cree el primero lo fija),
+    `lc_monetary` y `lc_numeric` (solo el tipo `money` y `to_char`/`to_number`; los montos son `numeric`, cuya salida no
+    depende de la configuración regional), `xmloption` y `xmlbinary` (no hay XML), `timezone_abbreviations` (el adaptador
+    envía las fechas sin abreviaturas de zona, y `TimeZone` es `UTC`, criterio 98), `backslash_quote` y
+    `escape_string_warning` (con `standard_conforming_strings` en `on`, criterio 122), y los que solo afectan a sentencias
+    de definición (`default_tablespace`, `default_table_access_method`, `check_function_bodies`), que la app no puede
+    ejecutar;
+  - **solo un superusuario los cambia, y para todo el servidor:** `session_replication_role = replica` (apaga los
+    disparadores y las llaves foráneas), `fsync`, `full_page_writes`, `zero_damaged_pages`, `ignore_checksum_failure`,
+    `wal_level` y parecidos. La app no puede fijarlos (exigen superusuario) y quien puede cambiarlos ya puede desactivar
+    la RLS; es una mala configuración del servidor, no una contaminación de la conexión. Se revisa con el hosting (D-21).
+- **Volatilidad de funciones llamadas dentro de otras** _(ataque ronda 9, F1)_: `pg_depend` no registra las llamadas que
+  hay dentro del cuerpo de una función. El criterio 144 revisa las funciones de las que depende cada política, las de
+  `FUNCIONES_APP` y, por el texto, toda función propia cuyo cuerpo mencione `current_setting`, `app_academia_actual` o
+  `app_es_plataforma`. Una función `IMMUTABLE` que lea el estado de la sesión por otro camino (por ejemplo, `current_user`)
+  no se detecta; no da la academia, y la ven el revisor y el adversarial.
+- **Codificación de la base** _(ataque ronda 9, F2)_: `db:crear` no fija ni comprueba la codificación de las bases (en
+  Docker, la CI y la nube es `UTF8`). Con `client_encoding` fijo en `UTF8` (criterio 146), en una base `LATIN1` un
+  carácter que no existe en `LATIN1` falla con error (`22P05`) en vez de guardarse alterado, así que falla cerrada.
+- **`synchronous_commit` en `on` y no en `remote_apply`** _(ataque ronda 9, O2)_: si un hosting configura réplicas
+  síncronas con `remote_apply`, la API confirma con `on` (espera a que la réplica tenga la transacción en su disco, no a
+  que la aplique). La durabilidad es la misma; lo único que cambia es si una lectura en la réplica, justo después, ve el
+  cambio. La API no lee de réplicas. Se revisa con el hosting (D-21).
 - **Clave de ejemplo del superadmin en `.env.example`:** es pública y solo sirve en desarrollo; la semilla no corre
   en producción y el comando del criterio 34 la reemplaza.
 - **Cookie sin `Secure` fuera de producción:** necesario para `http://localhost`; en producción va con `Secure`
@@ -3379,9 +3664,32 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   una dependencia que el hook no puede cargar sin `node_modules`, y el comando y la API seguirían aceptando una URL ambigua)
   y rechazar toda cadena de consulta (las pruebas y los hostings usan `options` y `sslmode`).
 
+### Decisiones técnicas tras el ataque, ronda 9 (12/11/2026)
+
+- **La volatilidad y el cuerpo de las funciones de contexto se fijan con una prueba de catálogo, más una prueba de
+  ejecución con plan guardado** (criterios 144 y 145; decisión del orquestador). Alternativas descartadas: solo la prueba
+  de ejecución (depende de cuándo PostgreSQL elige el plan genérico; el catálogo lo dice sin ambigüedad) y marcar las
+  funciones `VOLATILE` (correcto, pero PostgreSQL deja de usar los índices que empiezan por `academia_id`). Se revisa
+  también, por el texto, toda función propia que lea `current_setting` o las funciones de contexto, porque `pg_depend` no
+  registra las llamadas dentro de otra función (precisión del especificador).
+- **`client_encoding`, `synchronous_commit`, `array_nulls` y `transform_null_equals` en la primera sentencia** (criterios
+  146 y 147; decisión del orquestador para los dos primeros y del especificador para los otros dos). Alternativas
+  descartadas: rechazar esos parámetros en `options` (no cubre la conexión, la base, `ALTER ROLE ALL` ni el servidor,
+  como en el criterio 107) y fijar todos los parámetros de sesión (muchos no cambian lo que se escribe, fallan cerrados o
+  solo los puede fijar un superusuario; riesgo aceptado "Parámetros de sesión que no se fijan").
+- **`synchronous_commit = 'on'` fijo** (criterio 147). Alternativa descartada: rechazar solo los valores más débiles que
+  `on` y respetar `remote_write` o `remote_apply` (más casos y más código para una diferencia que no es de durabilidad;
+  riesgo aceptado "`synchronous_commit` en `on` y no en `remote_apply`").
+- **`db:crear` y el hook exigen que `DATABASE_URL_APP` apunte al servidor, el puerto y la base de `DATABASE_URL`,
+  comparando el texto del servidor sin resolver nombres** (criterio 148; decisión del orquestador, precisión del
+  especificador sobre la comparación). Alternativas descartadas: que `db:crear` revise la base de `DATABASE_URL_APP` en
+  lugar de la de `DATABASE_URL` (son dos bases distintas solo por error; mejor detenerse y decirlo) y resolver los
+  nombres del servidor (`localhost` y `127.0.0.1` pueden ser servidores distintos en Windows, donde `localhost` puede
+  resolverse a `::1`; `.env.example` ya usa `127.0.0.1` en las tres).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 8 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 9 del ataque son decisiones técnicas y no abren preguntas de
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").
