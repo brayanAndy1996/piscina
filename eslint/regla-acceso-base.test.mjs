@@ -59,16 +59,14 @@ const REGLAS_INCIDENTALES = new Set([
 
 /**
  * Errores de ESLint (severidad 2) que no son incidentales, para el codigo en el archivo indicado.
- * (ajustado por el criterio 128, decision del orquestador tras la ronda 5) En infraestructura/prisma/ y en cli/ (los archivos
- * exentos de estas reglas), un ejemplo que importa un paquete no declarado en backend/package.json (`pg-pool`,
+ * (ajustado por el criterio 128, decision del orquestador tras la ronda 5) En cualquier archivo (los exentos, infraestructura/prisma/ y
+ * cli/, y tambien los casos de rechazo en un modulo), un ejemplo que importa un paquete no declarado en backend/package.json (`pg-pool`,
  * `@prisma/adapter-neon`) se revisa en un repositorio temporal cuyo backend/package.json lo declara: se sigue comprobando lo mismo
  * (que esas carpetas estan exentas de la regla del criterio 85) sin que intervenga el criterio 128.
  */
 async function erroresDeAcceso(codigo, archivo) {
-  if (archivo === PRISMA || archivo === CLI) {
-    return erroresDeclarandoLoImportado(codigo, archivo, () => erroresReales(codigo, archivo));
-  }
-  return erroresReales(codigo, archivo);
+  // Tambien en los casos de rechazo (modulo): asi cada rechazo depende de la regla que se prueba y no del criterio 128.
+  return erroresDeclarandoLoImportado(codigo, archivo, () => erroresReales(codigo, archivo));
 }
 
 async function erroresReales(codigo, archivo) {

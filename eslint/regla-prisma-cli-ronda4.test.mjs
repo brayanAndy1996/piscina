@@ -36,7 +36,11 @@ describe.each(CONFIGURACIONES)('criterio 113 con %s', (_configuracion, obtener) 
       await erroresDeclarandoLoImportado(codigo, PRISMA, () => errores(obtener(), codigo, PRISMA)),
       `en prisma/ no debia fallar: ${codigo}`,
     ).toEqual([]);
-    expect((await errores(obtener(), codigo, CLI)).length, `el lint no rechazo en cli/: ${codigo}`).toBeGreaterThan(0);
+    // Tambien el rechazo en cli/ se revisa con el paquete declarado: asi depende de la regla del 113 y no del criterio 128.
+    expect(
+      (await erroresDeclarandoLoImportado(codigo, CLI, () => errores(obtener(), codigo, CLI))).length,
+      `el lint no rechazo en cli/: ${codigo}`,
+    ).toBeGreaterThan(0);
   }
   async function pasa(codigo) {
     // (ajustado por el criterio 128, decision del orquestador tras la ronda 5) Un ejemplo que importa un paquete no declarado

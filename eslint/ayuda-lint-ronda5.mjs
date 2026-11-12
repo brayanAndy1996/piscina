@@ -10,6 +10,8 @@
 import fs from 'node:fs';
 import { builtinModules } from 'node:module';
 import path from 'node:path';
+import { ESLint } from 'eslint';
+import tseslint from 'typescript-eslint';
 import { afterAll } from 'vitest';
 import { borrarCarpeta, carpetaTemporal, erroresEn, escribir, eslintProtegidoEn, raiz } from './ayuda-lint-ronda4.mjs';
 
@@ -76,4 +78,16 @@ export async function erroresDeclarandoLoImportado(codigo, archivo, conRealidad)
   if (extras.length === 0) return conRealidad();
   const { carpeta, eslint } = repositorioQueDeclara(extras);
   return erroresEn(eslint, carpeta, codigo, archivo);
+}
+
+/**
+ * ESLint con la configuracion principal (`eslint.config.mjs` de la raiz del repositorio, sin informacion de tipos) y `cwd` en una
+ * carpeta temporal: sirve para probar una regla con la configuracion principal sin depender del `backend/package.json` real.
+ */
+export function eslintPrincipalEn(cwd) {
+  return new ESLint({
+    cwd,
+    overrideConfigFile: path.join(raiz, 'eslint.config.mjs'),
+    overrideConfig: [tseslint.configs.disableTypeChecked],
+  });
 }

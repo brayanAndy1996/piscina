@@ -29,8 +29,9 @@ describe.each(CONFIGURACIONES)('criterio 112 (regla) con %s', (_configuracion, o
       `en prisma/ no debia fallar: ${codigo}`,
     ).toEqual([]);
     for (const archivo of archivos) {
+      // Tambien el rechazo se revisa con el paquete declarado: asi depende de la regla del 112 y no del criterio 128.
       expect(
-        (await errores(obtener(), codigo, archivo)).length,
+        (await erroresDeclarandoLoImportado(codigo, archivo, () => errores(obtener(), codigo, archivo))).length,
         `el lint no rechazo en ${archivo}: ${codigo}`,
       ).toBeGreaterThan(0);
     }

@@ -92,8 +92,11 @@ export async function crearTrampa(hashDelAtacante: string): Promise<void> {
   const sentencias = [
     `CREATE SCHEMA ${ESQUEMA_TRAMPA}`,
     `GRANT USAGE ON SCHEMA ${ESQUEMA_TRAMPA} TO ${APP}`,
-    `CREATE TABLE ${ESQUEMA_TRAMPA}.academias (LIKE public.academias INCLUDING DEFAULTS)`,
-    `CREATE TABLE ${ESQUEMA_TRAMPA}.superadmins (LIKE public.superadmins INCLUDING DEFAULTS)`,
+    `CREATE TABLE ${ESQUEMA_TRAMPA}.academias (LIKE public.academias INCLUDING DEFAULTS INCLUDING INDEXES)`,
+    `CREATE TABLE ${ESQUEMA_TRAMPA}.superadmins (LIKE public.superadmins INCLUDING DEFAULTS INCLUDING INDEXES)`,
+    // Los comandos registran la auditoria en `auditoria_plataforma`: con la trampa tambien ahi, el rojo del comando es la ubicacion
+    // del superadmin y no un error de RLS accidental.
+    `CREATE TABLE ${ESQUEMA_TRAMPA}.auditoria_plataforma (LIKE public.auditoria_plataforma INCLUDING DEFAULTS INCLUDING INDEXES)`,
   ];
   for (const sentencia of sentencias) await ejecutarComo('propietario', sentencia);
   await ejecutarComo('propietario', `INSERT INTO ${ESQUEMA_TRAMPA}.academias SELECT * FROM public.academias`, [], {
@@ -108,7 +111,7 @@ export async function crearTrampa(hashDelAtacante: string): Promise<void> {
   });
   await ejecutarComo('propietario', `UPDATE ${ESQUEMA_TRAMPA}.superadmins SET clave_hash = $1`, [hashDelAtacante]);
   const final = [
-    `GRANT SELECT, INSERT, UPDATE ON ${ESQUEMA_TRAMPA}.academias, ${ESQUEMA_TRAMPA}.superadmins TO ${APP}`,
+    `GRANT SELECT, INSERT, UPDATE ON ${ESQUEMA_TRAMPA}.academias, ${ESQUEMA_TRAMPA}.superadmins, ${ESQUEMA_TRAMPA}.auditoria_plataforma TO ${APP}`,
     `CREATE FUNCTION ${ESQUEMA_TRAMPA}.set_config(text, text, boolean) RETURNS text LANGUAGE sql AS 'SELECT $2'`,
     `CREATE FUNCTION ${ESQUEMA_TRAMPA}.has_table_privilege(name, oid, text) RETURNS boolean LANGUAGE sql AS 'SELECT false'`,
     `CREATE FUNCTION ${ESQUEMA_TRAMPA}.has_table_privilege(oid, oid, text) RETURNS boolean LANGUAGE sql AS 'SELECT false'`,

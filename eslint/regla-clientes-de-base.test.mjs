@@ -11,6 +11,10 @@
 // `postgres` y `@neondatabase/serverless`, tambien con `require`, `import()`, `import type` y la ruta a `node_modules/`), y
 // `import { Injectable } from '@nestjs/common'` pasa.
 //
+// Nota sobre `pg-promise` y `pg-native` (y `pg-protocol` en las pruebas del 128): el criterio 85 ya rechaza en un modulo todo `pg-...`,
+// asi que en un modulo su rechazo puede venir del 85 y no del 129; no se pueden aislar porque el 129 no se aplica en `prisma/` ni en
+// `cli/`. El resto de la lista negra (postgres, knex, kysely, ...) si se prueba sin esa ayuda.
+//
 // Como el criterio 128 ya rechaza cualquier paquete no declarado, la lista negra se prueba de dos maneras:
 //   - con el repositorio real (las dos configuraciones): cada ejemplo falla en un modulo; y las rutas a `node_modules/` (relativas, que
 //     el criterio 128 no mira) fallan en un modulo y pasan en infraestructura/prisma/ y en cli/;
@@ -29,6 +33,7 @@ import {
   escribir,
   eslintProtegidoEn,
 } from './ayuda-lint-ronda4.mjs';
+import { eslintPrincipalEn } from './ayuda-lint-ronda5.mjs';
 
 /** Un paquete (o subruta) de cada entrada de la lista negra, con la forma de la entrada como la escribe la especificacion. */
 const POR_ENTRADA = [
@@ -178,73 +183,81 @@ describe.each(CONFIGURACIONES)('criterio 129 con %s (repositorio real)', (_confi
   });
 });
 
-describe('criterio 129: con todos los paquetes declarados en backend/package.json solo interviene la lista negra (repositorio temporal)', () => {
-  let carpeta;
-  let eslint;
+// Con las dos configuraciones: el paso protegido y la principal (eslint.config.mjs), esta ultima en un repositorio temporal para que
+// la lista negra se pruebe por nombre tambien con ella sin depender del criterio 128.
+describe.each([
+  ['paso protegido (eslint.protegido.config.mjs)', eslintProtegidoEn],
+  ['eslint.config.mjs', eslintPrincipalEn],
+])(
+  'criterio 129 con %s: con todos los paquetes declarados en backend/package.json solo interviene la lista negra (repositorio temporal)',
+  (_configuracion, crearEslint) => {
+    let carpeta;
+    let eslint;
 
-  beforeAll(() => {
-    carpeta = carpetaTemporal('aqua-clientes-');
-    // Todos los paquetes de los ejemplos, mas uno que no es cliente de base, declarados: el criterio 128 no rechaza nada.
-    const declarados = Object.fromEntries(
-      [
-        ...POR_ENTRADA.map(([, paquete]) =>
-          paquete
-            .split('/')
-            .slice(0, paquete.startsWith('@') ? 2 : 1)
-            .join('/'),
-        ),
-        '@nestjs/common',
-      ].map((nombre) => [nombre, '^1.0.0']),
-    );
-    escribir(
-      carpeta,
-      'backend/package.json',
-      `${JSON.stringify({ name: '@aquagestion/backend', dependencies: declarados }, null, 2)}\n`,
-    );
-    escribir(carpeta, 'backend/src/modulos/ejemplo/otro.ts', 'export const o = 1;\n');
-    eslint = eslintProtegidoEn(carpeta);
-  });
-  afterAll(() => {
-    borrarCarpeta(carpeta);
-  });
+    beforeAll(() => {
+      carpeta = carpetaTemporal('aqua-clientes-');
+      // Todos los paquetes de los ejemplos, mas uno que no es cliente de base, declarados: el criterio 128 no rechaza nada.
+      const declarados = Object.fromEntries(
+        [
+          ...POR_ENTRADA.map(([, paquete]) =>
+            paquete
+              .split('/')
+              .slice(0, paquete.startsWith('@') ? 2 : 1)
+              .join('/'),
+          ),
+          '@nestjs/common',
+        ].map((nombre) => [nombre, '^1.0.0']),
+      );
+      escribir(
+        carpeta,
+        'backend/package.json',
+        `${JSON.stringify({ name: '@aquagestion/backend', dependencies: declarados }, null, 2)}\n`,
+      );
+      escribir(carpeta, 'backend/src/modulos/ejemplo/otro.ts', 'export const o = 1;\n');
+      eslint = crearEslint(carpeta);
+    });
+    afterAll(() => {
+      borrarCarpeta(carpeta);
+    });
 
-  const lintear = (codigo, archivo) => erroresEn(eslint, carpeta, codigo, archivo);
+    const lintear = (codigo, archivo) => erroresEn(eslint, carpeta, codigo, archivo);
 
-  it('criterio 129 (control): un paquete declarado que no es cliente de base pasa en un modulo', async () => {
-    expect(await lintear("import { Injectable } from '@nestjs/common';\nexport const x = Injectable;", MODULO)).toEqual(
-      [],
-    );
-  });
+    it('criterio 129 (control): un paquete declarado que no es cliente de base pasa en un modulo', async () => {
+      expect(
+        await lintear("import { Injectable } from '@nestjs/common';\nexport const x = Injectable;", MODULO),
+      ).toEqual([]);
+    });
 
-  it.each(POR_ENTRADA)(
-    'criterio 129: aunque %s este declarado, su import falla en un modulo',
-    async (_entrada, paquete) => {
-      expect((await lintear(importar(paquete), MODULO)).length, paquete).toBeGreaterThan(0);
-    },
-  );
-
-  it.each(POR_ENTRADA)(
-    'criterio 129: aunque %s este declarado, su import no falla en infraestructura/prisma/ ni en cli/',
-    async (_entrada, paquete) => {
-      expect(await lintear(importar(paquete), PRISMA), `prisma/: ${paquete}`).toEqual([]);
-      expect(await lintear(importar(paquete), CLI), `cli/: ${paquete}`).toEqual([]);
-    },
-  );
-
-  for (const paquete of ['postgres', '@neondatabase/serverless']) {
-    it.each(VIAS)(
-      `criterio 129: ${paquete} declarado, con %s, falla en un modulo y pasa en prisma/ y en cli/`,
-      async (_via, armar) => {
-        const codigo = armar(paquete);
-
-        expect((await lintear(codigo, MODULO)).length, `modulo: ${codigo}`).toBeGreaterThan(0);
-        expect(await lintear(codigo, PRISMA), `prisma/: ${codigo}`).toEqual([]);
-        expect(await lintear(codigo, CLI), `cli/: ${codigo}`).toEqual([]);
+    it.each(POR_ENTRADA)(
+      'criterio 129: aunque %s este declarado, su import falla en un modulo',
+      async (_entrada, paquete) => {
+        expect((await lintear(importar(paquete), MODULO)).length, paquete).toBeGreaterThan(0);
       },
     );
-  }
 
-  it('criterio 129: una prueba sigue exenta aunque importe un cliente de base declarado', async () => {
-    expect(await lintear(importar('postgres'), 'backend/src/modulos/ejemplo/ejemplo.service.test.ts')).toEqual([]);
-  });
-});
+    it.each(POR_ENTRADA)(
+      'criterio 129: aunque %s este declarado, su import no falla en infraestructura/prisma/ ni en cli/',
+      async (_entrada, paquete) => {
+        expect(await lintear(importar(paquete), PRISMA), `prisma/: ${paquete}`).toEqual([]);
+        expect(await lintear(importar(paquete), CLI), `cli/: ${paquete}`).toEqual([]);
+      },
+    );
+
+    for (const paquete of ['postgres', '@neondatabase/serverless']) {
+      it.each(VIAS)(
+        `criterio 129: ${paquete} declarado, con %s, falla en un modulo y pasa en prisma/ y en cli/`,
+        async (_via, armar) => {
+          const codigo = armar(paquete);
+
+          expect((await lintear(codigo, MODULO)).length, `modulo: ${codigo}`).toBeGreaterThan(0);
+          expect(await lintear(codigo, PRISMA), `prisma/: ${codigo}`).toEqual([]);
+          expect(await lintear(codigo, CLI), `cli/: ${codigo}`).toEqual([]);
+        },
+      );
+    }
+
+    it('criterio 129: una prueba sigue exenta aunque importe un cliente de base declarado', async () => {
+      expect(await lintear(importar('postgres'), 'backend/src/modulos/ejemplo/ejemplo.service.test.ts')).toEqual([]);
+    });
+  },
+);

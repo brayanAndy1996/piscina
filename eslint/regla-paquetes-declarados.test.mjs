@@ -12,6 +12,8 @@
 // `import { readFileSync } from 'fs'` y `import { z } from 'zod'`; fallan `import postgres from 'postgres'`,
 // `import x from 'pg-protocol'` (dependencia de `pg`, no declarada), `require('knex')` e `import { y } from '#interno'`.
 // Consecuencia: `backend/package.json` declara `express` (se prueba en scripts/test/dependencias-backend.test.mjs).
+// Nota: `pg-protocol` y otros `pg-...` ya los rechaza el criterio 85 en un modulo y en main.ts; en `infraestructura/prisma/` y en `cli/` (donde
+// el 85 no se aplica) solo los puede rechazar el 128, y esos archivos estan en ARCHIVOS.
 // Se prueba con las dos configuraciones (eslint.config.mjs y la del paso protegido) sobre el repositorio real, y con
 // repositorios temporales cuyo `backend/package.json` declara paquetes en cada seccion (la regla lee `<cwd>/backend/package.json`).
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
