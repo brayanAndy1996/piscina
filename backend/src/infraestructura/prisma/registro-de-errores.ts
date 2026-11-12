@@ -162,9 +162,22 @@ export function causaLimpia(error: unknown, operacion?: string, circunstancia?: 
   return new CausaLimpia(datos, operacionValida, nombreDeCircunstancia);
 }
 
-const soloMarcos = (pila: unknown): string | undefined => {
-  if (typeof pila !== 'string') return undefined;
-  const marcos = pila
+/**
+ * La pila de un error de la base sin datos (criterio 163): se lee solo DESPUES del encabezado exacto que escribe V8, `nombre: mensaje`
+ * (o `nombre` solo con el mensaje vacío), y solo si lo que sigue está vacío o empieza con un salto de línea. Un mensaje con una línea
+ * que empieza con espacios y `at ` (con un DNI, por ejemplo) está dentro del encabezado y no se confunde con un marco. Si `name`,
+ * `message` o `stack` no son cadenas, si leerlos lanza o si el `stack` no empieza con el encabezado, no hay pila (falla cerrada).
+ */
+const pilaSinEncabezado = (error: unknown): string | undefined => {
+  const nombre = leerSeguro(error, 'name');
+  const mensaje = leerSeguro(error, 'message');
+  const pila = leerSeguro(error, 'stack');
+  if (typeof nombre !== 'string' || typeof mensaje !== 'string' || typeof pila !== 'string') return undefined;
+  const encabezado = mensaje === '' ? nombre : `${nombre}: ${mensaje}`;
+  if (!pila.startsWith(encabezado)) return undefined;
+  const resto = pila.slice(encabezado.length);
+  if (resto !== '' && !resto.startsWith('\n')) return undefined;
+  const marcos = resto
     .split('\n')
     .filter((linea) => MARCO_DE_PILA.test(linea))
     .slice(0, MARCOS_MAXIMOS);
@@ -173,7 +186,7 @@ const soloMarcos = (pila: unknown): string | undefined => {
 
 /** Un error de la base como objeto plano: solo el tipo, los códigos, el modelo y los marcos de la pila. */
 function limpio(error: unknown): Record<string, unknown> {
-  const pila = soloMarcos(leerSeguro(error, 'stack'));
+  const pila = pilaSinEncabezado(error);
   return { ...datosSeguros(error), ...(pila === undefined ? {} : { pila }) };
 }
 
