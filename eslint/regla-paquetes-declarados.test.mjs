@@ -293,8 +293,9 @@ describe('criterio 128: la regla lee <cwd>/backend/package.json (repositorios te
     escribirPaquete(carpeta, { name: '@aquagestion/backend', dependencies: { pg: '^8.0.0' } });
     escribir(carpeta, 'node_modules/pg-protocol/package.json', '{ "name": "pg-protocol" }\n');
 
-    expect(await lintear(importa('pg'))).toEqual([]);
-    expect((await lintear(importa('pg-protocol'))).length).toBeGreaterThan(0);
+    // (ajustado: el 85 prohíbe pg en módulos) Se lintea en infraestructura/prisma/, donde el 85 no aplica y solo el 128 decide.
+    expect(await lintear(importa('pg'), PRISMA), 'pg declarado').toEqual([]);
+    expect((await lintear(importa('pg-protocol'), PRISMA)).length, 'pg-protocol no declarado').toBeGreaterThan(0);
   });
 
   it('criterio 128: una carpeta backend/src/modulos distinta tambien usa el package.json de backend', async () => {
