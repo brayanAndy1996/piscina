@@ -185,6 +185,15 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   - 168: datos sensibles (Ley 29733, RNF-05); un error de Prisma guardado como `cause` detrás de un getter heredado, o
     devuelto por una `cause` que es una función, llegaba entero al registro técnico (pino lo lee por su nombre), con el DNI
     o la alergia.
+- **Z. Correcciones del ataque, ronda 17 (169 a 171):**
+  - 169 y 170: aislamiento entre academias y rol de la aplicación (complementan el 148, que es crítico); con un `.env`
+    guardado con BOM en Windows, los scripts y el backend leían distintas `DATABASE_URL`, `env:completar` la cambiaba en
+    silencio y `db:migrar`, la semilla y `db:crear` trabajaban sobre otra instancia que la que revisan las comprobaciones
+    del rol (criterios 80 a 83, 102 y 148), sin ningún aviso.
+  - 171: falla abierta de las guardas del proyecto; lanzado por una ruta con un enlace o una unión, `db:crear` salía con 0
+    sin comprobar el rol (y `db:preparar` seguía con las migraciones), y `verificar-pruebas-protegidas` (el hook
+    `commit-msg`, criterio 41 de 000) y `verificar-sin-secretos` daban por buenas cosas que no revisaron: la protección de
+    las pruebas de la ruta crítica quedaba apagada sin que nadie lo notara.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -509,7 +518,11 @@ de plataforma devuelve 2 filas y `superadmins`, 1).
 63. Dado un `.env` creado antes de esta historia, cuando se ejecuta `npm run env:completar`, entonces agrega al final
     las variables de `.env.example` que falten, con su comentario, sin modificar ni reordenar las existentes, e
     informa los nombres agregados; si no hay `.env`, lo crea copiando `.env.example`; si no falta nada, lo dice.
-    Funciona en Windows. _(prueba obligatoria)_
+    Funciona en Windows. _(prueba obligatoria)_ _(**ampliado** por los criterios 169 y 170, ataque ronda 17, F1: lee el
+    `.env` y `.env.example` sin el BOM inicial, como `dotenv`; nunca agrega una variable que `dotenv` ya lee del archivo y
+    avisa de las que los scripts no pueden leer; conserva los bytes del archivo (BOM incluido) y solo agrega al final; y,
+    provisional por R17-2, no escribe en un `.env` UTF-16 y termina con código 1. Por el criterio 171, O1, también funciona
+    lanzado por una ruta con un enlace o una unión.)_
 64. Dada la CI, entonces el trabajo de Linux define `DATABASE_URL_APP` y `JWT_SECRETO` (valores de desarrollo
     inventados) y `db:preparar` crea el rol con el superusuario del servicio; la suite completa queda en verde.
     _(verificación del revisor)_
@@ -524,7 +537,11 @@ de plataforma devuelve 2 filas y `superadmins`, 1).
     `npm run db:preparar` (crea el rol `aquagestion_app`); cómo entrar a `http://localhost:5173/plataforma/ingresar`
     con el superadmin de desarrollo; cómo crear o restablecer un superadmin con `npm run plataforma:superadmin`; y
     los problemas "Falta el rol aquagestion_app", "rol inseguro" y "falta la variable DATABASE_URL_APP".
-    _(verificación manual del responsable)_
+    _(verificación manual del responsable)_ _(**ampliado** tras la ronda 17 del ataque, criterios 169 a 171: la guía
+    explica además que el `.env` se guarda como UTF-8 (con o sin BOM se lee igual; en UTF-16, lo que dejan `>` y `Out-File`
+    sin `-Encoding` en PowerShell 5.1, `env:completar` se niega, provisional R17-2), qué hacer con el aviso "los scripts no
+    la pueden leer" de `env:completar`, y que el repositorio puede estar bajo una unión de Windows. Lo escribe el
+    documentador, T24.)_
 
 ### I. Web de la plataforma
 
@@ -2306,7 +2323,11 @@ Todos son _(crítico)_.
      `set_config('synchronous_commit', 'off', true)`, `set_config('array_nulls', 'off', true)`,
      `set_config('transform_null_equals', 'on', true)` y cualquiera de las tres con `false`. _(crítico)_
 148. **`DATABASE_URL_APP` apunta al servidor, el puerto y la base de `DATABASE_URL`** _(ataque ronda 9, O1; **amplía** los
-     criterios 6 y 8 y complementa el 81 y el 143; decisión del orquestador)_. Dado que `npm run db:crear` (y
+     criterios 6 y 8 y complementa el 81 y el 143; decisión del orquestador)_ _(**complementado** por los criterios 169 a
+     171, ataque ronda 17: la comparación solo sirve si `db:crear` y el hook leen del `.env` las mismas `DATABASE_URL` y
+     `DATABASE_URL_APP` que el backend (sin el BOM inicial, criterio 169), si `env:completar` no cambia en silencio cuál es
+     la efectiva (170) y si `db:crear` no sale con 0 sin comprobar nada al lanzarlo por un enlace (171); con un `.env` con
+     BOM, `db:crear` decía "Falta la variable DATABASE_URL" o culpaba a `DATABASE_URL_APP`)_. Dado que `npm run db:crear` (y
      `npm run db:preparar`, que lo usa) y el hook de sesión toman de `DATABASE_URL_APP` solo el usuario y la contraseña,
      mientras que el servidor, el puerto y las bases que revisan salen de `DATABASE_URL` y `DATABASE_URL_PRUEBAS` (si
      `DATABASE_URL_APP` apunta a otra base u otro servidor, `db:crear` aprueba el rol en una base y la API usa otra),
@@ -3499,6 +3520,168 @@ _(crítico)_.
      criterio 167; en especial los controles (u14) de la ronda 15 y el error de `registro-de-errores.test.ts` con `cause`
      no enumerable). Si alguna cambiara, el test-writer o el backend se detienen e informan. _(crítico)_
 
+### Z. Correcciones del ataque adversarial, ronda 17
+
+Criterios agregados tras la ronda 17 del ataque (12/11/2026, sobre el commit `6e3d69e`). La ronda no encontró fallas en el
+núcleo (aislamiento, RLS, Superadmin, auditoría, registro de errores). Encontró una falla media, confirmada, que se da en
+Windows (F1: los scripts leen el `.env` con `parseEnv` de `node:util`, que deja el BOM de UTF-8 pegado a la primera clave,
+y el backend con `dotenv`, que lo descarta; con un `.env` guardado con BOM que empieza con `DATABASE_URL=…:5433/…`,
+`npm run env:completar` cree que falta, agrega al final la de `.env.example` (5432), dice "Tus variables existentes no se
+modificaron" y, como en `dotenv` gana la última, `db:migrar` y la semilla pasan a otra instancia; `db:crear` dice "Falta la
+variable DATABASE_URL" o culpa a `DATABASE_URL_APP` (criterio 148)) y dos observaciones (O1: los scripts lanzados por una
+ruta con un enlace simbólico o una unión de Windows no hacen nada y salen con 0, porque comparan la ruta real del módulo con
+la de `process.argv[1]` sin resolver; O2: `GET /api/a/{nombreCorto}` no tiene límite de peticiones). Son decisiones
+técnicas del orquestador (F1: los scripts y el backend leen el `.env` igual; O1: comparar rutas reales con una ayuda común;
+O2: se difiere) y del especificador (forma de la lectura común, la prueba de coherencia con `dotenv`, el aviso de
+`env:completar`, los casos de prueba), no reglas de negocio nuevas. La O2 no lleva criterio: queda en "Notas para
+historias futuras" y en el plan (sección 29). Donde un criterio amplía o precisa uno anterior lo dice, y el anterior queda
+marcado "(… ataque ronda 17)", sin borrar su texto. Contrato: P-43 y P-44 nuevos ("Precisiones del contrato", ronda 17).
+La pregunta técnica R17-2 (`.env` en UTF-16) tiene un valor provisional que ya está en el criterio 170 y no bloquea.
+Todos son _(crítico)_ (justificación en "Clasificación de ruta crítica", Z).
+
+169. **Los scripts leen el `.env` como el backend: sin el BOM inicial** _(ataque ronda 17, F1; **amplía** el criterio 63
+     y **complementa** el 148; decisión del orquestador, forma del especificador; D-26)_. Dado que `cargarEnv`
+     (`scripts/lib/entorno.mjs`, lo usan `db:crear`, `db:migrar`, la semilla y `db:preparar`), `completar-env.mjs` y el hook
+     de sesión analizan el `.env` con `parseEnv` de `node:util`, que deja el BOM de UTF-8 (U+FEFF) pegado a la primera clave
+     (`"\uFEFFDATABASE_URL"`), mientras que el backend (`backend/prisma.config.ts`, la API y los comandos) usa `dotenv`, que
+     lo descarta; y que PowerShell 5.1 guarda con BOM (`Set-Content -Encoding UTF8`, `Out-File -Encoding utf8`), entonces:
+     - **una sola regla de lectura:** `scripts/lib/entorno.mjs` exporta `quitarBom(texto)` y `analizarEnv(texto)` (P-43).
+       `quitarBom` quita **un** U+FEFF solo si es el primer carácter del texto (ninguno más, ni en otra posición);
+       `analizarEnv` es `parseEnv(quitarBom(texto))`. Todo lector de un `.env` o de `.env.example` de `scripts/` (sin
+       `scripts/test/`) usa `analizarEnv`: `cargarEnv`, `leerBloques` y `completarEnv`;
+     - **los demás lectores, con la misma regla:** el hook de sesión (`entornoParaHijos`, que pasa a exportarse, P-43)
+       aplica la misma regla con su propia copia, porque no puede importar módulos del repositorio de forma estática
+       (criterio 47 de 000); y las utilidades de prueba `leerEntornoBases` (`backend/test/utilidades/base-pruebas.ts`) y
+       `leerUrlAppConfigurada` (`backend/test/utilidades/base-datos.ts`) quitan el BOM inicial antes de `parseEnv`;
+     - **nadie más analiza el `.env` por su cuenta:** en `scripts/` (sin `scripts/test/`), `.claude/hooks/` y
+       `backend/test/utilidades/` (sin los archivos `*.test.*`), el texto `parseEnv` aparece solo en `scripts/lib/entorno.mjs`,
+       `.claude/hooks/preparar-sesion.mjs`, `backend/test/utilidades/base-pruebas.ts` y
+       `backend/test/utilidades/base-datos.ts` (prueba estática). Un lector nuevo usa `analizarEnv`;
+     - **coherencia con `dotenv`:** para cada `.env` del conjunto (a), las claves de `analizarEnv(texto)` son las mismas que
+       las de `dotenv.parse(texto)` (el `dotenv` instalado del backend; como conjuntos) y el valor de cada clave es el mismo;
+     - **no cambia:** `cargarEnv` sigue sin sobrescribir las variables ya definidas; un `.env` sin BOM se lee igual que hoy
+       (las protegidas del criterio 63 y `scripts/test/entorno*.test.mjs` no cambian de resultado); las protegidas de
+       `backend/src` que leen `.env.example` con `parseEnv` no cambian (`.env.example` no tiene BOM, abajo).
+
+     Conjunto (a) (textos armados en la prueba; `U` es `\uFEFF`; las URL con usuario `aquagestion`, clave `aquagestion`,
+     servidor `127.0.0.1` y puerto `5433`, como en `.env.example` con el puerto cambiado; `DATABASE_URL_APP` con el usuario
+     y la clave `aquagestion_app`): (e1) **reproducción:** `U` + las líneas de variables activas de `.env.example` real, en
+     su orden, con `5432` cambiado por `5433`, unidas con `\r\n` y con `\r\n` al final (la primera es `DATABASE_URL=…`);
+     (e2) `U` + `# Configuración` + `\n` + las mismas variables con `\n`; (e3) `U` + `export DATABASE_URL=…` y las demás;
+     (e4) `U` + `DATABASE_URL="…"` (comillas dobles) y, en otro texto, `U` + `DATABASE_URL='…'` (simples); (e5) `U` +
+     `PUERTO_API=3000 # comentario` + `\n` + `DATABASE_URL=…`; (e6) `U` + `\n` + las variables (primera línea en blanco);
+     (e7) control sin BOM con `\r\n`; (e8) solo `U`, y el texto vacío.
+
+     Pruebas unitarias: `quitarBom` con `U` al principio, con dos `U` al principio (quita uno), con `U` en medio (no la
+     quita) y sin `U`; la coherencia (a) con `analizarEnv` y con `dotenv.parse`; `cargarEnv(env, carpeta)` con (e1) como
+     `.env` de una carpeta temporal y `env = {}`: `env.DATABASE_URL` termina en `:5433/aquagestion`, `leerUrlsBases(env)`
+     no lanza, `leerUrlApp(env)` no lanza y `diferenciasConDesarrollo(leerUrlApp(env), leerUrlsBases(env).desarrollo)` es
+     `[]` (con el código de `6e3d69e`, `env.DATABASE_URL` era `undefined` y `leerUrlsBases` lanzaba "Falta la variable
+     DATABASE_URL"); `entornoParaHijos(carpeta, {})` del hook con (e1): `DATABASE_URL`, `DATABASE_URL_PRUEBAS` y
+     `DATABASE_URL_APP` con `5433`; `leerEntornoBases(carpeta, {})` y `leerUrlAppConfigurada(carpeta, {})` con (e1) y con un
+     texto `U` + `DATABASE_URL_APP=…:5433/…` + `\r\n` + lo demás: los valores con `5433` (no la de `.env.example`); la
+     prueba estática de `parseEnv`; y `.env.example` real no empieza con U+FEFF. Si para algún texto de (a) `parseEnv` (sin
+     el BOM) y `dotenv.parse` dan claves o valores distintos (por ejemplo, con `\r\n` o con comillas), el test-writer se
+     detiene e informa: es una diferencia de lectura que este criterio no previó. _(crítico)_
+170. **`env:completar` no agrega una variable que el backend ya lee y no cambia el `.env` salvo lo que agrega** _(ataque
+     ronda 17, F1; **amplía** el criterio 63; decisión del orquestador, forma del especificador; R17-1 y R17-2, valores
+     provisionales; D-26)_. Dado que, con el `.env` de (e1), `completarEnv` agregaba al final la `DATABASE_URL` de `.env.example` y
+     informaba que no había modificado nada, y que `dotenv` toma la última, entonces:
+     - `completarEnv` lee `.env.example` y `.env` con `analizarEnv` (criterio 169);
+     - **nunca agrega una variable que `dotenv` lee del archivo:** una variable de `.env.example` cuenta como existente si
+       está en `analizarEnv(actual)` **o** en `clavesPosiblesEnv(actual)` (P-43): las claves de las líneas del `.env` que
+       `dotenv` podría leer, con una regla más amplia que la de `dotenv` (en la duda, se da por existente y no se agrega);
+     - **aviso:** si una variable de `.env.example` está en `clavesPosiblesEnv(actual)` pero no en `analizarEnv(actual)` (los
+       scripts no la leen, el backend quizá sí), no se agrega y el resultado lleva `ilegibles` con su nombre (solo si hay
+       alguna: así el resultado de los casos de hoy no cambia); el comando lo informa en una línea por variable
+       (orientativo: "La variable DATABASE_URL está en tu .env pero los scripts no la pueden leer: revisa esa línea
+       (espacios o caracteres invisibles al principio, o `:` en lugar de `=`)."), sin su valor, y termina con código 0;
+     - **el archivo se conserva:** solo se agrega al final; los bytes que había (BOM incluido, finales de línea `\r\n`
+       incluidos) quedan iguales al principio del archivo nuevo; nunca se escribe un segundo U+FEFF; lo agregado va con
+       `\n`, como hoy (criterio 63). Para decidir si hace falta un salto de línea antes de lo agregado se mira el texto sin
+       el BOM (un `.env` que solo tiene el BOM se trata como vacío). Si no falta nada, no se escribe;
+     - **`.env` que no es UTF-8** _(provisional, R17-2)_: si el `.env` empieza con los bytes `FF FE` o `FE FF` (BOM de
+       UTF-16, lo que escriben `>` y `Out-File` sin `-Encoding` en PowerShell 5.1) o contiene un byte `00`, `completarEnv`
+       lanza sin escribir nada un error que nombra el `.env` y pide guardarlo como UTF-8 (orientativo: "Tu .env no está
+       guardado como UTF-8 (parece UTF-16, como lo guarda PowerShell con `>` u `Out-File`). Guárdalo como UTF-8 y vuelve a
+       ejecutar npm run env:completar."); el comando termina con código 1. `.env.example` no se revisa así (es del
+       repositorio);
+     - **no cambia:** crear el `.env` copiando `.env.example` cuando no existe, el orden y los comentarios de lo agregado,
+       los mensajes de hoy y las protegidas del criterio 63 (`scripts/test/completar-env.test.mjs`).
+
+     Pruebas (con el `.env.example` real copiado a una carpeta temporal, salvo donde se dice; `dotenv.parse` es el del
+     backend): (b1) **reproducción:** (e1) como `.env`; `npm run env:completar` (el script con la carpeta como argumento):
+     código 0, la salida dice que no hacía falta agregar nada y no contiene "Se agregaron"; el archivo queda byte a byte
+     igual; `dotenv.parse` del archivo da `DATABASE_URL` terminada en `:5433/aquagestion` (con el código de `6e3d69e`, el
+     comando agregaba `DATABASE_URL` y `dotenv` daba `:5432/aquagestion`); (b2) **falta de verdad:** (e1) sin la línea de
+     `DATABASE_URL` (el BOM queda delante de `DATABASE_URL_PRUEBAS`): agrega solo `DATABASE_URL`; el archivo nuevo empieza
+     con los bytes de antes; tiene exactamente un U+FEFF, en la posición 0; `dotenv.parse` da la `DATABASE_URL` de
+     `.env.example` y `DATABASE_URL_PRUEBAS` con `5433`; repetirlo da `sin-cambios`; (b3) los textos (e2) a (e6) como `.env`:
+     nada se agrega que `dotenv.parse(antes)` tuviera, y para cada clave de `dotenv.parse(antes)`, `dotenv.parse(después)`
+     da el mismo valor; (e8) como `.env` (solo el BOM): se agregan todas y el archivo queda igual a U+FEFF seguido de exactamente
+     lo que `completarEnv` escribe en un `.env` vacío (un solo U+FEFF, sin un salto de línea de más); (b4) **formas que `dotenv` puede leer y `parseEnv` quizá no** (conjunto (b),
+     con un `.env.example` de prueba con `DATABASE_URL`, `PUERTO_API` y `JWT_SECRETO`): un `.env` con `PUERTO_API=1` +
+     `\n` + U+FEFF + `DATABASE_URL=…5433…` (dos archivos con BOM concatenados); uno con U+00A0 (espacio duro) al principio
+     de la línea de `DATABASE_URL`; uno con `DATABASE_URL: …5433…` (dos puntos); uno con una tabulación al principio de la
+     línea; y uno con un valor entre comillas dobles en varias líneas que contiene la línea `DATABASE_URL=dentro`. En cada
+     uno: las claves de `dotenv.parse(texto)` están incluidas en `clavesPosiblesEnv(texto)`; ninguna clave de
+     `dotenv.parse(antes)` se agrega y su valor en `dotenv.parse(después)` no cambia; y si `DATABASE_URL` está en
+     `dotenv.parse(antes)` y no en `analizarEnv(antes)`, el resultado lleva `ilegibles: ['DATABASE_URL']` y la salida del
+     comando nombra la variable sin su valor; (b5) la misma inclusión de (b4) para todos los textos de (a); (b6) **UTF-16**
+     _(provisional, R17-2)_: `.env` con `FF FE` + `DATABASE_URL=…5433…\r\n` en UTF-16LE, y otro con un byte `00` en medio:
+     `completarEnv` lanza, el comando termina con código 1 y su error menciona `UTF-8`, y el archivo queda byte a byte igual
+     (con el código de `6e3d69e`, agregaba texto UTF-8 al archivo UTF-16 y terminaba con 0). Siguen pasando sin cambiar de
+     resultado las protegidas del criterio 63. Si alguna cambiara, el test-writer o el backend se detienen e informan.
+     _(crítico)_
+171. **Un script lanzado por una ruta con un enlace o una unión hace su trabajo** _(ataque ronda 17, O1; complementa los
+     criterios 5, 41 y 43 a 47 de 000 y el 63 y el 148 de esta especificación; decisión del orquestador, forma del
+     especificador; D-26)_. Dado que `crear-bases.mjs` compara `fileURLToPath(import.meta.url)` (Node da la ruta real del
+     punto de entrada) con `path.resolve(process.argv[1])` (sin resolver enlaces), y que `completar-env.mjs`,
+     `compilar-contratos-si-falta.mjs`, `verificar-pruebas-protegidas.mjs`, `verificar-sin-secretos.mjs` y el hook de sesión
+     hacen lo mismo con `pathToFileURL`, de modo que `node <enlace-al-repo>/scripts/crear-bases.mjs` no imprime nada y sale
+     con 0 (en Windows, con el repositorio bajo una unión `mklink /J`, también al lanzarlos con una ruta relativa desde la
+     unión, como hacen npm y los hooks de git), entonces:
+     - `scripts/lib/punto-de-entrada.mjs` exporta `esPuntoDeEntrada(urlDelModulo, argv1, opciones)` y
+       `rutasIguales(a, b, plataforma)` (P-44): compara la ruta real (`fs.realpathSync`) de `path.resolve(argv1)` con la ruta
+       real de `fileURLToPath(urlDelModulo)`; en Windows (`plataforma === 'win32'`), sin distinguir mayúsculas; si `argv1`
+       falta o está vacío, si `urlDelModulo` no es una URL `file:` o si resolver alguna de las dos rutas lanza, devuelve
+       `false`; nunca lanza;
+     - los cinco scripts deciden si son el punto de entrada con `esPuntoDeEntrada(import.meta.url)`; el hook tiene su propia
+       copia exportada con el mismo nombre, la misma firma y el mismo resultado (criterio 47 de 000: no importa módulos del
+       repositorio de forma estática, y la comprobación corre antes de saber si es la nube);
+     - **nadie más compara a mano:** en `scripts/` (sin `scripts/test/`), `process.argv[1]` aparece solo en
+       `scripts/lib/punto-de-entrada.mjs`; en el hook, una sola vez (en su copia); cada uno de los cinco scripts importa
+       `esPuntoDeEntrada` de `./lib/punto-de-entrada.mjs` y el hook llama a `esPuntoDeEntrada(import.meta.url)` (prueba
+       estática). Un script nuevo con la misma necesidad usa la ayuda;
+     - **no cambia:** lo que hace cada script al ejecutarse directamente o al importarse (por ejemplo, desde las pruebas, que
+       lo importan sin ejecutarlo): con `import`, `esPuntoDeEntrada` es falso y no corre nada.
+
+     Pruebas unitarias de `esPuntoDeEntrada` (la de `scripts/lib/` y la del hook, cada caso con las dos) en una carpeta
+     temporal con un archivo `m.mjs`: (p1) `argv1` igual a la ruta real del archivo y `urlDelModulo =
+     pathToFileURL(<ruta real>)`: verdadero; (p2) `argv1` por un enlace a la carpeta (`<enlace>/m.mjs`): verdadero (la
+     comparación de `6e3d69e` daba falso); (p3) `argv1` por un enlace al archivo: verdadero; (p4) otro archivo de la carpeta,
+     `argv1` `undefined`, `''`, una ruta que no existe, y `urlDelModulo` `'https://ejemplo.test/m.mjs'` o `'no es url'`:
+     falso, sin lanzar; (p5) con `opciones.realpath` falso (una función que devuelve `C:\Repo\scripts\x.mjs` para `argv1` y
+     `c:\repo\SCRIPTS\x.mjs` para el módulo): verdadero con `plataforma: 'win32'` y falso con `'linux'`; y `rutasIguales` con
+     esas dos cadenas, igual. Pruebas como comando (`process.execPath` con la ruta por un enlace a la raíz real del
+     repositorio, creado en una carpeta temporal y borrado al final): (r1) `<enlace>/scripts/completar-env.mjs <carpeta
+     temporal con .env.example y sin .env>`: código 0, la salida dice que se creó el `.env` y el `.env` existe; (r2)
+     `<enlace>/scripts/crear-bases.mjs` con `DATABASE_URL`, `DATABASE_URL_PRUEBAS` y `DATABASE_URL_APP` definidas como `''`
+     en el entorno del hijo (no abre ninguna conexión): código 1 y la salida de error nombra `DATABASE_URL`; (r3)
+     `<enlace>/scripts/verificar-sin-secretos.mjs` con `cwd` en el enlace: código 0 y la salida contiene "Sin archivos de
+     secretos en git."; (r4) `<enlace>/scripts/verificar-pruebas-protegidas.mjs` con una referencia que no existe (criterio
+     39 de 000): código 2 y un mensaje que la nombra; (r5) `<enlace>/scripts/compilar-contratos-si-falta.mjs <carpeta
+     temporal sin packages/contratos/dist>`: la salida contiene "Compilando @aquagestion/contratos" (el código de salida no
+     se mira); (r6) prueba estática de arriba; (r7) **solo en Windows:** con `cwd` en la unión y la ruta relativa
+     `scripts/verificar-sin-secretos.mjs` (como `npm run` y los hooks de git): lo mismo que (r3). Con el código de
+     `6e3d69e`, (r1) a (r5) no imprimían nada y terminaban con 0, y (p2) y (p3) daban falso. El enlace a una carpeta se
+     crea con `fs.symlinkSync(destino, enlace, 'junction')` en Windows y `'dir'` en los demás; si en Windows la creación
+     falla con `EPERM`, `EACCES` o `ENOTSUP`, los casos que lo usan se omiten **solo ahí**, con un motivo explícito que
+     nombra el error; en Linux y Mac no se omiten (si no se puede crear el enlace, la prueba falla). El enlace al archivo
+     de (p3), igual con `'file'` (en Windows exige permisos: se omite con motivo si falla). (r7) se omite fuera de Windows
+     con el motivo "en Linux y Mac `process.cwd()` devuelve la ruta real: el caso solo existe en Windows" _(R17-3,
+     provisional)_. _(crítico)_
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -3509,6 +3692,12 @@ _(crítico)_.
   vacío); el rol lo crea `db:crear` (criterio 6).
 - **`.env` antiguo sin `DATABASE_URL_APP` ni `JWT_SECRETO`:** la API no arranca y nombra la variable (criterio 5);
   `npm run env:completar` las agrega (criterio 63). El hook de la nube no toca un `.env` existente (spec 000).
+- **`.env` guardado desde PowerShell 5.1** _(ataque ronda 17)_: con `Set-Content -Encoding UTF8` u `Out-File -Encoding
+  utf8` lleva BOM: los scripts lo quitan como `dotenv` (criterio 169) y `env:completar` lo conserva (170). Con `>` u
+  `Out-File` sin `-Encoding` queda en UTF-16: `env:completar` se niega a escribir y pide guardarlo como UTF-8 (170,
+  provisional R17-2); los demás scripts y el backend no lo pueden leer y fallan nombrando la variable que falta.
+- **Repositorio bajo un enlace simbólico o una unión de Windows (`mklink /J`)** _(ataque ronda 17)_: los scripts comparan
+  rutas reales para saber si son el punto de entrada (criterio 171); en Windows, también sin distinguir mayúsculas.
 - **`current_setting` después de un `set_config` local:** fuera de esa transacción devuelve `''`, no `NULL`;
   `app_academia_actual()` lo trata como "sin academia" (criterio 13).
 - **Conexiones reutilizadas del pool:** el contexto es local a la transacción; nunca se usa `SET` de sesión
@@ -3816,8 +4005,9 @@ errores para un cuerpo de más de 100 KB (criterio 75; precisión tras las prueb
 ### Comandos de la raíz
 
 - `npm run plataforma:superadmin`: criterios 33 a 35.
-- `npm run env:completar`: criterio 63.
-- `db:crear` (crea también el rol, criterio 6) y `db:semilla` (criterio 61) cambian.
+- `npm run env:completar`: criterio 63 _(y 169 a 171, ataque ronda 17)_.
+- `db:crear` (crea también el rol, criterio 6) y `db:semilla` (criterio 61) cambian. _(Ronda 17: los scripts leen el
+  `.env` sin el BOM inicial, criterio 169, y comprueban que son el punto de entrada con rutas reales, criterio 171.)_
 
 ### Utilidades de prueba (`backend/test/utilidades/`)
 
@@ -4513,6 +4703,52 @@ _(contrato de la ronda 16 del ataque, 12/11/2026; criterios 167 y 168)_. No son 
   ninguno de los dos, el mismo error. Un binario nunca aparece en el resultado (en `causa` o `errores`, `{ tipo:
   'object' }`).
 
+_(contrato de la ronda 17 del ataque, 12/11/2026; criterios 169 a 171)_. No son reglas de negocio nuevas. Los archivos y
+los nombres son fijos (los importan las pruebas); todo usa solo módulos `node:*`.
+
+- **P-43. Lectura del `.env` en los scripts (criterios 169 y 170).** `scripts/lib/entorno.mjs` agrega:
+
+  ```js
+  /** Quita un U+FEFF solo si es el primer carácter; ninguno más. */
+  export function quitarBom(texto) {}                    // string -> string
+  /** parseEnv(quitarBom(texto)): lo que leen todos los scripts de un .env o de .env.example. */
+  export function analizarEnv(texto) {}                  // string -> Record<string, string>
+  /**
+   * Claves que alguna línea del texto podría definir para dotenv: regla más amplia que la de dotenv (en la duda, sí).
+   * Líneas separadas por \n, \r, U+2028 o U+2029; en cada una, tras quitar los espacios del principio (los de `\s` de
+   * JavaScript, que incluyen U+FEFF y U+00A0) y un `export` opcional seguido de espacios, una clave `[\w.-]+` seguida de
+   * espacios opcionales y `=` o `:`. Nunca lanza.
+   */
+  export function clavesPosiblesEnv(texto) {}            // string -> Set<string>
+  ```
+
+  `cargarEnv(env, raiz)` no cambia de firma: usa `analizarEnv`. `completarEnv(raiz)` no cambia de firma; su resultado
+  gana `ilegibles?: string[]` (nombres de variables de `.env.example` que están en `clavesPosiblesEnv(actual)` y no en
+  `analizarEnv(actual)`; solo si hay alguna, en el orden de `.env.example`) y lanza un `Error` sin escribir si el `.env`
+  empieza con `FF FE` o `FE FF` o contiene un byte `00` (provisional, R17-2). `leerBloques(texto)` usa `analizarEnv`. El
+  hook exporta `entornoParaHijos(raiz, entorno = process.env)`: copia de `entorno` completada con el `.env` de `raiz` leído
+  con la misma regla (quitar un U+FEFF inicial y `parseEnv`), sin sobrescribir lo definido; con su propia copia de la
+  regla (criterio 47 de 000).
+- **P-44. Punto de entrada de los scripts (criterio 171).** `scripts/lib/punto-de-entrada.mjs`:
+
+  ```js
+  /** Igualdad de dos rutas ya resueltas: en 'win32', sin distinguir mayúsculas; en las demás, exacta. */
+  export function rutasIguales(a, b, plataforma = process.platform) {}
+  /**
+   * ¿El módulo de `urlDelModulo` es el punto de entrada del proceso? Compara las rutas reales de path.resolve(argv1) y
+   * de fileURLToPath(urlDelModulo) con rutasIguales. false si argv1 no es una cadena no vacía, si urlDelModulo no es una
+   * URL file: o si resolver alguna ruta lanza. Nunca lanza.
+   */
+  export function esPuntoDeEntrada(
+    urlDelModulo,
+    argv1 = process.argv[1],
+    { plataforma = process.platform, realpath = fs.realpathSync } = {},
+  ) {}
+  ```
+
+  El hook exporta `esPuntoDeEntrada` con la misma firma y el mismo resultado (copia propia). Los cinco scripts del
+  criterio 171 y el hook ejecutan su parte de comando solo si `esPuntoDeEntrada(import.meta.url)`.
+
 ## Cambios al modelo de datos
 
 Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados por PostgreSQL
@@ -4810,6 +5046,19 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
     comparan el `tipo` con el `name` lo hacen con errores reales de Prisma, que están en la lista;
   - las historias siguientes: un error se envuelve con un mensaje propio y `{ cause: error }`, no pasando el error ni su
     mensaje como respuesta de una excepción de Nest; no se usa el tipo `money` de PostgreSQL (plan, sección 27).
+- **Ronda 17 del ataque (criterios 169 a 171):**
+  - spec 000: `scripts/lib/entorno.mjs` (`cargarEnv`) lee el `.env` sin el BOM inicial y gana `quitarBom`, `analizarEnv` y
+    `clavesPosiblesEnv` (P-43); el hook de sesión (criterios 43 a 47 de 000) exporta `entornoParaHijos` con la misma regla y
+    su propia copia de `esPuntoDeEntrada`, y sigue sin importar módulos del repositorio de forma estática (criterio 47);
+    `verificar-sin-secretos.mjs` (criterio 5 de 000), `verificar-pruebas-protegidas.mjs` (criterios 33 a 42 de 000),
+    `compilar-contratos-si-falta.mjs` (criterio 31 de 000) y `crear-bases.mjs` usan `esPuntoDeEntrada` (P-44). Lo que hacen
+    al ejecutarse no cambia; sus pruebas de 000 no cambian de resultado;
+  - `backend/test/utilidades/base-pruebas.ts` (de 000) y `base-datos.ts` (protegida de 001) quitan el BOM inicial antes de
+    `parseEnv`; los cambia el test-writer en el commit de pruebas protegidas de la ronda 17 (base-datos.ts lleva la marca);
+  - `completarEnv` (criterio 63) gana `ilegibles` solo cuando hay alguna, así que las protegidas que comparan su
+    resultado con `toEqual` no cambian;
+  - las historias siguientes: un script nuevo de `scripts/` que lee el `.env` usa `analizarEnv` y uno que se ejecuta como
+    comando usa `esPuntoDeEntrada` (las pruebas estáticas de 169 y 171 lo exigen).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -5233,6 +5482,27 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   en producción y el comando del criterio 34 la reemplaza.
 - **Cookie sin `Secure` fuera de producción:** necesario para `http://localhost`; en producción va con `Secure`
   (RNF-03: HTTPS obligatorio).
+- **Líneas del `.env` que `dotenv` lee y `parseEnv` no** _(ataque ronda 17, criterios 169 y 170)_: además del BOM inicial,
+  `dotenv` acepta formas que `parseEnv` quizá no (un U+FEFF en medio, de dos archivos concatenados; un espacio duro
+  U+00A0 al principio de la línea; `CLAVE: valor` con dos puntos). En esos casos los scripts no ven la variable y el
+  backend sí. Se acepta porque falla cerrado y con aviso: `env:completar` no la agrega (no cambia cuál es la efectiva) y
+  avisa que los scripts no la pueden leer (criterio 170), y `db:crear`, `db:migrar` y la semilla terminan con "Falta la
+  variable …" en vez de usar otra base. Ninguna herramienta de Windows escribe esas formas al guardar un archivo; la guía
+  pide guardar el `.env` como UTF-8 (T24).
+- **`.env` en UTF-16 en los demás scripts** _(ataque ronda 17, R17-2, provisional)_: solo `env:completar` lo detecta y se
+  niega. `cargarEnv` y `dotenv` lo leen como texto ilegible y no encuentran ninguna variable, así que los comandos fallan
+  nombrando la variable que falta (no usan otra base). Se acepta mientras R17-2 no diga otra cosa.
+
+## Notas para historias futuras
+
+- **Límite de peticiones en `GET /api/a/{nombreCorto}`** _(ataque ronda 17, O2; decisión del orquestador: se difiere)_:
+  la ruta es pública, no tiene límite de peticiones y cada petición abre una transacción (`resolverAcademia`); con el pool
+  de 10 conexiones y una espera de 10 s, una avalancha anónima puede ocupar el pool y demorar o hacer fallar las
+  peticiones de todas las academias. Ningún criterio de 001 lo exige. Se decide con el hosting (D-21: proxy, CDN o
+  límites del proveedor, y `trust proxy` para que `req.ip` sea la del cliente; riesgo del plan "Límite por IP") y con la
+  historia de las páginas públicas (005), que es la que pone la ruta en uso: límite por IP en la ruta pública (como el de
+  inicio de sesión, criterio 75), caché corta de la respuesta, o las dos. El documentador lo lleva a las notas de 005 en
+  `specs/backlog.md` (T24). Plan, sección 29.
 
 ## Decisiones
 
@@ -5816,11 +6086,42 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   y nunca lo llama, así que no puede llevar un dato al registro. Alternativa descartada: falla cerrada también (perdería
   diagnóstico sin motivo).
 
+### Decisiones técnicas tras el ataque, ronda 17 (12/11/2026)
+
+- **Los scripts y el backend leen el `.env` igual: se quita el BOM inicial antes de `parseEnv`** (criterio 169, F1;
+  decisión del orquestador). Forma del especificador: una sola función (`analizarEnv`, P-43) para todos los lectores de
+  `scripts/`, la misma regla copiada en el hook (no puede importar módulos del repositorio de forma estática) y en las dos
+  utilidades de prueba que leen el `.env`, una prueba estática para que no aparezca otro lector, y una prueba de
+  coherencia contra el `dotenv` instalado. Alternativas descartadas: usar `dotenv` en los scripts (el hook corre antes de
+  `npm ci` y no puede cargar `node_modules`; `env:completar` quedaría atado a una dependencia del backend); quitar todos
+  los espacios Unicode del principio de cada línea (reimplementar `dotenv` a medias; queda como riesgo aceptado que falla
+  cerrado).
+- **`env:completar` nunca agrega una variable que `dotenv` ya lee** (criterio 170, F1; decisión del orquestador). Forma del
+  especificador: además de lo que lee `analizarEnv`, cuenta como existente lo que `clavesPosiblesEnv` (regla más amplia
+  que la de `dotenv`, sin depender de su versión) encuentra al principio de alguna línea, y avisa de las variables que los
+  scripts no pueden leer. La prueba de coherencia exige que las claves de `dotenv.parse` estén incluidas en
+  `clavesPosiblesEnv`. Alternativas descartadas: copiar el analizador de `dotenv` (la versión 18 trae dos analizadores
+  internos y cambiaría con cada versión); confiar solo en `analizarEnv` (cualquier otra diferencia de lectura repetiría
+  la falla); preguntar al usuario (el comando no es interactivo).
+- **`env:completar` conserva los bytes del archivo** (criterio 170; especificador): solo agrega al final, sin reescribir
+  ni normalizar el BOM o los finales de línea, para que "Tus variables existentes no se modificaron" sea cierto.
+- **`.env` en UTF-16: `env:completar` se niega** (criterio 170; especificador, **provisional** hasta R17-2). Agregar texto
+  UTF-8 a un archivo UTF-16 lo deja ilegible para todos.
+- **Punto de entrada con rutas reales y una ayuda común** (criterio 171, O1; decisión del orquestador). Forma del
+  especificador: `esPuntoDeEntrada` y `rutasIguales` en `scripts/lib/punto-de-entrada.mjs` (P-44), con `realpath`
+  inyectable para probar la comparación de Windows en cualquier sistema, una copia en el hook (criterio 47 de 000) y una
+  prueba estática. Alternativas descartadas: `import.meta.main` (no está en todas las versiones de Node 22 que admite el
+  proyecto, `>=22.12.0`); `--preserve-symlinks-main` en cada
+  comando (no cubre a quien lo lance a mano ni a los hooks de git); comparar solo el nombre del archivo (un script
+  importado desde otro con el mismo nombre se ejecutaría).
+- **O2 se difiere** (decisión del orquestador): sin criterio en 001; nota en "Notas para historias futuras" y en el plan,
+  para decidirlo con el hosting (D-21) y la historia 005.
+
 ## Preguntas abiertas
 
 Ninguna de negocio. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a
 DR-10 en "Decisiones"). Las correcciones de las rondas 1 a 16 del ataque son decisiones técnicas y no abren preguntas de
-negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
+negocio. _(Ronda 17: tampoco; sus preguntas técnicas R17-1 a R17-3 están al final.)_ Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").
 
 Pregunta técnica de la ronda 16, **resuelta** por el orquestador el 12/11/2026, antes de T163: se aceptó la propuesta
@@ -5836,3 +6137,24 @@ Pregunta técnica de la ronda 16, **resuelta** por el orquestador el 12/11/2026,
   (`mensaje: 'No se pudo procesar el comprobante'` y `causa` con `mensaje: 'No se pudo subir el comprobante'`, sin
   `archivo`) en lugar de `toBe`, y (t10) no cambia. **Valor provisional:** la decisión del orquestador (hoja y mismo
   error), con la regla para el equipo de que un error nunca lleva el contenido de un archivo.
+
+Preguntas técnicas de la ronda 17 (12/11/2026), para el orquestador. Ninguna es de negocio y ninguna bloquea: cada una
+tiene un valor provisional que ya está en los criterios.
+
+- **R17-1. ¿Se cubren también las otras diferencias de lectura entre `parseEnv` y `dotenv` (U+FEFF en medio, U+00A0 al
+  principio de una línea, `CLAVE: valor`)?** La decisión pide quitar el BOM inicial; esas formas no las produce ninguna
+  herramienta de Windows al guardar, pero sí copiar y pegar o concatenar archivos. **Propuesta:** no leerlas en los
+  scripts, pero que fallen cerrado: `env:completar` no las agrega y avisa (criterio 170, `clavesPosiblesEnv` e
+  `ilegibles`), y los demás comandos dicen "Falta la variable …"; riesgo aceptado "Líneas del `.env` que `dotenv` lee y
+  `parseEnv` no". **Valor provisional:** la propuesta (ya en los criterios 169 y 170).
+- **R17-2. ¿Qué se hace con un `.env` en UTF-16?** PowerShell 5.1 lo escribe así con `>` y con `Out-File` sin
+  `-Encoding`; hoy `env:completar` le agrega texto UTF-8 y lo deja ilegible para todos. **Propuesta:** `env:completar`
+  lo detecta (BOM de UTF-16 o un byte `00`), no escribe, termina con código 1 y pide guardarlo como UTF-8; los demás
+  scripts no cambian (fallan nombrando la variable que falta); la guía lo explica (T24). Alternativa: convertirlo a UTF-8
+  en el lugar (cambia el archivo del usuario sin preguntar). **Valor provisional:** la propuesta (ya en el criterio 170,
+  viñeta y caso (b6) marcados "provisional, R17-2").
+- **R17-3. ¿Se admite que (r7) del criterio 171 se omita fuera de Windows?** La decisión permite omitir con motivo solo en
+  Windows si no se puede crear la unión; (r7) (ruta relativa con `cwd` en la unión, como `npm run` y los hooks de git) no
+  se puede reproducir en Linux ni en Mac, porque allí `process.cwd()` devuelve la ruta real. **Propuesta:** sí, con el
+  motivo explícito; los casos (r1) a (r5), con ruta absoluta por el enlace, sí corren en Linux y cubren el mismo código.
+  **Valor provisional:** la propuesta.

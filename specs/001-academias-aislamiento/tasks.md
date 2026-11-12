@@ -775,6 +775,56 @@ binario, aunque no lleve errores de la base; el criterio 167, (t1), (t2) y (t11)
       `console.error` o `util.inspect` aún muestren por otro nombre o forma; y que las protegidas anteriores sigan igual);
       si hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 17 (12/11/2026)
+
+Sin fallas en el núcleo (aislamiento, RLS, Superadmin, auditoría, registro de errores). Falla F1 (media, Windows) y
+observaciones O1 (se corrige) y O2 (se difiere) de la ronda 17 (sobre `6e3d69e`); criterios 169 a 171 de `spec.md`
+(sección Z), P-43 y P-44. Plan, sección 29. Las preguntas técnicas R17-1 a R17-3 tienen valores provisionales que ya
+están en los criterios y no bloquean; si el orquestador decide otra cosa, el especificador ajusta el criterio antes de
+T170.
+
+- [ ] T170 · test-writer · Pruebas protegidas en rojo de los criterios 169 a 171 (archivos en "Protegidas del ataque ronda
+      17" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: `quitarBom`, la
+      coherencia del conjunto (a) entre `analizarEnv` y el `dotenv` del backend, `cargarEnv` con (e1) (reproducción con
+      `5433` y `\r\n`) y las comprobaciones de `leerUrlsBases`, `leerUrlApp` y `diferenciasConDesarrollo`, la prueba
+      estática de `parseEnv` y `.env.example` sin BOM (169); (b1) a (b6) de `completarEnv` y del comando, con la inclusión
+      de las claves de `dotenv.parse` en `clavesPosiblesEnv` (170); `entornoParaHijos` y `esPuntoDeEntrada` del hook;
+      (p1) a (p5), (r1) a (r5), (r6) y (r7) (171), con los enlaces creados como dice el criterio y las omisiones solo con
+      motivo explícito donde el criterio las permite. En el mismo commit, la corrección de
+      `backend/test/utilidades/base-pruebas.ts` y `base-datos.ts` (quitar el BOM inicial antes de `parseEnv`) y su prueba
+      `lectura-env-ronda17.test.ts`. Comprobar que ninguna protegida anterior cambia de resultado, en especial
+      `scripts/test/completar-env.test.mjs` y `scripts/test/entorno*.test.mjs` (si alguna cambiara, o si `parseEnv` y
+      `dotenv` difieren en algún texto de (a), detenerse e informar). Commit: "Pruebas protegidas (001), ataque ronda
+      17: .env con BOM y scripts por enlaces (en rojo)" (criterios 169 a 171)
+- [ ] T171 · tester · Confirmar que T170 falla por la razón esperada con `6e3d69e`: `quitarBom`, `analizarEnv`,
+      `clavesPosiblesEnv` y `scripts/lib/punto-de-entrada.mjs` no existen; `cargarEnv` con (e1) deja `DATABASE_URL` sin
+      definir; `entornoParaHijos` no se exporta (169); (b1) agrega `DATABASE_URL` y `dotenv` da `:5432`; (b6) termina con
+      0 y cambia el archivo (170); (r1) a (r5) no imprimen nada y terminan con 0, (p2) y (p3) dan falso con la comparación
+      de hoy, la prueba estática encuentra `process.argv[1]` en los cinco scripts (171). Los casos que importan funciones
+      nuevas fallan al importar: es la razón esperada. Se informan como verdes por diseño, si ya pasan: `.env.example` sin
+      BOM, las protegidas anteriores de `completarEnv` que T170 no toca, y `lectura-env-ronda17.test.ts` (las utilidades se
+      corrigen en el mismo commit; comprobar con `git show 6e3d69e:backend/test/utilidades/base-datos.ts` y
+      `…/base-pruebas.ts` que antes no quitaban el BOM). Informar qué casos se omitieron y con qué motivo
+- [ ] T172 · backend · `scripts/lib/entorno.mjs`: `quitarBom`, `analizarEnv` y `clavesPosiblesEnv` (P-43), `cargarEnv`
+      con `analizarEnv`; `scripts/completar-env.mjs`: `leerBloques` y `completarEnv` con `analizarEnv`, existentes =
+      `analizarEnv` ∪ `clavesPosiblesEnv`, `ilegibles` solo si hay, aviso del comando por variable sin su valor,
+      `appendFileSync` sin reescribir (bytes, BOM y `\r\n` conservados; salto inicial decidido sin el BOM) y el rechazo de
+      un `.env` UTF-16 o con un byte `00` sin escribir (provisional, R17-2); el hook: `entornoParaHijos(raiz, entorno =
+      process.env)` exportado y con el BOM quitado (plan, sección 29) (criterios 169 y 170)
+- [ ] T173 · backend · `scripts/lib/punto-de-entrada.mjs` con `rutasIguales` y `esPuntoDeEntrada` (P-44); los cinco
+      scripts (`crear-bases`, `completar-env`, `compilar-contratos-si-falta`, `verificar-pruebas-protegidas`,
+      `verificar-sin-secretos`) la usan con `esPuntoDeEntrada(import.meta.url)` y quitan la comparación de hoy y los
+      imports que queden sin usar; el hook, su copia exportada, sin importar módulos del repositorio de forma estática
+      (criterio 47 de 000); `npm run lint` y `npm run typecheck` en verde (plan, sección 29) (criterio 171)
+- [ ] T174 · orquestador · `git diff` desde el commit de T170: T172 y T173 no tocaron pruebas protegidas (ni
+      `backend/test/utilidades/base-datos.ts`)
+- [ ] T175 · adversarial · Ronda 18 sobre todo lo anterior, en especial 169 a 171 (otros lectores del `.env` que difieran
+      de `dotenv`: `vite` con `loadEnv`, `e2e/playwright.config.ts`, valores con `\r\n`, comillas o `#`, claves repetidas
+      y cuál gana en cada lector; `.env` con otras codificaciones; `env:completar` con archivos de solo lectura, enlaces
+      o carreras; scripts lanzados por enlaces, uniones, rutas cortas 8.3, mayúsculas distintas en Windows, `npm run`
+      desde subcarpetas o los hooks de git; y que las protegidas anteriores sigan igual); si hay fallas, se repite el
+      ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
@@ -789,7 +839,10 @@ binario, aunque no lleve errores de la base; el criterio 167, (t1), (t2) y (t11)
       promesa esperada dentro de la transacción y nada de funciones `async` en temporizadores; la pila sin el mensaje).
       Desde la ronda 15: las dos viñetas del plan, sección 27 (envolver errores con un mensaje propio y `{ cause }`; sin
       `money`). Desde la ronda 16: la viñeta del plan, sección 28 (un error no lleva el contenido de un archivo ni una
-      `cause` función)
+      `cause` función). Desde la ronda 17: en `docs/guia-local-windows.md`, las dos viñetas de "Problemas frecuentes" del
+      plan, sección 29 (`.env` en UTF-8 y aviso de `env:completar`; criterio 67 ampliado) y que el repositorio puede estar
+      bajo una unión; en `specs/backlog.md`, la nota O2 en la historia 005 (límite de peticiones de
+      `GET /api/a/{nombreCorto}`, a decidir con el hosting, D-21; spec, "Notas para historias futuras")
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)

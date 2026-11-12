@@ -18,16 +18,21 @@ piscina/
 │                                        ronda 3: extensiones, node_modules, cli/ e internos de prisma/ (95)
 ├── eslint.protegido.config.mjs          nuevo, ataque ronda 3: paso con --no-inline-config (criterio 96)
 ├── .github/workflows/ci.yml             + DATABASE_URL_APP y JWT_SECRETO en Linux (y en el E2E)
-├── .claude/hooks/preparar-sesion.mjs    + creación del rol aquagestion_app (criterio 8); ronda 2: atributos (81)
+├── .claude/hooks/preparar-sesion.mjs    + creación del rol aquagestion_app (criterio 8); ronda 2: atributos (81);
+│                                        ronda 17: entornoParaHijos sin BOM y esPuntoDeEntrada propio (169, 171)
 ├── scripts/
 │   ├── lib/entorno.mjs                  + leerUrlApp(), urlAppSobre(base); ronda 8: parámetros de conexión en la
-│   │                                    cadena de consulta (criterio 143, P-34)
+│   │                                    cadena de consulta (criterio 143, P-34); ronda 17: quitarBom, analizarEnv,
+│   │                                    clavesPosiblesEnv (criterios 169 y 170, P-43)
+│   ├── lib/punto-de-entrada.mjs         nuevo, ataque ronda 17: esPuntoDeEntrada y rutasIguales (criterio 171, P-44);
+│   │                                    lo usan crear-bases, completar-env, compilar-contratos-si-falta y verificar-*
 │   ├── lib/rol-app.mjs                  nuevo, ataque ronda 2: consulta y evaluación del rol (criterio 81);
 │   │                                    ronda 3: privilegios, valores por defecto y verificador SCRAM (102 a 104)
 │   ├── lib/dependencias-backend.mjs     nuevo, ataque ronda 5: lista permitida y lista negra (criterios 127 a 129)
 │   ├── crear-bases.mjs                  + asegurarRolApp() (criterio 6); ronda 2: lista completa y TEMPORARY (81, 82);
 │   │                                    ronda 5: esquemas del rol (123)
-│   ├── completar-env.mjs                nuevo (criterio 63)
+│   ├── completar-env.mjs                nuevo (criterio 63); ronda 17: analizarEnv, ilegibles, bytes conservados y
+│   │                                    UTF-16 (criterio 170)
 │   └── test/…                           pruebas de lo anterior; actualización de migraciones.test.mjs (criterio 65)
 ├── packages/contratos/src/
 │   ├── academias.ts · plataforma.ts     nuevos (+ *.test.ts)
@@ -710,6 +715,20 @@ La reutiliza 002 para los usuarios de academia.
   - `aislamiento/registro-sin-datos-ronda16.test.ts` (168 con el error real de `auditoria.create`: comprobación previa de
     que el valor está en su mensaje, `errorParaRegistro` dentro de (g1) y (g3), y las rutas (a4) y (a5) de un controlador
     de prueba con el registro de la app capturado).
+- **Protegidas del ataque ronda 17 (test-writer)** _(criterios 169 a 171; nombres orientativos salvo los de P-43 y P-44)_:
+  - `scripts/test/entorno-bom-ronda17.test.mjs` (169: `quitarBom`; coherencia del conjunto (a) entre `analizarEnv` y
+    `dotenv.parse`; `cargarEnv` con (e1) y `leerUrlsBases`, `leerUrlApp` y `diferenciasConDesarrollo`; prueba estática de
+    `parseEnv`; `.env.example` sin BOM);
+  - `scripts/test/completar-env-ronda17.test.mjs` (170: (b1) a (b6), con `completarEnv` y como comando; (b5) y la
+    inclusión de (b4) con `clavesPosiblesEnv`);
+  - `scripts/test/preparar-sesion-ronda17.test.mjs` (169: `entornoParaHijos` del hook con (e1); 171: `esPuntoDeEntrada`
+    del hook con (p1) a (p5), igual que la de `scripts/lib/`, y la parte del hook de la prueba estática);
+  - `scripts/test/punto-de-entrada-ronda17.test.mjs` (171: (p1) a (p5) de `scripts/lib/punto-de-entrada.mjs`, (r1) a (r5),
+    (r6) estática y (r7) solo en Windows);
+  - `backend/test/utilidades/lectura-env-ronda17.test.ts` (169: `leerEntornoBases` y `leerUrlAppConfigurada` con (e1) y con
+    `DATABASE_URL_APP` primera), con la corrección de `backend/test/utilidades/base-pruebas.ts` y
+    `backend/test/utilidades/base-datos.ts` (quitar el BOM inicial antes de `parseEnv`) en el mismo commit: son
+    utilidades de prueba y `base-datos.ts` está protegida, así que no las puede tocar el backend.
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -2810,6 +2829,151 @@ de la ronda 15:
 > - Un error no lleva el contenido de un archivo ni copias de listas grandes: se guarda la clave del archivo en
 >   `AlmacenArchivos`. La `cause` de un error es un valor, nunca una función.
 
+### 29. Correcciones del ataque, ronda 17 (criterios 169 a 171)
+
+La ronda 17 (sobre `6e3d69e`) no encontró fallas en el núcleo (aislamiento, RLS, Superadmin, auditoría, registro de
+errores). Encontró una falla media en Windows (F1: un `.env` guardado con BOM lo leen distinto los scripts, con `parseEnv`,
+y el backend, con `dotenv`; `env:completar` cambiaba en silencio la `DATABASE_URL` efectiva) y dos observaciones (O1: los
+scripts lanzados por una ruta con un enlace o una unión no hacen nada y salen con 0; O2: `GET /api/a/{nombreCorto}` sin
+límite de peticiones, que se difiere). Lo que corrige: 169, una sola regla de lectura del `.env` sin el BOM inicial; 170,
+`env:completar` no agrega lo que `dotenv` ya lee, avisa de lo que los scripts no pueden leer, conserva el archivo y no
+escribe en un `.env` UTF-16 (provisional, R17-2); 171, el punto de entrada se decide con rutas reales. No hay migraciones
+nuevas ni cambios en `backend/src`, `packages/` ni `frontend/`.
+
+Código que cambia: `scripts/lib/entorno.mjs`, `scripts/completar-env.mjs`, `scripts/lib/punto-de-entrada.mjs` (nuevo),
+`scripts/crear-bases.mjs`, `scripts/compilar-contratos-si-falta.mjs`, `scripts/verificar-pruebas-protegidas.mjs`,
+`scripts/verificar-sin-secretos.mjs` y `.claude/hooks/preparar-sesion.mjs` (backend, T172 y T173); y
+`backend/test/utilidades/base-pruebas.ts` y `base-datos.ts` (test-writer, T170, en el commit de pruebas protegidas).
+
+**Lectura del `.env` (criterio 169, P-43).** Orientativo:
+
+```js
+// scripts/lib/entorno.mjs
+const BOM = '﻿';
+export const quitarBom = (texto) => (texto.startsWith(BOM) ? texto.slice(1) : texto);
+export const analizarEnv = (texto) => parseEnv(quitarBom(texto));
+
+export function cargarEnv(env = process.env, raiz = raizProyecto) {
+  const ruta = path.join(raiz, '.env');
+  if (!fs.existsSync(ruta)) return;
+  for (const [clave, valor] of Object.entries(analizarEnv(fs.readFileSync(ruta, 'utf8')))) {
+    if (env[clave] === undefined) env[clave] = valor;
+  }
+}
+
+const SEPARADOR_DE_LINEAS = /\r\n|[\n\r  ]/;
+const LINEA_CON_CLAVE = /^\s*(?:export\s+)?([\w.-]+)\s*[=:]/;   // \s de JavaScript: incluye U+FEFF y U+00A0
+export function clavesPosiblesEnv(texto) {
+  const claves = new Set();
+  for (const linea of String(texto).split(SEPARADOR_DE_LINEAS)) {
+    const coincidencia = LINEA_CON_CLAVE.exec(linea);
+    if (coincidencia) claves.add(coincidencia[1]);
+  }
+  return claves;
+}
+```
+
+- `fs.readFileSync(ruta, 'utf8')` no quita el BOM (Node lo conserva como U+FEFF); por eso hace falta `quitarBom`.
+- En el hook, `entornoParaHijos(raiz, entorno = process.env)` hace lo mismo con su propia línea
+  (`texto.startsWith('﻿') ? texto.slice(1) : texto`) y se exporta para la prueba. Los demás usos de
+  `entornoParaHijos(raiz)` del hook no cambian.
+- `base-pruebas.ts` y `base-datos.ts`: la misma línea antes de `parseEnv` (no importan `scripts/lib/`, que es `.mjs` sin
+  tipos).
+- `clavesPosiblesEnv` es a propósito más amplia que `dotenv`: una línea dentro de un valor entre comillas de varias líneas
+  también cuenta. Un falso positivo solo hace que `env:completar` no agregue esa variable y avise; nunca cambia cuál es la
+  efectiva.
+- La prueba de coherencia carga `dotenv` del backend con `createRequire(path.join(raiz, 'backend', 'package.json'))`
+  (el workspace `scripts` no lo declara; no se agrega como dependencia).
+
+**`env:completar` (criterio 170).** Orientativo:
+
+```js
+export function completarEnv(raiz = raizProyecto) {
+  // … .env.example y creación, como hoy (leerBloques usa analizarEnv)
+  const bytes = fs.readFileSync(rutaEnv);
+  if (pareceUtf16(bytes)) throw new Error(MENSAJE_UTF16);          // FF FE, FE FF o un byte 00 (R17-2)
+  const actual = bytes.toString('utf8');
+  const leidas = new Set(Object.keys(analizarEnv(actual)));
+  const posibles = clavesPosiblesEnv(actual);
+  const bloques = leerBloques(ejemplo);
+  const ilegibles = bloques.filter((b) => !leidas.has(b.nombre) && posibles.has(b.nombre)).map((b) => b.nombre);
+  const faltantes = bloques.filter((b) => !leidas.has(b.nombre) && !posibles.has(b.nombre));
+  const conAviso = ilegibles.length > 0 ? { ilegibles } : {};
+  if (faltantes.length === 0) return { accion: 'sin-cambios', agregadas: [], ...conAviso };
+  const sinBom = quitarBom(actual);
+  let agregado = sinBom !== '' && !sinBom.endsWith('\n') ? '\n' : '';
+  // … bloques como hoy
+  fs.appendFileSync(rutaEnv, agregado);                             // nunca reescribe lo que había
+  return { accion: 'completado', agregadas: faltantes.map((b) => b.nombre), ...conAviso };
+}
+```
+
+- El comando imprime, después de lo de hoy, una línea por variable de `ilegibles` (sin su valor). El código de salida
+  sigue siendo 0: no es un error del comando, es un aviso.
+- `fs.appendFileSync` no toca los bytes anteriores, así que el BOM y los `\r\n` se conservan y no se escribe un segundo BOM.
+- `pareceUtf16`: `bytes[0] === 0xff && bytes[1] === 0xfe`, o `0xfe, 0xff`, o `bytes.includes(0)`. Un `.env` UTF-8 válido no
+  tiene bytes `00`.
+
+**Punto de entrada (criterio 171, P-44).** Orientativo:
+
+```js
+// scripts/lib/punto-de-entrada.mjs
+export const rutasIguales = (a, b, plataforma = process.platform) =>
+  plataforma === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+
+export function esPuntoDeEntrada(urlDelModulo, argv1 = process.argv[1], opciones = {}) {
+  const { plataforma = process.platform, realpath = fs.realpathSync } = opciones;
+  if (typeof argv1 !== 'string' || argv1 === '') return false;
+  try {
+    const delModulo = realpath(fileURLToPath(urlDelModulo));   // lanza si no es una URL file:
+    const delArgumento = realpath(path.resolve(argv1));
+    return rutasIguales(delModulo, delArgumento, plataforma);
+  } catch {
+    return false;
+  }
+}
+
+// en cada script
+if (esPuntoDeEntrada(import.meta.url)) { … }
+```
+
+- Node resuelve el punto de entrada con su `realpathSync` (salvo `--preserve-symlinks-main`); comparar las dos rutas
+  reales funciona con y sin esa opción.
+- `fs.realpathSync` (no `.native`): es la que usa el cargador de Node. Si en la CI de Windows (r7) muestra una diferencia
+  con una unión (por ejemplo, la letra de la unidad), el backend se detiene e informa con las dos rutas.
+- En el hook, la misma función copiada (con `import fs from 'node:fs'`, que ya importa) y exportada; la línea
+  `const esEjecucionDirecta = …` pasa a `if (esPuntoDeEntrada(import.meta.url)) { await principal(); process.exit(0); }`.
+- `crear-bases.mjs` deja `fileURLToPath(import.meta.url) === path.resolve(process.argv[1])`; los otros cuatro dejan
+  `import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href`. Los imports que queden sin usar
+  (`pathToFileURL`, `fileURLToPath`) se quitan.
+
+**Pruebas como comando (criterio 171).** El enlace se crea en `fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-r17-'))`
+apuntando a la raíz real del repositorio, y se borra en `afterAll` con `fs.rmSync(enlace)` sobre el enlace (no
+`recursive`, para no borrar el destino; en Windows, `fs.rmdirSync` sobre la unión). (r2) pasa `env: { ...process.env,
+DATABASE_URL: '', DATABASE_URL_PRUEBAS: '', DATABASE_URL_APP: '' }`: `cargarEnv` no sobrescribe lo definido y
+`leerUrlsBases` lanza antes de conectar. (r5) puede tardar lo que tarde `npm` en fallar en una carpeta sin
+`package.json`; `timeout` de 60 s.
+
+**Nota O2 (no lleva criterio en 001).** `GET /api/a/{nombreCorto}` es pública y sin límite de peticiones; cada petición
+abre una transacción corta (`resolverAcademia`) y, con el pool de 10 conexiones y `maxWait` de 10 s, una avalancha
+anónima puede ocupar el pool y demorar o hacer fallar las peticiones de todas las academias. Se decide con el hosting
+(D-21: límites del proxy o del proveedor, `trust proxy`) y con la historia 005 (páginas públicas), que es la que usa la
+ruta: límite por IP antes del controlador (como el del criterio 75), caché corta de la respuesta, o las dos. Va a
+"Notas para historias futuras" de la spec y, en el cierre, a la nota de 005 en `specs/backlog.md` (T24).
+
+**Revisión de 001.** Ningún script de `scripts/` ni el hook vuelven a comparar `process.argv[1]` a mano ni a llamar a
+`parseEnv` por su cuenta (lo exigen las pruebas estáticas de 169 y 171).
+
+Texto propuesto para `docs/guia-local-windows.md` (lo agrega el documentador en el cierre, T24), en "Problemas
+frecuentes":
+
+> - **`env:completar` dice que tu `.env` no está en UTF-8.** PowerShell 5.1 guarda en UTF-16 con `>` y con `Out-File` sin
+>   `-Encoding`. Ábrelo en VS Code y elige "Guardar con codificación" → "UTF-8", o usa
+>   `Set-Content -Encoding UTF8`. Con o sin BOM se lee igual.
+> - **`env:completar` avisa que "los scripts no la pueden leer".** Esa línea tiene algo invisible al principio (por
+>   ejemplo, un espacio duro copiado de una página) o usa `:` en lugar de `=`. Escríbela de nuevo a mano como
+>   `NOMBRE=valor`.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -2934,6 +3098,13 @@ de la ronda 15:
 | `cause` y `errors` por su nombre en cada objeto visitado (ataque ronda 16, criterio 168) | Solo en el error recibido; todos los getters heredados | pino las lee en cada causa y en cada error de `errors`; pino no lee los demás getters y se ejecutaría código ajeno sin necesidad |
 | `cause` función: falla cerrada sin llamarla (criterio 168) | Llamarla y buscar en el resultado; ignorarla | Ejecuta código ajeno al registrar (puede lanzar, colgar, tener efectos o devolver otra cosa a pino); pino la llama |
 | `errors` función: ni se llama ni es falla cerrada (criterio 168) | Falla cerrada también | pino no la llama ni la serializa; se perdería diagnóstico sin motivo |
+| Quitar el BOM inicial antes de `parseEnv` con una sola función (`analizarEnv`) en todos los lectores de `scripts/`, copiada en el hook y en dos utilidades de prueba (ataque ronda 17, criterio 169) | Usar `dotenv` en los scripts; quitar todos los espacios Unicode al principio de cada línea | El hook corre antes de `npm ci` y no puede cargar `node_modules`; reimplementar `dotenv` a medias |
+| `env:completar` da por existente lo que lee `analizarEnv` o lo que `clavesPosiblesEnv` encuentra, y avisa de lo segundo (criterio 170; R17-1 provisional) | Copiar el analizador de `dotenv`; confiar solo en `analizarEnv` | `dotenv` 18 trae dos analizadores internos y cambia con cada versión; cualquier otra diferencia repetiría la falla |
+| Solo agregar al final con `appendFileSync` (criterio 170) | Reescribir el archivo normalizado | Cambiaría bytes del usuario (BOM, `\r\n`) y el mensaje "no se modificaron" dejaría de ser cierto |
+| `.env` UTF-16: `env:completar` no escribe y termina con 1 (criterio 170, provisional R17-2) | Convertirlo a UTF-8 en el lugar; no detectarlo | Cambia el archivo sin preguntar; agregar UTF-8 a un UTF-16 lo deja ilegible para todos |
+| Punto de entrada con `fs.realpathSync` de los dos lados y una ayuda común, copiada en el hook (ataque ronda 17, criterio 171) | `import.meta.main`; `--preserve-symlinks-main` en cada comando; comparar solo el nombre | No está en todas las versiones de Node 22 admitidas; no cubre los hooks de git ni el uso a mano; un script importado con el mismo nombre se ejecutaría |
+| `realpath` inyectable en `esPuntoDeEntrada` (criterio 171) | Probar la comparación de Windows solo en la CI de Windows | La regla sin mayúsculas se prueba en cualquier sistema; la CI de Windows confirma con una unión real |
+| O2 diferida: sin límite en `GET /api/a/{nombreCorto}` en 001 (ronda 17, decisión del orquestador) | Agregar ya un límite por IP | Depende del hosting (`trust proxy`, límites del proveedor) y de cómo la use la historia 005 |
 
 ## Migraciones
 
@@ -2971,6 +3142,8 @@ de la ronda 15:
 - Ronda 14: sin migraciones nuevas. La lectura de la pila y la ampliación de la regla de lint son de código.
 - Ronda 15: sin migraciones nuevas. La búsqueda en el grafo, la lista cerrada de `tipo` y `mensajeSeguro` son de código;
   la regla de no usar `money` no toca ninguna tabla (ninguna lo usa).
+- Ronda 16: sin migraciones nuevas. El costo acotado de la búsqueda y `cause` y `errors` por su nombre son de código.
+- Ronda 17: sin migraciones nuevas. La lectura del `.env` y el punto de entrada son de los scripts y del hook.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -3001,7 +3174,8 @@ de la ronda 15:
 - **Binarios de `@node-rs/argon2` en Windows:** primera dependencia nativa en uso; la CI de Windows lo detecta.
 - **Librería de JWT en CommonJS:** NestJS compila a CommonJS; elegir una librería que se pueda `require` (por ejemplo
   `jsonwebtoken` o `@nestjs/jwt`).
-- **Límite por IP:** `req.ip` sin `trust proxy` es la del socket; queda para el hosting.
+- **Límite por IP:** `req.ip` sin `trust proxy` es la del socket; queda para el hosting. _(Ataque ronda 17, O2: también
+  queda para el hosting y la historia 005 el límite de `GET /api/a/{nombreCorto}`, sección 29.)_
 - **Lector del cuerpo de Nest** _(ataque ronda 1)_: el orden de los middlewares del criterio 75 depende de cómo la
   versión instalada de Nest registra su lector (`bodyParser: false` o nombres `jsonParser`/`urlencodedParser`). Si
   no se puede lograr sin cambiar las utilidades protegidas, el backend se detiene e informa.
@@ -3144,5 +3318,16 @@ de la ronda 15:
   la propiedad `cause` de `Error` con un accessor o un método (TS2610/TS2425); la prueba los define con
   `Object.defineProperty` sobre el prototipo, que es lo que haría el código compilado. No es una diferencia de
   comportamiento.
+- **`parseEnv` y `dotenv` con `\r\n` y comillas** _(ataque ronda 17, criterio 169)_: la coherencia del conjunto (a) supone
+  que, sin el BOM, `parseEnv` de Node 22 y `dotenv` 18 dan las mismas claves y los mismos valores con `\r\n`, comillas,
+  `export` y comentarios. Si alguno difiere, el test-writer se detiene e informa; no se cambia el conjunto sin una
+  decisión nueva.
+- **Uniones y enlaces en la CI de Windows** _(ataque ronda 17, criterio 171)_: `fs.symlinkSync(…, 'junction')` no pide
+  permisos de administrador, pero el enlace a un archivo de (p3) sí; si la CI no puede crearlos, esos casos se omiten
+  allí con el motivo (criterio 171). Si el `realpathSync` de una unión no coincide con la ruta que Node da a
+  `import.meta.url` (por ejemplo, por la letra de la unidad), el backend se detiene e informa.
+- **(r5) depende de `npm`** _(ataque ronda 17, criterio 171)_: el script intenta compilar en una carpeta sin
+  `package.json` y solo se mira que lo anuncie; si `npm` no está en el `PATH` del hijo, el mensaje sale igual (se imprime
+  antes de lanzarlo).
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.
