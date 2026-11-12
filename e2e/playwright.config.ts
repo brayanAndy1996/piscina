@@ -6,7 +6,8 @@ import { config as cargarEnv } from 'dotenv';
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // Un solo .env en la raíz; las variables ya definidas (la CI) mandan.
-cargarEnv({ path: path.join(raiz, '.env'), quiet: true });
+// Las seis opciones escritas (criterio 175, P-45): las variables DOTENV_* del entorno no cambian cómo se carga el archivo.
+cargarEnv({ path: path.join(raiz, '.env'), encoding: 'utf8', override: false, quiet: true, debug: false, fast: false });
 
 // Puertos propios, distintos de los de `npm run dev` (3000 y 5173), para poder correr ambos a la vez.
 const PUERTO_API_E2E = 3100;

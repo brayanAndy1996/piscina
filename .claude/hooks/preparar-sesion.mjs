@@ -21,12 +21,12 @@
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { parseEnv } from 'node:util';
 
 export const COMANDO_REINTENTO = 'node .claude/hooks/preparar-sesion.mjs';
 const CLUSTER = ['16', 'main'];
@@ -34,6 +34,7 @@ const SEGUNDOS_ESPERA_POSTGRES = 30;
 const HOSTS_LOCALES = new Set(['localhost', '127.0.0.1']);
 const CHROMIUM_NUBE = '/opt/pw-browsers/chromium';
 const ARCHIVO_HUELLA = path.join('node_modules', '.preparar-sesion.sha256');
+const RAIZ_DEL_REPOSITORIO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 let utilidadesEntorno = null;
 
@@ -303,23 +304,91 @@ function ejecutarPsqlComoPostgres(sentencia, extra = []) {
   return resultado;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Lectura del .env (spec 001, criterio 174, P-45)
+// ---------------------------------------------------------------------------------------------------------------
+
+const NOMBRE_DE_VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+// Valor vacío, o sin espacios al principio ni al final y solo con U+0020 entre palabras; sin `#`, comillas ni `\`.
+const VALOR_SIMPLE = /^(?:[^\s#"'`\\]+(?: [^\s#"'`\\]+)*)?$/;
+// Control salvo \n y \r; espacios de `\s` que no son U+0020, \n ni \r; y un \r que no va antes de un \n.
+// eslint-disable-next-line no-control-regex -- los caracteres de control son justo lo que se busca
+const CARACTERES_PROHIBIDOS = /[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F]|[^\S \n\r]|\r(?!\n)/;
+
+const numeroDeLinea = (texto, indice) => texto.slice(0, indice).split('\n').length;
+
+/**
+ * Lector mínimo del `.env` para antes de `npm ci`, cuando `dotenv` todavía puede no estar instalado. Acepta solo la forma
+ * simple que escriben `.env.example`, este hook y un editor normal, y para ella devuelve exactamente lo que daría
+ * `dotenv.parse`; para cualquier otro texto, o con una variable repetida, lanza un error que pide `npm ci` y nunca incluye
+ * un valor. Si una prueba encontrara un texto aceptado que no da lo mismo que `dotenv`, esta forma se estrecha, nunca se amplía.
+ */
+export function analizarEnvMinimo(texto) {
+  const sinBom = texto.startsWith('﻿') ? texto.slice(1) : texto;
+  const negarse = (detalle) => {
+    throw new Error(
+      `El .env tiene una forma que solo puede leer dotenv (${detalle}). Ejecuta npm ci para instalarlo y reintenta con ${COMANDO_REINTENTO}.`,
+    );
+  };
+  const prohibido = CARACTERES_PROHIBIDOS.exec(sinBom);
+  if (prohibido) negarse(`línea ${numeroDeLinea(sinBom, prohibido.index)}`);
+  const valores = {};
+  sinBom.split('\n').forEach((cruda, indice) => {
+    const linea = cruda.endsWith('\r') ? cruda.slice(0, -1) : cruda;
+    if (linea === '' || linea.startsWith('#')) return;
+    const sinExport = linea.startsWith('export ') ? linea.slice(7) : linea;
+    const igual = sinExport.indexOf('=');
+    const nombre = igual > 0 ? sinExport.slice(0, igual) : '';
+    const valor = sinExport.slice(igual + 1);
+    if (!NOMBRE_DE_VARIABLE.test(nombre) || !VALOR_SIMPLE.test(valor)) negarse(`línea ${indice + 1}`);
+    if (Object.hasOwn(valores, nombre)) negarse(`la variable ${nombre} está repetida`);
+    valores[nombre] = valor;
+  });
+  return valores;
+}
+
+/**
+ * El analizador del `.env` disponible ahora: `dotenv` si el espacio de trabajo `scripts` de `raizRepo` lo tiene instalado
+ * (`{ origen: 'dotenv' }`), si no el lector mínimo (`{ origen: 'minimo' }`). Nunca lanza y no recuerda un fallo: cada llamada
+ * lo vuelve a intentar con un `createRequire` nuevo, así que después de `npm ci` la siguiente usa `dotenv`. No importa
+ * `dotenv` de forma estática: el hook corre antes de `npm ci` (criterio 47 de 000).
+ */
+export function cargarAnalizadorEnv(raizRepo = RAIZ_DEL_REPOSITORIO) {
+  try {
+    const dotenv = createRequire(path.join(raizRepo, 'scripts', 'package.json'))('dotenv');
+    if (typeof dotenv?.parse === 'function') return { origen: 'dotenv', analizar: (texto) => dotenv.parse(texto) };
+  } catch {
+    // Sin dotenv (antes de npm ci): lector mínimo.
+  }
+  return { origen: 'minimo', analizar: analizarEnvMinimo };
+}
+
 /**
  * Variables de entorno para los procesos hijos: una copia de `entorno`, completada con las del .env de `raiz` sin
- * sobrescribir lo ya definido. Lee el .env como el backend (`dotenv`): quita un U+FEFF inicial antes de `parseEnv` (spec 001,
- * criterio 169, P-43). Es una copia de la regla de `quitarBom` de scripts/lib/entorno.mjs, porque el hook no importa módulos
- * del repositorio de forma estática (criterio 47 de 000).
+ * sobrescribir lo ya definido. Lee el .env con `analizador.analizar` y lanza el error de este si lanza (spec 001, criterio 174).
  */
-export function entornoParaHijos(raiz, entorno = process.env) {
+export function entornoParaHijos(raiz, entorno = process.env, analizador = cargarAnalizadorEnv()) {
   const copia = { ...entorno };
   const rutaEnv = path.join(raiz, '.env');
   if (fs.existsSync(rutaEnv)) {
-    const texto = fs.readFileSync(rutaEnv, 'utf8');
-    const valores = parseEnv(texto.startsWith('\uFEFF') ? texto.slice(1) : texto);
+    const valores = analizador.analizar(fs.readFileSync(rutaEnv, 'utf8'));
     for (const [clave, valor] of Object.entries(valores)) {
       if (copia[clave] === undefined) copia[clave] = valor;
     }
   }
   return copia;
+}
+
+/**
+ * Entorno para `npm ci`: `entornoParaHijos` y, si lanza, una copia de `entorno`. Instalar las dependencias no depende de
+ * leer el .env (`prisma.config.ts` lo lee por su cuenta con `dotenv`).
+ */
+export function entornoParaInstalar(raiz, entorno = process.env, analizador = cargarAnalizadorEnv()) {
+  try {
+    return entornoParaHijos(raiz, entorno, analizador);
+  } catch {
+    return { ...entorno };
+  }
 }
 
 /**
@@ -524,7 +593,7 @@ export async function prepararSesion(raiz) {
       bien('Dependencias', 'ya instaladas');
       dependenciasListas = true;
     } else {
-      const instalacion = ejecutar('npm', ['ci'], { cwd: raiz, env: entornoParaHijos(raiz), timeoutMs: 450_000 });
+      const instalacion = ejecutar('npm', ['ci'], { cwd: raiz, env: entornoParaInstalar(raiz), timeoutMs: 450_000 });
       if (!instalacion.ok) throw new Error(`npm ci falló: ${resumirSalida(instalacion.salida, claves)}`);
       fs.writeFileSync(rutaHuella, `${huellaActual}\n`);
       bien('Dependencias', 'instaladas con npm ci');
@@ -535,8 +604,16 @@ export async function prepararSesion(raiz) {
   }
 
   // 5. Cliente de Prisma, bases y migraciones.
+  let entornoDePasos = null;
   if (dependenciasListas) {
-    const entorno = entornoParaHijos(raiz);
+    try {
+      entornoDePasos = entornoParaHijos(raiz);
+    } catch (error) {
+      mal('Cliente de Prisma, bases y migraciones', error instanceof Error ? error.message : String(error));
+    }
+  }
+  if (dependenciasListas && entornoDePasos) {
+    const entorno = entornoDePasos;
     const correr = (paso, argumentos, timeoutMs = 120_000) => {
       const resultado = ejecutar('npm', argumentos, { cwd: raiz, env: entorno, timeoutMs });
       if (resultado.ok) bien(paso);
@@ -554,7 +631,7 @@ export async function prepararSesion(raiz) {
     } else if (!conexion) {
       omitido('Bases de datos y migraciones', 'falta una configuración válida de la base (ver arriba)');
     }
-  } else {
+  } else if (!dependenciasListas) {
     omitido('Cliente de Prisma, bases y migraciones', 'las dependencias no están listas (ver arriba)');
   }
 

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import dotenv from 'dotenv';
 import { PrismaClient } from '../generated/prisma/client';
+import { opcionesDotenv } from '../infraestructura/entorno/opciones-dotenv';
 import { parametrosDeConexionProhibidos } from '../infraestructura/entorno/url-postgres';
 import { cerrarCursores, comprobarTransaccionViva, type ClienteTransaccion } from '../infraestructura/prisma';
 
@@ -15,7 +16,7 @@ import { cerrarCursores, comprobarTransaccionViva, type ClienteTransaccion } fro
 /** Carga el `.env` de la raíz sin sobrescribir las variables ya definidas (las del entorno mandan). */
 export function cargarEnvDeLaRaiz(): void {
   // Este archivo está en `backend/src/cli/`: la raíz del repositorio queda tres carpetas arriba.
-  dotenv.config({ path: path.resolve(__dirname, '..', '..', '..', '.env'), quiet: true });
+  dotenv.config(opcionesDotenv(path.resolve(__dirname, '..', '..', '..', '.env')));
 }
 
 /** Valor de una variable, o `undefined` si falta o está vacía (o solo tiene espacios). */
