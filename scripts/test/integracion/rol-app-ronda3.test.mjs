@@ -92,7 +92,8 @@ function ejecutarDbCrear(nombres, urlApp) {
     DATABASE_URL_PRUEBAS: urlDe(servidor, nombres.pruebas),
     DATABASE_URL_APP:
       urlApp ??
-      `postgresql://${USUARIO_APP}:${encodeURIComponent(CLAVE_APP_QUE_NO_DEBE_SALIR)}@${servidor.host}:${servidor.puerto}/aquagestion`,
+      // Criterio 148 (ataque ronda 9): la base de la URL de la app es la de DATABASE_URL del caso.
+      `postgresql://${USUARIO_APP}:${encodeURIComponent(CLAVE_APP_QUE_NO_DEBE_SALIR)}@${servidor.host}:${servidor.puerto}/${nombres.desarrollo}`,
   });
 }
 
@@ -240,7 +241,8 @@ describe('criterio 104: la contrasena de los roles nunca viaja en claro', () => 
   it('criterio 104: una contrasena de DATABASE_URL_APP fuera de ASCII imprimible termina con codigo 1, nombra la variable y no la muestra', async () => {
     const nombres = await crearPareja();
     const clave = 'contraseña-secreta-ronda3';
-    const urlApp = `postgresql://${USUARIO_APP}:${encodeURIComponent(clave)}@${servidor.host}:${servidor.puerto}/aquagestion`;
+    // Criterio 148 (ataque ronda 9): la base de la URL de la app es la de DATABASE_URL del caso.
+    const urlApp = `postgresql://${USUARIO_APP}:${encodeURIComponent(clave)}@${servidor.host}:${servidor.puerto}/${nombres.desarrollo}`;
 
     const resultado = ejecutarDbCrear(nombres, urlApp);
 
@@ -257,7 +259,8 @@ describe('criterio 104: la contrasena de los roles nunca viaja en claro', () => 
   it('criterio 104: una contrasena con un emoji tambien se rechaza sin mostrarla', async () => {
     const nombres = await crearPareja();
     const clave = 'clave-con-emoji-😀-ronda3';
-    const urlApp = `postgresql://${USUARIO_APP}:${encodeURIComponent(clave)}@${servidor.host}:${servidor.puerto}/aquagestion`;
+    // Criterio 148 (ataque ronda 9): la base de la URL de la app es la de DATABASE_URL del caso.
+    const urlApp = `postgresql://${USUARIO_APP}:${encodeURIComponent(clave)}@${servidor.host}:${servidor.puerto}/${nombres.desarrollo}`;
 
     const resultado = ejecutarDbCrear(nombres, urlApp);
 

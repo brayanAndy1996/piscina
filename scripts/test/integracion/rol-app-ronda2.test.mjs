@@ -182,7 +182,9 @@ describe('asegurarRolApp con un rol que ya existe y no es seguro (criterio 81)',
 });
 
 describe('db:crear con el rol aquagestion_app y las condiciones de cada base (criterios 81 y 82)', () => {
-  const urlApp = `postgresql://${USUARIO_APP}:${encodeURIComponent(CLAVE_APP_QUE_NO_DEBE_SALIR)}@${servidor.host}:${servidor.puerto}/aquagestion`;
+  // Criterio 148 (ataque ronda 9): la URL de la app lleva la base de la DATABASE_URL del caso (el servidor y el puerto ya coinciden).
+  const urlAppDe = (nombres) =>
+    `postgresql://${USUARIO_APP}:${encodeURIComponent(CLAVE_APP_QUE_NO_DEBE_SALIR)}@${servidor.host}:${servidor.puerto}/${nombres.desarrollo}`;
 
   /** Pareja de bases temporales: se crean aqui (con el usuario de las pruebas como dueno) o las crea db:crear. */
   function pareja({ crearAntes }) {
@@ -202,7 +204,7 @@ describe('db:crear con el rol aquagestion_app y las condiciones de cada base (cr
     return ejecutarScript(['crear-bases.mjs'], {
       DATABASE_URL: urlDe(credenciales, nombres.desarrollo),
       DATABASE_URL_PRUEBAS: urlDe(credenciales, nombres.pruebas),
-      DATABASE_URL_APP: urlApp,
+      DATABASE_URL_APP: urlAppDe(nombres),
     });
   }
 

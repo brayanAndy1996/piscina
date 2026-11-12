@@ -8,6 +8,7 @@ import {
   urlAppDePruebas,
   urlDe,
 } from './ayuda.mjs';
+import { urlAppAlineada } from './ayuda-ronda9.mjs';
 
 const servidor = servidorDePruebas();
 
@@ -26,12 +27,14 @@ const creadas = [];
 function prepararEntorno() {
   const nombres = nombresTemporales();
   creadas.push(nombres.desarrollo, nombres.pruebas);
+  const desarrollo = urlDe(servidor, nombres.desarrollo);
   return {
     nombres,
     variables: {
-      DATABASE_URL: urlDe(servidor, nombres.desarrollo),
+      DATABASE_URL: desarrollo,
       DATABASE_URL_PRUEBAS: urlDe(servidor, nombres.pruebas),
-      DATABASE_URL_APP: urlAppDePruebas(),
+      // Criterio 148 (ataque ronda 9): la URL de la app lleva el mismo servidor, puerto y base que DATABASE_URL del caso.
+      DATABASE_URL_APP: urlAppAlineada(urlAppDePruebas(), desarrollo),
     },
   };
 }
@@ -124,9 +127,13 @@ describe('db:preparar (scripts/preparar-bases.mjs)', () => {
   });
 
   it('se detiene en el primer paso que falla e indica cómo reintentar', () => {
+    const desarrollo = 'postgresql://u:p@127.0.0.1:1/aqua_tmp_x';
     const resultado = ejecutarScript(['preparar-bases.mjs'], {
-      DATABASE_URL: 'postgresql://u:p@127.0.0.1:1/aqua_tmp_x',
+      DATABASE_URL: desarrollo,
       DATABASE_URL_PRUEBAS: 'postgresql://u:p@127.0.0.1:1/aqua_tmp_x_pruebas',
+      // Criterio 148 (ataque ronda 9): sin esta variable, la del .env (otro puerto y otra base) haria fallar el paso por la diferencia y
+      // no por la conexion que prueba el caso.
+      DATABASE_URL_APP: urlAppAlineada(urlAppDePruebas(), desarrollo),
     });
     expect(resultado.estado).not.toBe(0);
     expect(resultado.salida).toContain('Falló el paso: Creando las bases de datos');

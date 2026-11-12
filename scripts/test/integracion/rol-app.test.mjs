@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { asegurarRolApp } from '../../crear-bases.mjs';
 import { USUARIO_APP } from '../../lib/entorno.mjs';
 import { borrarBases, ejecutarScript, nombresTemporales, servidorDePruebas, urlDe } from './ayuda.mjs';
+import { urlAppAlineada } from './ayuda-ronda9.mjs';
 
 const servidor = servidorDePruebas();
 const CLAVE = 'clave-temporal-de-prueba';
@@ -162,10 +163,13 @@ describe('db:crear y el rol de la app (criterio 6)', () => {
   function variables({ app }) {
     const nombres = nombresTemporales();
     creadas.push(nombres.desarrollo, nombres.pruebas);
+    const desarrollo = urlDe(servidor, nombres.desarrollo);
     return {
-      DATABASE_URL: urlDe(servidor, nombres.desarrollo),
+      DATABASE_URL: desarrollo,
       DATABASE_URL_PRUEBAS: urlDe(servidor, nombres.pruebas),
-      DATABASE_URL_APP: app,
+      // Criterio 148 (ataque ronda 9): la URL de la app lleva el mismo servidor, puerto y base que DATABASE_URL del caso; lo que
+      // comprueba cada caso (usuario, contrasena, variable ausente) no cambia.
+      DATABASE_URL_APP: urlAppAlineada(app, desarrollo),
     };
   }
 

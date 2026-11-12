@@ -72,7 +72,8 @@ function ejecutarDbCrear(nombres) {
   return ejecutarScript(['crear-bases.mjs'], {
     DATABASE_URL: urlDe(servidor, nombres.desarrollo),
     DATABASE_URL_PRUEBAS: urlDe(servidor, nombres.pruebas),
-    DATABASE_URL_APP: `postgresql://${USUARIO_APP}:${encodeURIComponent(CLAVE_APP_QUE_NO_DEBE_SALIR)}@${servidor.host}:${servidor.puerto}/aquagestion`,
+    // Criterio 148 (ataque ronda 9): la base de la URL de la app es la de DATABASE_URL del caso.
+    DATABASE_URL_APP: `postgresql://${USUARIO_APP}:${encodeURIComponent(CLAVE_APP_QUE_NO_DEBE_SALIR)}@${servidor.host}:${servidor.puerto}/${nombres.desarrollo}`,
   });
 }
 

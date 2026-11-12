@@ -9,6 +9,7 @@ import {
   urlAppDePruebas,
   urlDe,
 } from './ayuda.mjs';
+import { urlAppAlineada } from './ayuda-ronda9.mjs';
 
 const servidor = servidorDePruebas();
 const creadas = [];
@@ -20,10 +21,12 @@ function prepararNombres() {
 }
 
 function variablesDe(nombres) {
+  const desarrollo = urlDe(servidor, nombres.desarrollo);
   return {
-    DATABASE_URL: urlDe(servidor, nombres.desarrollo),
+    DATABASE_URL: desarrollo,
     DATABASE_URL_PRUEBAS: urlDe(servidor, nombres.pruebas),
-    DATABASE_URL_APP: urlAppDePruebas(),
+    // Criterio 148 (ataque ronda 9): la URL de la app lleva el mismo servidor, puerto y base que DATABASE_URL del caso.
+    DATABASE_URL_APP: urlAppAlineada(urlAppDePruebas(), desarrollo),
   };
 }
 
@@ -86,10 +89,12 @@ describe('db:crear (scripts/crear-bases.mjs)', () => {
 
   it('no incluye la contraseña en los mensajes de error', () => {
     const nombres = prepararNombres();
+    const desarrollo = `postgresql://usuario:clave-muy-secreta@127.0.0.1:1/${nombres.desarrollo}`;
     const resultado = ejecutarScript(['crear-bases.mjs'], {
-      DATABASE_URL: `postgresql://usuario:clave-muy-secreta@127.0.0.1:1/${nombres.desarrollo}`,
+      DATABASE_URL: desarrollo,
       DATABASE_URL_PRUEBAS: `postgresql://usuario:clave-muy-secreta@127.0.0.1:1/${nombres.pruebas}`,
-      DATABASE_URL_APP: urlAppDePruebas(),
+      // Criterio 148 (ataque ronda 9): con el mismo servidor, puerto y base que DATABASE_URL, el caso sigue llegando a la conexion.
+      DATABASE_URL_APP: urlAppAlineada(urlAppDePruebas(), desarrollo),
     });
     expect(resultado.estado).toBe(1);
     expect(resultado.salida).toContain('No se pudo conectar a PostgreSQL');

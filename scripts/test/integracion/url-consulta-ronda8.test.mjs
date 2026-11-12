@@ -22,6 +22,7 @@ import {
   urlAppDePruebas,
   urlDe,
 } from './ayuda.mjs';
+import { urlAppAlineada } from './ayuda-ronda9.mjs';
 
 const servidor = servidorDePruebas();
 // La URL de la app es la configurada (entorno, `.env` o `.env.example`): asi, si `db:crear` no se negara, el rol que ya existe no se
@@ -36,14 +37,16 @@ afterAll(async () => {
   await borrarBases(servidor, basesPedidas).catch(() => undefined);
 });
 
-const urlApp = () => URL_APP;
+// Criterio 148 (ataque ronda 9): la URL de la app de cada caso lleva el mismo servidor, puerto y base que la DATABASE_URL del caso (con
+// `nombres`); el usuario, la contrasena y la cadena de consulta no cambian. Sin `nombres`, la URL configurada tal cual.
+const urlApp = (nombres) => (nombres ? urlAppAlineada(URL_APP, urlDe(servidor, nombres.desarrollo)) : URL_APP);
 
 /** Las tres URL validas para una pareja de bases nuevas; `cambios` reemplaza alguna (con su cadena de consulta). */
 function entornoDe(nombres, cambios = {}) {
   return {
     DATABASE_URL: urlDe(servidor, nombres.desarrollo),
     DATABASE_URL_PRUEBAS: urlDe(servidor, nombres.pruebas),
-    DATABASE_URL_APP: urlApp(),
+    DATABASE_URL_APP: urlApp(nombres),
     ...cambios,
   };
 }
@@ -80,13 +83,13 @@ async function esperarFallaCerrada(nombres, resultado, { variable, parametro, ur
 const VARIABLES = [
   { variable: 'DATABASE_URL', base: (nombres) => urlDe(servidor, nombres.desarrollo) },
   { variable: 'DATABASE_URL_PRUEBAS', base: (nombres) => urlDe(servidor, nombres.pruebas) },
-  { variable: 'DATABASE_URL_APP', base: () => urlApp() },
+  { variable: 'DATABASE_URL_APP', base: (nombres) => urlApp(nombres) },
 ];
 
 describe('criterio 143: los casos de la especificacion en db:crear', () => {
   it('criterio 143: DATABASE_URL_APP valida mas ?user=<usuario del duenio> termina con codigo 1, nombra la variable y el parametro y no trae la contrasena ni la URL', async () => {
     const nombres = parejaNueva();
-    const url = `${urlApp()}?user=${encodeURIComponent(servidor.usuario)}`;
+    const url = `${urlApp(nombres)}?user=${encodeURIComponent(servidor.usuario)}`;
 
     const resultado = ejecutarScript(['crear-bases.mjs'], entornoDe(nombres, { DATABASE_URL_APP: url }));
 
