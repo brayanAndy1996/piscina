@@ -114,6 +114,13 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
     debilitarlas o a saltárselas.
   - 139: aislamiento; un emisor de eventos que conserva el contexto de una transacción deja que otra petición escriba en
     la academia de la primera.
+- **Q. Correcciones del ataque, ronda 8 (141 a 143):**
+  - 141 y 142: aislamiento (D-23); una tabla o vista propia dentro de un esquema que pertenece a una extensión quedaba
+    fuera de la comprobación del rol y de las pruebas de catálogo, y la app leyó filas de dos academias de una tabla sin
+    RLS.
+  - 143: aislamiento; un parámetro `user`, `host` o `database` en la cadena de consulta de una URL hace que la API se
+    conecte con otro rol o a otro servidor que el que `db:crear` revisó, y la comprobación del rol deja de valer como
+    garantía.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -154,7 +161,8 @@ crítica), 61 a 67 (semilla, `.env`, CI, guía, errores) y 68 a 71 (web y E2E).
    entre 1 y 100, entonces la API no arranca y el mensaje nombra la variable sin mostrar su valor. Con
    `NODE_ENV=production`, además rechaza un `JWT_SECRETO` igual al de `.env.example`. La API ya no lee
    `DATABASE_URL` (la usan solo las migraciones, la semilla y los comandos). _(crítico; prueba unitaria de
-   `validarEntorno`)_
+   `validarEntorno`)_ _(ampliado por el criterio 143, ataque ronda 8: también rechaza una `DATABASE_URL_APP` con `user`,
+   `host`, `hostaddr`, `password`, `port`, `dbname` o `database` en la cadena de consulta)_
 6. Dado `DATABASE_URL_APP` con el usuario `aquagestion_app`, cuando se ejecuta `npm run db:crear` con un usuario de
    `DATABASE_URL` que puede crear roles (superusuario o `CREATEROLE`, como en Docker y en la CI), entonces:
    - si el rol no existe, lo crea con `LOGIN`, la contraseña de `DATABASE_URL_APP` y los atributos negativos del
@@ -1595,7 +1603,9 @@ seguridad, no reglas de negocio nuevas. Donde un criterio amplía o ajusta uno a
 Definiciones de esta sección:
 
 - **Esquemas revisados:** todos los de `pg_catalog.pg_namespace` salvo `pg_catalog`, `information_schema`, `pg_toast` y los
-  temporales (`pg_temp_N` y `pg_toast_temp_N`), y salvo los esquemas que pertenecen a una extensión.
+  temporales (`pg_temp_N` y `pg_toast_temp_N`), y salvo los esquemas que pertenecen a una extensión. _(Ajustada por el
+  criterio 141, ataque ronda 8: los esquemas que pertenecen a una extensión **sí** son esquemas revisados; solo se excluyen
+  los objetos de extensión.)_
 - **Objeto de extensión:** el que tiene en `pg_catalog.pg_depend` una fila con `deptype = 'e'` hacia `pg_extension`. No se
   cuenta en ninguna comprobación de esta sección (ver "Riesgos aceptados").
 
@@ -1606,7 +1616,9 @@ cada elemento (como la lista del criterio 10):
 
 130. **Privilegios del rol en todos los esquemas** _(ataque ronda 6, F1 (a) y (c); **amplía** los criterios 102 y 123)_
      _(precisado por el criterio 137, ataque ronda 7: la API y `db:crear` excluyen los objetos de extensiones de la misma
-     forma en todas sus comprobaciones de privilegios)_.
+     forma en todas sus comprobaciones de privilegios)_ _(ajustado por el criterio 141, ataque ronda 8: los esquemas que
+     pertenecen a una extensión se revisan como cualquier otro; solo se excluyen los objetos de extensión, y un tipo
+     compuesto de una extensión no es un objeto propio)_.
      Dada la comprobación del rol (en la API, la del criterio 80; en `npm run db:crear`, sobre la base de desarrollo y la de
      pruebas), entonces, además de lo que ya comprueba:
      - calcula los privilegios efectivos de `aquagestion_app` (concedidos al rol, heredados o a `PUBLIC`, con las funciones
@@ -1661,7 +1673,7 @@ cada elemento (como la lista del criterio 10):
      `GRANT USAGE ON SCHEMA ext_prueba TO aquagestion_app`), ese esquema (si no puede, se omite con aviso). En `db:crear`, al
      menos los casos 1 y 2. _(crítico)_
 131. **Pruebas de catálogo en todos los esquemas** _(ataque ronda 6, F1 (b); **amplía** los criterios 9, 10, 11, 12, 124 y
-     126)_. Dadas las migraciones aplicadas en la base de pruebas, entonces las pruebas de catálogo de los criterios 9, 10,
+     126)_ _(ajustado por el criterio 142, ataque ronda 8: también revisan los esquemas que pertenecen a una extensión)_. Dadas las migraciones aplicadas en la base de pruebas, entonces las pruebas de catálogo de los criterios 9, 10,
      11, 12, 124 y 126 (y la del 132) revisan las relaciones, funciones, reglas, índices, restricciones y políticas de todos
      los esquemas revisados (sin los objetos de extensiones), no solo de `public`:
      - las excepciones por nombre (`_prisma_migrations` del criterio 9 y la lista del criterio 10) valen solo en `public`
@@ -1810,7 +1822,9 @@ técnicas del orquestador, no reglas de negocio nuevas. Donde un criterio ajusta
 queda marcado "(… ataque ronda 7)", sin borrar su texto. Contrato: precisión de P-33 (ronda 7). Todos son _(crítico)_.
 
 137. **La API y `db:crear` deciden lo mismo ante los objetos de extensiones** _(ataque ronda 7, F1; **ajusta el alcance**
-     del criterio 102 y precisa el 130; decisión del orquestador)_. Dado que, desde la ronda 6, la API calcula los
+     del criterio 102 y precisa el 130; decisión del orquestador)_ _(ajustado por el criterio 141, ataque ronda 8: lo que se
+     excluye es el objeto de extensión, nunca el esquema entero; la cuarta viñeta, "deciden lo mismo", vale también con
+     esquemas de extensiones)_. Dado que, desde la ronda 6, la API calcula los
      privilegios de la app solo con la consulta del criterio 130, que no cuenta los objetos de extensiones en ningún esquema,
      mientras que `db:crear` sigue usando además la del criterio 102 (`problemasDePrivilegios`), que sí los cuenta en
      `public` (con `CREATE EXTENSION pg_stat_statements SCHEMA public`, que concede `SELECT` a `PUBLIC` sobre sus vistas, la
@@ -1945,6 +1959,118 @@ queda marcado "(… ataque ronda 7)", sin borrar su texto. Contrato: precisión 
      `USING (academia_id = (SELECT app_academia_actual() UNION SELECT app_academia_actual()))`. Más casos unitarios de
      `cumpleFormaDeAcademia` con el texto que devuelve `pg_get_expr` para cada uno. _(crítico)_
 
+### Q. Correcciones del ataque adversarial, ronda 8
+
+Criterios agregados tras la ronda 8 del ataque (12/11/2026, sobre el commit `65a4166`). La ronda no encontró fallas en las
+garantías de ejecución de 001. Encontró una falla media en las guardas (un esquema que pertenece a una extensión escondía las
+tablas y vistas propias que se crearan dentro) y una observación (parámetros de conexión en la cadena de consulta de la URL).
+Son decisiones técnicas del orquestador, no reglas de negocio nuevas. Donde un criterio ajusta o amplía uno anterior lo dice,
+y el anterior queda marcado "(… ataque ronda 8)", sin borrar su texto. Contrato nuevo: precisión P-34. Todos son
+_(crítico)_.
+
+141. **Los esquemas de extensiones se revisan; solo se excluyen los objetos de extensión** _(ataque ronda 8, F1; **ajusta**
+     la definición de "esquemas revisados" de la sección O y los criterios 130 y 137; decisión del orquestador)_. Dado que la
+     comprobación del rol en la API (`#comprobarRol`) y en `npm run db:crear` (`problemasDePrivilegiosEnEsquemas` y toda
+     consulta que use la definición de esquemas revisados) descartan **entero** todo esquema que pertenece a una extensión, y
+     que un esquema puede pertenecer a una extensión y contener objetos propios (`ALTER EXTENSION pgcrypto ADD SCHEMA
+     reportes2` hecho por el dueño, o los esquemas que crean extensiones del hosting, como `cron`, `topology` o `tiger`, donde
+     después se crea una tabla), de modo que en la ronda 8 la app leyó filas de A y de B de una tabla sin RLS de `reportes2`
+     con `SELECT` concedido, sin que la API ni `db:crear` lo notaran, entonces:
+     - **esquemas revisados** son todos los de `pg_catalog.pg_namespace` salvo `pg_catalog`, `information_schema`,
+       `pg_toast` y los temporales (`pg_temp_N` y `pg_toast_temp_N`); un esquema que pertenece a una extensión **es** un
+       esquema revisado (la pertenencia del esquema a una extensión ya no se consulta en ninguna comprobación);
+     - lo único que se excluye es el **objeto de extensión** (definición de la sección O): la relación (con sus columnas),
+       la secuencia o la función que tiene su propia fila `deptype = 'e'` hacia `pg_extension`. Una relación de tipo
+       compuesto (`relkind = 'c'`) cuenta como objeto de extensión si su tipo (`pg_class.reltype`) lo es (PostgreSQL
+       registra la pertenencia de un tipo compuesto en `pg_type`, no en `pg_class`); los índices y las tablas TOAST siguen
+       sin contar como objetos propios;
+     - en un esquema que pertenece a una extensión valen las mismas reglas del criterio 130 que en cualquier otro: un
+       privilegio de tabla, de columna o de secuencia sobre una relación propia es de más; `EXECUTE` sobre una función
+       propia de un esquema con `USAGE` es de más (salvo `FUNCIONES_APP`, que son de `public`); y `USAGE` sobre el esquema
+       se permite si no contiene ninguna relación ni función propia (vacío o con solo objetos de extensión), y se rechaza si
+       contiene alguna, aunque la app no tenga privilegios sobre ella (salvo la lista "Esquemas permitidos además de
+       `public`", hoy vacía);
+     - la API rechaza con `ErrorRolBaseDatosInseguro` como en el criterio 4 (el log nombra el esquema, el objeto y el
+       privilegio, nunca la URL ni la contraseña) y `db:crear` termina con código 1 nombrando lo mismo y la corrección
+       (`REVOKE SELECT ON reportes2.t FROM aquagestion_app;`, `REVOKE USAGE ON SCHEMA reportes2 FROM aquagestion_app;` o
+       `… FROM PUBLIC;`), sin modificar nada; para un mismo estado de la base, las dos deciden lo mismo (criterio 137);
+     - con las migraciones de esta historia y nada más, la comprobación pasa.
+
+     Prueba de integración, con una API nueva por caso y restaurando al final, en la API y en `db:crear` (como en las de los
+     criterios 130 y 137). Preparación, como dueño no superusuario (así se reprodujo; con superusuario sirve igual): una
+     extensión de confianza que el dueño pueda crear y de la que sea dueño (orientativo: `CREATE EXTENSION pgcrypto SCHEMA
+     public`); si ya estaba instalada por otro rol o no se puede instalar ninguna, los casos se omiten con aviso (corren en
+     Docker y en la CI; la prueba solo quita lo que creó). Entonces:
+     1. el ataque: `CREATE SCHEMA reportes2`, `ALTER EXTENSION pgcrypto ADD SCHEMA reportes2`,
+        `CREATE TABLE reportes2.t (academia_id uuid, dato text)` sin RLS, con una fila de A y una de B,
+        `GRANT USAGE ON SCHEMA reportes2 TO aquagestion_app` y `GRANT SELECT ON reportes2.t TO aquagestion_app`:
+        `conAcademia`, `comoPlataforma` y `resolverAcademia` rechazan con `ErrorRolBaseDatosInseguro` (el log nombra
+        `reportes2`, `t` y `SELECT`), y `db:crear` sobre la base de pruebas termina con código 1 nombrando `reportes2.t`,
+        `SELECT` y un `REVOKE`;
+     2. lo mismo con `USAGE` y `SELECT` concedidos a `PUBLIC`: las dos rechazan, y `db:crear` propone `… FROM PUBLIC;`;
+     3. `USAGE` sobre `reportes2` con la tabla y sin ningún privilegio sobre ella: las dos rechazan (objetos propios);
+     4. control que pasa: `CREATE SCHEMA ext_r8`, `ALTER EXTENSION pgcrypto ADD SCHEMA ext_r8`, una función
+        `ext_r8.f()` y un tipo compuesto `ext_r8.par AS (a int)` agregados a la extensión (`ALTER EXTENSION pgcrypto ADD
+        FUNCTION ext_r8.f()` y `… ADD TYPE ext_r8.par`), y `GRANT USAGE ON SCHEMA ext_r8 TO aquagestion_app`: la API
+        atiende y `db:crear` no informa ningún privilegio de más ni nombra `ext_r8`.
+
+     _(crítico)_
+142. **Las pruebas de catálogo revisan los esquemas de extensiones** _(ataque ronda 8, F1; **ajusta** el criterio 131 y,
+     por él, los 9, 10, 11, 12, 124, 126, 132, 133 y la prueba de catálogo del 137)_. Dadas las migraciones aplicadas en la
+     base de pruebas, entonces la condición de esquemas revisados que usan las pruebas de catálogo
+     (`esquemasRevisados` de `backend/test/utilidades/catalogo.ts`, y toda consulta de prueba que la repita) sigue la
+     definición del criterio 141: incluye los esquemas que pertenecen a una extensión y solo excluye los objetos de
+     extensión (`relacionDeExtension` y `funcionDeExtension`, que no cambian). Así, una tabla sin RLS (criterio 9), una tabla
+     sin `academia_id` fuera de la lista del criterio 10, una tabla con `academia_id` con políticas que no cumplen (11 y 132)
+     o sin sembrador (133), una vista sin `security_invoker` o una función `SECURITY DEFINER` (124) y una restricción única
+     sin `academia_id` (126) se detectan también dentro de un esquema de extensión; las excepciones por nombre siguen
+     valiendo solo en `public`.
+
+     Autocomprobación, como dueño, dentro de una transacción que se revierte y con una extensión de confianza de la que el
+     dueño sea dueño (si no se puede, se omite con aviso; las consultas sobre la base real corren igual): `CREATE SCHEMA
+     reportes_ext_prueba` y `ALTER EXTENSION … ADD SCHEMA reportes_ext_prueba`, y dentro una tabla sin RLS (la detecta la
+     consulta del 9), una tabla `reportes_ext_prueba.academias` sin `academia_id` (la del 10), una vista sin
+     `security_invoker` (124) y una tabla con `academia_id` y `UNIQUE (numero)` (126); cada una aparece en el resultado de su
+     consulta. Control: una tabla sin RLS y sin `academia_id` del mismo esquema agregada a la extensión (`ALTER EXTENSION …
+     ADD TABLE`) no aparece en las del 9 ni del 10. _(crítico)_
+143. **Ninguna URL de conexión cambia el usuario, el servidor ni la base por su cadena de consulta** _(ataque ronda 8, O1;
+     **amplía** el criterio 5 y complementa los criterios 6, 8, 81 y 90; decisión del orquestador)_. Dado que el cliente
+     `pg` (con `pg-connection-string`, el que usan la API por `@prisma/adapter-pg`, los comandos y la semilla) toma `user`,
+     `host`, `password`, `port` y `database` o `dbname` de la cadena de consulta por encima de la parte principal de la URL,
+     mientras que `db:crear` y el hook de sesión leen la parte principal con `new URL` (`analizarUrlPostgres` y
+     `leerUrlApp`), de modo que con `DATABASE_URL_APP=postgresql://aquagestion_app:…@h/b?user=otro` `db:crear` comprueba el
+     rol `aquagestion_app` mientras la API se conecta como `otro` (o a otro servidor u otra base), entonces:
+     - el valor de `DATABASE_URL`, `DATABASE_URL_APP` o `DATABASE_URL_PRUEBAS` es inválido si su cadena de consulta tiene
+       algún parámetro cuyo nombre, decodificado como lo decodifica `URLSearchParams` (`%75ser` es `user`) y sin distinguir
+       mayúsculas (`USER`, `User`), es `user`, `host`, `hostaddr`, `password`, `port`, `dbname` o `database`: con cualquier
+       valor (también vacío, `?user=`), en cualquier posición (`?sslmode=disable&user=x`) y aunque se repita;
+     - lo rechazan, con falla cerrada, antes de abrir ninguna conexión y sin modificar nada:
+       - la API: `validarEntorno` (criterio 5) lanza `ErrorEntorno` para `DATABASE_URL_APP` y la API no arranca;
+       - `npm run db:crear`: termina con código 1 si cualquiera de las tres variables lo cumple;
+       - el hook de sesión de la nube: el paso que lee las URL falla y lo informa, sin crear roles con esos valores;
+       - `npm run plataforma:superadmin` y la semilla (`npm run db:semilla`): terminan con código 1 sin conectarse ni
+         escribir nada;
+     - el mensaje nombra la variable y el parámetro (por ejemplo, "DATABASE_URL_APP no puede llevar el parámetro user en la
+       cadena de consulta: pon el usuario, la contraseña, el servidor, el puerto y la base en la parte principal de la
+       URL"), nunca la URL, el valor del parámetro ni la contraseña;
+     - `options` y `sslmode` siguen permitidos (los usan las pruebas de los criterios 72, 90, 98, 107, 121 y 122), y tampoco
+       se rechazan los demás parámetros no listados (ver "Riesgos aceptados"); una URL sin cadena de consulta no cambia.
+
+     Funciones que deciden: P-34. Prueba unitaria de `parametrosDeConexionProhibidos` en los dos archivos de P-34, con cada
+     nombre de la lista, en mayúsculas y mezcladas, codificado (`%75ser`, `d%61tabase`), con valor vacío, en segunda
+     posición y repetido; y los que pasan: sin cadena de consulta, `?options=-c%20TimeZone%3DUTC`, `?sslmode=disable`,
+     `?sslmode=require&options=-c%20search_path%3Dx` y `?application_name=x`; y de que `PARAMETROS_DE_CONEXION_PROHIBIDOS`
+     es igual en los dos archivos. Prueba unitaria de `validarEntorno` (`DATABASE_URL_APP` con `?user=postgres` y con
+     `?password=<valor reconocible>`: `ErrorEntorno` cuyo mensaje nombra `DATABASE_URL_APP` y el parámetro y no contiene el
+     valor ni la URL) y de `analizarUrlPostgres`, `leerUrlApp` y `leerUrlsBases` de `scripts/lib/entorno.mjs` con cada una de
+     las tres variables. Prueba de integración: `db:crear` con `DATABASE_URL_APP` válida más `?user=<usuario del dueño>`,
+     y con `DATABASE_URL_PRUEBAS` más `?host=127.0.0.2`, termina con código 1, nombra la variable y el parámetro y su salida
+     no contiene la contraseña ni la URL; el comando y la semilla, ejecutados como proceso con `DATABASE_URL` de pruebas más
+     `?user=aquagestion_app`, terminan con código 1 con el mismo tipo de mensaje y, leído como dueño, no crearon ni
+     cambiaron ningún superadmin ni academia. Prueba unitaria de la función del hook que lee las URL
+     (`scripts/test/preparar-sesion.test.mjs` o un archivo nuevo): con cualquiera de las tres variables así, el paso falla
+     nombrando la variable y sin el valor. _(crítico)_
+
 ## Casos límite
 
 - **Owner que no es superusuario (nube) frente a superusuario (Docker y CI):** en la nube, el dueño de las tablas
@@ -2016,6 +2142,13 @@ queda marcado "(… ataque ronda 7)", sin borrar su texto. Contrato: precisión 
 - **Una dependencia nueva en el backend** _(ataque ronda 5)_: se agrega a `backend/package.json` y a la lista permitida
   en el mismo cambio (criterio 127); un paquete que solo está en otro espacio de trabajo no se puede importar desde
   `backend/src` (criterio 128).
+- **Hosting con esquemas de extensiones (`cron`, `topology`, `tiger`)** _(ataque ronda 8)_: si solo contienen objetos de
+  la extensión, la API atiende aunque la app tenga `USAGE` sobre ellos; si alguien crea una tabla propia dentro (por
+  ejemplo, datos cargados después en un esquema de la extensión), la API y `db:crear` la ven y, con `USAGE` o algún
+  privilegio para la app, rechazan (criterio 141).
+- **URL con parámetros en la cadena de consulta** _(ataque ronda 8)_: `?sslmode=require` y `?options=…` siguen valiendo;
+  `?user=…`, `?host=…` o `?database=…` detienen la API, `db:crear`, el hook, el comando y la semilla con un mensaje que
+  nombra la variable y el parámetro (criterio 143).
 
 ## Reglas de negocio aplicables
 
@@ -2063,7 +2196,9 @@ En las pruebas, la URL de la app para la base de pruebas se arma con el usuario 
 `DATABASE_URL_APP` y el host, el puerto y la base de `DATABASE_URL_PRUEBAS`. Nombres exactos de los campos de
 `Entorno` y quién crea el rol `aquagestion_app` en cada entorno: precisiones P-1 y P-11. Al arrancar, la API borra de
 `process.env` las variables `DATABASE_URL*` (salvo `DATABASE_URL_APP`), las `PG*` y `SUPERADMIN_CLAVE` (criterio 99,
-P-21) _(ataque ronda 3)_, sin distinguir mayúsculas (criterio 116) _(ataque ronda 4)_.
+P-21) _(ataque ronda 3)_, sin distinguir mayúsculas (criterio 116) _(ataque ronda 4)_. Ninguna de las tres URL puede
+llevar `user`, `host`, `hostaddr`, `password`, `port`, `dbname` ni `database` en la cadena de consulta (criterio 143, P-34)
+_(ataque ronda 8)_.
 
 ### Servicios del backend (contrato para las pruebas)
 
@@ -2578,6 +2713,32 @@ hechas. No son reglas de negocio nuevas.
     comparando las filas de la academia antes y después de la llamada. Si una llamada no crea ninguna fila nueva, la prueba
     falla nombrando la tabla.
 
+_(contrato de la ronda 8 del ataque, 12/11/2026; criterios 141 a 143)_. No son reglas de negocio nuevas.
+
+- **Precisión de P-31 (criterio 141).** Las firmas no cambian. Cambian las consultas que arman la lista (API y
+  `db:crear`): devuelven filas de los esquemas revisados con la definición del criterio 141 (también los que pertenecen a
+  una extensión), sin objetos de extensión. `conObjetosPropios` es `true` si el esquema tiene una relación de cualquier
+  `relkind` salvo índices (`i`, `I`) y tablas TOAST (`t`), o una función, que no sea objeto de extensión; una relación de
+  tipo compuesto (`c`) cuyo `reltype` es objeto de extensión (`pg_depend` con `classid = 'pg_catalog.pg_type'::regclass`
+  y `deptype = 'e'`) es objeto de extensión. `privilegiosDeMasEnEsquemas` y sus pruebas unitarias no cambian.
+- **P-34. Parámetros de conexión en la cadena de consulta (criterio 143).** `backend/src/infraestructura/entorno/url-postgres.ts`
+  y `scripts/lib/entorno.mjs` exportan, con los mismos nombres y el mismo contenido (`scripts/lib/entorno.mjs` sigue
+  importando solo módulos `node:*`, porque lo carga el hook):
+
+  ```ts
+  const PARAMETROS_DE_CONEXION_PROHIBIDOS: readonly string[];
+  // ['user', 'host', 'hostaddr', 'password', 'port', 'dbname', 'database']
+  function parametrosDeConexionProhibidos(url: string): string[];
+  // nombres de la lista presentes en la cadena de consulta, en minúsculas, sin repetir y en orden de aparición; [] si no hay
+  ```
+
+  Lee la cadena de consulta con `new URL(url).searchParams` y compara cada nombre decodificado, pasado a minúsculas, con la
+  lista. Si `url` no es una URL que `new URL` acepte, lanza un `TypeError` (quien la llama ya validó el formato; falla
+  cerrada). No devuelve ni registra valores. La usan `validarEntorno` (backend), `analizarUrlPostgres` (y por ella
+  `leerUrlApp`, `leerUrlsBases`, `db:crear` y el hook), y el comando y la semilla antes de llamar a
+  `crearClienteDelDueno`. El texto del mensaje es libre; las pruebas buscan el nombre de la variable y el del parámetro, y
+  que no aparezcan el valor, la contraseña ni la URL.
+
 ## Cambios al modelo de datos
 
 Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados por PostgreSQL
@@ -2741,6 +2902,22 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
     `(SELECT app_academia_actual())` (criterio 140); su sembrador crea una fila nueva en cada llamada; no se usan
     `EventEmitterAsyncResource` ni colas o lotes compartidos entre peticiones dentro de `trabajo` (criterio 139; plan,
     notas O1 y O4 de la ronda 7).
+- **Ronda 8 del ataque (criterios 141 a 143):**
+  - `esquemasRevisados` de `backend/test/utilidades/catalogo.ts` (protegida) deja de excluir los esquemas de extensiones
+    (criterio 142); la cambia el test-writer en el commit de pruebas protegidas de la ronda 8. Lo que las pruebas de los
+    criterios 9, 10, 11, 12, 124, 126, 132, 133 y 137 comprueban en `public` y en los demás esquemas no cambia; si alguna
+    pasara a fallar sobre la base de pruebas real (un esquema de extensión con objetos propios), el test-writer se detiene e
+    informa;
+  - las pruebas protegidas de los criterios 130 y 137 no cambian: el control del 130 con `CREATE EXTENSION pgcrypto SCHEMA
+    ext_prueba` sigue pasando (el esquema, pertenezca o no a la extensión, solo tiene objetos de la extensión), y ninguno de
+    sus casos usa `ALTER EXTENSION … ADD SCHEMA`;
+  - `validarEntorno` (criterio 5) y `analizarUrlPostgres` agregan un rechazo; ninguna prueba protegida anterior usa una URL
+    con los parámetros de la lista (todas usan `options` o ninguna cadena de consulta), así que ninguna cambia de resultado.
+    Si alguna cambiara, el test-writer se detiene e informa;
+  - las historias siguientes: un esquema creado por una migración, sea o no de una extensión, cuenta para la comprobación del
+    rol y las pruebas de catálogo (criterios 141 y 142); las URL de despliegue llevan usuario, servidor, puerto y base en la
+    parte principal (criterio 143); ningún servicio guarda resultados de consultas en propiedades compartidas sin la academia
+    como clave (plan, nota O3 de la ronda 8).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -2868,7 +3045,10 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   de `pg_stat_statements`, queda al alcance de la app; no contiene datos de las academias. `ALTER EXTENSION … ADD`
   convierte un objeto propio en objeto de extensión: es una migración visible en la revisión, y la prueba de catálogo del
   criterio 137 falla si lo hace con una tabla de `PRIVILEGIOS_APP`, una función de `FUNCIONES_APP` o una tabla con
-  `academia_id`.)_
+  `academia_id`.)_ _(Acotado en la ronda 8: desde el criterio 141, lo excluido es solo el objeto de extensión; un esquema que
+  pertenece a una extensión se revisa entero, así que una tabla propia dentro de él ya no queda fuera. Lo que sigue aceptado:
+  una tabla agregada a la extensión con `ALTER EXTENSION … ADD TABLE`, sin `academia_id` y que no esté en `PRIVILEGIOS_APP`,
+  queda fuera de las comprobaciones; agregarla es una migración visible en la revisión.)_
 - **Esquemas propios del hosting** _(ataque ronda 6)_: si el hosting crea un esquema con tablas o funciones propias y da
   `USAGE` a `PUBLIC`, la comprobación del rol rechaza (falla cerrada, criterio 130) y la API no atiende datos. Se resuelve
   con el hosting (D-21): una especificación agrega ese esquema a "Esquemas permitidos además de `public`", con su
@@ -2909,6 +3089,12 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   (una restricción, un disparador de validación), la prueba pasa siempre que no quede escrita ninguna fila nueva de B. Una
   política mal escrita que solo se haga visible con un `INSERT` que sí se pueda completar no se detecta por este paso; la
   cubre el criterio 132, que rechaza toda política de una tabla con `academia_id` que no tenga la forma exigida.
+- **Otros parámetros de la cadena de consulta** _(ataque ronda 8, O1)_: el criterio 143 rechaza solo los que cambian el
+  usuario, la contraseña, el servidor, el puerto o la base. Los demás que entiende `pg` (`application_name`,
+  `connect_timeout`, `ssl`, `sslcert`, `sslkey`, `sslrootcert`, `replication`, …) siguen permitidos: no cambian a quién ni
+  adónde se conecta la API (`replication` exige el atributo `REPLICATION`, que la comprobación del rol rechaza, criterio
+  80). `npm run db:migrar` solo (sin `db:crear` ni `db:preparar`) usa la URL del dueño con el lector propio de Prisma y no
+  pasa por el criterio 143; corre como dueño y no cambia el rol de la API (plan, sección 20).
 - **Forma de las políticas leída como texto** _(ataque ronda 6)_: la prueba del criterio 132 analiza el texto que devuelve
   `pg_get_expr`, no el árbol interno de PostgreSQL. Con `search_path` fijado, un operador o una función de otro esquema
   aparecen calificados y no cumplen; la prueba de ejecución del criterio 133 es la segunda capa.
@@ -3178,9 +3364,24 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
 - **La subconsulta escalar `(SELECT app_academia_actual())` cuenta como la comparación** (criterio 140). Alternativa
   descartada: exigir la llamada directa (empujaría a peores planes en tablas grandes o a saltarse la prueba).
 
+### Decisiones técnicas tras el ataque, ronda 8 (12/11/2026)
+
+- **Los esquemas de extensiones se revisan; solo se excluyen los objetos de extensión** (criterios 141 y 142; decisión del
+  orquestador). Alternativas descartadas: seguir excluyendo el esquema entero (cualquier tabla propia creada dentro, o un
+  esquema propio agregado a una extensión, queda fuera de todas las guardas) y agregar los esquemas del hosting a una lista
+  fija (depende de cada proveedor y no cubre `ALTER EXTENSION … ADD SCHEMA`).
+- **Un tipo compuesto de una extensión cuenta como objeto de extensión por su `reltype`** (criterio 141; precisión del
+  especificador). Alternativas descartadas: no contar nunca los tipos compuestos (cambiaría el sentido del criterio 130 para
+  los tipos propios) y contarlos como propios (con el criterio 141, el `USAGE` sobre un esquema de una extensión con tipos
+  compuestos, como `topology`, se rechazaría sin motivo).
+- **Rechazar en la cadena de consulta los parámetros que cambian el usuario, el servidor o la base** (criterio 143;
+  decisión del orquestador). Alternativas descartadas: que `db:crear` lea la URL con `pg-connection-string` como la API (es
+  una dependencia que el hook no puede cargar sin `node_modules`, y el comando y la API seguirían aceptando una URL ambigua)
+  y rechazar toda cadena de consulta (las pruebas y los hostings usan `options` y `sslmode`).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 7 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 8 del ataque son decisiones técnicas y no abren preguntas de
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").

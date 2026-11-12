@@ -20,7 +20,8 @@ piscina/
 ├── .github/workflows/ci.yml             + DATABASE_URL_APP y JWT_SECRETO en Linux (y en el E2E)
 ├── .claude/hooks/preparar-sesion.mjs    + creación del rol aquagestion_app (criterio 8); ronda 2: atributos (81)
 ├── scripts/
-│   ├── lib/entorno.mjs                  + leerUrlApp(), urlAppSobre(base)
+│   ├── lib/entorno.mjs                  + leerUrlApp(), urlAppSobre(base); ronda 8: parámetros de conexión en la
+│   │                                    cadena de consulta (criterio 143, P-34)
 │   ├── lib/rol-app.mjs                  nuevo, ataque ronda 2: consulta y evaluación del rol (criterio 81);
 │   │                                    ronda 3: privilegios, valores por defecto y verificador SCRAM (102 a 104)
 │   ├── lib/dependencias-backend.mjs     nuevo, ataque ronda 5: lista permitida y lista negra (criterios 127 a 129)
@@ -42,7 +43,8 @@ piscina/
 │   ├── src/infraestructura/entorno/     + DATABASE_URL_APP, JWT_SECRETO, DATABASE_POOL_MAX (criterio 5)
 │   ├── src/infraestructura/prisma/      BaseDatos, PrismaService interno, errores, verificación del rol;
 │   │                                    ronda 3: envoltorio, sin proveedor del cliente, privilegios-app.ts (98 a 103)
-│   ├── src/infraestructura/entorno/     ronda 3: retirarVariablesSensibles, llamada desde main.ts (criterio 99)
+│   ├── src/infraestructura/entorno/     ronda 3: retirarVariablesSensibles, llamada desde main.ts (criterio 99);
+│   │                                    ronda 8: url-postgres.ts (criterio 143, P-34)
 │   ├── src/infraestructura/seguridad/   claves (argon2) y tokens (JWT con RELOJ)
 │   ├── src/comun/errores/               ErrorNegocio
 │   ├── src/comun/filtros/               filtro: ErrorNegocio y detalles de validación (criterio 66)
@@ -612,6 +614,17 @@ La reutiliza 002 para los usuarios de academia.
   - ajuste de `backend/test/utilidades/politicas.ts` y de `aislamiento/forma-politicas.test.ts` (140, con los casos
     unitarios de `cumpleFormaDeAcademia` y la autocomprobación ampliada);
   - `eslint/regla-transaccion-guardada-ronda7.test.mjs` (139).
+- **Protegidas del ataque ronda 8 (test-writer)** _(criterios 141 a 143; nombres orientativos)_:
+  - `aislamiento/privilegios-esquema-extension.test.ts` (141, API: casos 1 a 4) y
+    `scripts/test/integracion/rol-app-ronda8.test.mjs` (141, `db:crear` con los mismos casos); se omiten con aviso si el
+    dueño no puede crear una extensión de confianza de la que sea dueño;
+  - ajuste de `backend/test/utilidades/catalogo.ts` (`esquemasRevisados` sin la exclusión de esquemas de extensiones) y
+    `aislamiento/catalogo-esquema-extension.test.ts` (142, autocomprobación con un esquema agregado a una extensión);
+  - `backend/src/infraestructura/entorno/url-postgres.test.ts` y `scripts/test/entorno-ronda8.test.mjs` (143, P-34: la
+    función en los dos archivos, la igualdad de las listas, `validarEntorno`, `analizarUrlPostgres`, `leerUrlApp` y
+    `leerUrlsBases`); `scripts/test/integracion/url-consulta-ronda8.test.mjs` (143, `db:crear`);
+    `backend/src/cli/url-consulta-ronda8.test.ts` o una prueba de integración con proceso (143, comando y semilla); y un
+    caso en `scripts/test/preparar-sesion.test.mjs` o en un archivo nuevo (143, hook).
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -1339,6 +1352,90 @@ la regla de lint; 138 y 140 cambian solo pruebas protegidas y sus utilidades.
   fallan el lint fuera de `infraestructura/prisma/`): una notificación sale de la transacción y la recibe cualquier
   conexión, de cualquier academia. Si una historia necesita avisos entre procesos, lo decide su especificación.
 
+### 20. Correcciones del ataque, ronda 8 (criterios 141 a 143)
+
+La ronda 8 no encontró fallas en las garantías de ejecución de 001. Lo que corrige: 141 y 142 dejan de excluir enteros los
+esquemas que pertenecen a una extensión (solo se excluyen sus objetos), en la API, en `db:crear` y en las pruebas de
+catálogo; 143 rechaza las URL cuya cadena de consulta cambia el usuario, el servidor o la base. No hay migraciones nuevas.
+
+**Esquemas revisados con esquemas de extensiones (criterio 141).**
+
+- El fragmento "esquemas revisados" de la sección 18 pierde el `NOT EXISTS (… classid = 'pg_catalog.pg_namespace' …)`:
+
+  ```sql
+  n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast') AND n.nspname !~ '^pg_(toast_)?temp_'
+  ```
+
+  Se cambia en el CTE `esquemas` de `#comprobarRol` (`backend/src/infraestructura/prisma/base-datos.ts`) y de
+  `problemasDePrivilegiosEnEsquemas` (`scripts/crear-bases.mjs`). Hay que buscar cualquier otra consulta de producción que
+  repita la condición (por ejemplo, con `grep "pg_namespace'::pg_catalog.regclass"`): `problemasDeEsquemas` (criterio 123) hoy
+  no la usa (revisa todos los esquemas), y debe seguir así.
+- Objeto de extensión para el CTE `relaciones`: se mantiene la condición sobre `c.oid` y se agrega, para los tipos
+  compuestos, la del tipo:
+
+  ```sql
+  NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+               WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e'
+                 AND ((d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid)
+                      OR (c.relkind = 'c' AND d.classid = 'pg_catalog.pg_type'::pg_catalog.regclass
+                          AND d.objid = c.reltype)))
+  ```
+
+  El CTE `funciones` no cambia. `conObjetosPropios` sigue igual (`relkind NOT IN ('i', 'I', 't')` o una función).
+- Los índices de una tabla de la extensión no tienen fila `deptype = 'e'` propia (dependen de la tabla), pero ya no cuentan
+  para `conObjetosPropios` y no tienen privilegios de tabla. Las secuencias que crea el guion de una extensión sí la tienen.
+- `privilegiosDeMasEnEsquemas`, `FUNCIONES_APP` y `ESQUEMAS_PERMITIDOS` no cambian. Las correcciones de `db:crear` salen como
+  hoy (`correccionDePrivilegioEnEsquema`), con el esquema delante (`reportes2.t`).
+- `problemasDePrivilegios` (criterio 102, solo `public`) no cambia.
+
+**Pruebas de integración del criterio 141.**
+
+- Preparación con la utilidad de `backend/test/utilidades/extensiones.ts` (ronda 7) o una parecida: comprobar en
+  `pg_extension` si `pgcrypto` ya existe; si existe y su dueño no es el de la prueba, omitir con aviso (`ALTER EXTENSION …
+  ADD` exige ser dueño de la extensión y del objeto). Si no existe, crearla en `public` y quitarla al final.
+- Restauración: `ALTER EXTENSION pgcrypto DROP TABLE …`, `… DROP FUNCTION …`, `… DROP TYPE …` y `… DROP SCHEMA …` de lo que
+  se agregó, y luego `DROP SCHEMA … CASCADE` (un esquema miembro de una extensión no se puede borrar sin quitarlo antes) y
+  `DROP EXTENSION` solo si la creó la prueba. Los `GRANT` a la app o a `PUBLIC` se van con los objetos.
+- La autocomprobación del criterio 142 va dentro de una transacción que se revierte: `ALTER EXTENSION … ADD SCHEMA` es
+  transaccional.
+
+**Pruebas de catálogo (criterio 142).** En `backend/test/utilidades/catalogo.ts`, `esquemasRevisados` queda con las dos
+primeras condiciones; `relacionDeExtension` y `funcionDeExtension` no cambian. Las consultas de los criterios 9, 10, 11, 12,
+124, 126, 132 y 133 ya usan esa función, así que no se tocan. Si alguna prueba repite la condición en su propio SQL, se
+ajusta igual.
+
+**URL sin parámetros de conexión en la consulta (criterio 143).**
+
+- `parametrosDeConexionProhibidos(url)` (P-34): `new URL(url)`, recorrer `searchParams.keys()` (ya decodificadas), pasar a
+  minúsculas, filtrar las de la lista y quitar repetidos. Sin dependencias.
+- Backend: `backend/src/infraestructura/entorno/url-postgres.ts`; `validarEntorno` la llama después de `esUrlPostgres` y
+  agrega un problema por variable con los nombres de los parámetros. `superadmin.ts` y `seed.ts` la llaman sobre
+  `DATABASE_URL` justo después de `leerVariable` y antes de `crearClienteDelDueno`; con algún parámetro, `console.error` y
+  código 1 ("No se hizo ningún cambio. …"). No se pone dentro de `crearClienteDelDueno` para no cambiar las utilidades de
+  prueba que la usan con `options`.
+- Scripts: en `analizarUrlPostgres` de `scripts/lib/entorno.mjs`, después de validar el protocolo; así quedan cubiertos
+  `leerUrlApp`, `leerUrlsBases`, `crearBases` (`db:crear`), `scripts/preparar-bases.mjs` y el hook
+  (`.claude/hooks/preparar-sesion.mjs`, que carga ese archivo con `import()`). El mensaje no usa `valor`.
+- Recomendado, sin criterio propio: la misma comprobación en `scripts/prisma.mjs` sobre `DATABASE_URL` (o
+  `DATABASE_URL_PRUEBAS` con `--pruebas`) antes de llamar a Prisma, para que `npm run db:migrar` solo también la aplique
+  (riesgo aceptado "Otros parámetros de la cadena de consulta"). Si se hace, no puede cambiar el resultado de las pruebas
+  existentes de `scripts/prisma.mjs`.
+- `urlAppSobre` (scripts y pruebas) conserva los parámetros de la URL base (`DATABASE_URL_PRUEBAS`); como esa URL ya se
+  valida, la URL armada no puede traer los prohibidos.
+
+**Notas para las historias siguientes (sin criterio propio; ataque ronda 8).**
+
+- **O3. Sin cachés compartidas entre academias en los servicios.** Un servicio de Nest es una sola instancia para todas las
+  peticiones. Guardar el resultado (o la promesa) de una consulta en una propiedad del servicio o en una variable del módulo
+  (`this.cargando ??= tx.cliente.configuracion.findMany(…)`, `this.planes = await …`) hace que la petición de otra academia
+  reciba los datos de la primera sin usar su propia transacción: RLS no lo ve (la consulta se hizo con la academia
+  correcta) y el criterio 134 tampoco (no se usa la transacción de otro contexto, se usa su resultado). Regla: los servicios
+  no guardan resultados de consultas en propiedades ni en variables del módulo; si una historia necesita caché, la clave
+  incluye la `academia_id` de la sesión (por ejemplo, `Map<academiaId, …>`), se invalida en la escritura y lo decide su
+  especificación. Desde la historia 003 (configuración por academia) el revisor y el adversarial lo buscan.
+- **O2. Repositorio por transacción.** Ya está en la nota O1 de la ronda 7: repositorios sin estado, con `tx` como
+  parámetro.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -1413,6 +1510,9 @@ la regla de lint; 138 y 140 cambian solo pruebas protegidas y sus utilidades.
 | Fila de prueba válida en B (sembrada y borrada) y juicio por lo escrito (criterio 138) | Exigir `42501`; copiar una fila de A y aceptar cualquier error | Falso positivo con disparadores; la copia de A ocultaría una política mal hecha tras un `23505` o `23503` |
 | `EventEmitterAsyncResource` y `getBuiltinModule` de `async_hooks` en el lint normal (criterio 139) | Detección en el envoltorio con `createHook`; prohibir `events` | Falsos positivos con los controladores y costo global; los eventos dentro de `trabajo` son legítimos |
 | Subconsulta escalar de `app_academia_actual()` aceptada (criterio 140) | Solo la llamada directa | Es la forma recomendada por rendimiento y significa lo mismo |
+| Esquemas de extensiones revisados; solo se excluyen los objetos de extensión (ataque ronda 8, criterios 141 y 142) | Excluir el esquema entero; lista fija de esquemas del hosting | Una tabla propia dentro del esquema quedaba fuera de todas las guardas; la lista depende del proveedor y no cubre `ALTER EXTENSION … ADD SCHEMA` |
+| Tipo compuesto de extensión reconocido por su `reltype` (criterio 141) | No contar nunca los tipos compuestos; contarlos como propios | Cambiaría el sentido del criterio 130; rechazaría sin motivo esquemas como `topology` |
+| Rechazar `user`, `host`, `hostaddr`, `password`, `port`, `dbname` y `database` en la cadena de consulta (criterio 143) | Leer la URL con `pg-connection-string` en `db:crear`; rechazar toda cadena de consulta | El hook no carga `node_modules` y la URL seguiría siendo ambigua; `options` y `sslmode` son necesarios |
 
 ## Migraciones
 
@@ -1433,6 +1533,9 @@ la regla de lint; 138 y 140 cambian solo pruebas protegidas y sus utilidades.
   (132 y 133) ya cumplen; si alguna prueba señalara algo, se corrige con una migración nueva.
 - Ronda 7: sin migraciones nuevas. Ninguna tabla ni función de las migraciones es objeto de extensión (criterio 137), y
   las políticas de `auditoria` y `configuraciones` cumplen los criterios 138 y 140.
+- Ronda 8: sin migraciones nuevas. Las migraciones no crean esquemas ni agregan nada a extensiones, así que la comprobación
+  del rol y las pruebas de catálogo con los esquemas de extensiones (criterios 141 y 142) pasan sobre la base de pruebas; la
+  validación de las URL (143) es de código.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).

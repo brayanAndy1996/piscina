@@ -33,6 +33,12 @@ Tras la ronda 6 se agregaron los criterios 130 a 136 (sección O de `spec.md`) y
 son T82 a T91, antes del cierre. Los criterios 9 a 13, 17, 18, 84, 94, 100, 102, 106, 121, 123, 124 y 126 y la precisión
 P-26 quedaron ampliados, complementados o con la preparación de su prueba ajustada.
 
+Tras la ronda 7 se agregaron los criterios 137 a 140 (sección P de `spec.md`); sus tareas son T92 a T98.
+
+Tras la ronda 8 se agregaron los criterios 141 a 143 (sección Q de `spec.md`), la precisión P-34 y una precisión de P-31;
+sus tareas son T99 a T106, antes del cierre. La definición de "esquemas revisados" (sección O) y los criterios 5, 130, 131 y
+137 quedaron ajustados o ampliados.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -362,6 +368,41 @@ altas.
 - [ ] T98 · adversarial · Ronda 8 sobre todo lo anterior, en especial 137 a 140 (API y `db:crear` ante extensiones,
       objetos agregados a una extensión, fila de prueba del `INSERT` con disparadores y restricciones, emisores y recursos
       asíncronos que conservan el contexto, forma de las políticas con subconsulta); si hay fallas, se repite el ciclo
+
+## Ataque adversarial, ronda 8 (12/11/2026)
+
+Falla F1 y observación O1 de la ronda 8 (sobre `65a4166`); criterios 141 a 143 de `spec.md` (sección Q), precisión de P-31 y
+P-34. O2 y O3 quedan como notas en la sección 20 del plan. La ronda no encontró fallas en las garantías de ejecución de 001.
+
+- [ ] T99 · test-writer · Pruebas protegidas en rojo de los criterios 141 a 143 (archivos en "Protegidas del ataque ronda 8"
+      del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: el caso reproducido
+      (`pgcrypto` en `public`, `ALTER EXTENSION pgcrypto ADD SCHEMA reportes2`, tabla sin RLS con `GRANT` a la app) en la
+      API, en `db:crear` y en el catálogo, sus variantes y el control con un esquema de extensión que solo tiene objetos de
+      la extensión (141, 142); y P-34 en los dos archivos, `validarEntorno`, `analizarUrlPostgres`, `db:crear`, el hook, el
+      comando y la semilla (143). En el mismo commit: quitar de `esquemasRevisados` (`backend/test/utilidades/catalogo.ts`)
+      la exclusión de los esquemas de extensiones (142) y comprobar que ninguna protegida anterior cambia de resultado sobre
+      la base de pruebas real ni por el criterio 143 (si alguna cambiara, detenerse e informar). Commit: "Pruebas protegidas
+      (001), ataque ronda 8: esquemas de extensiones y parámetros de conexión en la URL (en rojo)" (criterios 141 a 143)
+- [ ] T100 · tester · Confirmar que T99 falla por la razón esperada: la API y `db:crear` aceptan la tabla de `reportes2`
+      (141), la autocomprobación del catálogo no ve los objetos de `reportes_ext_prueba` hasta el ajuste de
+      `esquemasRevisados` (142; con el ajuste en el mismo commit se informa como verde por diseño), y `url-postgres.ts` y
+      `parametrosDeConexionProhibidos` no existen o `validarEntorno`, `db:crear`, el hook, el comando y la semilla aceptan
+      `?user=` (143). Se informan como verdes por diseño el control del caso 4 del 141 y los casos que pasan del 143. Lo que
+      exige instalar extensiones o ser su dueño se confirma en la CI de Linux o en Docker si en la nube se omite
+- [ ] T101 · backend · Esquemas revisados sin la exclusión de esquemas de extensiones y tipo compuesto de extensión por su
+      `reltype`, en `#comprobarRol` (`base-datos.ts`) y en `problemasDePrivilegiosEnEsquemas` (`scripts/crear-bases.mjs`),
+      y en cualquier otra consulta de producción que repita la condición (plan, sección 20) (criterio 141)
+- [ ] T102 · backend · `PARAMETROS_DE_CONEXION_PROHIBIDOS` y `parametrosDeConexionProhibidos` en
+      `backend/src/infraestructura/entorno/url-postgres.ts` y en `scripts/lib/entorno.mjs` (P-34); llamada en
+      `validarEntorno` y en `analizarUrlPostgres` (cubre `db:crear` y el hook) (criterio 143)
+- [ ] T103 · backend · La misma comprobación en `backend/src/cli/superadmin.ts` y `backend/prisma/seed.ts` sobre
+      `DATABASE_URL`, antes de `crearClienteDelDueno`; opcional, en `scripts/prisma.mjs` (plan, sección 20) (criterio 143)
+- [ ] T104 · backend · Si las pruebas de 141 o 142 señalan algo con las migraciones actuales, corregirlo con una migración
+      nueva (sin editar las aplicadas) (criterios 141, 142)
+- [ ] T105 · orquestador · `git diff` desde el commit de T99: T101 a T104 no tocaron pruebas protegidas
+- [ ] T106 · adversarial · Ronda 9 sobre todo lo anterior, en especial 141 a 143 (objetos propios en esquemas de
+      extensiones, tipos y otros objetos de extensiones, parámetros de la URL y diferencias entre los lectores de URL); si
+      hay fallas, se repite el ciclo
 
 ## Cierre
 
