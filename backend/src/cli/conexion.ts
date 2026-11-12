@@ -64,13 +64,15 @@ export function crearClienteDelDueno(url: string, opciones: OpcionesClienteDelDu
  * 121 y 122; cada función calificada con `pg_catalog.`, porque PostgreSQL la resuelve antes de fijar el `search_path`), aunque la conexión traiga otros por la URL (`options`), por el rol o por la base (criterio 90), y la zona horaria
  * en `UTC` (criterio 98: el adaptador de Prisma envía las fechas sin desfase) y los parámetros de formato `DateStyle`,
  * `IntervalStyle`, `extra_float_digits` y `bytea_output` (criterio 107: el adaptador interpreta el texto que devuelve
- * PostgreSQL y ese texto depende de la sesión). A continuación cierra todo cursor que haya
+ * PostgreSQL y ese texto depende de la sesión). Fija también `client_encoding` en `UTF8` (criterio 146: el adaptador envía y
+ * lee siempre UTF-8) y `synchronous_commit` en `on`, `array_nulls` en `on` y `transform_null_equals` en `off` (criterio 147:
+ * lo que se confirma y lo que se escribe no depende de la sesión). A continuación cierra todo cursor que haya
  * sobrevivido en la conexión (`CLOSE ALL`, criterio 101). Toda transacción de academia que agregue un comando en el futuro
  * fija también los dos valores.
  */
 export function enPlataforma<T>(cliente: PrismaClient, trabajo: (tx: ClienteTransaccion) => Promise<T>): Promise<T> {
   return cliente.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_catalog.set_config('search_path', 'pg_catalog, public, pg_temp', true), pg_catalog.set_config('standard_conforming_strings', 'on', true), pg_catalog.set_config('app.academia_id', '', true), pg_catalog.set_config('app.plataforma', 'si', true), pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true), pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true), pg_catalog.set_config('bytea_output', 'hex', true)`;
+    await tx.$queryRaw`SELECT pg_catalog.set_config('search_path', 'pg_catalog, public, pg_temp', true), pg_catalog.set_config('standard_conforming_strings', 'on', true), pg_catalog.set_config('app.academia_id', '', true), pg_catalog.set_config('app.plataforma', 'si', true), pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true), pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true), pg_catalog.set_config('bytea_output', 'hex', true), pg_catalog.set_config('client_encoding', 'UTF8', true), pg_catalog.set_config('synchronous_commit', 'on', true), pg_catalog.set_config('array_nulls', 'on', true), pg_catalog.set_config('transform_null_equals', 'off', true)`;
     await cerrarCursores(tx);
     return trabajo(tx);
   });

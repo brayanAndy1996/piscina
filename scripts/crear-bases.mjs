@@ -9,7 +9,15 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { cargarEnv, esNombreValido, leerUrlApp, leerUrlsBases, USUARIO_APP } from './lib/entorno.mjs';
+import {
+  cargarEnv,
+  diferenciasConDesarrollo,
+  esNombreValido,
+  leerUrlApp,
+  leerUrlsBases,
+  mensajeDeDiferenciasConDesarrollo,
+  USUARIO_APP,
+} from './lib/entorno.mjs';
 import {
   correccionDePrivilegio,
   correccionDePrivilegioEnEsquema,
@@ -451,6 +459,9 @@ export async function crearBases(env = process.env) {
       'DATABASE_URL_APP debe usar un usuario distinto del de DATABASE_URL: la API no es el dueño de las tablas.',
     );
   }
+  // Criterio 148 (P-35): la API usaría otra base o servidor que la que revisa este script. Antes de abrir ninguna conexión.
+  const diferencias = diferenciasConDesarrollo(app, desarrollo);
+  if (diferencias.length > 0) throw new Error(mensajeDeDiferenciasConDesarrollo(diferencias));
   const nombres = [...new Set([desarrollo.base, pruebas.base])];
   for (const nombre of nombres) {
     if (!esNombreValido(nombre)) {

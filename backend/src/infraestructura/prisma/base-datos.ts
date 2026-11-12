@@ -166,7 +166,8 @@ export class BaseDatos implements OnModuleDestroy {
    * Primera sentencia de toda transacción: fija **los dos** valores de contexto con `set_config(..., true)` (locales a
    * la transacción), el `search_path` en `pg_catalog, public, pg_temp` y `standard_conforming_strings` en `on` (criterios 121 y
    * 122), la zona horaria en `UTC` y los parámetros de formato que el adaptador de Prisma interpreta
-   * (`DateStyle`, `IntervalStyle`, `extra_float_digits` y `bytea_output`), sin importar lo que traiga la conexión del pool:
+   * (`DateStyle`, `IntervalStyle`, `extra_float_digits` y `bytea_output`), `client_encoding` en `UTF8` (criterio 146), y
+   * `synchronous_commit` en `on`, `array_nulls` en `on` y `transform_null_equals` en `off` (criterio 147), sin importar lo que traiga la conexión del pool:
    * valores de sesión de un módulo, `options` de la URL o valores por defecto del rol, de la base o del servidor (criterios 72,
    * 98, 107, 121 y 122). Cada función va calificada con `pg_catalog.`: PostgreSQL la resuelve con el `search_path` que trae la
    * conexión, antes de fijarlo, y un esquema del atacante antes de `pg_catalog` podría tapar `set_config`. Una sola sentencia,
@@ -186,7 +187,9 @@ export class BaseDatos implements OnModuleDestroy {
              pg_catalog.set_config('app.academia_id', ${contexto.academiaId}, true),
              pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true),
              pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true),
-             pg_catalog.set_config('bytea_output', 'hex', true)`;
+             pg_catalog.set_config('bytea_output', 'hex', true), pg_catalog.set_config('client_encoding', 'UTF8', true),
+             pg_catalog.set_config('synchronous_commit', 'on', true), pg_catalog.set_config('array_nulls', 'on', true),
+             pg_catalog.set_config('transform_null_equals', 'off', true)`;
     await cerrarCursores(tx);
   }
 

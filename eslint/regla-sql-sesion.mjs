@@ -498,7 +498,7 @@ function llamadasASetConfig(normalizado) {
   );
 }
 
-/** Los parámetros que `BaseDatos` y `enPlataforma` fijan en cada transacción, con sus valores exactos (criterios 98, 107, 121 y 122). */
+/** Los parámetros que `BaseDatos` y `enPlataforma` fijan en cada transacción, con sus valores exactos (criterios 98, 107, 121, 122, 146 y 147). */
 const AJUSTES_FIJOS_PERMITIDOS = new Map([
   ["'timezone'", "'utc'"],
   ["'datestyle'", "'iso, mdy'"],
@@ -508,6 +508,11 @@ const AJUSTES_FIJOS_PERMITIDOS = new Map([
   // Criterios 121 y 122 (ataque ronda 5): el `search_path` fijo y las cadenas estándar.
   ["'search_path'", "'pg_catalog, public, pg_temp'"],
   ["'standard_conforming_strings'", "'on'"],
+  // Criterios 146 y 147 (ataque ronda 9): la codificación del cliente y los parámetros que cambian lo que se confirma o se escribe.
+  ["'client_encoding'", "'utf8'"],
+  ["'synchronous_commit'", "'on'"],
+  ["'array_nulls'", "'on'"],
+  ["'transform_null_equals'", "'off'"],
 ]);
 
 /**

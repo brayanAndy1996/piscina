@@ -216,6 +216,25 @@ export function leerConexion(env) {
   return { desarrollo, pruebas };
 }
 
+/**
+ * Lee y valida `DATABASE_URL_APP` para el paso "Rol de la aplicación" (spec 001, criterios 6 y 148, P-35). `desarrollo` es
+ * `leerConexion(...).desarrollo`. Comprueba el usuario (`aquagestion_app`, distinto del de `DATABASE_URL`) y que el servidor, el
+ * puerto y la base coincidan con los de `DATABASE_URL`. Lanza el error sin ejecutar `psql` y sin incluir la URL ni la contraseña.
+ * Devuelve las partes de la URL de la app.
+ */
+export function leerUrlAppParaRol(entorno, desarrollo) {
+  const urlApp = utilidades().leerUrlApp(entorno);
+  if (urlApp.usuario !== utilidades().USUARIO_APP) {
+    throw new Error(`El usuario de DATABASE_URL_APP debe ser ${utilidades().USUARIO_APP}.`);
+  }
+  if (urlApp.usuario === desarrollo.usuario) {
+    throw new Error('DATABASE_URL_APP debe usar un usuario distinto del de DATABASE_URL.');
+  }
+  const diferencias = utilidades().diferenciasConDesarrollo(urlApp, desarrollo);
+  if (diferencias.length > 0) throw new Error(utilidades().mensajeDeDiferenciasConDesarrollo(diferencias));
+  return urlApp;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Utilidades con efectos
 // ---------------------------------------------------------------------------------------------------------------
@@ -436,14 +455,8 @@ export async function prepararSesion(raiz) {
       // 3b. Rol de la API (aquagestion_app). El de DATABASE_URL no puede crear roles en la nube: lo crea postgres.
       if (baseLista) {
         try {
-          const urlApp = utilidades().leerUrlApp(entornoParaHijos(raiz));
+          const urlApp = leerUrlAppParaRol(entornoParaHijos(raiz), conexion.desarrollo);
           claves.push(urlApp.clave);
-          if (urlApp.usuario !== utilidades().USUARIO_APP) {
-            throw new Error(`El usuario de DATABASE_URL_APP debe ser ${utilidades().USUARIO_APP}.`);
-          }
-          if (urlApp.usuario === usuario) {
-            throw new Error('DATABASE_URL_APP debe usar un usuario distinto del de DATABASE_URL.');
-          }
           const consulta = ejecutarPsqlComoPostgres(sentenciaExisteRol(urlApp.usuario));
           if (!consulta.ok) throw new Error(resumirSalida(consulta.salida, claves));
           if (consulta.salida.split(/\r?\n/).some((linea) => linea.trim() === '1')) {

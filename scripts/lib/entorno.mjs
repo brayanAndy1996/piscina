@@ -106,6 +106,31 @@ export function leerUrlApp(env = process.env) {
 }
 
 /**
+ * Partes en que la conexión de la app (`DATABASE_URL_APP`) difiere de la de desarrollo (`DATABASE_URL`), en el orden
+ * `servidor`, `puerto`, `base`, sin repetir (spec 001, criterio 148, P-35). `app` y `desarrollo` son los objetos que devuelve
+ * `analizarUrlPostgres`. El servidor se compara sin distinguir mayúsculas y sin resolver nombres, el puerto como número y la
+ * base exacta; no se miran el usuario, la contraseña ni la cadena de consulta. Devuelve `[]` si coinciden.
+ */
+export function diferenciasConDesarrollo(app, desarrollo) {
+  const partes = [];
+  if (String(app.host).toLowerCase() !== String(desarrollo.host).toLowerCase()) partes.push('servidor');
+  if (Number(app.puerto) !== Number(desarrollo.puerto)) partes.push('puerto');
+  if (app.base !== desarrollo.base) partes.push('base');
+  return partes;
+}
+
+/**
+ * Mensaje del criterio 148: nombra las dos variables y las partes que difieren, pide corregir `DATABASE_URL_APP` y no incluye la
+ * URL ni la contraseña de ninguna.
+ */
+export function mensajeDeDiferenciasConDesarrollo(partes) {
+  return (
+    `DATABASE_URL_APP debe apuntar al mismo servidor, puerto y base que DATABASE_URL (difieren: ${partes.join(', ')}). ` +
+    'Corrige DATABASE_URL_APP en el .env: la API usaría otra base que la que revisa db:crear.'
+  );
+}
+
+/**
  * URL de la app sobre otra base: el usuario y la contraseña de `urlApp`, y el host, el puerto, la base y los
  * parámetros de `urlBase`. Se usa para apuntar al rol `aquagestion_app` a la base de pruebas.
  */
