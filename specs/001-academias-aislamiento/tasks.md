@@ -572,6 +572,57 @@ amplía el riesgo aceptado "Tiempo límite con una operación de varias sentenci
       que fallan o llegan tarde; nombre del punto de guardado; y que las protegidas anteriores sigan igual); si hay
       fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 13 (12/11/2026)
+
+Falla F1 (alta), falla F2 (media) y observaciones O1 y O2 de la ronda 13 (sobre `8f29106`); criterios 159 a 162 de
+`spec.md` (sección V), P-41, P-42 y precisiones de P-36, P-38 y P-40. Plan, sección 25. La F1 (c) se evaluó y no se
+adopta (decisiones de la ronda 13); la O2 amplía el riesgo aceptado "Dos sentencias más por escritura de un delegado".
+
+- [ ] T139 · test-writer · Pruebas protegidas en rojo de los criterios 159 a 162 (archivos en "Protegidas del ataque ronda
+      13" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: la configuración de
+      lint (formas del ataque y sus variantes que fallan en el lint normal y en el paso protegido, comentarios que no la
+      apagan en el paso protegido, formas con `.catch` y `.then(ok, err)` que pasan, pruebas y frontend fuera de alcance)
+      (159); los casos 1 a 4 del 160 en `conAcademia` y `comoPlataforma`, con `termino === true` al rechazar y la conexión
+      sana después, y la unitaria de `envolver` con la transacción falsa de P-38, casos (i) a (vi) (160); la unitaria del
+      constructor de `ErrorTransaccionAbortada` con una causa con forma de error de Prisma y la reproducción de F2 en
+      `conAcademia`, `comoPlataforma`, la comprobación de la marca y la ruta de un controlador con el registro capturado
+      (161); y `errorParaRegistro` con los errores reales (a), (b) y (c), el `Error` propio con causa de la base, el
+      `Error` común sin cambios, las rutas del filtro con el registro capturado, el manejador de P-40 y `mensajeSeguro`
+      (162). Comprobar que ninguna protegida anterior cambia de resultado por estas pruebas (si alguna cambiara,
+      detenerse e informar). Commit: "Pruebas protegidas (001), ataque ronda 13: promesas descartadas, rechazos después
+      de trabajo y errores de Prisma en el registro (en rojo)" (criterios 159 a 162)
+- [ ] T140 · tester · Confirmar que T139 falla por la razón esperada: el lint no señala `void` ni la función `async` en el
+      lugar (159); las reproducciones 1, 2 y 4 resuelven sin la auditoría (o responden 200) y la unitaria ve el error
+      original durante `asentar()` sin marca (160); la causa de `ErrorTransaccionAbortada` y el registro del 500 contienen
+      `44556677` (161); `registro-de-errores.ts` no existe y los registros del filtro y del manejador muestran los valores
+      (162). Se informan como verdes por diseño: los controles del 160 (caso 3 y unitarias (iv) a (vi)), los `Error`
+      comunes del 162 y las formas que pasan el lint
+- [ ] T141 · backend · Regla de lint de promesas descartadas: `eslint/regla-promesas-descartadas.mjs` (P-41) con la regla
+      propia y el bloque con tipos; `eslint.config.mjs` (los dos bloques, después de `aquagestion/typescript`) y
+      `eslint.protegido.config.mjs` (la regla propia, y el criterio 159 en el comentario de cabecera); `main.ts` con
+      `arrancar().catch(…)` y `process.exit(1)`; `envoltorio.ts` sin `void`; `npm run lint` en verde sin apagar reglas
+      (plan, sección 25) (criterio 159)
+- [ ] T142 · backend · `registro-de-errores.ts` en `infraestructura/prisma/` (P-42: `CausaLimpia`, `causaLimpia`,
+      `esErrorDeBase`, `errorParaRegistro`, `CircunstanciaDeLaCausa`), exportado por `index.ts`; constructor de
+      `ErrorTransaccionAbortada` con la causa limpia (precisión de P-36) (plan, sección 25) (criterios 161 y 162)
+- [ ] T143 · backend · Envoltorio: desde `asentar()`, el rechazo de una operación entregada marca y rechaza con
+      `ErrorTransaccionAbortada` (`rechazo-tras-trabajo`); `incompleta` con operación, circunstancia y error;
+      `exigirCompleta` y los caminos de 154 y 156 con `causaLimpia`; `#registrarAbortada` con la causa limpia (plan,
+      sección 25) (criterios 160 y 161)
+- [ ] T144 · backend · Registro limpio: `FiltroErrores` (las dos ramas 5xx), `crearManejadorDeRechazos` (precisión de
+      P-40), `mensajeSeguro` y el error del arranque de `main.ts` con `errorParaRegistro`; confirmar que el `PrismaClient`
+      de `BaseDatos` y de `crearClienteDelDueno` no tiene la opción `log` (plan, sección 25) (criterio 162)
+- [ ] T145 · backend · Revisar que ningún servicio de 001 tenga promesas descartadas, errores propios que copien el mensaje
+      de otro ni registros de errores fuera de `errorParaRegistro` (`rg "\{ err|console\.(error|warn)|registro\.(error|warn)"
+      backend/src backend/prisma`); si hay alguno, corregirlo (plan, sección 25) (criterios 159 y 162)
+- [ ] T146 · orquestador · `git diff` desde el commit de T139: T141 a T145 no tocaron pruebas protegidas
+- [ ] T147 · adversarial · Ronda 14 sobre todo lo anterior, en especial 159 a 162 (formas de descartar promesas que
+      escapen a las dos reglas; rechazos de operaciones justo antes, durante y después de `asentar()` y de la comprobación;
+      `.catch`, `.then(ok, err)`, `allSettled` y `try`/`catch` en continuaciones; llamadas rechazadas al llamar durante
+      `asentar()`; causas y registros con valores por cualquier camino: filtro, manejador, `#registrarAbortada`, comandos,
+      semilla, pino-http, el registro de Nest; errores de Prisma no reconocidos por `esErrorDeBase`; getters que lanzan y
+      ciclos en `errorParaRegistro`; y que las protegidas anteriores sigan igual); si hay fallas, se repite el ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
@@ -580,7 +631,9 @@ amplía el riesgo aceptado "Tiempo límite con una operación de varias sentenci
       ronda 10: la sección "Fechas y horas de negocio (America/Lima)" de `docs/arquitectura.md`, con el texto propuesto
       en el plan, sección 22, nota O1. Desde la ronda 11: las tres viñetas de transacciones del plan, sección 23
       (consultas a la vez, errores atrapados y bloqueos con `$executeRaw`). Desde la ronda 12: las tres viñetas del plan,
-      sección 24 (cada paso con `await`, escrituras que fallan sin dejar nada, `academias` y `findMany` con `in`)
+      sección 24 (cada paso con `await`, escrituras que fallan sin dejar nada, `academias` y `findMany` con `in`). Desde
+      la ronda 13: las tres viñetas del plan, sección 25 (sin promesas descartadas, registros sin mensajes de Prisma,
+      cargas masivas con `createMany` o `$executeRaw`)
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)

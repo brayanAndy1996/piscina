@@ -157,6 +157,13 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   - 158: auditoría (RN-22) y, desde las historias siguientes, pagos y aforo; una escritura con relaciones anidadas que
     fallaba a medio camino dejaba escrita una parte (por ejemplo, una academia suspendida sin su registro de auditoría) y,
     si `trabajo` atrapaba el error como permite el criterio 153, se confirmaba.
+- **V. Correcciones del ataque, ronda 13 (159 a 162):**
+  - 159 y 160: auditoría (RN-22) y, desde las historias siguientes, pagos, caja, aforo y asistencia; una función `async`
+    lanzada con `void` dentro de `trabajo` cuya consulta fallaba después de que `trabajo` terminó dejaba confirmado lo
+    anterior sin la auditoría (por ejemplo, un cobro sin su registro), y la API respondía éxito.
+  - 161 y 162: datos sensibles (Ley 29733, RNF-05); el registro técnico de un 500 o de un rechazo sin manejar copiaba el
+    mensaje de Prisma con los valores de la consulta (un DNI, y desde las historias siguientes datos médicos o de menores,
+    o el token del QR), y cualquiera con acceso a los registros los leía.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -964,7 +971,8 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
     de `/* eslint-disable */` o de `/* eslint … off */` (con y sin nombre de regla), sigue dando error; con
     `eslint.config.mjs`, un `// eslint-disable-next-line @typescript-eslint/no-explicit-any` en un archivo de
     `backend/src` apaga esa regla; y el script `lint` de `package.json` incluye el paso con `--no-inline-config`.
-    _(crítico; prueba de la configuración de lint y verificación del revisor)_
+    _(crítico; prueba de la configuración de lint y verificación del revisor)_ _(ampliado por el criterio 159, ataque ronda
+    13: el paso protegido aplica además la regla sin tipos de promesas descartadas de P-41, que ningún comentario apaga)_
 97. **Solo se compila lo que el lint revisa** _(ataque ronda 3, O1; complementa el criterio 95)_. Dados
     `backend/tsconfig.build.json` y los `tsconfig` de los que hereda, entonces ninguno activa `allowJs`, así que la
     compilación del backend solo toma `.ts`, `.tsx`, `.mts` y `.cts`; y como `tsx` (comandos y desarrollo) también
@@ -2322,7 +2330,9 @@ nuevo: precisiones P-36 y P-37. Todos son _(crítico)_.
      criterios 21 y 26 y complementa el 22; decisión del orquestador)_ _(ampliado por los criterios 153 y 154, ataque ronda
      11: `asentar` espera también la cola, y una consulta que vuelve con `undefined` hace rechazar)_ _(ampliado por el
      criterio 156, ataque ronda 12: `asentar` espera también las consultas encadenadas que lleguen mientras corre, y una
-     llamada que llega cuando el envoltorio ya se apagó hace rechazar)_. Dado que, si una
+     llamada que llega cuando el envoltorio ya se apagó hace rechazar)_ _(ampliado por el criterio 160, ataque ronda 13:
+     desde `asentar()`, toda operación entregada que rechaza hace rechazar, aunque alguien atrape su rechazo; `cause`
+     precisada por el criterio 161: nunca lleva el mensaje de Prisma ni los valores)_. Dado que, si una
      sentencia falla dentro de `trabajo`
      y `trabajo` atrapa el error y termina bien (un reintento que atrapa `esViolacionDeUnicidad`, un `.catch(() =>
      undefined)`, un `try`/`catch` vacío), PostgreSQL deja la transacción abortada; que Prisma 7 envía `COMMIT` y
@@ -2438,7 +2448,10 @@ _(crítico)_.
      26, 30 y 149; **precisa** la segunda viñeta del 106; decisión del orquestador)_ _(quinta viñeta precisada por el
      criterio 158, ataque ronda 12: la escritura de un delegado que rechaza con un error que no es de la base no deja nada
      propio, así que lo que se confirma es todo lo demás; sexta viñeta ampliada por el criterio 156: `asentar` espera
-     también las consultas encadenadas que lleguen mientras corre)_. Dado que, dentro de una transacción
+     también las consultas encadenadas que lleguen mientras corre)_ _(quinta viñeta precisada por el criterio 160, ataque
+     ronda 13: atrapar un error que no es de la base y seguir vale para los rechazos que se asientan mientras `trabajo`
+     sigue en curso; desde `asentar()`, todo rechazo de una operación entregada hace rechazar la transacción)_. Dado que,
+     dentro de una transacción
      interactiva, Prisma 7.10.1 agrupa en un lote las consultas enviadas en el mismo turno (`Promise.all`, `map` con
      funciones `async`, `Promise.allSettled`), las ejecuta en orden y, ante el primer error que no es de la base (P2025 de
      `update` o `delete` sobre una fila que no existe, o el error al leer una columna de tipo `void`), deja de ejecutar el
@@ -2502,7 +2515,9 @@ _(crítico)_.
      reversión ante un error de `trabajo` (22), la conexión del pool (23), la concurrencia (24) y las de tiempos de espera y
      de duración. Si alguna cambiara, el test-writer o el backend se detienen e informan. _(crítico)_
 154. **Una operación que vuelve con `undefined` hace fallar la transacción** _(ataque ronda 11, F1, segunda capa;
-     **amplía** los criterios 149 y 153 y P-36; decisión del orquestador)_. Dado que Prisma nunca resuelve con `undefined`
+     **amplía** los criterios 149 y 153 y P-36; decisión del orquestador)_ _(precisado por el criterio 160, ataque ronda 13:
+     "una consulta falsa que rechaza no marca nada" vale antes de `asentar()`; desde `asentar()`, el rechazo de una
+     operación entregada marca)_. Dado que Prisma nunca resuelve con `undefined`
      ninguna de las operaciones que expone el envoltorio (`$queryRaw` devuelve un arreglo; `$executeRaw`, un número; las
      de lectura de un registro, el registro o `null`; las de varios, un arreglo o `{ count }`), y que un `undefined` es la
      señal de una consulta que no se ejecutó (criterio 153), entonces, si una función del envoltorio recibe `undefined` de
@@ -2549,7 +2564,10 @@ Contrato nuevo: precisiones P-39 y P-40 y precisión de P-38. Todos son _(críti
 
 156. **El envoltorio acepta las consultas encadenadas hasta que `asentar` termina; una que llega tarde hace rechazar**
      _(ataque ronda 12, F1; **amplía** los criterios 21, 26, 30 y 149; **precisa** la tercera viñeta del 106, la sexta del
-     153 y P-38; decisión del especificador sobre el resultado esperado)_. Dado que `asentar()` solo esperaba las consultas
+     153 y P-38; decisión del especificador sobre el resultado esperado)_ _(precisado por los criterios 159 y 160, ataque
+     ronda 13: la forma `void` deja de pasar el lint en `backend/src` fuera de las pruebas; y desde `asentar()`, una
+     operación de la cadena que rechaza hace rechazar la transacción aunque un `.catch` la atrape; la "llamada tardía" y
+     el "resultado esperado" no cambian para las operaciones que resuelven)_. Dado que `asentar()` solo esperaba las consultas
      que ya estaban en la cola cuando `terminar()` apagaba el envoltorio; que la segunda consulta de una cadena sin `await`
      (`tx.cliente.x.create(…).then(() => auditoria.registrarEnAcademia(…)).catch(…)`, o
      `void (async () => { await …; await … })()`, formas que el lint acepta) se llama cuando la primera se asienta, ya con
@@ -2614,7 +2632,10 @@ Contrato nuevo: precisiones P-39 y P-40 y precisión de P-38. Todos son _(críti
      la reversión ante un error de `trabajo` (22), la conexión del pool (23), la concurrencia (24) y las de tiempos de
      espera y de duración. Si alguna cambiara, el test-writer o el backend se detienen e informan. _(crítico)_
 157. **Un rechazo sin manejar en la API se registra y no detiene el proceso** _(ataque ronda 12, F1, forma `void`;
-     decisión del especificador)_. Dado que una promesa rechazada que nadie maneja (por ejemplo, la de una función
+     decisión del especificador)_ _(precisado por los criterios 159 y 162, ataque ronda 13: `main.ts` arranca con
+     `arrancar().catch(…)` en lugar de `void arrancar()`, y un error de Prisma o de la base se registra en su forma limpia
+     de P-42; un `Error` que no es de la base se sigue registrando como `{ err: <el mismo error> }`)_. Dado que una promesa
+     rechazada que nadie maneja (por ejemplo, la de una función
      `async` lanzada con `void` cuya llamada al envoltorio rechaza) hoy termina el proceso de la API (Node 22, modo
      `throw`) y corta las peticiones en curso de todas las academias, entonces:
      - `backend/src/main.ts` registra un manejador de `unhandledRejection` (P-40) **después** de que `app.listen` resuelve;
@@ -2635,7 +2656,8 @@ Contrato nuevo: precisiones P-39 y P-40 y precisión de P-38. Todos son _(críti
      hay manejador de `uncaughtException`. _(crítico)_
 158. **Una escritura de un delegado que rechaza no deja escrito nada propio** _(ataque ronda 12, F2; **precisa** la quinta
      viñeta del criterio 153 y **amplía** el 30; decisión del especificador, opción (a) con la capa debajo del
-     envoltorio)_. Dado que, dentro de una transacción interactiva, Prisma 7.10.1 no usa `SAVEPOINT` en las operaciones de
+     envoltorio)_ _(precisado por el criterio 161, ataque ronda 13: la causa con la que la capa marca la transacción llega
+     a `ErrorTransaccionAbortada` solo en su forma limpia, sin el mensaje de Prisma)_. Dado que, dentro de una transacción interactiva, Prisma 7.10.1 no usa `SAVEPOINT` en las operaciones de
      varias sentencias; que una escritura con relaciones anidadas que falla con un error que no es de la base (P2025,
      P2018, P2014) después de ejecutar parte de sus sentencias deja escrito lo ejecutado sin abortar la transacción; y que
      así, si `trabajo` atrapaba el error como permite el criterio 153, se confirmaba un cambio a medias sin auditoría,
@@ -2703,6 +2725,223 @@ Contrato nuevo: precisiones P-39 y P-40 y precisión de P-38. Todos son _(críti
      pruebas protegidas anteriores, en especial 22, 23, 24, 106, 134, 149 a 155 (también el caso 5 del 153: la tercera
      escritura rechaza con `25P02`) y las de tiempos de espera y de duración. Si alguna cambiara, el test-writer o el
      backend se detienen e informan. _(crítico)_
+
+### V. Correcciones del ataque adversarial, ronda 13
+
+Criterios agregados tras la ronda 13 del ataque (12/11/2026, sobre el commit `8f29106`). La ronda encontró una falla alta
+(F1: una función `async` lanzada con `void` dentro de `trabajo` cuya consulta falla con un error que no es de la base
+después de que `trabajo` terminó; nadie marca la transacción y se confirma lo anterior sin la auditoría), una media (F2: la
+causa de `ErrorTransaccionAbortada` lleva el error de Prisma con los valores y el registro del 500 los muestra) y dos
+observaciones (O1: el registro técnico copia mensajes de Prisma con datos personales; O2: más de 64 puntos de guardado con
+escritura en una transacción desbordan la caché de subtransacciones de PostgreSQL). Son decisiones técnicas del
+orquestador (F1 (a), (b) y (c), F2 y O1) y del especificador (forma de la regla de lint, de la causa limpia y del
+serializador), no reglas de negocio nuevas. La F1 (c), marcar la transacción ante un `unhandledRejection` emitido en su
+contexto asíncrono, se evaluó y no se adopta (ver "Decisiones técnicas tras el ataque, ronda 13" y el riesgo aceptado
+"Promesa descartada que escapa al lint"). La O2 no lleva criterio: amplía el riesgo aceptado "Dos sentencias más por
+escritura de un delegado" y es una nota del plan (sección 25). Donde un criterio amplía o precisa uno anterior lo dice, y
+el anterior queda marcado "(… ataque ronda 13)", sin borrar su texto. Contrato nuevo: P-41 y P-42, y precisiones de P-36,
+P-38 y P-40. Todos son _(crítico)_.
+
+159. **Ninguna promesa descartada en `backend/src`: `void` y funciones `async` sin manejar no pasan el lint** _(ataque
+     ronda 13, F1 (a); **amplía** el criterio 96; **precisa** el 156 ("formas que el lint acepta") y el 157 (`main.ts`);
+     decisión del orquestador, forma de la regla del especificador)_. Dado que una promesa descartada dentro de `trabajo`
+     (`void (async () => { await …; await … })()`, una función `async` llamada sin `await`) puede rechazar sin que nadie lo
+     vea, también por un error que no sale del envoltorio (por ejemplo, `ipParaAuditoria` que lanza entre dos consultas),
+     y que el envoltorio no puede saber que esa función iba a seguir llamando, entonces:
+     - **lint normal, con tipos** (`eslint.config.mjs`), en los `.ts` y `.tsx` de `backend/src/` salvo las pruebas
+       (`EXENCION_PRUEBAS`, criterio 110) y el cliente generado: `@typescript-eslint/no-floating-promises` en `error` con
+       `ignoreVoid: false`, `ignoreIIFE: false` y `checkThenables: true` (P-41). Fallan, entre otras: `void <promesa>`,
+       `void (async () => { … })()`, `(async () => { … })();`, una llamada a una función `async` (o que devuelve una
+       promesa) como sentencia sin `await`, `promesa.then(ok);` sin manejador de rechazo y `promesa.finally(fn);` sola;
+     - **lint normal y paso protegido, sin tipos** (`eslint.config.mjs` y `eslint.protegido.config.mjs`), en
+       `ARCHIVOS_DE_CODIGO` salvo las pruebas y el cliente generado: la regla propia
+       `aquagestion-promesas/sin-promesas-descartadas` (P-41) falla con (i) todo operador `void`, salvo `void 0`; y (ii) una
+       sentencia que es la llamada directa a una función `async` escrita en el lugar (`(async () => { … })();`,
+       `(async function () { … })();`) sin `await`. En el paso protegido ningún comentario la apaga (criterio 96);
+     - siguen pasando: `await x`, `return x`, `x.then(ok, err)`, `x.catch(fn)`, `x.then(ok).catch(fn)` y `await
+       Promise.all([…])` (atrapar equivale a un `try`/`catch`, permitido por el criterio 153; lo que pasa si el rechazo
+       llega después de que `trabajo` terminó lo decide el criterio 160);
+     - no aplica al frontend, a `backend/test/`, a las pruebas de `backend/src/` ni a `e2e/` (las pruebas reproducen los
+       ataques con `void`);
+     - el código actual pasa las dos: `main.ts` cambia `void arrancar();` por `arrancar().catch(<fallo al arrancar>)`, que
+       escribe el error en la salida de errores (si es de Prisma o de la base, en su forma limpia, criterio 162) y termina
+       con `process.exit(1)`: un fallo al arrancar sigue terminando el proceso con error (criterio 157); y en
+       `envoltorio.ts`, `void anterior.then(entregar)` pasa a `anterior.then(entregar, nada)` (o una forma equivalente sin
+       promesa descartada; `anterior` nunca rechaza). Si `checkThenables: true` señala otro lugar del código actual, el
+       backend lo corrige si es una promesa descartada de verdad o se detiene e informa si es un falso positivo;
+     - límite (riesgo aceptado "Promesa descartada que escapa al lint"): ninguna de las dos reglas ve una promesa guardada
+       en una variable que nadie espera ni una pasada a una función que no la espera, y el paso protegido (sin tipos) no
+       ve una función `async` con nombre llamada sin `await`; para lo que rechaza dentro del envoltorio, la garantía en
+       ejecución es el criterio 160.
+
+     Prueba de la configuración de lint (con la clase `ESLint`, como las del criterio 96; el archivo con tipos se escribe
+     en una carpeta temporal dentro de `backend/src/modulos/` y se borra al terminar, o se usa `lintText` si el servicio
+     de proyecto de `typescript-eslint` lo acepta con esa ruta): en `backend/src/modulos/ejemplo/ejemplo.service.ts`, con
+     `eslint.config.mjs`, dan error de `@typescript-eslint/no-floating-promises` y de la regla propia la forma exacta del
+     ataque (`void (async () => { await tx.cliente.configuracion.update(…); await auditoria.registrarEnAcademia(tx, …);
+     })()`), su variante con `const ip = ipParaAuditoria(…)` entre las dos consultas y `void promesa`; dan error de
+     `@typescript-eslint/no-floating-promises` `(async () => { … })();`, `hacer();` con `async function hacer()`,
+     `promesa.then(() => 1);` y `promesa.finally(() => 1);`; no dan error de ninguna de las dos `await promesa`,
+     `promesa.then(ok, err)`, `promesa.catch(fn)`, `promesa.then(ok).catch(fn)` (también dentro de un `trabajo` con
+     `await`) ni `void 0`. Con `eslint.protegido.config.mjs` y `allowInlineConfig: false`, en `.ts`, `.js` y `.mjs`: `void
+     promesa`, `void (async () => { … })()` y `(async () => { … })();` dan error de la regla propia, también precedidos de
+     `// eslint-disable-next-line aquagestion-promesas/sin-promesas-descartadas` y de `/* eslint-disable */`; `void 0` y
+     las formas con `.catch` no. Un archivo `*.test.ts` de `backend/src/` con `void (async () => { … })()` no da error de
+     ninguna de las dos, y uno de `frontend/src/` con `void promesa` no da error de la regla propia. Y `npm run lint` pasa
+     sobre el repositorio (lo confirma el tester). Siguen pasando sin cambiar de resultado las pruebas protegidas del
+     criterio 96 (la regla propia no es de `js.configs.recommended` ni de `typescript-eslint`) y las del 157 (proceso
+     hijo). _(crítico)_
+160. **Desde que `trabajo` terminó, el rechazo de una operación del envoltorio hace fallar la transacción** _(ataque ronda
+     13, F1 (b); **amplía** los criterios 149, 154 y 156; **precisa** la quinta viñeta del 153 y P-38; decisión del
+     orquestador)_. Dado que, con `trabajo` ya terminado, una operación enviada sin `await` (dentro de una función `async`
+     lanzada con `void`, o con `.catch`) que rechaza con un error que no es de la base (un P2025) no aborta la transacción
+     en PostgreSQL, que nada la marcaba y que así se confirmaba lo anterior sin lo que venía después (la auditoría), y que
+     un `.catch` que solo corre después de que `trabajo` devolvió ya no puede decidir seguir (la operación ya respondió su
+     valor), entonces:
+     - desde que `#transaccion` llama a `asentar()` (`trabajo` terminó bien) hasta que la transacción se confirma o se
+       revierte, toda operación del envoltorio cuya consulta se entregó a la capa de puntos de guardado o a Prisma (en ese
+       período o antes, mientras `trabajo` corría) y se asienta en ese período con un rechazo, cualquiera que sea (un error
+       de Prisma que no es de la base, como P2025; un error de la base; el de una sentencia de la capa; o `undefined`,
+       criterio 154), marca la transacción, y su promesa rechaza con `ErrorTransaccionAbortada` (motivo `incompleta`,
+       P-36) con la causa limpia del criterio 161, nunca con el error original;
+     - vale aunque quien llamó atrape el rechazo (`.catch`, segundo argumento de `.then`, `try`/`catch` dentro de una
+       función `async`, `Promise.allSettled`): `conAcademia`, `comoPlataforma` y `resolverAcademia` rechazan con
+       `ErrorTransaccionAbortada`, Prisma revierte y no queda nada escrito. La marca se revisa con `exigirCompleta()` en los
+       mismos puntos que la del criterio 156 (después de `asentar()` y otra vez después de la comprobación del 149);
+     - **mientras `trabajo` sigue en curso, nada cambia:** una consulta que se asienta con un rechazo antes de que se llame
+       a `asentar()` rechaza con su propio error, no marca nada (criterio 154) y, si `trabajo` la atrapa y termina bien
+       (y no es un error de la base), se confirma todo lo demás y nada de esa operación (criterios 153 y 158);
+     - las llamadas que se rechazan al llamar, sin entregarse, siguen el criterio 156: envoltorio apagado u otro contexto
+       marcan desde `asentar()`; un argumento no admitido o una operación que no existe rechazan con su `TypeError` y no
+       marcan;
+     - una operación que se resuelve con un valor durante `asentar()` resuelve con ese valor (criterio 156: una cadena que
+       solo espera consultas del envoltorio y no falla queda toda confirmada);
+     - el camino del error no cambia: si `trabajo` lanza, rige el criterio 22 y las consultas de la cola se descartan
+       (criterio 153);
+     - el registro técnico (`#registrarAbortada`) dice que una operación de la transacción rechazó después de que `trabajo`
+       terminó y la nombra (por ejemplo, `configuracion.update`), con el código de Prisma y el SQLSTATE si los hay; nunca
+       sus argumentos, los parámetros, la URL ni el mensaje de Prisma (criterio 162).
+
+     Pruebas de integración con la API de pruebas, las academias A y B (`crearDatosDeAislamiento`) y `BaseDatos` y
+     `AuditoriaService` tomados de la app. Lo escrito se lee como dueño con una conexión nueva. En cada caso, `trabajo` pone
+     `termino = true` justo antes de devolver un valor reconocible, y la operación que falla guarda el valor que ve de
+     `termino` al rechazar (debe ser `true`: prueba que rechazó después de que `trabajo` terminó). Para no dejar un rechazo
+     sin manejar en Vitest, la prueba guarda el rechazo de la función `async` con `.catch(guardar)` en lugar de `void`
+     (en ejecución es lo mismo: el envoltorio no ve quién espera la función). Con el código de `8f29106`, los casos 1 y 2
+     resolvían con el valor y sin la auditoría:
+     1. **reproducción del ataque** (`conAcademia(A, …)`): `await tx.cliente.configuracion.create(<clave prueba_r13_<n>>)`;
+        luego, sin `await`, `(async () => { await tx.cliente.configuracion.update(<una clave de A que no existe>); await
+        auditoria.registrarEnAcademia(tx, …); })().catch(guardar)`; y devuelve. Rechaza con `ErrorTransaccionAbortada`; no
+        quedan ni la fila creada ni el registro; lo guardado de la función es un `ErrorTransaccionAbortada`. En
+        `comoPlataforma`, lo mismo con la creación de una academia con el nombre corto `prueba-r13-<n>`, un
+        `tx.cliente.academia.update` de un UUID que no existe y `registrarEnPlataforma`: rechaza y no queda la academia;
+     2. **`.catch` sin `await`:** en `conAcademia(A, …)`, una escritura y su registro con `await`, y después, sin `await`,
+        `tx.cliente.configuracion.update(<una que no existe>).catch(() => null)`; devuelve. Rechaza con
+        `ErrorTransaccionAbortada` y no queda nada; lo mismo con `.then(() => 1, () => null)` y en `comoPlataforma`;
+     3. **control, mientras `trabajo` corre (153 sin cambios):** `await tx.cliente.configuracion.update(<una que no
+        existe>).catch(() => null)` y `await …then(ok, () => null)` dentro de `trabajo`, luego una escritura y su registro:
+        resuelve y quedan las dos filas;
+     4. **por la API:** un controlador de prueba (opción `controladores` de `crearAppDePruebas`) cuya ruta llama a
+        `comoPlataforma` con la forma del caso 1 responde 500 `ERROR_INTERNO`, y no queda la academia;
+
+     y, después de cada caso, con `DATABASE_POOL_MAX=1`, un `conAcademia(B, …)` resuelve, lee su propio contexto (criterio
+     23) y no ve nada del caso. Prueba unitaria del envoltorio con la transacción falsa de P-38, dentro de `ejecutar`:
+     (i) con una operación entregada y sin asentar, se llama a `asentar()` y la consulta falsa rechaza con un `Error` con
+     `code: 'P2025'` y un texto centinela: la promesa de la operación rechaza con `ErrorTransaccionAbortada` (no con el
+     error original), su texto completo (mensaje, `cause` y pila, con `util.inspect`) no contiene el centinela, y
+     `exigirCompleta()` lanza `ErrorTransaccionAbortada`; (ii) lo mismo cuando a la operación se le encadenó un `.catch`
+     antes de llamar a `asentar()` y la consulta falsa rechaza después (el `.catch` recibe el `ErrorTransaccionAbortada`);
+     (iii) una operación llamada desde la continuación de otra, durante `asentar()`, cuya consulta
+     rechaza: lo mismo; (iv) control: un rechazo antes de llamar a `asentar()` llega con su propio error y no marca
+     (como en el criterio 154); (v) control: durante `asentar()`, una llamada con un argumento no admitido rechaza con
+     `TypeError` y no marca (como en el 156); (vi) control: una operación que resuelve durante `asentar()` resuelve con su
+     valor y no marca. Siguen pasando sin cambiar de resultado las pruebas protegidas anteriores, en especial las del
+     envoltorio (`envoltorio-cola.test.ts`, `envoltorio-asentar.test.ts`), 149 a 158 (el caso 3 del 156 sigue rechazando
+     con `ErrorTransaccionAbortada`), 22, 23, 24, 106 y 134. Si alguna cambiara, el test-writer o el backend se detienen e
+     informan. _(crítico)_
+161. **La causa de `ErrorTransaccionAbortada` nunca lleva el mensaje de Prisma ni los valores** _(ataque ronda 13, F2;
+     **precisa** los criterios 149, 154 y 158 y P-36; decisión del orquestador, forma del especificador)_. Dado que, cuando
+     la comprobación de la capa de puntos de guardado da `25P02`, la capa marcaba la transacción con el error de la
+     escritura como causa, y que el registro del 500 (`FiltroErrores` con `{ err }` y pino, que serializa la `cause`)
+     mostraba el mensaje de Prisma con los valores (`invalid input syntax for type inet: "DNI 44556677"`), entonces:
+     - `ErrorTransaccionAbortada` nunca guarda como `cause` un error de Prisma, del adaptador ni de `pg`, ni un objeto que
+       lleve su mensaje, su `meta`, su pila o su propia `cause`: su constructor reemplaza la causa que recibe por una
+       **causa limpia** (`CausaLimpia`, P-42), un `Error` creado por AquaGestión cuyo mensaje es un texto fijo con, si se
+       conocen, el tipo del error original (de una lista cerrada), el código de Prisma, el SQLSTATE y el nombre de la
+       operación; con `code` igual al SQLSTATE (así `codigoDeErrorDeBase(error.cause)` lo sigue leyendo) y sin `cause` ni
+       `meta`. Si la causa recibida ya es una `CausaLimpia`, la conserva;
+     - vale para todos los caminos que la crean: la capa de puntos de guardado (`exigirSana`, criterio 158),
+       `comprobarTransaccionViva` (149 a 151), el envoltorio (154, 156 y 160) y `enPlataforma` (150);
+     - lo demás de P-36 no cambia: la clase, el estado 500 `ERROR_INTERNO`, el mensaje genérico en la respuesta, `motivo`
+       y quiénes la lanzan; la causa de una operación incompleta o tardía sigue nombrando la operación (las protegidas de
+       los criterios 154 y 156 buscan ese nombre).
+
+     Prueba unitaria (P-42): `new ErrorTransaccionAbortada({ cause })` con una causa falsa con forma de error de Prisma
+     (`name: 'PrismaClientKnownRequestError'`, `code: 'P2007'`, un mensaje y una pila con `DNI 44556677`, y `meta:
+     { modelName: 'Auditoria', driverAdapterError: { cause: { originalCode: '22P02', originalMessage: '… "DNI 44556677"'
+     } } }`): `util.inspect(error, { depth: null, showHidden: true })` y `JSON.stringify` de las propiedades propias del
+     error y de su causa no contienen `44556677`; `error.cause` es una `CausaLimpia`, sin `cause` ni `meta`;
+     `codigoDeErrorDeBase(error.cause)` es `'22P02'`; y con una `CausaLimpia` como causa, `error.cause` es esa misma.
+     Pruebas de integración con la API de pruebas y las academias A y B: (1) **reproducción** en `conAcademia(A, …)`:
+     `try { await tx.cliente.auditoria.create({ data: { …, ip: 'DNI 44556677' } }) } catch {}` y devuelve (orientativo; la
+     forma de `data` depende del modelo): rechaza con `ErrorTransaccionAbortada` cuyo texto completo (mensaje, `cause` y
+     pilas, con `util.inspect` a toda profundidad) no contiene `44556677`, y `codigoDeErrorDeBase(error.cause)` es `'22P02'`
+     o `'25P02'`; en `comoPlataforma`, lo mismo con `tx.cliente.auditoriaPlataforma.create`; (2) **por la comprobación de
+     la marca:** `` try { await tx.cliente.$executeRaw`SELECT ${'DNI 44556677'}::inet` } catch {} `` y devuelve: lo mismo;
+     (3) **por la API:** un controlador de prueba con el caso (1), con el registro de la app capturado (`destinoRegistro`,
+     nivel `info`): responde 500 `ERROR_INTERNO`, ningún registro contiene `44556677` ni `invalid input syntax` y alguno de
+     nivel `warn` o `error` dice que la transacción quedó abortada (como en el criterio 149). Con el código de `8f29106`,
+     (1) y (3) mostraban el valor. Siguen pasando sin cambiar de resultado las protegidas de los criterios 149 a 158.
+     _(crítico)_
+162. **El registro técnico de un error de Prisma o de la base no lleva mensajes, valores ni datos** _(ataque ronda 13, O1;
+     **precisa** los criterios 149 y 157 y P-40; decisión del orquestador, forma del especificador; RNF-05 y Ley 29733)_.
+     Dado que el filtro de errores (500) y el manejador de rechazos registran el error tal cual, y que los mensajes de
+     Prisma pueden llevar los argumentos de la consulta (`PrismaClientValidationError` muestra el `data` completo; un P2007
+     o un `22P02` muestran el valor rechazado: un DNI, el token del QR o, desde las historias siguientes, datos médicos),
+     entonces:
+     - `errorParaRegistro(error)` (P-42) convierte un error en lo que se registra:
+       - un **error de Prisma o de la base** (`esErrorDeBase`, P-42) que no sea una `CausaLimpia` se convierte en un objeto
+         plano con solo: `tipo` (de una lista cerrada), `codigoPrisma` (si cumple `^P\d{4}$`), `sqlstate` (el de
+         `codigoDeErrorDeBase`), `codigoDeSistema` (por ejemplo `ECONNREFUSED`, si cumple `^E[A-Z0-9_]+$`), `modelo` (de
+         `meta.modelName`, solo si es uno de los modelos del esquema) y `pila` (solo las líneas de marco de la pila, las que
+         empiezan con espacios y `at `). Nunca el mensaje, el `meta` (salvo el modelo), la `cause` sin limpiar, las líneas
+         de la pila que no son marcos (Prisma pone ahí el código de la llamada con los argumentos) ni otras propiedades;
+       - un `Error` que no es de la base y en cuya cadena de causas (`cause`, hasta 10 niveles y sin seguir ciclos; también
+         los `errors` de un `AggregateError`) hay un error de la base sin limpiar se convierte en un objeto plano con su
+         `tipo` (el `name`), su `mensaje`, su `pila` y su `causa` convertida de la misma forma;
+       - cualquier otro `Error` (incluida una `CausaLimpia` y un `ErrorTransaccionAbortada` del criterio 161) se devuelve
+         tal cual: el registro de hoy no cambia (las protegidas del filtro y del criterio 157 esperan el mismo objeto);
+       - un valor que no es un `Error` se convierte en `{ tipo: typeof valor }`, nunca su valor (como el criterio 157);
+     - la usan: `FiltroErrores` en las dos ramas que registran un 5xx (`{ err: errorParaRegistro(excepcion) }`); el
+       manejador de rechazos (P-40: `{ err: errorParaRegistro(motivo) }` para un `Error`; `{ tipo }` para lo demás, como
+       hoy); `#registrarAbortada` (que ya registra solo el SQLSTATE y la operación; con el 161 lee la causa limpia); y los
+       comandos y la semilla: `mensajeSeguro` (`backend/src/cli/mensaje-seguro.ts`), con un error de la base, devuelve un
+       texto armado solo con los campos de `errorParaRegistro` sin la pila (por ejemplo, "error de la base
+       (PrismaClientKnownRequestError, P2002, SQLSTATE 23505)"); con cualquier otro error, lo de hoy;
+     - ningún otro lugar de `backend/src` registra o imprime un error de la base sin pasar por `errorParaRegistro` (lo
+       revisa el revisor: `{ err`, `console.error`, `registro.error`, `registro.warn`), y el `PrismaClient` de `BaseDatos`
+       y de `crearClienteDelDueno` no se configura con la opción `log` de errores, avisos ni consultas (hoy no la tiene);
+     - no cambia lo que se responde al cliente (500 `ERROR_INTERNO` con el mensaje genérico) ni el nivel de los registros.
+
+     Pruebas. Errores reales, provocados en `conAcademia(A, …)` sin atraparlos (la llamada rechaza con ese error, criterio
+     22): (a) un `PrismaClientValidationError` con `tx.cliente.configuracion.create({ data: { clave: 'prueba_r13_<n>',
+     valor: {}, dni: '44556677', alergias: 'penicilina-r13' } })` (con un campo que el modelo no tiene; orientativo);
+     (b) la escritura de `ip: 'DNI 44556677'` en `auditoria` por el delegado (Prisma la reporta con P2007 o con el SQLSTATE
+     `22P02`; la prueba acepta cualquiera de los dos y exige el que corresponda en el resultado); (c)
+     `` tx.cliente.$executeRaw`SELECT ${'DNI 44556677'}::inet` `` (`22P02`). Para cada uno: `esErrorDeBase` es verdadero;
+     `util.inspect(errorParaRegistro(error), { depth: null })` y su `JSON.stringify` no contienen `44556677`,
+     `penicilina-r13`, `alergias` ni `invalid input syntax`, y contienen el `tipo` y el `codigoPrisma` o el `sqlstate`. Un
+     `Error` propio con uno de ellos como `cause` da un objeto con su mensaje y la causa limpia; un `Error('boom')` sin
+     causa de la base da el mismo objeto. Por la API, con el registro de la app capturado (`destinoRegistro`, nivel
+     `info`): un controlador de prueba con una ruta por cada error (a), (b) y (c) responde 500 `ERROR_INTERNO`, hay un
+     registro de nivel `error` con el `tipo` y el código, y ningún registro contiene `44556677`, `penicilina-r13` ni
+     `invalid input syntax`. Unitaria de `crearManejadorDeRechazos` (P-40) con el error (a): `registro.error` se llama con
+     `{ err: X }` y `util.inspect(X, { depth: null })` no contiene `44556677` ni `penicilina-r13`. Unitaria de
+     `mensajeSeguro` con un error con forma de error de Prisma (`name: 'PrismaClientKnownRequestError'`, `code: 'P2002'`,
+     mensaje con `44556677`): el texto contiene `P2002` y no `44556677`. Con el código de `8f29106`, el registro de la API
+     y el del manejador mostraban los valores. Siguen pasando sin cambiar de resultado las protegidas del filtro de errores
+     (`filtro-errores.test.ts`), del criterio 157 (unitaria y proceso hijo), de `mensajeSeguro` y de los criterios 35, 46 y
+     149. _(crítico)_
 
 ## Casos límite
 
@@ -2811,6 +3050,20 @@ Contrato nuevo: precisiones P-39 y P-40 y precisión de P-38. Todos son _(críti
 - **Actualizar `academias` desde `conAcademia`** _(ataque ronda 12, O1)_: la política de `UPDATE` de `academias` es solo de
   plataforma; desde una academia, la sentencia toca 0 filas sin error y una escritura anidada sobre la academia puede no
   hacer nada sin avisar. No se actualiza `academias` desde `conAcademia` (plan, sección 24).
+- **Un `.catch` en una cadena sin `await` que falla después de que `trabajo` terminó** _(ataque ronda 13)_: la operación
+  rechaza con `ErrorTransaccionAbortada` y no queda nada (criterio 160). Para ignorar un P2025 y seguir, se atrapa con
+  `await` dentro de `trabajo` (criterio 153).
+- **Función `async` lanzada con `void` dentro de `trabajo`** _(ataque ronda 13)_: no pasa el lint (criterio 159). Si falla
+  dentro del envoltorio después de que `trabajo` terminó, la operación rechaza (160); si falla fuera del envoltorio (una
+  función propia que lanza entre dos consultas), solo el lint la detiene (riesgo aceptado "Promesa descartada que escapa
+  al lint").
+- **Depurar un error de Prisma en desarrollo** _(ataque ronda 13)_: el registro técnico muestra solo el tipo, los códigos,
+  el modelo y los marcos de la pila (criterio 162); el mensaje completo se ve al reproducir el caso en una prueba o en la
+  consola de desarrollo, no en el registro.
+- **Más de 64 escrituras de modelos en una transacción** _(ataque ronda 13, O2)_: cada una abre un punto de guardado;
+  pasado ese número, PostgreSQL desborda la caché de subtransacciones y todo el servidor se vuelve más lento mientras la
+  transacción sigue abierta. Para cargas masivas: `createMany`, `updateMany` o `deleteMany` (una operación, un punto) o
+  `$executeRaw` (plan, sección 25).
 
 ## Reglas de negocio aplicables
 
@@ -2887,6 +3140,7 @@ class ErrorAcademiaNoEncontrada /* 404 ACADEMIA_NO_ENCONTRADA */ {}
 class ErrorAcademiaSuspendida /* 403 ACADEMIA_SUSPENDIDA */ {}
 class ErrorRolBaseDatosInseguro /* 500 ERROR_INTERNO */ {}
 class ErrorTransaccionAbortada /* 500 ERROR_INTERNO; ataque ronda 10, criterios 149 a 151, P-36; ronda 11, criterio 154 */ {}
+// Ataque ronda 13 (criterios 161 y 162, P-42): además CausaLimpia, causaLimpia, esErrorDeBase y errorParaRegistro
 ```
 
 Exportado desde `backend/src/modulos/auditoria/index.ts`:
@@ -3521,6 +3775,62 @@ _(contrato de la ronda 12 del ataque, 12/11/2026; criterios 156 a 158)_. No son 
   `process.on('unhandledRejection', …)` después de `await app.listen(…)`, con el registro de pino de la app. El texto del
   mensaje es libre; la prueba no lo fija.
 
+_(contrato de la ronda 13 del ataque, 12/11/2026; criterios 159 a 162)_. No son reglas de negocio nuevas.
+
+- **P-41. Regla de promesas descartadas (criterio 159).** `eslint/regla-promesas-descartadas.mjs` (nombre orientativo del
+  archivo) exporta la configuración que agregan `eslint.config.mjs` y `eslint.protegido.config.mjs` (las dos importan el
+  mismo bloque, como con `configuracionSqlSesion`, y usan `ARCHIVOS_DE_CODIGO`, `EXENCION_PRUEBAS` y
+  `EXENCION_CLIENTE_GENERADO` de `eslint/archivos-de-codigo.mjs`). Nombres fijos (los usan las pruebas):
+  - complemento `aquagestion-promesas`, regla `sin-promesas-descartadas` (identificador
+    `aquagestion-promesas/sin-promesas-descartadas`), sin información de tipos, en `error`: (i) `UnaryExpression` con
+    `operator: 'void'` cuyo argumento no es el literal `0`; (ii) `ExpressionStatement` cuya expresión es una
+    `CallExpression` (también dentro de una `ChainExpression`) cuyo `callee` es una `ArrowFunctionExpression` o una
+    `FunctionExpression` con `async: true`. El mensaje (texto libre, en español) pide usar `await` o atrapar con
+    `.catch`;
+  - en el lint normal, solo en `backend/src/**/*.{ts,tsx}` sin las pruebas ni el cliente generado, además
+    `'@typescript-eslint/no-floating-promises': ['error', { ignoreVoid: false, ignoreIIFE: false, checkThenables: true }]`.
+    No se agrega al paso protegido (exige información de tipos, que ese paso no usa, y la prueba del criterio 96 rechaza
+    reglas de `typescript-eslint` en él).
+- **P-42. Errores para el registro (criterios 161 y 162).** `backend/src/infraestructura/prisma/registro-de-errores.ts`
+  (nombre orientativo del archivo) define y `backend/src/infraestructura/prisma/index.ts` exporta (nombres fijos: los
+  importan las pruebas):
+
+  ```ts
+  export class CausaLimpia extends Error {          // name 'CausaLimpia'; sin cause ni meta
+    readonly code?: string;                          // el SQLSTATE, si se conoce (lo lee codigoDeErrorDeBase)
+    readonly codigoPrisma?: string;                  // ^P\d{4}$
+    readonly operacion?: string;                     // '$queryRaw', '$executeRaw' o '<delegado>.<operación>' del envoltorio
+  }
+  export type CircunstanciaDeLaCausa = 'sin-resultado' | 'llamada-tardia' | 'rechazo-tras-trabajo';
+  export function causaLimpia(error: unknown, operacion?: string, circunstancia?: CircunstanciaDeLaCausa): CausaLimpia;
+  // Mensaje: un texto fijo por circunstancia (o uno general) + tipo (lista cerrada), código de Prisma, SQLSTATE y
+  // operación, si se conocen. Si `error` ya es una CausaLimpia y no se pasan `operacion` ni `circunstancia`, la devuelve
+  // tal cual. Una `operacion` que no cumple ^(\$queryRaw|\$executeRaw|[a-z][A-Za-z0-9]*\.[a-zA-Z]+)$ se descarta.
+  export function esErrorDeBase(error: unknown): boolean;
+  // Verdadero si: es instancia de PrismaClientKnownRequestError, PrismaClientUnknownRequestError,
+  // PrismaClientValidationError, PrismaClientInitializationError o PrismaClientRustPanicError; o su `name` empieza por
+  // 'PrismaClient' o es 'DriverAdapterError' o 'DatabaseError'; o codigoDeErrorDeBase(error) no es null; o su `code`
+  // cumple ^P\d{4}$. Una CausaLimpia también cuenta (tiene SQLSTATE o código de Prisma).
+  export function errorParaRegistro(error: unknown): unknown;
+  // Lo que se pasa al registro como `err` (criterio 162): objeto plano limpio, el mismo Error o { tipo: typeof valor }.
+  ```
+
+  Lista cerrada de `tipo`: los cinco nombres de las clases de Prisma, `DriverAdapterError`, `DatabaseError`,
+  `CausaLimpia` y, para cualquier otro error de la base, `ErrorDeBase`. Las funciones no lanzan con ninguna entrada
+  (también objetos con `getter` que lanzan, ciclos o `null`).
+- **Precisión de P-36 (criterio 161).** La firma no cambia. El constructor guarda en `cause` la causa limpia:
+  `opciones.cause` si ya es una `CausaLimpia`; si no, `causaLimpia(opciones.cause)`. Sin `cause`, como hoy. La frase "`cause`,
+  si se pasa, es el error de la sentencia de comprobación" se lee: es la forma limpia de ese error (con su SQLSTATE). Las
+  causas de las operaciones incompletas, tardías o rechazadas después de `trabajo` (criterios 154, 156 y 160) son
+  `causaLimpia(<error o undefined>, <operación>, 'sin-resultado' | 'llamada-tardia' | 'rechazo-tras-trabajo')`.
+- **Precisión de P-38 (criterio 160).** Los nombres y las firmas no cambian. Desde que se llama a `asentar()`, una
+  operación entregada que se asienta con un rechazo marca la transacción (`exigirCompleta()` lanza
+  `ErrorTransaccionAbortada`, motivo `incompleta`) y su promesa rechaza con `ErrorTransaccionAbortada` con
+  `causaLimpia(<el rechazo>, <operación>, 'rechazo-tras-trabajo')`. Antes de `asentar()`, como hoy.
+- **Precisión de P-40 (criterio 162).** La firma no cambia. Con un `Error`, el manejador llama a
+  `registro.error({ err: errorParaRegistro(motivo) }, <mensaje fijo>)` (que, para un `Error` que no es de la base, es el
+  mismo objeto); con lo demás, `{ tipo: typeof motivo }`, como hoy.
+
 ## Cambios al modelo de datos
 
 Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados por PostgreSQL
@@ -3786,6 +4096,26 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   - las historias siguientes: cada paso de `trabajo` se espera con `await` (sin cadenas sueltas con `.then` ni `void`);
     una escritura de un delegado que falla con un P2025 se puede atrapar y seguir sin dejar nada a medias; no se actualiza
     `academias` desde `conAcademia`; para leer varias filas por id se usa `findMany` con `in` (plan, sección 24).
+- **Ronda 13 del ataque (criterios 159 a 162):**
+  - el lint de `backend/src` (sin las pruebas) prohíbe las promesas descartadas (criterio 159): `main.ts` (de 000) pasa de
+    `void arrancar()` a `arrancar().catch(…)` con `process.exit(1)`, y `envoltorio.ts` deja de usar `void`. Las pruebas
+    protegidas que reproducen ataques con `void` (por ejemplo, el caso 2 del 156 y `backend/test/utilidades/ronda10.ts`)
+    están fuera del alcance de las reglas y no cambian. La prueba protegida del criterio 96 sigue pasando: la regla propia
+    no es de `js.configs.recommended` ni de `typescript-eslint`. Si alguna protegida de lint anterior cambiara de
+    resultado, el test-writer se detiene e informa;
+  - desde `asentar()`, una operación entregada que rechaza hace rechazar la transacción (criterio 160). Las protegidas de
+    la cola (153 y 154) y de `asentar` (156) que rechazan una consulta lo hacen antes de `asentar()` o al llamar, así que
+    no cambian; el caso 3 del 156 y la variante "sin await" del 149 ya esperaban `ErrorTransaccionAbortada`;
+  - `ErrorTransaccionAbortada.cause` pasa a ser una `CausaLimpia` (criterio 161); `#registrarAbortada` la lee igual (el
+    SQLSTATE con `codigoDeErrorDeBase`, la operación por su mensaje). Las protegidas de 154 y 156 que buscan el nombre de
+    la operación en el error lo siguen encontrando;
+  - el filtro de errores (de 000, ampliado en 001), el manejador de rechazos (157) y `mensajeSeguro` (comandos y
+    semilla) registran los errores de la base limpios (criterio 162); con un `Error` que no es de la base registran lo
+    de hoy, así que `filtro-errores.test.ts`, `rechazos.test.ts`, `rechazos-proceso.test.ts` y `mensaje-seguro.test.ts` no
+    cambian de resultado;
+  - las historias siguientes: dentro de `trabajo`, cada paso con `await` y sin promesas descartadas (el lint lo exige);
+    ningún error propio copia el mensaje de otro; los registros técnicos de errores pasan por `errorParaRegistro`; las
+    cargas masivas usan `createMany`, `updateMany`, `deleteMany` o `$executeRaw` (plan, sección 25).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -4066,6 +4396,33 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 - **Dos sentencias más por escritura de un delegado** _(ataque ronda 12, criterio 158)_: crear y liberar el punto de
   guardado agregan dos viajes a la base por escritura (tres más si rechaza sin abortar). Con el volumen de una academia
   no se nota; si una historia escribe muchas filas, usa `createMany` (una sola operación) o `$executeRaw`.
+  _(Ampliado tras la ronda 13, O2.)_ Cada punto de guardado en el que se escribe es una subtransacción con su propio
+  identificador, y los liberados siguen contando hasta que la transacción termina. Con más de 64 escrituras de modelos
+  que escriben dentro de una misma transacción, PostgreSQL desborda la caché de subtransacciones de esa conexión
+  (`subxact_overflowed`): mientras la transacción sigue abierta, las demás conexiones del servidor (todas las academias)
+  tienen que consultar `pg_subtrans` para armar sus instantáneas y todo se vuelve más lento. Las lecturas y `$queryRaw` o
+  `$executeRaw` no abren puntos de guardado, y una escritura que se deshace con `ROLLBACK TO` deja de contar. Se acepta
+  porque las operaciones de 001 escriben dos o tres filas por transacción. Regla para el equipo: para cargas masivas
+  (importaciones, generación de mensualidades, cierres) se usa `createMany`, `updateMany` o `deleteMany` (una operación,
+  un punto de guardado) o `$executeRaw` (ninguno), nunca un bucle de escrituras de un modelo dentro de una transacción. Lo
+  vigila el revisor desde la historia 005.
+- **Promesa descartada que escapa al lint** _(ataque ronda 13, criterios 159 y 160)_: las reglas del criterio 159 no ven
+  una promesa guardada en una variable que nadie espera (`const p = (async () => { … })();`) ni una pasada a una función
+  que no la espera, y el paso protegido (sin tipos) no ve una función `async` con nombre llamada sin `await` (el lint
+  normal sí). Si esa función falla dentro del envoltorio después de que `trabajo` terminó, el criterio 160 hace rechazar
+  la operación; pero si falla **fuera** del envoltorio (por ejemplo, `ipParaAuditoria` que lanza entre dos consultas), la
+  consulta siguiente nunca se llama, nada marca la transacción y se confirma lo anterior sin lo que faltaba (el rechazo
+  queda en el registro por el manejador del criterio 157, ya limpio por el 162). Lo mismo con una llamada con un argumento
+  no admitido dentro de una continuación durante `asentar()` (el criterio 156 decide que no marca): es un error de
+  programación que falla siempre y lo ven las pruebas de la historia. Se acepta porque el lint cubre las formas
+  habituales (`void`, la función escrita en el lugar, la llamada como sentencia) y no hay una forma fiable de saber desde
+  `BaseDatos` que una función ajena iba a seguir llamando (la marca por `unhandledRejection` se evaluó y se descartó:
+  "Decisiones técnicas tras el ataque, ronda 13"). Regla para el equipo, como en la ronda 12: dentro de `trabajo`, cada
+  paso con `await`. Lo buscan el revisor y el adversarial.
+- **Mensajes propios que copian el de Prisma** _(ataque ronda 13, criterio 162)_: `errorParaRegistro` limpia los errores de
+  Prisma y de la base y los que los llevan como `cause`, pero no puede limpiar un `Error` propio cuyo mensaje se armó con
+  el de Prisma (`` new Error(`falló: ${error.message}`) ``). Regla para el equipo: un error propio nunca copia el mensaje de
+  otro; se encadena con `{ cause }`. Lo busca el revisor.
 - **Argumentos que `trabajo` cambia después de llamar** _(ataque ronda 11, criterio 153)_: una consulta que espera en la
   cola lee sus argumentos cuando le toca; si `trabajo` cambia el objeto que pasó (por ejemplo, `data`) antes de ese
   momento, puede enviarse con el cambio. No cruza academias (el contexto y la RLS son los de la transacción) y es un error de
@@ -4472,9 +4829,68 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   limitarlo a escrituras sin relaciones anidadas (la regla tendría que vivir en el lint o en la revisión, y la capa ya lo
   hace seguro).
 
+### Decisiones técnicas tras el ataque, ronda 13 (12/11/2026)
+
+- **Corrección de fondo en dos capas: lint y ejecución** (criterios 159 y 160; decisión del orquestador). Alternativa
+  descartada: corregir caso por caso (la falla es la misma familia que las rondas 11 y 12: una promesa que nadie espera y
+  que falla después de que `trabajo` terminó; cada caso cerrado dejaba otra forma abierta).
+- **El lint con dos reglas: `no-floating-promises` con tipos en el lint normal y una regla propia sin tipos en los dos
+  pasos** (criterio 159; forma del especificador). `no-floating-promises` con `ignoreVoid: false` ve todas las promesas
+  descartadas, pero necesita información de tipos, que el paso protegido no usa, y es una regla de `typescript-eslint`, que
+  la prueba protegida del criterio 96 no admite en ese paso. La regla propia cubre en el paso protegido (que ningún
+  comentario apaga) las dos formas que no necesitan tipos: `void` y la función `async` escrita en el lugar. Alternativas
+  descartadas: agregar `no-floating-promises` al paso protegido (cambiaría la prueba protegida del 96 y obligaría a
+  analizar con tipos un paso que hoy es rápido y sin tipos); una sola regla sin tipos (no ve una función `async` con
+  nombre); `no-restricted-syntax` para la forma sin tipos (en el lint normal ya la usa la regla del reloj sobre los mismos
+  archivos, y dos configuraciones de la misma regla se pisan en lugar de sumarse).
+- **`void 0` permitido; todo otro `void`, prohibido en `backend/src`** (criterio 159). Sin tipos no se sabe si la
+  expresión es una promesa; el código actual solo usa `void` con promesas. Alternativa descartada: prohibir solo `void`
+  sobre una llamada (se evade con `void p`).
+- **Desde `asentar()`, todo rechazo de una operación entregada marca la transacción, aunque se atrape** (criterio 160;
+  decisión del orquestador). Una continuación que corre después de que `trabajo` devolvió ya no puede decidir seguir: la
+  operación ya respondió su valor, así que confirmar sería guardar la mitad. Alternativas descartadas: marcar solo los
+  rechazos sin manejar (no se puede saber desde el envoltorio si alguien va a atrapar la promesa; un `.catch(() =>
+  undefined)` repetiría la falla); y marcar todo rechazo, también mientras `trabajo` corre (rompería el patrón válido de
+  la lista que ignora las inexistentes, criterio 153).
+- **Las llamadas rechazadas al llamar siguen el criterio 156** (criterio 160). Un argumento no admitido no marca, como
+  fija una prueba protegida del 156; es un error de programación que falla siempre (riesgo aceptado "Promesa descartada
+  que escapa al lint"). Alternativa descartada: marcarlas también (cambiaría esa prueba protegida).
+- **La marca por `unhandledRejection` (F1 (c)) no se adopta** (decisión del especificador por encargo del orquestador).
+  Cómo funcionaría: en Node 22, `processPromiseRejections` (`lib/internal/process/promises.js`) emite `unhandledRejection`
+  después de restaurar el contexto asíncrono de la promesa rechazada cuando esta tiene identificadores de `async_hooks`,
+  así que `AsyncLocalStorage.getStore()` en el manejador probablemente devolvería la marca de la transacción para una
+  función `async` creada dentro de `trabajo`. El especificador no lo ejecutó (su rol no ejecuta código), y la decisión no
+  depende de ese dato: (1) las promesas que devuelve el envoltorio no llevan esos identificadores (el criterio 106 les
+  quita las claves propias), así que esta capa no vería sus rechazos, que ya cubre el 160; (2) depende de un detalle
+  interno de Node y de cómo se implementa `AsyncLocalStorage`, que Node 24 cambia (`AsyncContextFrame`): al actualizar la
+  versión la capa podría dejar de funcionar sin aviso; (3) necesita un manejador del proceso: registrado por
+  `BaseDatos`, taparía en las pruebas y en los comandos los rechazos que hoy terminan el proceso (contradice la última
+  viñeta del 157) y cambiaría el comportamiento de Node para todo el proceso; registrado solo en `main.ts`, las pruebas de
+  integración no lo cubrirían (corren en el mismo proceso, sin `main.ts`); (4) solo serviría si el rechazo se procesa
+  antes de la última revisión, el mismo límite del 156. Queda el lint del 159 para ese caso, con el riesgo aceptado.
+  Alternativa descartada: adoptarla como segunda capa con una prueba en proceso hijo.
+- **La causa se limpia en el constructor de `ErrorTransaccionAbortada`** (criterio 161; forma del especificador). Un solo
+  lugar cubre todos los caminos que la crean (capa, comprobación, envoltorio, `enPlataforma`) y los que se agreguen.
+  Alternativas descartadas: limpiar en cada lugar que la crea (se olvida en el siguiente); no guardar causa (se pierde el
+  SQLSTATE que `#registrarAbortada` registra y que sirve para diagnosticar).
+- **Lista de lo que se registra, no lista de lo que se tapa** (criterio 162; decisión del orquestador, forma del
+  especificador). De un error de la base se registran solo tipo, códigos, modelo y marcos de la pila. Alternativas
+  descartadas: `redact` de pino (tapa rutas de objetos, no partes de un texto como el mensaje); buscar y tapar valores en
+  el mensaje con expresiones regulares (no se puede saber qué partes son datos; falla abierta ante el formato siguiente de
+  Prisma); y limpiar solo en el filtro de errores (el manejador de rechazos, `#registrarAbortada` y los comandos también
+  registran).
+- **`errorParaRegistro` en `infraestructura/prisma/`, exportada por el punto autorizado** (criterio 162). Necesita las
+  clases de error del cliente generado, que solo se importan en esa carpeta (criterio 85); el filtro (`comun/`), el
+  manejador (`infraestructura/proceso/`) y `cli/` ya pueden importar el punto autorizado. Alternativa descartada:
+  `infraestructura/registro/` reconociendo los errores solo por su `name` (se mantiene como respaldo dentro de
+  `esErrorDeBase`, pero `instanceof` es la forma principal).
+- **Un `Error` que no es de la base se registra igual que hoy** (criterio 162). Lo fijan pruebas protegidas (filtro de
+  errores, criterio 157) y tiene la pila que hace falta para depurar. Alternativa descartada: registrar de todo error solo
+  el tipo (perdería el diagnóstico de los errores propios, que no llevan datos de la base).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 12 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 13 del ataque son decisiones técnicas y no abren preguntas de
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").
