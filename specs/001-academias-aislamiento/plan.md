@@ -2367,6 +2367,9 @@ const nombreDeLaFuncion = (callee) => {
 
 - La `CallExpression` dentro de una `ChainExpression` (`process?.nextTick(…)`) la visita ESLint igual; el `callee` es un
   `MemberExpression` con `optional: true`.
+- _(Precisión del orquestador, ronda 14.)_ `nombreDeLaFuncion` quita los envoltorios de tipos del `callee` antes de
+  reconocer el `Identifier` o el `MemberExpression` (los paréntesis no forman nodo en ESTree), igual que en (ii):
+  `(process.nextTick as typeof process.nextTick)(async () => { … })` falla (criterio 164 y ampliación de P-41).
 - Un argumento `SpreadElement` no es una función: no cuenta.
 - El mensaje `diferida` (texto libre): "No pases funciones async a nextTick, setImmediate, setTimeout, setInterval ni
   queueMicrotask en backend/src: espera la operación con await o hazla después de confirmar (spec 001, criterio 164)."

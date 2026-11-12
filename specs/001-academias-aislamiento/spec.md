@@ -2992,6 +2992,11 @@ Contrato: ampliación de P-41 y precisión de P-42. Todos son _(crítico)_.
        `message` o `stack` no son cadenas, o si leer alguno lanza, se omite `pila` (falla cerrada: se pierde el
        diagnóstico, nunca se muestra el mensaje). Lo demás del objeto limpio (`tipo`, `codigoPrisma`, `sqlstate`,
        `codigoDeSistema`, `modelo`) se sigue registrando;
+     - _(precisión del orquestador, ronda 14)_ si el `stack` empieza con el encabezado exacto pero en lo que sigue no queda
+       ninguna línea de marco (lo que sigue está vacío o ninguna de sus líneas empieza con espacios y `at `), se omite
+       `pila`: el objeto limpio no tiene la propiedad (no es la cadena vacía ni `undefined` explícito que aparezca en
+       `JSON.stringify`). Ejemplo, junto a (u1): con `stack` igual al encabezado solo, o al encabezado seguido de
+       `'\nalgo sin marcos'`, el resultado no tiene `pila` y conserva `tipo` y `codigoPrisma`;
      - vale igual en cada nivel de la cadena de causas (`cause` y `errors`, hasta 10 niveles): todo error de la base que
        `errorParaRegistro` convierte a su forma limpia, sea el error recibido o una causa de un `Error` propio, obtiene su
        `pila` de esta forma; y en cualquier otro lugar de `backend/src` que conserve marcos de la pila de un error de la base;
@@ -3049,6 +3054,10 @@ Contrato: ampliación de P-41 y precisión de P-42. Todos son _(crítico)_.
      - _(precisión del especificador)_ en (ii) y (iii), la regla mira a través de los envoltorios de tipos de TypeScript
        (`as`, `satisfies`, `!` y `<T>`, también anidados): fallan `setTimeout((async () => { … }) as () => void, 0)` y
        `((async () => { … })() as unknown);` como sentencia. Los paréntesis no forman nodo y ya se ven;
+     - _(precisión del orquestador, ronda 14)_ en (iii), lo anterior vale también para el `callee`: antes de reconocer el
+       identificador o el acceso a miembro, la regla quita del `callee` los envoltorios de tipos (también anidados) y los
+       paréntesis, igual que en (ii). Falla, por ejemplo, `(process.nextTick as typeof process.nextTick)(async () => { … })`,
+       y también `(setTimeout as typeof setTimeout)(async () => { … }, 0)` y `process.nextTick!(async () => { … })`;
      - en el paso protegido ningún comentario la apaga (criterio 96);
      - siguen pasando: esas funciones con una función que no es `async` (`process.nextTick(() => { … })`,
        `setTimeout(function () { … }, 0)`, `setImmediate(resolver)`, `queueMicrotask(() => hacer().catch(fn))`), y una
@@ -3996,6 +4005,10 @@ _(contrato de la ronda 14 del ataque, 12/11/2026; criterios 163 y 164)_. No son 
     `ArrowFunctionExpression` o una `FunctionExpression` con `async: true`;
   - envoltorios de tipos: `TSAsExpression`, `TSSatisfiesExpression`, `TSNonNullExpression` y `TSTypeAssertion`, también
     anidados, se quitan antes de mirar el argumento de (iii) y, en (ii), la expresión de la sentencia y el `callee`.
+  - _(precisión del orquestador, ronda 14; manda el criterio 164)_ en (iii), el `callee` también se lee quitando antes los
+    envoltorios de tipos (los mismos cuatro, también anidados) y los paréntesis (que en ESTree no forman nodo), igual que
+    en (ii); el `Identifier` o el `MemberExpression` de (iii) se reconoce sobre el resultado. Así,
+    `(process.nextTick as typeof process.nextTick)(async () => { … })` falla.
 
   El mensaje de (iii) es texto libre en español (pide esperar la operación con `await` dentro de `trabajo` o hacer el
   trabajo diferido después de confirmar). La prueba comprueba el identificador de la regla, no el texto ni el
@@ -4004,7 +4017,8 @@ _(contrato de la ronda 14 del ataque, 12/11/2026; criterios 163 y 164)_. No son 
   obtiene quitando del `stack` el encabezado exacto (`` `${name}: ${message}` ``, o `name` si `message` es `''`) y
   conservando solo las líneas de marco de lo que sigue, que debe estar vacío o empezar con `\n`; si no se cumple, o si
   `name`, `message` o `stack` no son cadenas o leerlos lanza, el objeto no tiene `pila`. Vale en cada nivel de la cadena de
-  causas.
+  causas. _(Precisión del orquestador, ronda 14.)_ Si tras el encabezado no queda ninguna línea de marco, el objeto
+  tampoco tiene `pila` (la propiedad se omite; nunca es `''`).
 
 ## Cambios al modelo de datos
 
