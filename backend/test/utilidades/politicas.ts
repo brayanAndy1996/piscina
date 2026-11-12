@@ -47,8 +47,24 @@ function sinParentesisExteriores(texto: string): string {
 
 const esDeIdentificador = (c: string): boolean => /[A-Za-z0-9_$]/.test(c);
 
-/** Parte el texto por cada `AND` de profundidad 0 (fuera de parentesis y de cadenas). */
+/** ¿Hay un `OR` de profundidad 0 (fuera de parentesis y de cadenas)? Con el, `a AND b OR c` es `(a AND b) OR c`. */
+function tieneOrDePrimerNivel(texto: string): boolean {
+  let hay = false;
+  recorrer(texto, (posicion, profundidad) => {
+    if (profundidad !== 0 || texto.slice(posicion, posicion + 2).toUpperCase() !== 'OR') return;
+    const antes = posicion === 0 ? ' ' : texto.charAt(posicion - 1);
+    const despues = posicion + 2 >= texto.length ? ' ' : texto.charAt(posicion + 2);
+    if (!esDeIdentificador(antes) && !esDeIdentificador(despues)) hay = true;
+  });
+  return hay;
+}
+
+/**
+ * Parte el texto por cada `AND` de profundidad 0 (fuera de parentesis y de cadenas). Si hay un `OR` de primer nivel, el `OR` tiene
+ * menos precedencia que el `AND`: el texto entero es un solo termino (una disyuncion), no una conjuncion.
+ */
 function partirPorAnd(texto: string): string[] {
+  if (tieneOrDePrimerNivel(texto)) return [texto.trim()];
   const cortes: number[] = [];
   recorrer(texto, (posicion, profundidad) => {
     if (profundidad !== 0) return;
@@ -80,9 +96,11 @@ export function terminosDeConjuncion(expresion: string): string[] {
   });
 }
 
-const FUNCION = String.raw`(?:"?public"?\s*\.\s*)?"?app_academia_actual"?\s*\(\s*\)`;
-const COLUMNA = String.raw`"?academia_id"?`;
-const COMPARACION = new RegExp(`^(?:${COLUMNA}\\s*=\\s*${FUNCION}|${FUNCION}\\s*=\\s*${COLUMNA})$`, 'i');
+// Los identificadores distinguen mayusculas: sin comillas, solo en minusculas (como los escribe `pg_get_expr`); con comillas, exactamente
+// en minusculas (`"public"`, `"app_academia_actual"`, `"academia_id"`). `"APP_ACADEMIA_ACTUAL"` o `"PUBLIC"` son otros objetos.
+const FUNCION = String.raw`(?:(?:"public"|public)\s*\.\s*)?(?:"app_academia_actual"|app_academia_actual)\s*\(\s*\)`;
+const COLUMNA = String.raw`(?:"academia_id"|academia_id)`;
+const COMPARACION = new RegExp(`^(?:${COLUMNA}\\s*=\\s*${FUNCION}|${FUNCION}\\s*=\\s*${COLUMNA})$`);
 
 /**
  * Regla del criterio 132 para UNA expresion (`USING` o `WITH CHECK`): verdadera si algun termino de primer nivel, sin parentesis

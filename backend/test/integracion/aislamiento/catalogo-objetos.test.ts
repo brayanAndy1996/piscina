@@ -205,7 +205,7 @@ describe('criterio 124: autocomprobacion, las consultas detectan cada caso (obje
       securityDefinerFueraDe(['public.f_permitida']),
     );
 
-    expect(encontrados).not.toContain('public.f_permitida');
+    expect(encontrados).toEqual([]);
   });
 
   it('criterio 124 y 131: la misma funcion sin estar en la lista se informa (la lista se aplica por esquema y nombre)', async () => {

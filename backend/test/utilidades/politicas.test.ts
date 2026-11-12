@@ -59,6 +59,13 @@ describe('criterio 132 (P-33): terminosDeConjuncion', () => {
     ).toHaveLength(1);
   });
 
+  it('criterio 132: con un OR de primer nivel el texto entero es un solo termino (OR tiene menos precedencia que AND)', () => {
+    expect(terminosDeConjuncion('a = 1 AND b = 2 OR c = 3')).toHaveLength(1);
+    expect(terminosDeConjuncion('a = 1 OR b = 2 AND c = 3')).toHaveLength(1);
+    expect(terminosDeConjuncion('(a = 1 AND b = 2 OR c = 3)')).toHaveLength(1);
+    expect(limpios('x = 0 AND (a = 1 AND b = 2 OR c = 3)')).toEqual(['x = 0', 'a = 1 AND b = 2 OR c = 3']);
+  });
+
   it('criterio 132: un AND dentro de una cadena o de un identificador entre comillas no separa', () => {
     expect(terminosDeConjuncion("(clave = 'a AND b'::text)")).toHaveLength(1);
     expect(terminosDeConjuncion('("A AND B" = 1)')).toHaveLength(1);
@@ -84,6 +91,12 @@ describe('criterio 132 (P-33): cumpleFormaDeAcademia', () => {
     [
       'una conjuncion anidada, a AND (b AND c)',
       "((clave <> 'x'::text) AND ((academia_id = app_academia_actual()) AND (valor IS NOT NULL)))",
+    ],
+    ['con el esquema y la funcion entre comillas en minusculas', '(academia_id = "public"."app_academia_actual"())'],
+    ['con la columna entre comillas en minusculas', '("academia_id" = app_academia_actual())'],
+    [
+      'un OR dentro de un termino entre parentesis de una conjuncion',
+      '((academia_id = app_academia_actual()) AND ((a = 1) OR (b = 2)))',
     ],
     [
       'una conjuncion con una condicion siempre verdadera (la comparacion sigue exigiendose)',
@@ -121,6 +134,21 @@ describe('criterio 132 (P-33): cumpleFormaDeAcademia', () => {
       "((academia_id = app_academia_actual()) AND (pg_catalog.set_config('app.academia_id'::text, ''::text, true) IS NOT NULL))",
     ],
     ['una expresion vacia', ''],
+    // Reservas del tester (T83): un OR de primer nivel (la precedencia de OR) y los identificadores entre comillas.
+    [
+      'AND con true y OR true sin parentesis (OR de primer nivel)',
+      'academia_id = app_academia_actual() AND true OR true',
+    ],
+    [
+      'AND con una condicion y OR IS NULL sin parentesis',
+      'academia_id = app_academia_actual() AND estado = 1 OR estado IS NULL',
+    ],
+    ['un OR de primer nivel antes del AND', 'estado IS NULL OR academia_id = app_academia_actual() AND estado = 1'],
+    ['una funcion entre comillas en mayusculas', '(academia_id = "APP_ACADEMIA_ACTUAL"())'],
+    ['un esquema entre comillas en mayusculas', '(academia_id = "PUBLIC".app_academia_actual())'],
+    ['una columna entre comillas en mayusculas', '("ACADEMIA_ID" = app_academia_actual())'],
+    ['la funcion sin comillas en mayusculas', '(academia_id = APP_ACADEMIA_ACTUAL())'],
+    ['la columna sin comillas en mayusculas', '(ACADEMIA_ID = app_academia_actual())'],
   ])('criterio 132: no cumple %s', (_nombre, expresion) => {
     expect(cumpleFormaDeAcademia(expresion), expresion).toBe(false);
   });
