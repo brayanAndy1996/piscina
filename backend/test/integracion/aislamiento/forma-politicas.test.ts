@@ -23,6 +23,14 @@ import { puedeCrearEsquemas } from '../../utilidades/ronda5';
 //
 // Este archivo es una guarda para las historias siguientes: con las migraciones actuales pasa desde el principio, y su
 // autocomprobacion (tablas de ejemplo en una transaccion que se revierte) tambien.
+//
+// Criterio 140 (ataque ronda 7, O5; precisa el 132 y P-33): `academia_id = (SELECT app_academia_actual())` es la forma habitual de escribir
+// la politica para que PostgreSQL evalue la funcion una vez por consulta y no por fila, y significa lo mismo que la comparacion directa.
+// Un lado de la comparacion puede ser la llamada o una subconsulta escalar que solo la selecciona (con o sin `public.`, con o sin alias:
+// `pg_get_expr` la escribe `( SELECT app_academia_actual() AS app_academia_actual)`, en cualquier espaciado y orden); la subconsulta no
+// puede tener nada mas (`FROM`, `WHERE`, `LIMIT`, `UNION`, otra columna u otra funcion) y el operador sigue siendo `=`. Lo demas del
+// criterio 132 no cambia. La autocomprobacion agrega los ejemplos marcados "criterio 140" a las listas de abajo; los ejemplos del
+// criterio 132 no cambian de resultado.
 
 /** Politicas de las tablas con `academia_id` de los esquemas revisados, leidas como dueno con `search_path = pg_catalog, public`. */
 async function leerPoliticas(cliente: pg.ClientBase): Promise<PoliticaLeida[]> {
@@ -180,6 +188,54 @@ describe('criterio 132: autocomprobacion, la prueba detecta cada forma (tablas d
         'CREATE POLICY extra ON public.ej132_d9 FOR SELECT USING (true)',
       ],
     },
+    // Criterio 140 (ataque ronda 7, O5): la subconsulta no puede tener nada mas que la funcion, y el operador sigue siendo `=`.
+    {
+      nombre: 'criterio 140: USING (academia_id = (SELECT app_academia_actual() FROM academias LIMIT 1))',
+      politicas: [
+        'CREATE POLICY p ON public.ej140_d1 USING (academia_id = (SELECT app_academia_actual() FROM academias LIMIT 1))',
+      ],
+    },
+    {
+      nombre: 'criterio 140: USING (academia_id = (SELECT app_academia_actual() WHERE true))',
+      politicas: ['CREATE POLICY p ON public.ej140_d2 USING (academia_id = (SELECT app_academia_actual() WHERE true))'],
+    },
+    {
+      nombre: 'criterio 140: USING (academia_id IN (SELECT app_academia_actual()))',
+      politicas: ['CREATE POLICY p ON public.ej140_d3 USING (academia_id IN (SELECT app_academia_actual()))'],
+    },
+    {
+      nombre: 'criterio 140: USING (academia_id = (SELECT app_academia_actual()) OR app_es_plataforma())',
+      politicas: [
+        'CREATE POLICY p ON public.ej140_d4 USING (academia_id = (SELECT app_academia_actual()) OR app_es_plataforma())',
+      ],
+    },
+    {
+      nombre: 'criterio 140: USING (academia_id = (SELECT app_academia_actual() UNION SELECT app_academia_actual()))',
+      politicas: [
+        'CREATE POLICY p ON public.ej140_d5 USING (academia_id = (SELECT app_academia_actual() UNION SELECT app_academia_actual()))',
+      ],
+    },
+    {
+      nombre: 'criterio 140: USING (academia_id = ANY (SELECT app_academia_actual()))',
+      politicas: ['CREATE POLICY p ON public.ej140_d6 USING (academia_id = ANY (SELECT app_academia_actual()))'],
+    },
+    {
+      nombre: 'criterio 140: USING (academia_id IS NOT DISTINCT FROM (SELECT app_academia_actual()))',
+      politicas: [
+        'CREATE POLICY p ON public.ej140_d7 USING (academia_id IS NOT DISTINCT FROM (SELECT app_academia_actual()))',
+      ],
+    },
+    {
+      nombre: 'criterio 140: USING (academia_id = (SELECT academia_id))',
+      politicas: ['CREATE POLICY p ON public.ej140_d8 USING (academia_id = (SELECT academia_id))'],
+    },
+    {
+      nombre:
+        'criterio 140: WITH CHECK (academia_id = (SELECT app_academia_actual()) OR true) con un USING correcto con subconsulta',
+      politicas: [
+        'CREATE POLICY p ON public.ej140_d9 USING (academia_id = (SELECT app_academia_actual())) WITH CHECK (academia_id = (SELECT app_academia_actual()) OR true)',
+      ],
+    },
   ];
 
   const NO_DETECTADOS: readonly Ejemplo[] = [
@@ -218,6 +274,42 @@ describe('criterio 132: autocomprobacion, la prueba detecta cada forma (tablas d
         `CREATE POLICY d ON public.ej132_ok7 FOR DELETE USING (${CORRECTA})`,
       ],
     },
+    // Criterio 140 (ataque ronda 7, O5): la subconsulta escalar que solo selecciona la funcion cuenta como la comparacion.
+    {
+      nombre: 'criterio 140: USING (academia_id = (SELECT app_academia_actual()))',
+      politicas: ['CREATE POLICY p ON public.ej140_ok1 USING (academia_id = (SELECT app_academia_actual()))'],
+    },
+    {
+      nombre: 'criterio 140: USING ((SELECT public.app_academia_actual()) = academia_id)',
+      politicas: ['CREATE POLICY p ON public.ej140_ok2 USING ((SELECT public.app_academia_actual()) = academia_id)'],
+    },
+    {
+      nombre: 'criterio 140: WITH CHECK (academia_id = (SELECT app_academia_actual() AS a))',
+      politicas: [
+        `CREATE POLICY p ON public.ej140_ok3 USING (${CORRECTA}) WITH CHECK (academia_id = (SELECT app_academia_actual() AS a))`,
+      ],
+    },
+    {
+      nombre: "criterio 140: USING (academia_id = (SELECT app_academia_actual()) AND clave <> 'x')",
+      politicas: [
+        "CREATE POLICY p ON public.ej140_ok4 USING (academia_id = (SELECT app_academia_actual()) AND clave <> 'x')",
+      ],
+    },
+    {
+      nombre: 'criterio 140: una politica ALL con la subconsulta en USING y en WITH CHECK',
+      politicas: [
+        'CREATE POLICY p ON public.ej140_ok5 USING (academia_id = (SELECT app_academia_actual())) WITH CHECK (academia_id = (SELECT app_academia_actual()))',
+      ],
+    },
+    {
+      nombre: 'criterio 140: varias politicas por comando, cada una con la subconsulta',
+      politicas: [
+        'CREATE POLICY s ON public.ej140_ok6 FOR SELECT USING (academia_id = (SELECT app_academia_actual()))',
+        'CREATE POLICY i ON public.ej140_ok6 FOR INSERT WITH CHECK (academia_id = (SELECT app_academia_actual()))',
+        'CREATE POLICY u ON public.ej140_ok6 FOR UPDATE USING (academia_id = (SELECT app_academia_actual())) WITH CHECK (academia_id = (SELECT app_academia_actual()))',
+        'CREATE POLICY d ON public.ej140_ok6 FOR DELETE USING (academia_id = (SELECT app_academia_actual()))',
+      ],
+    },
   ];
 
   const sufijo = (nombre: string): string => nombre.replace(/^.*ON public\./, '').split(' ')[0] ?? '';
@@ -251,6 +343,21 @@ describe('criterio 132: autocomprobacion, la prueba detecta cada forma (tablas d
       expect([...encontrados.values()].flat()).toEqual([]);
     },
   );
+
+  it('criterio 140: pg_get_expr escribe la subconsulta como ( SELECT app_academia_actual() AS app_academia_actual) y la regla la acepta', async () => {
+    const leidas = await conTransaccionRevertida('propietario', undefined, async (cliente) => {
+      for (const sentencia of tabla('ej140_texto')) await cliente.query(sentencia);
+      await cliente.query(
+        'CREATE POLICY p ON public.ej140_texto USING (academia_id = (SELECT app_academia_actual())) WITH CHECK ((SELECT app_academia_actual()) = academia_id)',
+      );
+      return (await leerPoliticas(cliente)).filter((politica) => politica.tabla === 'ej140_texto');
+    });
+
+    expect(leidas).toHaveLength(1);
+    expect(leidas[0]?.usando).toMatch(/academia_id\s*=\s*\(\s*SELECT\s+app_academia_actual\(\)/i);
+    expect(leidas[0]?.comprobando).toMatch(/SELECT\s+app_academia_actual\(\)/i);
+    expect(problemasDeLaPolitica(leidas[0] as PoliticaLeida)).toEqual([]);
+  });
 
   it('criterio 132: todos los ejemplos juntos: se detectan los que deben y solo esos', async () => {
     const encontrados = await incumplimientosDeEjemplos([...DETECTADOS, ...NO_DETECTADOS]);

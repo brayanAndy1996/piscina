@@ -5,6 +5,9 @@ import { cumpleFormaDeAcademia, problemasDeLaPolitica, terminosDeConjuncion } fr
 // Criterio 132 (ataque ronda 6, F2 (a)), precision P-33: el lector de las expresiones de las politicas. Lo que escribe PostgreSQL con
 // `pg_get_expr` y `search_path = pg_catalog, public` es, por ejemplo, `(academia_id = app_academia_actual())` y
 // `((academia_id = app_academia_actual()) AND (clave <> 'x'::text))`. Pruebas unitarias, sin base de datos.
+// Criterio 140 (ataque ronda 7, O5; precision P-33, ronda 7): el lado de la funcion de la comparacion puede ser tambien la subconsulta
+// escalar que solo selecciona la funcion, `(SELECT app_academia_actual())` (`pg_get_expr` la escribe `( SELECT app_academia_actual() AS
+// app_academia_actual)`); los casos nuevos estan marcados "criterio 140". Los casos de antes no cambian de resultado.
 
 /** Quita los parentesis que encierran toda la expresion (solo para comparar los terminos en estas pruebas). */
 function sinParentesis(texto: string): string {
@@ -102,6 +105,46 @@ describe('criterio 132 (P-33): cumpleFormaDeAcademia', () => {
       'una conjuncion con una condicion siempre verdadera (la comparacion sigue exigiendose)',
       '((academia_id = app_academia_actual()) AND true)',
     ],
+    // Criterio 140 (ataque ronda 7, O5): la subconsulta escalar que solo selecciona la funcion cuenta como la comparacion.
+    ['criterio 140: la subconsulta, como la escribe el usuario', '(academia_id = (SELECT app_academia_actual()))'],
+    [
+      'criterio 140: la subconsulta con alias, como la escribe pg_get_expr',
+      '(academia_id = ( SELECT app_academia_actual() AS app_academia_actual))',
+    ],
+    [
+      'criterio 140: la subconsulta a la izquierda, con public. delante de la funcion',
+      '((SELECT public.app_academia_actual()) = academia_id)',
+    ],
+    [
+      'criterio 140: la subconsulta a la izquierda con alias, como la escribe pg_get_expr',
+      '(( SELECT app_academia_actual() AS app_academia_actual) = academia_id)',
+    ],
+    ['criterio 140: la subconsulta con un alias corto', '(academia_id = (SELECT app_academia_actual() AS a))'],
+    [
+      'criterio 140: la subconsulta con un alias entre comillas dobles',
+      '(academia_id = (SELECT app_academia_actual() AS "Mi alias"))',
+    ],
+    [
+      'criterio 140: la subconsulta con cualquier espaciado, sin parentesis exteriores',
+      'academia_id=(  SELECT\n   app_academia_actual( )\t )',
+    ],
+    [
+      'criterio 140: la subconsulta con la funcion entre comillas en minusculas',
+      '(academia_id = (SELECT "public"."app_academia_actual"()))',
+    ],
+    [
+      'criterio 140: la subconsulta con select en minusculas',
+      '(academia_id = (select app_academia_actual() as app_academia_actual))',
+    ],
+    ['criterio 140: la subconsulta con parentesis de mas', '(((academia_id = ((SELECT app_academia_actual())))))'],
+    [
+      'criterio 140: la subconsulta en una conjuncion con otra condicion',
+      "((academia_id = ( SELECT app_academia_actual() AS app_academia_actual)) AND (clave <> 'x'::text))",
+    ],
+    [
+      'criterio 140: la subconsulta en una conjuncion con la comparacion al final',
+      "((clave <> 'x'::text) AND (( SELECT app_academia_actual() AS app_academia_actual) = academia_id))",
+    ],
   ])('criterio 132: cumple %s', (_nombre, expresion) => {
     expect(cumpleFormaDeAcademia(expresion), expresion).toBe(true);
   });
@@ -149,6 +192,84 @@ describe('criterio 132 (P-33): cumpleFormaDeAcademia', () => {
     ['una columna entre comillas en mayusculas', '("ACADEMIA_ID" = app_academia_actual())'],
     ['la funcion sin comillas en mayusculas', '(academia_id = APP_ACADEMIA_ACTUAL())'],
     ['la columna sin comillas en mayusculas', '(ACADEMIA_ID = app_academia_actual())'],
+    // Criterio 140 (ataque ronda 7, O5): la subconsulta no puede tener nada mas, y el operador sigue siendo `=`.
+    [
+      'criterio 140: la subconsulta con FROM y LIMIT',
+      '(academia_id = ( SELECT app_academia_actual() AS app_academia_actual FROM academias LIMIT 1))',
+    ],
+    [
+      'criterio 140: la subconsulta con FROM sin alias',
+      '(academia_id = (SELECT app_academia_actual() FROM academias LIMIT 1))',
+    ],
+    [
+      'criterio 140: la subconsulta con WHERE',
+      '(academia_id = ( SELECT app_academia_actual() AS app_academia_actual WHERE true))',
+    ],
+    ['criterio 140: la subconsulta con LIMIT', '(academia_id = (SELECT app_academia_actual() LIMIT 1))'],
+    [
+      'criterio 140: la subconsulta con UNION',
+      '(academia_id = ( SELECT app_academia_actual() AS app_academia_actual UNION SELECT app_academia_actual() AS app_academia_actual))',
+    ],
+    ['criterio 140: la subconsulta con otra columna', '(academia_id = (SELECT app_academia_actual(), 1))'],
+    ['criterio 140: la subconsulta con otra funcion', '(academia_id = (SELECT app_academia_actual(), now()))'],
+    [
+      'criterio 140: la subconsulta con la funcion dentro de otra funcion',
+      '(academia_id = (SELECT coalesce(app_academia_actual(), NULL::uuid)))',
+    ],
+    [
+      'criterio 140: la subconsulta de otra funcion',
+      '(academia_id = ( SELECT app_academia_siguiente() AS app_academia_siguiente))',
+    ],
+    [
+      'criterio 140: la subconsulta de una funcion de otro esquema',
+      '(academia_id = (SELECT otro.app_academia_actual()))',
+    ],
+    ['criterio 140: la subconsulta que selecciona una columna', '(academia_id = (SELECT academia_id))'],
+    [
+      'criterio 140: = ANY (ARRAY(SELECT ...))',
+      '(academia_id = ANY (ARRAY( SELECT app_academia_actual() AS app_academia_actual)))',
+    ],
+    ['criterio 140: IN (SELECT ...)', '(academia_id IN ( SELECT app_academia_actual() AS app_academia_actual))'],
+    ['criterio 140: = ANY (SELECT ...)', '(academia_id = ANY ( SELECT app_academia_actual() AS app_academia_actual))'],
+    [
+      'criterio 140: IS NOT DISTINCT FROM (SELECT ...)',
+      '(academia_id IS NOT DISTINCT FROM ( SELECT app_academia_actual() AS app_academia_actual))',
+    ],
+    [
+      'criterio 140: la subconsulta con OR app_es_plataforma()',
+      '((academia_id = ( SELECT app_academia_actual() AS app_academia_actual)) OR app_es_plataforma())',
+    ],
+    [
+      'criterio 140: la subconsulta con OR true',
+      '((academia_id = ( SELECT app_academia_actual() AS app_academia_actual)) OR true)',
+    ],
+    [
+      'criterio 140: la subconsulta con app_es_plataforma() en una conjuncion',
+      '((academia_id = ( SELECT app_academia_actual() AS app_academia_actual)) AND app_es_plataforma())',
+    ],
+    [
+      'criterio 140: la subconsulta con set_config en una conjuncion',
+      "((academia_id = (SELECT app_academia_actual())) AND (pg_catalog.set_config('app.academia_id'::text, ''::text, true) IS NOT NULL))",
+    ],
+    [
+      'criterio 140: la subconsulta a ambos lados, sin la columna',
+      '((SELECT app_academia_actual()) = (SELECT app_academia_actual()))',
+    ],
+    ['criterio 140: la subconsulta con otra columna a la izquierda', '(id = (SELECT app_academia_actual()))'],
+    ['criterio 140: la subconsulta con <>', '(academia_id <> (SELECT app_academia_actual()))'],
+    ['criterio 140: la subconsulta negada', '(NOT (academia_id = (SELECT app_academia_actual())))'],
+    [
+      'criterio 140: la subconsulta dentro de un CASE',
+      '(CASE WHEN (academia_id = (SELECT app_academia_actual())) THEN true ELSE false END)',
+    ],
+    [
+      'criterio 140: lo excluido sigue siendo una comparacion con academia_id dentro de una subconsulta (el EXISTS)',
+      '(EXISTS ( SELECT 1 FROM auditoria a WHERE (a.academia_id = ( SELECT app_academia_actual() AS app_academia_actual))))',
+    ],
+    [
+      'criterio 140: la subconsulta con la funcion sin comillas en mayusculas',
+      '(academia_id = (SELECT APP_ACADEMIA_ACTUAL()))',
+    ],
   ])('criterio 132: no cumple %s', (_nombre, expresion) => {
     expect(cumpleFormaDeAcademia(expresion), expresion).toBe(false);
   });

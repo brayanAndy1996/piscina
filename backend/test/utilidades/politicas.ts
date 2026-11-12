@@ -97,20 +97,76 @@ export function terminosDeConjuncion(expresion: string): string[] {
 }
 
 // Los identificadores distinguen mayusculas: sin comillas, solo en minusculas (como los escribe `pg_get_expr`); con comillas, exactamente
-// en minusculas (`"public"`, `"app_academia_actual"`, `"academia_id"`). `"APP_ACADEMIA_ACTUAL"` o `"PUBLIC"` son otros objetos.
+// en minusculas (`"public"`, `"app_academia_actual"`, `"academia_id"`). `"APP_ACADEMIA_ACTUAL"` o `"PUBLIC"` son otros objetos. Las
+// palabras clave (`SELECT`, `AS`) no distinguen mayusculas.
 const FUNCION = String.raw`(?:(?:"public"|public)\s*\.\s*)?(?:"app_academia_actual"|app_academia_actual)\s*\(\s*\)`;
-const COLUMNA = String.raw`(?:"academia_id"|academia_id)`;
-const COMPARACION = new RegExp(`^(?:${COLUMNA}\\s*=\\s*${FUNCION}|${FUNCION}\\s*=\\s*${COLUMNA})$`);
+const COLUMNA = new RegExp(String.raw`^(?:"academia_id"|academia_id)$`);
+
+const palabra = (texto: string): string =>
+  [...texto].map((letra) => `[${letra.toLowerCase()}${letra.toUpperCase()}]`).join('');
+// Un alias simple: sin comillas y en minusculas, o entre comillas dobles. Sin `AS`, un alias no puede ser una palabra que abre otra
+// clausula (`FROM`, `WHERE`, `LIMIT`, `UNION`, ...): aqui nunca se acepta nada despues del alias.
+const RESERVADAS = [
+  'from',
+  'where',
+  'limit',
+  'union',
+  'intersect',
+  'except',
+  'group',
+  'having',
+  'order',
+  'offset',
+  'fetch',
+];
+const ALIAS_SIMPLE = String.raw`(?:"[^"]+"|(?!(?:${RESERVADAS.map(palabra).join('|')})\b)[a-z_][a-z0-9_]*)`;
+/** Criterio 140 (precision P-33, ronda 7): el lado de la funcion es la llamada o una subconsulta que solo la selecciona. */
+const LADO_FUNCION = new RegExp(
+  String.raw`^(?:${FUNCION}|${palabra('select')}\s+${FUNCION}(?:\s+(?:${palabra('as')}\s+)?${ALIAS_SIMPLE})?)$`,
+);
+
+/**
+ * Parte un termino por el unico `=` de primer nivel (fuera de parentesis y de cadenas, y que no es parte de `<=`, `>=`, `<>`, `!=` ni
+ * `==`). Devuelve los dos lados, o `null` si no hay exactamente uno (`IN`, `= ANY`, `IS NOT DISTINCT FROM` y `OPERATOR(x.=)` no
+ * cuentan: no tienen un `=` suelto de primer nivel con dos lados validos).
+ */
+function ladosDeLaIgualdad(termino: string): [string, string] | null {
+  const posiciones: number[] = [];
+  recorrer(termino, (posicion, profundidad) => {
+    if (profundidad !== 0 || termino.charAt(posicion) !== '=') return;
+    const antes = termino.charAt(posicion - 1);
+    const despues = termino.charAt(posicion + 1);
+    if (['<', '>', '!', '='].includes(antes) || despues === '=' || despues === '>') return;
+    posiciones.push(posicion);
+  });
+  const [posicion, ...otras] = posiciones;
+  if (posicion === undefined || otras.length > 0) return null;
+  return [termino.slice(0, posicion).trim(), termino.slice(posicion + 1).trim()];
+}
+
+/** ¿El termino es `academia_id = <lado de la funcion>` o `<lado de la funcion> = academia_id`? */
+function esLaComparacion(termino: string): boolean {
+  const lados = ladosDeLaIgualdad(sinParentesisExteriores(termino));
+  if (lados === null) return false;
+  const [izquierdo, derecho] = lados;
+  const esFuncion = (lado: string): boolean => LADO_FUNCION.test(sinParentesisExteriores(lado));
+  return (COLUMNA.test(izquierdo) && esFuncion(derecho)) || (esFuncion(izquierdo) && COLUMNA.test(derecho));
+}
 
 /**
  * Regla del criterio 132 para UNA expresion (`USING` o `WITH CHECK`): verdadera si algun termino de primer nivel, sin parentesis
  * exteriores y sin `public.` delante de la funcion, es `academia_id = app_academia_actual()` o `app_academia_actual() = academia_id`,
  * y la expresion no menciona `app_es_plataforma` ni `set_config` en ningun termino. Una expresion vacia no cumple.
+ *
+ * Criterio 140 (ataque ronda 7, O5; precision P-33): el lado de la funcion puede ser la llamada o la subconsulta escalar que solo la
+ * selecciona, `(SELECT app_academia_actual())`, con o sin `public.` y con o sin un alias simple (`pg_get_expr` escribe
+ * `( SELECT app_academia_actual() AS app_academia_actual)`), con cualquier espaciado y en cualquier orden. La subconsulta no puede tener
+ * nada mas (`FROM`, `WHERE`, `LIMIT`, `UNION`, otra columna u otra funcion) y el operador sigue siendo `=`.
  */
 export function cumpleFormaDeAcademia(expresion: string): boolean {
   if (expresion.trim() === '') return false;
   if (/app_es_plataforma|set_config/i.test(expresion)) return false;
-  return terminosDeConjuncion(expresion).some((termino) => COMPARACION.test(sinParentesisExteriores(termino)));
+  return terminosDeConjuncion(expresion).some(esLaComparacion);
 }
 
 /** Politica tal como la lee la consulta del criterio 132. */
