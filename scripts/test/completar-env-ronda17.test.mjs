@@ -45,7 +45,10 @@ const CONJUNTO_A = [
   ['e4 comillas dobles', `${U}${entreComillas(VARIABLES_5433[0], '"')}\n${VARIABLES_5433.slice(1).join('\n')}\n`],
   ['e4 comillas simples', `${U}${entreComillas(VARIABLES_5433[0], "'")}\n${VARIABLES_5433.slice(1).join('\n')}\n`],
   // (e5): la linea con el BOM es la unica de PUERTO_API (la lista no la repite), asi que si el BOM no se quita `completarEnv` la agregaria.
-  ['e5', `${U}PUERTO_API=3000 # comentario\n${VARIABLES_5433.filter((linea) => nombreDe(linea) !== 'PUERTO_API').join('\n')}\n`],
+  [
+    'e5',
+    `${U}PUERTO_API=3000 # comentario\n${VARIABLES_5433.filter((linea) => nombreDe(linea) !== 'PUERTO_API').join('\n')}\n`,
+  ],
   ['e6', `${U}\n${VARIABLES_5433.join('\n')}\n`],
   ['e7 (control sin BOM, \\r\\n)', `${VARIABLES_5433.join('\r\n')}\r\n`],
   ['e8 (solo el BOM)', U],
