@@ -260,7 +260,8 @@ export async function problemasDeEsquemas(clienteBase, { base, usuarioApp }) {
  * Privilegios efectivos de `usuarioApp` (concedidos al rol o a PUBLIC) sobre las tablas, vistas, secuencias, etc. del esquema
  * `public` de la base a la que está conectado `clienteBase`, a nivel de tabla y de columna (criterio 102), comparados con la
  * lista permitida (`PRIVILEGIOS_APP`). Un problema por cada privilegio de más, con su corrección (`REVOKE … FROM <rol>;` o
- * `FROM PUBLIC;` si lo concede PUBLIC). No modifica nada. Un privilegio que falta no es un problema.
+ * `FROM PUBLIC;` si lo concede PUBLIC). No modifica nada. Un privilegio que falta no es un problema. Los objetos de extensiones
+ * (`pg_depend.deptype = 'e'`, también sus columnas) no cuentan (criterio 137): no son del negocio y no se pueden corregir con `REVOKE`.
  */
 export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) {
   const { rows } = await clienteBase.query(
@@ -270,6 +271,9 @@ export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) 
        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
        CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                         WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
+                           AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
         AND pg_catalog.has_table_privilege($1::name, c.oid, p.privilegio)
      UNION ALL
      SELECT c.relname::text, NULL::text, p.privilegio::text, true,
@@ -278,6 +282,9 @@ export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) 
        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
        CROSS JOIN pg_catalog.unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
       WHERE n.nspname = 'public' AND c.relkind = 'S'
+        AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                         WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
+                           AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
         AND pg_catalog.has_sequence_privilege($1::name, c.oid, p.privilegio)
      UNION ALL
      SELECT c.relname::text, a.attname::text, p.privilegio::text, false,
@@ -287,6 +294,9 @@ export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) 
        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
        CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                         WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
+                           AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
         AND pg_catalog.has_column_privilege($1::name, c.oid, a.attnum, p.privilegio)`,
     [usuarioApp],
   );

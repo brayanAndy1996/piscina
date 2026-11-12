@@ -12,6 +12,11 @@
 //   - fuera de `backend/src/infraestructura/`, falla cualquier importación de `async_hooks` o `node:async_hooks` (por las vías del
 //     criterio 85): `AsyncLocalStorage.snapshot()` o `AsyncResource.bind` guardados dentro de `trabajo` y ejecutados desde otra petición
 //     llevarían el contexto de la transacción.
+//   - fuera de `backend/src/infraestructura/` (criterio 139, ataque ronda 7), falla toda aparición del nombre
+//     `EventEmitterAsyncResource` (importado con o sin alias, reexportado, propiedad con punto o calculada con un literal o una
+//     plantilla sin marcadores, clave de desestructuración, `extends` o identificador propio): sus listeners corren en el contexto
+//     asíncrono donde se creó el emisor. Y falla toda aparición de `getBuiltinModule` (carga `async_hooks` sin importarlo) salvo la
+//     llamada directa `<objeto>.getBuiltinModule('<literal>')` con un literal de cadena distinto de `async_hooks` y `node:async_hooks`.
 // No se siguen las copias por alias (`const t = tx; this.x = t`), `Object.assign(this, { tx })` ni una transacción guardada dentro de un
 // arreglo o de una función: esa garantía es el criterio 134. La propiedad desestructurada `academiaId` es un dato (un texto), no la
 // transacción, y no cuenta. Va en el lint normal (`eslint.config.mjs`), no en el paso protegido: un comentario `eslint-disable` la apaga.
@@ -31,6 +36,13 @@ export const MENSAJE_TRANSACCION_GUARDADA =
 export const MENSAJE_ASYNC_HOOKS =
   'Fuera de infraestructura/ no se importa async_hooks: AsyncLocalStorage.snapshot() o AsyncResource.bind guardados dentro de trabajo y ' +
   'ejecutados desde otra petición llevarían el contexto de la transacción de esta academia.';
+
+export const MENSAJE_EMISOR_ASINCRONO =
+  'No uses EventEmitterAsyncResource ni cargues async_hooks fuera de infraestructura/: conservan el contexto de una transacción y otra ' +
+  'petición podría usarla (criterios 134 y 139).';
+
+const NOMBRE_EMISOR_ASINCRONO = 'EventEmitterAsyncResource';
+const NOMBRE_CARGA_DE_MODULO = 'getBuiltinModule';
 
 /** Tipos de la transacción (spec 001, P-2): una variable anotada con alguno de ellos es una transacción. */
 const TIPOS_DE_TRANSACCION = new Set(['TransaccionAcademia', 'TransaccionPlataforma', 'ClienteTransaccion']);
@@ -168,7 +180,57 @@ const reglaTransaccionGuardada = {
       return null;
     }
 
+    /** Texto de una clave de propiedad o nombre exportado si es un identificador (sin corchetes) o un literal; `null` si no. */
+    function nombreDeClave(nodo, calculada) {
+      if (!nodo) return null;
+      if (nodo.type === 'Identifier') return calculada ? null : nodo.name;
+      return textoLiteral(nodo);
+    }
+
+    /** ¿El nodo es el `callee` (la propiedad) de una llamada directa con un literal de cadena que no sea `async_hooks`? */
+    function esCargaPermitida(acceso) {
+      const llamada = acceso.parent;
+      if (llamada?.type !== 'CallExpression' || llamada.callee !== acceso) return false;
+      const ruta = textoLiteral(llamada.arguments[0]);
+      return ruta !== null && ruta !== 'async_hooks' && ruta !== 'node:async_hooks';
+    }
+
+    /** Informa el nombre prohibido (criterio 139); `acceso` es el `MemberExpression` si el nombre es su propiedad. */
+    function revisarNombre(nodo, nombre, acceso) {
+      if (enInfraestructura || nombre === null) return;
+      if (nombre === NOMBRE_EMISOR_ASINCRONO) informar(nodo, MENSAJE_EMISOR_ASINCRONO);
+      else if (nombre === NOMBRE_CARGA_DE_MODULO && !(acceso && esCargaPermitida(acceso)))
+        informar(nodo, MENSAJE_EMISOR_ASINCRONO);
+    }
+
     return {
+      // Identificadores en cualquier posición: importado/local, reexportado, propiedad con punto, clave de patrón, `extends`, declarado.
+      Identifier(nodo) {
+        const padre = nodo.parent;
+        // Un miembro de un tipo (`{ getBuiltinModule(n: string): unknown }`) solo describe una forma, no carga nada.
+        if (['TSMethodSignature', 'TSPropertySignature'].includes(padre?.type) && padre.key === nodo) return;
+        const acceso =
+          padre?.type === 'MemberExpression' && padre.property === nodo && !padre.computed ? padre : undefined;
+        revisarNombre(nodo, nodo.name, acceso);
+      },
+      // Propiedad calculada con un literal o una plantilla sin marcadores: `x['EventEmitterAsyncResource']`.
+      MemberExpression(nodo) {
+        if (!nodo.computed || nodo.property.type === 'Identifier') return;
+        revisarNombre(nodo.property, textoLiteral(nodo.property), nodo);
+      },
+      // Nombres con cadena: `{ 'EventEmitterAsyncResource': E } = x`, `import { 'X' as y }`, `export { 'X' } from`.
+      Property(nodo) {
+        if (nodo.key.type === 'Identifier') return;
+        revisarNombre(nodo.key, nombreDeClave(nodo.key, nodo.computed), undefined);
+      },
+      ImportSpecifier(nodo) {
+        if (nodo.imported.type !== 'Identifier') revisarNombre(nodo.imported, textoLiteral(nodo.imported), undefined);
+      },
+      ExportSpecifier(nodo) {
+        for (const lado of [nodo.local, nodo.exported]) {
+          if (lado.type !== 'Identifier') revisarNombre(lado, textoLiteral(lado), undefined);
+        }
+      },
       AssignmentExpression(nodo) {
         if (!OPERADORES.has(nodo.operator)) return;
         if (!destinoPersistente(nodo.left)) return;
