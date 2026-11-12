@@ -5,6 +5,9 @@
 // `set_config('bytea_output', 'hex', true)` (sin distinguir mayusculas, como en el criterio 98); cualquier otro valor o un tercer
 // argumento distinto de `true` sigue fallando, y fuera de cli/ y de infraestructura/prisma/ sigue prohibida toda llamada a
 // `set_config`. Se prueba con las dos configuraciones, como el criterio 98.
+// (Ronda 5, criterio 122) El ejemplo "otra variable (standard_conforming_strings)" con 'on' y `true` ya no espera un fallo en cli/: el
+// criterio 122 lo admite. Se probaba aqui como ejemplo que falla; ahora se prueba como ejemplo que pasa en
+// eslint/regla-sql-sesion-ronda5.test.mjs. El resto de los ejemplos de este archivo no cambia.
 import { describe, expect, it } from 'vitest';
 import { CLI, CONFIGURACIONES, MODULO, PRISMA, errores } from './ayuda-lint-ronda4.mjs';
 
@@ -64,7 +67,6 @@ describe.each(CONFIGURACIONES)('criterio 107 (regla) con %s', (_configuracion, o
       ['DateStyle sin tercer argumento', "SELECT set_config('DateStyle', 'ISO, MDY')"],
       ['DateStyle con un cuarto argumento', "SELECT set_config('DateStyle', 'ISO, MDY', true, false)"],
       ['otra variable de formato (lc_time)', "SELECT set_config('lc_time', 'C', true)"],
-      ['otra variable (standard_conforming_strings)', "SELECT set_config('standard_conforming_strings', 'on', true)"],
       ['otra variable (search_path)', "SELECT set_config('search_path', 'public', true)"],
       ['otra variable (statement_timeout)', "SELECT set_config('statement_timeout', '0', true)"],
       ['el nombre armado con una columna', "SELECT set_config(nombre, 'hex', true) FROM ajustes"],

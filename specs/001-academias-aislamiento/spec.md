@@ -1523,6 +1523,19 @@ justificación de cada elemento (como la lista del criterio 10):
      `pg`, no declarada), `require('knex')` e `import { y } from '#interno'`. Consecuencia: `backend/package.json` declara
      `express`, que hoy se importa como valor sin estar declarado (llega como dependencia de `@nestjs/platform-express`).
      Prueba de la regla como en el criterio 92. _(crítico; prueba de la regla de lint)_
+
+     Precisiones _(decisión del orquestador tras la ronda 5, 12/11/2026)_:
+     - **Alcance:** la regla se aplica a todo `backend/src/` (sin las pruebas, criterio 110), sin excepciones de carpeta:
+       también a `backend/src/infraestructura/prisma/`, a `backend/src/cli/` y a `backend/src/main.ts`. Las exenciones de
+       esas carpetas en otros criterios (por ejemplo, el 129) no alcanzan a esta regla.
+     - **Falla cerrada:** si `backend/package.json` no existe, no se puede leer o no se puede analizar como JSON, la regla
+       no deja pasar nada: reporta en cada archivo revisado un error que dice que no encuentra o no puede leer
+       `backend/package.json`. La prueba de la regla agrega estos tres casos (falta, ilegible y JSON inválido), cada uno
+       con un archivo que, con un `backend/package.json` válido, pasaría.
+     - **Ejemplos de otras reglas:** las pruebas protegidas de rondas anteriores que usan paquetes no declarados en
+       `backend/package.json` (`pg-pool`, `@prisma/adapter-neon`, `sql-template-tag`) como ejemplos para probar
+       exenciones de otras reglas se ejecutan en repositorios temporales cuyo `backend/package.json` los declara; lo que
+       comprueban no cambia (ver "Impacto en especificaciones anteriores", ronda 5).
 129. **Lista negra de clientes de base** _(ataque ronda 5, O1; complementa los criterios 85 y 95)_. Dado el código de
      `backend/src/` (sin las pruebas), fuera de `backend/src/infraestructura/prisma/` y de `backend/src/cli/`, entonces
      `npm run lint` (también el paso protegido) falla si un archivo importa, de valor o de tipo, por cualquiera de las vías
