@@ -28,7 +28,9 @@ export function leerUrlAppConfigurada(raiz: string, entorno: Readonly<Record<str
   if (delEntorno) return delEntorno;
   const ruta = path.join(raiz, '.env');
   if (fs.existsSync(ruta)) {
-    const delArchivo = parseEnv(fs.readFileSync(ruta, 'utf8'))['DATABASE_URL_APP']?.trim();
+    const texto = fs.readFileSync(ruta, 'utf8');
+    // Como `dotenv`: se quita un U+FEFF inicial (BOM) antes de analizar (spec 001, criterio 169).
+    const delArchivo = parseEnv(texto.startsWith('\uFEFF') ? texto.slice(1) : texto)['DATABASE_URL_APP']?.trim();
     if (delArchivo) return delArchivo;
   }
   return URL_APP_POR_DEFECTO;

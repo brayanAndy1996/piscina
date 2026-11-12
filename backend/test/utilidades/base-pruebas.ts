@@ -40,13 +40,18 @@ export function validarBasePruebas(env: VariablesEntorno): string {
   return pruebas;
 }
 
+/** Quita un U+FEFF solo si es el primer carácter del texto, como hace `dotenv` (spec 001, criterio 169). */
+function quitarBomInicial(texto: string): string {
+  return texto.startsWith('\uFEFF') ? texto.slice(1) : texto;
+}
+
 /**
  * Combina el entorno del proceso con el .env de la raíz. Las variables ya definidas mandan (por ejemplo, las de la CI).
  * Solo se leen las variables que necesita la base de pruebas, para no contaminar el entorno de las pruebas.
  */
 export function leerEntornoBases(raiz: string, entorno: VariablesEntorno = process.env): VariablesEntorno {
   const ruta = path.join(raiz, '.env');
-  const delArchivo = fs.existsSync(ruta) ? parseEnv(fs.readFileSync(ruta, 'utf8')) : {};
+  const delArchivo = fs.existsSync(ruta) ? parseEnv(quitarBomInicial(fs.readFileSync(ruta, 'utf8'))) : {};
   const resultado: Record<string, string | undefined> = {};
   for (const clave of ['DATABASE_URL', 'DATABASE_URL_PRUEBAS']) {
     resultado[clave] = entorno[clave] ?? delArchivo[clave];
