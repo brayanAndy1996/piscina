@@ -14,6 +14,7 @@ import {
   MENSAJE_ROL_INSEGURO,
 } from './errores';
 import { codigoDeErrorDeBase } from './errores-base';
+import { conPuntosDeGuardado } from './puntos-de-guardado';
 import { privilegiosDeMasEnEsquemas, type PrivilegioEnEsquema } from './privilegios-app';
 import {
   problemasDeConfiguracion,
@@ -200,8 +201,9 @@ export class BaseDatos implements OnModuleDestroy {
   }
 
   /**
-   * Abre la transacción, fija el contexto y entrega a `trabajo` el envoltorio (nunca el cliente de la transacción). Al
-   * terminar `trabajo`, con éxito o con error, el envoltorio deja de aceptar llamadas (criterio 106).
+   * Abre la transacción, fija el contexto y entrega a `trabajo` el envoltorio (nunca el cliente de la transacción). Si
+   * `trabajo` lanza, el envoltorio se apaga en el acto; si termina bien, sigue aceptando las llamadas encadenadas hasta que
+   * `asentar()` ve la cola vacía y entonces se apaga (criterios 106 y 156).
    */
   #transaccion<T>(
     opciones: OpcionesTransaccion,
@@ -212,7 +214,9 @@ export class BaseDatos implements OnModuleDestroy {
       async (tx) => {
         const marca = randomUUID();
         await this.#fijarContexto(tx, { ...contexto, marca });
-        const { cliente, terminar, ejecutar, asentar, descartar, exigirCompleta } = envolver(tx);
+        // Criterio 158: cada escritura de un delegado corre en un punto de guardado; el envoltorio se arma sobre esa capa.
+        const capa = conPuntosDeGuardado(tx);
+        const { cliente, terminar, ejecutar, asentar, descartar, exigirCompleta } = envolver(capa.tx);
         let resultado: T;
         try {
           // Criterio 134: `trabajo` corre en el contexto asíncrono de esta transacción; el envoltorio no responde en otro.
@@ -220,24 +224,33 @@ export class BaseDatos implements OnModuleDestroy {
         } catch (error) {
           // Criterio 153: las consultas que seguían en la cola no se entregan a Prisma; el error de `trabajo` sale tal cual.
           descartar();
+          terminar();
           throw error;
+        }
+        try {
+          // Criterios 149 a 151 y 156: solo en el camino bueno (si `trabajo` lanza, ese error sale tal cual, criterio 22). El
+          // envoltorio sigue aceptando las llamadas encadenadas de `trabajo` mientras `asentar()` espera sus consultas y se apaga
+          // al final. Luego se comprueba que la transacción sigue viva y es la misma y, antes del `COMMIT` de Prisma, se rechaza si
+          // no lo es: un `COMMIT` sobre una transacción abortada solo responde `ROLLBACK`, sin error.
+          await asentar();
+          // Criterio 154: una operación que volvió con `undefined` marcó la transacción aunque `trabajo` atrapara el rechazo; el 156
+          // marca igual las llamadas tardías; el 158, las sentencias fallidas de la capa de puntos de guardado.
+          const revisar = (): void => {
+            exigirCompleta();
+            capa.exigirSana();
+          };
+          try {
+            revisar();
+            await comprobarTransaccionViva(tx, marca);
+            revisar(); // llamadas tardías durante la comprobación
+          } catch (error) {
+            if (error instanceof ErrorTransaccionAbortada) this.#registrarAbortada(error);
+            throw error;
+          }
+          return resultado;
         } finally {
           terminar();
         }
-        // Criterios 149 a 151: solo en el camino bueno (si `trabajo` lanza, ese error sale tal cual, criterio 22). Primero se
-        // esperan las consultas que `trabajo` envió sin `await`; luego se comprueba que la transacción sigue viva y es la misma
-        // y, antes del `COMMIT` de Prisma, se rechaza si no lo es: un `COMMIT` sobre una transacción abortada solo responde
-        // `ROLLBACK`, sin error.
-        await asentar();
-        try {
-          // Criterio 154: una operación que volvió con `undefined` marcó la transacción aunque `trabajo` atrapara el rechazo.
-          exigirCompleta();
-          await comprobarTransaccionViva(tx, marca);
-        } catch (error) {
-          if (error instanceof ErrorTransaccionAbortada) this.#registrarAbortada(error);
-          throw error;
-        }
-        return resultado;
       },
       {
         isolationLevel: opciones.aislamiento,
