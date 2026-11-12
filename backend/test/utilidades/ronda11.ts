@@ -16,7 +16,8 @@ export function siguienteNumero(): number {
   contador += 1;
   return contador;
 }
-export const claveDe = (n: number, sufijo = ''): string => `prueba_r11_${n}${sufijo}`;
+// (dato corregido: formato de clave de configuraciones) La clave cumple `^[a-z][a-z0-9_]{0,63}$`: los sufijos con guion ('-a', '-1') van con `_`.
+export const claveDe = (n: number, sufijo = ''): string => `prueba_r11_${n}${sufijo.replaceAll('-', '_')}`;
 export const nombreCortoDe = (n: number, sufijo = ''): string => `prueba-r11-${n}${sufijo}`;
 export const accionDe = (n: number): string => `PRUEBA_R11_${n}`;
 
