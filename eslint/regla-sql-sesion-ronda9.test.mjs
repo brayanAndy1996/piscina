@@ -3,13 +3,12 @@
 // backend/src/cli/, la regla del criterio 83 admite ademas exactamente `set_config('client_encoding', 'UTF8', true)` (146),
 // `set_config('synchronous_commit', 'on', true)`, `set_config('array_nulls', 'on', true)` y `set_config('transform_null_equals', 'off', true)`
 // (147), con o sin `pg_catalog.` y sin distinguir mayusculas en el nombre de la variable (como en el criterio 98). Otro valor
-// (`'LATIN1'`, `'SQL_ASCII'` y `'utf8'` para el primero; `'off'`, `'local'` y `'remote_apply'` para `synchronous_commit`; `'off'` para `array_nulls`;
+// (`'LATIN1'` y `'SQL_ASCII'` para el primero; `'off'`, `'local'` y `'remote_apply'` para `synchronous_commit`; `'off'` para `array_nulls`;
 // `'on'` para `transform_null_equals`) o un tercer argumento distinto de `true` sigue fallando, y fuera de cli/ y de infraestructura/prisma/ sigue
 // prohibida toda llamada a `set_config`. Se prueba con las dos configuraciones, como el criterio 92 (`regla-sql-sesion-ronda5.test.mjs`).
 //
-// Nota: la especificacion (criterio 146) dice que `'utf8'` en minusculas "sigue fallando", mientras que la comparacion de los valores de los
-// criterios 98, 107, 121 y 122 no distingue mayusculas (`set_config('bytea_output', 'HEX', true)` y `set_config('TimeZone', 'utc', true)` pasan hoy
-// en cli/). Ese caso esta aparte, en su propia prueba, para que se vea que es una decision de la especificacion.
+// Nota (decision del orquestador tras T107, 12/11/2026): la especificacion decia que `'utf8'` en minusculas fallaba en cli/; por coherencia con los
+// criterios 98, 107, 121 y 122, la comparacion de valores no distingue mayusculas, asi que `'utf8'` pasa (el especificador corregira la spec).
 import { describe, expect, it } from 'vitest';
 import { CLI, CONFIGURACIONES, MODULO, PRISMA, errores } from './ayuda-lint-ronda4.mjs';
 
@@ -134,10 +133,13 @@ describe.each(CONFIGURACIONES)('criterios 146 y 147 (regla) con %s', (_configura
       expect((await errores(obtener(), comoPlantilla(sql), CLI)).length, sql).toBeGreaterThan(0);
     });
 
-    it("criterio 146 (decision de la especificacion): client_encoding con 'utf8' en minusculas sigue fallando el lint en cli/", async () => {
+    it("criterio 146 (decision del orquestador tras T107, 12/11/2026): client_encoding con 'utf8' en minusculas pasa el lint en cli/ y en prisma/, y falla en un modulo", async () => {
       const sql = "SELECT set_config('client_encoding', 'utf8', true)";
+      const eslint = obtener();
 
-      expect((await errores(obtener(), comoPlantilla(sql), CLI)).length, sql).toBeGreaterThan(0);
+      expect(await errores(eslint, comoPlantilla(sql), CLI), `cli/: ${sql}`).toEqual([]);
+      expect(await errores(eslint, comoPlantilla(sql), PRISMA), `prisma/: ${sql}`).toEqual([]);
+      expect((await errores(eslint, comoPlantilla(sql), MODULO)).length, `modulo: ${sql}`).toBeGreaterThan(0);
     });
 
     it('criterios 146 y 147: una sentencia con una llamada permitida y otra con un valor no permitido falla en cli/', async () => {
