@@ -299,7 +299,8 @@ function buscarErroresDeLaBase(raiz: object): Busqueda {
           continue;
         }
         visitados += 1;
-        if (nivel + 1 > PROFUNDIDAD_MAXIMA || visitados > OBJETOS_MAXIMOS) return { deLaBase, agotada: true, conBinarios };
+        if (nivel + 1 > PROFUNDIDAD_MAXIMA || visitados > OBJETOS_MAXIMOS)
+          return { deLaBase, agotada: true, conBinarios };
         siguientes.push(valor);
       }
     }
