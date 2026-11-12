@@ -484,13 +484,49 @@ criterio).
       escritos, errores en la confirmación, la marca de la transacción, la conexión del pool después de cada caso, e IP
       con zona, mapeadas o inválidas en la auditoría); si hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 11 (12/11/2026)
+
+Falla F1 (alta) y observaciones O1 y O2 de la ronda 11 (sobre `28ab05c`); criterios 153 a 155 de `spec.md` (sección T),
+ampliación de P-36 y precisión P-38. Plan, sección 23. La O2 y `enPlataforma` sin cola van a "Riesgos aceptados".
+
+- [ ] T123 · test-writer · Pruebas protegidas en rojo de los criterios 153 a 155 (archivos en "Protegidas del ataque ronda
+      11" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: los casos 1 a 7 del
+      criterio 153 en `conAcademia` y `comoPlataforma` (lista que ignora las inexistentes en tres órdenes; `allSettled`
+      con escritura y auditoría; `comoPlataforma` con `Promise.all` y `allSettled`; 20 consultas en orden; error de la
+      base en medio; P2025 suelto; `trabajo` que lanza con consultas en la cola), con la conexión sana después; la unitaria
+      de `envolver` con una transacción falsa para la cola (153) y para `undefined`, `exigirCompleta` y los resultados
+      normales `null`, `0`, `[]`, `{ count: 0 }` (154); y el bloqueo de transacción con `$executeRaw`, `::text` y
+      `pg_try_advisory_xact_lock` entre dos transacciones (155). Comprobar que ninguna protegida anterior cambia de
+      resultado por estas pruebas (si alguna cambiara, detenerse e informar). Commit: "Pruebas protegidas (001), ataque
+      ronda 11: consultas a la vez que Prisma no ejecutó y bloqueo de transacción (en rojo)" (criterios 153 a 155)
+- [ ] T124 · tester · Confirmar que T123 falla por la razón esperada: las reproducciones 1 a 3 resuelven sin las
+      escrituras ni la auditoría (o con `undefined` en `allSettled`); la unitaria ve la segunda consulta entregada antes de
+      que se asiente la primera, y `descartar` y `exigirCompleta` no existen (153, 154). Se informan como verdes por
+      diseño: los controles (P2025 suelto, 20 consultas en orden si ya pasan, error de la base en medio, `trabajo` que
+      lanza) y el criterio 155 si ya pasa con el código actual (es una guarda de la forma documentada)
+- [ ] T125 · backend · Cola serial en `envoltorio.ts` (`enviarSeguida` encadenada, comprobaciones al llamar, `descartar`),
+      sin cambiar lo que recibe `trabajo` (promesas nativas sin claves propias) (plan, sección 23) (criterio 153)
+- [ ] T126 · backend · Segunda capa: `undefined` rechaza con `ErrorTransaccionAbortada` (motivo `incompleta`) y marca la
+      transacción; `exigirCompleta` en `envoltorio.ts`; `motivo` en `ErrorTransaccionAbortada` (`errores.ts`, ampliación de
+      P-36); en `#transaccion` de `base-datos.ts`, `descartar()` en el camino del error y `exigirCompleta()` antes de
+      `comprobarTransaccionViva`, con el registro técnico que nombra la operación sin argumentos (criterio 154)
+- [ ] T127 · backend · Comentario de `enPlataforma` (`cli/conexion.ts`): en comandos y en la semilla no se lanzan consultas
+      en paralelo dentro de `enPlataforma`; revisar que `superadmin.ts` y `seed.ts` cumplen (riesgo aceptado, plan,
+      sección 23)
+- [ ] T128 · orquestador · `git diff` desde el commit de T123: T125 a T127 no tocaron pruebas protegidas
+- [ ] T129 · adversarial · Ronda 12 sobre todo lo anterior, en especial 153 a 155 (lotes de Prisma por cualquier camino:
+      `Promise.all`, `allSettled`, `map` con `async`, `race`, consultas sin `await`, operaciones de varias sentencias;
+      la cola ante rechazos, descartes, tiempos agotados y llamadas desde otro contexto; `undefined` y resultados vacíos
+      legítimos; bloqueos de transacción; y que las protegidas anteriores sigan igual); si hay fallas, se repite el ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
       Docker se cambia también en `DATABASE_URL_APP`, criterio 148), `README.md` (qué está construido) y las notas
       de 001 y 002 en `specs/backlog.md`: el primer administrador de cada academia pasa de 001 a 002 (DR-1). Desde la
       ronda 10: la sección "Fechas y horas de negocio (America/Lima)" de `docs/arquitectura.md`, con el texto propuesto
-      en el plan, sección 22, nota O1
+      en el plan, sección 22, nota O1. Desde la ronda 11: las tres viñetas de transacciones del plan, sección 23
+      (consultas a la vez, errores atrapados y bloqueos con `$executeRaw`)
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)
