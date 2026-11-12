@@ -1,7 +1,8 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type TestContext } from 'vitest';
 import request from 'supertest';
-import { cargarPrisma } from './modulos';
+import { crearAppDePruebas } from './aplicacion';
+import { cargarPrisma, crearDestinoDeRegistro, esperarHasta } from './modulos';
 import { ejecutarComo, limpiarBase } from './base-datos';
 import { crearDatosDeAislamiento, type DatosDeAislamiento } from './datos';
 import { intentar } from './ronda3';
@@ -48,6 +49,18 @@ import {
 //     ErrorRolBaseDatosInseguro (no se uso la has_table_privilege falsa).
 // Las vias (a) y (b) estan en backend/test/integracion/aislamiento/search-path.test.ts; las vias (c) y (d), que cambian valores
 // compartidos con otras conexiones, en backend/test/integracion-aislada/search-path-servidor.test.ts (proyecto `backend-aislado`).
+//
+// ADAPTADO POR EL CRITERIO 130 (ataque ronda 6; ver "Impacto en especificaciones anteriores", ronda 6): con la comprobacion del rol en
+// todos los esquemas, una API que se crea con `trampa` ya presente (con `USAGE` y `SELECT` para la app y objetos propios) rechazaria
+// todo con `ErrorRolBaseDatosInseguro`, y los casos funcionales fallarian por una razon ajena a lo que comprueban. Sin quitar casos ni
+// cambiar lo que comprueban:
+//   - en los casos funcionales, la API se crea y pasa su primera comprobacion del rol (un `comoPlataforma` vacio; en la via (a), el
+//     `trabajo` que contamina) ANTES de crear `trampa`. Asi el criterio 121 se prueba como segunda capa, en el escenario del riesgo
+//     aceptado "comprobacion del rol una vez por proceso" (un esquema creado con la API ya en marcha);
+//   - en el caso con `GRANT TRUNCATE ON auditoria`, que sigue creando la API con `trampa` presente, se exige ademas que el log del
+//     rechazo nombre `auditoria` y `TRUNCATE` (con la `has_table_privilege` falsa de `trampa` no aparecerian), porque `trampa` sola ya
+//     causa el rechazo. El registro de la primera aplicacion del proceso recibe el de todas las demas (nestjs-pino crea un unico
+//     registrador por proceso), asi que una aplicacion inicial, creada y cerrada en `beforeAll`, fija el destino en memoria.
 
 const CLAVE_DEL_ATACANTE = 'Clave-Del-Atacante-2026';
 const NOMBRES = ['search_path'];
@@ -118,8 +131,12 @@ export const VIAS_DEL_SERVIDOR: readonly ViaDeSearchPath[] = [
 export function registrarPruebasDeSearchPath(vias: readonly ViaDeSearchPath[]): void {
   let capacidades: Capacidades = { superusuario: false, alteraLaBase: false, creaEsquemas: false };
   let hashDelAtacante = '';
+  const { destino, lineas } = crearDestinoDeRegistro();
 
   beforeAll(async () => {
+    // La primera aplicacion del proceso fija el destino del registro para todas las demas (criterio 130, caso del TRUNCATE).
+    const inicial = await crearAppDePruebas({ nivelRegistro: 'info', destinoRegistro: destino });
+    await inicial.close();
     capacidades = await detectarCapacidades();
     if (vias.some((via) => via.via !== 'sesion' && via.via !== 'url')) {
       // Restos de una ejecucion anterior que murio a medias: se quitan antes de crear nada.
@@ -166,8 +183,8 @@ export function registrarPruebasDeSearchPath(vias: readonly ViaDeSearchPath[]): 
         [datos.A.id],
         { plataforma: true },
       );
+      // (criterio 130) `trampa` ya no se crea aqui: se crea despues de la primera comprobacion del rol de la API (ver `iniciar`).
       hashDelAtacante ||= await hashDeLaClaveDelAtacante(CLAVE_DEL_ATACANTE);
-      await crearTrampa(hashDelAtacante);
     });
     afterEach(async () => {
       try {
@@ -181,6 +198,9 @@ export function registrarPruebasDeSearchPath(vias: readonly ViaDeSearchPath[]): 
     async function iniciar(contexto: TestContext): Promise<ApiContaminada> {
       if (omitida) contexto.skip(omitida);
       api = await crearApiContaminada(variante.via, [variante.parametro]);
+      // (criterio 130) Primera comprobacion del rol, todavia sin `trampa`; despues se crea la trampa con la API ya en marcha.
+      await api.baseDatos.comoPlataforma(() => Promise.resolve('rol comprobado'));
+      await crearTrampa(hashDelAtacante);
       return api;
     }
 
@@ -230,18 +250,32 @@ export function registrarPruebasDeSearchPath(vias: readonly ViaDeSearchPath[]): 
     });
 
     if (variante.conPrivilegio) {
-      it('criterio 121: con GRANT TRUNCATE ON auditoria TO aquagestion_app, una API nueva rechaza con ErrorRolBaseDatosInseguro (no se uso la has_table_privilege falsa)', async (ctx) => {
+      it('criterio 121: con GRANT TRUNCATE ON auditoria TO aquagestion_app, una API nueva rechaza con ErrorRolBaseDatosInseguro (no se uso la has_table_privilege falsa) y el log nombra auditoria y TRUNCATE', async (ctx) => {
         if (omitida) ctx.skip(omitida);
         const { ErrorRolBaseDatosInseguro } = await cargarPrisma();
+        // Este caso crea la API con `trampa` presente (criterio 130: `trampa` sola ya causa el rechazo; por eso se exige el log).
+        await crearTrampa(hashDelAtacante);
         await ejecutarComo('propietario', `GRANT TRUNCATE ON public.auditoria TO ${APP}`);
+        const desde = lineas.length;
         try {
-          const { baseDatos } = await iniciar(ctx);
+          api = await crearApiContaminada(variante.via, [variante.parametro]);
+          const { baseDatos } = api;
 
           const errorPlataforma = await intentar(() => baseDatos.comoPlataforma(() => Promise.resolve('no')));
           const errorAcademia = await intentar(() => baseDatos.conAcademia(datos.B.id, () => Promise.resolve('no')));
 
           expect(errorPlataforma, 'comoPlataforma debia rechazar').toBeInstanceOf(ErrorRolBaseDatosInseguro);
           expect(errorAcademia, 'conAcademia debia rechazar').toBeInstanceOf(ErrorRolBaseDatosInseguro);
+
+          await esperarHasta(() => lineas.slice(desde).some((linea) => linea.includes('DATABASE_URL_APP')));
+          const errores = lineas
+            .slice(desde)
+            .map((linea) => JSON.parse(linea) as { level: number; msg?: string })
+            .filter((registro) => registro.level >= 50 && registro.msg?.includes('DATABASE_URL_APP'));
+          expect(errores.length, 'falta un registro de nivel error que nombre DATABASE_URL_APP').toBeGreaterThan(0);
+          const texto = errores.map((registro) => registro.msg).join('\n');
+          expect(texto, 'el registro no nombra auditoria (se uso la has_table_privilege falsa)').toContain('auditoria');
+          expect(texto, 'el registro no nombra TRUNCATE (se uso la has_table_privilege falsa)').toContain('TRUNCATE');
         } finally {
           await api?.cerrar();
           api = undefined;
