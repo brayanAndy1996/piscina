@@ -14,12 +14,21 @@ import {
   correccionDePrivilegio,
   privilegiosNoPermitidos,
   problemasDeConfiguracionApp,
+  problemasDeEsquemasApp,
   problemasDelRolApp,
   verificadorScram,
 } from './lib/rol-app.mjs';
 
 const DUPLICATE_DATABASE = '42P04';
 const DUPLICATE_OBJECT = '42710';
+
+/**
+ * Fija el `search_path` de la conexión del script (criterio 121): el valor por defecto (`"$user", public`) o uno de la URL, de la
+ * base o del servidor podría poner antes un esquema ajeno. Las consultas del script además califican con `pg_catalog.`.
+ */
+async function fijarSearchPath(cliente) {
+  await cliente.query('SET search_path = pg_catalog, public, pg_temp');
+}
 
 /** Reemplaza cada aparición de la contraseña en un texto por "***". */
 function ocultarClave(texto, clave) {
@@ -204,11 +213,44 @@ export async function problemasDeLaBase(clientePostgres, abrirCliente, { base, u
           `DATABASE_URL>; ejecutado en esa base.`,
       );
     }
+    problemas.push(...(await problemasDeEsquemas(clienteBase, { base, usuarioApp })));
     problemas.push(...(await problemasDePrivilegios(clienteBase, { base, usuarioApp })));
   } finally {
     await clienteBase.end();
   }
   return problemas;
+}
+
+/**
+ * Esquemas de la base a la que está conectado `clienteBase` que hacen inseguro a `usuarioApp` (criterio 123, P-29): esquemas de
+ * los que es dueño, esquemas con `CREATE` (concedido al rol o a `PUBLIC`) y un esquema con su nombre. Un problema por esquema y
+ * condición, con su corrección. No modifica nada.
+ */
+export async function problemasDeEsquemas(clienteBase, { base, usuarioApp }) {
+  const { rows: propios } = await clienteBase.query(
+    `SELECT n.nspname::text AS esquema
+       FROM pg_catalog.pg_namespace n JOIN pg_catalog.pg_roles r ON r.oid = n.nspowner
+      WHERE r.rolname = $1 ORDER BY 1`,
+    [usuarioApp],
+  );
+  const { rows: conCreate } = await clienteBase.query(
+    `SELECT n.nspname::text AS esquema,
+            EXISTS (SELECT 1 FROM pg_catalog.aclexplode(n.nspacl) a
+                     WHERE a.grantee = 0 AND a.privilege_type = 'CREATE') AS "dePublic"
+       FROM pg_catalog.pg_namespace n
+      WHERE pg_catalog.has_schema_privilege($1::name, n.oid, 'CREATE') ORDER BY 1`,
+    [usuarioApp],
+  );
+  const { rows: conSuNombre } = await clienteBase.query(
+    'SELECT 1 AS ok FROM pg_catalog.pg_namespace n WHERE n.nspname = $1',
+    [usuarioApp],
+  );
+  return problemasDeEsquemasApp({
+    esquemasPropios: propios.map((fila) => fila.esquema),
+    esquemasConCreate: conCreate.map((fila) => ({ esquema: fila.esquema, dePublic: fila.dePublic === true })),
+    esquemaConSuNombre: conSuNombre.length > 0,
+    rolname: usuarioApp,
+  }).map((problema) => `${problema} (base ${base})`);
 }
 
 /**
@@ -223,7 +265,7 @@ export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) 
             pg_catalog.has_table_privilege('public', c.oid, p.privilegio) AS via_public
        FROM pg_catalog.pg_class c
        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-       CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
+       CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
         AND pg_catalog.has_table_privilege($1::name, c.oid, p.privilegio)
      UNION ALL
@@ -231,7 +273,7 @@ export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) 
             pg_catalog.has_sequence_privilege('public', c.oid, p.privilegio)
        FROM pg_catalog.pg_class c
        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-       CROSS JOIN unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
+       CROSS JOIN pg_catalog.unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
       WHERE n.nspname = 'public' AND c.relkind = 'S'
         AND pg_catalog.has_sequence_privilege($1::name, c.oid, p.privilegio)
      UNION ALL
@@ -240,7 +282,7 @@ export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) 
        FROM pg_catalog.pg_class c
        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-       CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
+       CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
         AND pg_catalog.has_column_privilege($1::name, c.oid, a.attnum, p.privilegio)`,
     [usuarioApp],
@@ -323,6 +365,7 @@ export async function crearBases(env = process.env) {
       cause: error,
     });
   }
+  await fijarSearchPath(cliente);
 
   const abrirCliente = async (base) => {
     const conexion = new pg.Client({
@@ -334,6 +377,7 @@ export async function crearBases(env = process.env) {
       connectionTimeoutMillis: 5000,
     });
     await conexion.connect();
+    await fijarSearchPath(conexion);
     return conexion;
   };
 
@@ -343,7 +387,7 @@ export async function crearBases(env = process.env) {
   try {
     rol = await asegurarRolApp(cliente, { usuario: app.usuario, clave: app.clave });
     for (const nombre of nombres) {
-      const { rowCount } = await cliente.query('SELECT 1 FROM pg_database WHERE datname = $1', [nombre]);
+      const { rowCount } = await cliente.query('SELECT 1 FROM pg_catalog.pg_database WHERE datname = $1', [nombre]);
       if (rowCount) {
         existentes.push(nombre);
         continue;

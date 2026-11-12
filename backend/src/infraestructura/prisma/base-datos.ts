@@ -12,7 +12,14 @@ import {
   MENSAJE_ROL_INSEGURO,
 } from './errores';
 import { privilegiosDeMas, type PrivilegioApp } from './privilegios-app';
-import { problemasDeConfiguracion, problemasDelRol, type FilaConfiguracionRol, type FilaRol } from './rol-seguro';
+import {
+  problemasDeConfiguracion,
+  problemasDeEsquemas,
+  problemasDelRol,
+  type FilaConfiguracionRol,
+  type FilaEsquemas,
+  type FilaRol,
+} from './rol-seguro';
 import type {
   AcademiaResuelta,
   ClienteTransaccion,
@@ -20,6 +27,14 @@ import type {
   TransaccionAcademia,
   TransaccionPlataforma,
 } from './tipos';
+
+/** Un esquema que hace inseguro al rol (solo para el registro técnico). */
+interface FilaEsquemaAfectado {
+  esquema: string;
+  propio: boolean;
+  crea: boolean;
+  su_nombre: boolean;
+}
 
 const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -149,10 +164,13 @@ export class BaseDatos implements OnModuleDestroy {
 
   /**
    * Primera sentencia de toda transacción: fija **los dos** valores de contexto con `set_config(..., true)` (locales a
-   * la transacción), la zona horaria en `UTC` y los parámetros de formato que el adaptador de Prisma interpreta
+   * la transacción), el `search_path` en `pg_catalog, public, pg_temp` y `standard_conforming_strings` en `on` (criterios 121 y
+   * 122), la zona horaria en `UTC` y los parámetros de formato que el adaptador de Prisma interpreta
    * (`DateStyle`, `IntervalStyle`, `extra_float_digits` y `bytea_output`), sin importar lo que traiga la conexión del pool:
    * valores de sesión de un módulo, `options` de la URL o valores por defecto del rol, de la base o del servidor (criterios 72,
-   * 98 y 107). Una sola sentencia, para no gastar un viaje extra. Sin academia, `academiaId` va vacío; sin plataforma, `app.plataforma` va vacío. Después cierra
+   * 98, 107, 121 y 122). Cada función va calificada con `pg_catalog.`: PostgreSQL la resuelve con el `search_path` que trae la
+   * conexión, antes de fijarlo, y un esquema del atacante antes de `pg_catalog` podría tapar `set_config`. Una sola sentencia,
+   * sin barras invertidas, para no gastar un viaje extra. Sin academia, `academiaId` va vacío; sin plataforma, `app.plataforma` va vacío. Después cierra
    * todo cursor que haya sobrevivido (`CLOSE ALL`, criterio 101): se ejecuta aparte porque `CLOSE` no se puede combinar con
    * un `SELECT` en el protocolo extendido.
    */
@@ -162,10 +180,13 @@ export class BaseDatos implements OnModuleDestroy {
   ): Promise<void> {
     const plataforma = contexto.plataforma ? 'si' : '';
     await tx.$queryRaw`
-      SELECT set_config('app.plataforma', ${plataforma}, true), set_config('app.academia_id', ${contexto.academiaId}, true),
-             set_config('TimeZone', 'UTC', true), set_config('DateStyle', 'ISO, MDY', true),
-             set_config('IntervalStyle', 'postgres', true), set_config('extra_float_digits', '1', true),
-             set_config('bytea_output', 'hex', true)`;
+      SELECT pg_catalog.set_config('search_path', 'pg_catalog, public, pg_temp', true),
+             pg_catalog.set_config('standard_conforming_strings', 'on', true),
+             pg_catalog.set_config('app.plataforma', ${plataforma}, true),
+             pg_catalog.set_config('app.academia_id', ${contexto.academiaId}, true),
+             pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true),
+             pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true),
+             pg_catalog.set_config('bytea_output', 'hex', true)`;
     await cerrarCursores(tx);
   }
 
@@ -208,71 +229,107 @@ export class BaseDatos implements OnModuleDestroy {
     return this.#verificacion;
   }
 
+  /**
+   * Las consultas corren en una sola transacción cuya primera sentencia fija el `search_path` (criterio 121), sin contexto de
+   * academia ni de plataforma. Toda función y tabla del catálogo va calificada con `pg_catalog.` (también `unnest`):
+   * PostgreSQL las resuelve con el `search_path` que trae la conexión, y un esquema del atacante podría tapar alguna.
+   */
   async #comprobarRol(): Promise<void> {
-    const filas = await this.#prisma.$queryRaw<FilaRol[]>`
-      SELECT r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
-             EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid) AS es_miembro,
-             pg_catalog.pg_has_role(r.oid, 'pg_database_owner', 'MEMBER') AS dueno_de_la_base,
-             pg_catalog.has_database_privilege(r.oid, pg_catalog.current_database(), 'CREATE') AS crea_en_base,
-             pg_catalog.has_database_privilege(r.oid, pg_catalog.current_database(), 'TEMPORARY') AS temporales,
-             pg_catalog.has_schema_privilege(r.oid, 'public', 'CREATE') AS crea_en_public,
-             (EXISTS (SELECT 1 FROM pg_catalog.pg_class c
-                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                       WHERE n.nspname = 'public' AND c.relowner = r.oid)
-              OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
-                           JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-                          WHERE n.nspname = 'public' AND p.proowner = r.oid)
-              OR EXISTS (SELECT 1 FROM pg_catalog.pg_type t
-                           JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
-                          WHERE n.nspname = 'public' AND t.typowner = r.oid)
-              OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname = 'public' AND n.nspowner = r.oid))
-               AS es_dueno
-        FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
-    const rol = filas[0];
-    const problemas = rol ? problemasDelRol(rol) : ['el rol de la conexión no aparece en el catálogo'];
+    const { rol, configuracion, efectivos, esquemas, afectados } = await this.#prisma.$transaction(
+      async (tx) => {
+        await this.#fijarContexto(tx, { academiaId: '', plataforma: false });
+        const filas = await tx.$queryRaw<FilaRol[]>`
+          SELECT r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
+                 EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid) AS es_miembro,
+                 pg_catalog.pg_has_role(r.oid, 'pg_database_owner', 'MEMBER') AS dueno_de_la_base,
+                 pg_catalog.has_database_privilege(r.oid, pg_catalog.current_database(), 'CREATE') AS crea_en_base,
+                 pg_catalog.has_database_privilege(r.oid, pg_catalog.current_database(), 'TEMPORARY') AS temporales,
+                 pg_catalog.has_schema_privilege(r.oid, 'public', 'CREATE') AS crea_en_public,
+                 (EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+                            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                           WHERE n.nspname = 'public' AND c.relowner = r.oid)
+                  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
+                               JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                              WHERE n.nspname = 'public' AND p.proowner = r.oid)
+                  OR EXISTS (SELECT 1 FROM pg_catalog.pg_type t
+                               JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                              WHERE n.nspname = 'public' AND t.typowner = r.oid)
+                  OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname = 'public' AND n.nspowner = r.oid))
+                   AS es_dueno
+            FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
 
-    // Criterio 103: valores por defecto propios del rol (`rolconfig`) o del rol en alguna base (`pg_db_role_setting`).
-    const configuraciones = await this.#prisma.$queryRaw<FilaConfiguracionRol[]>`
-      SELECT (COALESCE(pg_catalog.cardinality(r.rolconfig), 0) > 0
-              OR EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s WHERE s.setrole = r.oid)) AS tiene_configuracion
-        FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
-    const configuracion = configuraciones[0];
+        // Criterio 103: valores por defecto propios del rol (`rolconfig`) o del rol en alguna base (`pg_db_role_setting`).
+        const configuraciones = await tx.$queryRaw<FilaConfiguracionRol[]>`
+          SELECT (COALESCE(pg_catalog.cardinality(r.rolconfig), 0) > 0
+                  OR EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s WHERE s.setrole = r.oid)) AS tiene_configuracion
+            FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
+
+        // Criterio 102: privilegios efectivos (concedidos al rol o a PUBLIC) de tabla, secuencia y columna del esquema public.
+        const efectivos = await tx.$queryRaw<PrivilegioApp[]>`
+          SELECT c.relname::text AS tabla, NULL::text AS columna, p.privilegio::text AS privilegio
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
+           WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+             AND pg_catalog.has_table_privilege(current_user, c.oid, p.privilegio)
+          UNION ALL
+          SELECT c.relname::text, NULL::text, p.privilegio::text
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN pg_catalog.unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
+           WHERE n.nspname = 'public' AND c.relkind = 'S'
+             AND pg_catalog.has_sequence_privilege(current_user, c.oid, p.privilegio)
+          UNION ALL
+          SELECT c.relname::text, a.attname::text, p.privilegio::text
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+            CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
+           WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+             AND pg_catalog.has_column_privilege(current_user, c.oid, a.attnum, p.privilegio)`;
+
+        // Criterio 123: esquemas propios, con CREATE o con el nombre del rol (el `search_path` por defecto lo buscaría antes).
+        const esquemas = await tx.$queryRaw<FilaEsquemas[]>`
+          SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspowner = r.oid) AS dueno_de_esquema,
+                 EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n
+                          WHERE pg_catalog.has_schema_privilege(r.oid, n.oid, 'CREATE')) AS crea_en_esquema,
+                 EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname = r.rolname) AS esquema_con_su_nombre
+            FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
+        // Solo para el registro técnico: qué esquemas causan la condición (nombres de esquemas, nunca la URL ni la contraseña).
+        const afectados = await tx.$queryRaw<FilaEsquemaAfectado[]>`
+          SELECT n.nspname::text AS esquema, (n.nspowner = r.oid) AS propio,
+                 pg_catalog.has_schema_privilege(r.oid, n.oid, 'CREATE') AS crea, (n.nspname = r.rolname) AS su_nombre
+            FROM pg_catalog.pg_namespace n
+           CROSS JOIN pg_catalog.pg_roles r
+           WHERE r.rolname = current_user
+             AND (n.nspowner = r.oid OR pg_catalog.has_schema_privilege(r.oid, n.oid, 'CREATE') OR n.nspname = r.rolname)
+           ORDER BY 1`;
+        return { rol: filas[0], configuracion: configuraciones[0], efectivos, esquemas: esquemas[0], afectados };
+      },
+      { maxWait: ESPERA_CONEXION_MS, timeout: DURACION_MAXIMA_MS },
+    );
+
+    const problemas = rol ? problemasDelRol(rol) : ['el rol de la conexión no aparece en el catálogo'];
     problemas.push(
       ...(configuracion
         ? problemasDeConfiguracion(configuracion)
         : ['los valores por defecto del rol no se pudieron leer del catálogo']),
     );
-
-    // Criterio 102: privilegios efectivos (concedidos al rol o a PUBLIC) de tabla, secuencia y columna del esquema public.
-    const efectivos = await this.#prisma.$queryRaw<PrivilegioApp[]>`
-      SELECT c.relname::text AS tabla, NULL::text AS columna, p.privilegio::text AS privilegio
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
-       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-         AND pg_catalog.has_table_privilege(current_user, c.oid, p.privilegio)
-      UNION ALL
-      SELECT c.relname::text, NULL::text, p.privilegio::text
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        CROSS JOIN unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
-       WHERE n.nspname = 'public' AND c.relkind = 'S'
-         AND pg_catalog.has_sequence_privilege(current_user, c.oid, p.privilegio)
-      UNION ALL
-      SELECT c.relname::text, a.attname::text, p.privilegio::text
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
-       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-         AND pg_catalog.has_column_privilege(current_user, c.oid, a.attnum, p.privilegio)`;
     problemas.push(
       ...privilegiosDeMas(efectivos.map(({ tabla, columna, privilegio }) => ({ tabla, columna, privilegio }))),
+    );
+    problemas.push(
+      ...(esquemas ? problemasDeEsquemas(esquemas) : ['los esquemas del rol no se pudieron leer del catálogo']),
     );
 
     if (problemas.length > 0) {
       // El mensaje nombra la variable y las condiciones; nunca incluye la URL ni la contraseña.
-      this.registro.error(`${MENSAJE_ROL_INSEGURO} Condiciones: ${problemas.join('; ')}.`);
+      const detalleEsquemas = afectados.map((fila) => {
+        const motivos = [fila.propio ? 'dueño' : '', fila.crea ? 'CREATE' : '', fila.su_nombre ? 'nombre del rol' : ''];
+        return `${fila.esquema} (${motivos.filter((motivo) => motivo !== '').join(', ')})`;
+      });
+      const esquemasTexto = detalleEsquemas.length > 0 ? ` Esquemas: ${detalleEsquemas.join('; ')}.` : '';
+      this.registro.error(`${MENSAJE_ROL_INSEGURO} Condiciones: ${problemas.join('; ')}.${esquemasTexto}`);
       throw new ErrorRolBaseDatosInseguro();
     }
   }

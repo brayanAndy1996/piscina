@@ -68,6 +68,42 @@ export function problemasDeConfiguracionApp({ rolconfig, bases, rolname } = {}) 
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Esquemas del rol (criterio 123, P-29)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Problemas por los esquemas de una base (criterio 123): uno por cada esquema y condición. `esquemasPropios` son los esquemas de
+ * los que el rol es dueño; `esquemasConCreate`, los esquemas en los que puede crear (`dePublic` es verdadero si el privilegio
+ * llega por `PUBLIC`); `esquemaConSuNombre` es verdadero si existe un esquema llamado como el rol (el `search_path` por defecto,
+ * `"$user", public`, lo buscaría antes que `public`). Lista vacía: nada. Cada problema nombra el esquema y la corrección. No
+ * modifica nada ni lleva contraseñas.
+ */
+export function problemasDeEsquemasApp({ esquemasPropios, esquemasConCreate, esquemaConSuNombre, rolname } = {}) {
+  const rol = typeof rolname === 'string' && rolname !== '' ? rolname : ROL_POR_DEFECTO;
+  const problemas = [];
+  for (const esquema of Array.isArray(esquemasPropios) ? esquemasPropios : []) {
+    problemas.push(
+      `El rol ${rol} es dueño (propietario) del esquema ${esquema}. Corrígelo con un superusuario: ` +
+        `ALTER SCHEMA ${esquema} OWNER TO <el usuario de DATABASE_URL>;`,
+    );
+  }
+  for (const { esquema, dePublic } of Array.isArray(esquemasConCreate) ? esquemasConCreate : []) {
+    const destino = dePublic ? 'PUBLIC' : rol;
+    problemas.push(
+      `El rol ${rol} tiene CREATE sobre el esquema ${esquema}${dePublic ? ' (concedido a PUBLIC)' : ''}. ` +
+        `Corrígelo con el dueño o un superusuario: REVOKE CREATE ON SCHEMA ${esquema} FROM ${destino};`,
+    );
+  }
+  if (esquemaConSuNombre === true) {
+    problemas.push(
+      `Existe un esquema con el nombre del rol (${rol}): el search_path por defecto lo buscaría antes que public. ` +
+        `Corrígelo con un superusuario: renombra o elimina el esquema (ALTER SCHEMA ${rol} RENAME TO <otro>; o DROP SCHEMA ${rol};).`,
+    );
+  }
+  return problemas;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Privilegios permitidos (criterio 102, P-20)
 // ---------------------------------------------------------------------------------------------------------------------
 

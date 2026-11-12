@@ -17,8 +17,19 @@
 //     `infraestructura/entorno/cargar-env` ni el paquete `dotenv` (criterio 117); las rutas del archivo, de la raíz y de lo
 //     importado se resuelven con `realpath` cuando existen, así que un enlace simbólico no evade las reglas (criterio 111); las
 //     exenciones son solo `.test.<ts|mts|cts|js|mjs|cjs>` y el cliente generado (criterios 110 y 118), y se cubre `.jsx` (119).
+//   - ataque ronda 5: en todo `backend/src/` (también `infraestructura/prisma/`, `cli/` y `main.ts`; sin las pruebas) un valor solo
+//     se importa de un módulo de Node o de un paquete declarado en `backend/package.json` (criterio 128; falla cerrada si ese
+//     archivo falta o no se puede leer); y fuera de `infraestructura/prisma/` y de `cli/` no se importa, de valor ni de tipo, un
+//     cliente de base de la lista negra de `scripts/lib/dependencias-backend.mjs` (criterio 129).
 // Un comentario `eslint-disable` apaga la regla en el lint normal, pero no en el paso protegido (criterio 96). Se exporta por
 // separado para poder probarla con ESLint.
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  esClienteDeBaseProhibido,
+  nombreDePaquete,
+  SECCIONES_DE_DEPENDENCIAS,
+} from '../scripts/lib/dependencias-backend.mjs';
 import {
   ARCHIVOS_DE_CODIGO,
   EXENCION_CLIENTE_GENERADO,
@@ -55,6 +66,21 @@ export const MENSAJE_CARGA_ENV =
 export const MENSAJE_IMPORTA_INTERNOS_PRISMA =
   'Nada fuera de infraestructura/prisma/ importa sus archivos internos: usa solo su index ' +
   "(import … from '…/infraestructura/prisma').";
+
+export const MENSAJE_PAQUETE_NO_DECLARADO =
+  'backend/src/ solo importa valores de módulos de Node o de paquetes declarados en backend/package.json (en cualquier sección): ' +
+  'npm sube a node_modules los paquetes de todos los espacios de trabajo y de las dependencias de otros, y no todos son del backend. ' +
+  'Si el paquete es necesario, declara el paquete en backend/package.json y agrégalo a DEPENDENCIAS_BACKEND_PERMITIDAS ' +
+  '(scripts/lib/dependencias-backend.mjs).';
+
+export const MENSAJE_SIN_PACKAGE_JSON =
+  'No se encuentra o no se puede leer backend/package.json (o no es un JSON válido): sin él no se puede comprobar qué paquetes ' +
+  'declara el backend, y la regla no deja pasar nada.';
+
+export const MENSAJE_CLIENTE_DE_BASE =
+  'Un cliente de base de datos (postgres, knex, kysely, slonik, mysql, sequelize, typeorm, drizzle, pg-promise, pg-native, ' +
+  '@neondatabase/…, @databases/…, @mikro-orm/…, @electric-sql/pglite…) no se importa fuera de infraestructura/prisma/ ni cli/: ' +
+  'el único camino a la base es BaseDatos.';
 
 /** ¿El nombre de un paquete es uno de los que llevan a la base (`pg`, `pg/…`, `pg-pool`, `@prisma/…`, `.prisma/…`)? */
 function esPaqueteProhibido(nombre) {
@@ -129,6 +155,57 @@ function estaDentro(ruta, carpeta) {
   return ruta === carpeta || ruta.startsWith(`${carpeta}/`);
 }
 
+/** Una ruta que pasa por `node_modules/`: lo que sigue al último `node_modules/` es el nombre del paquete (criterio 95). */
+function rutaDeNodeModules(ruta) {
+  const limpia = ruta.replaceAll('\\', '/');
+  const marca = limpia.lastIndexOf('node_modules/');
+  return marca === -1 ? null : limpia.slice(marca + 'node_modules/'.length);
+}
+
+/** ¿El especificador (o la ruta a `node_modules/`) lleva a un cliente de base de la lista negra (criterio 129)? */
+function llevaAUnClienteDeBase(especificador) {
+  if (esClienteDeBaseProhibido(especificador)) return true;
+  const dentro = rutaDeNodeModules(especificador);
+  return dentro !== null && esClienteDeBaseProhibido(dentro);
+}
+
+/** Paquetes declarados de un `package.json` ya analizado, en las seis secciones; `null` si no es un objeto. */
+function paquetesDeclaradosEn(paquete) {
+  if (paquete === null || typeof paquete !== 'object' || Array.isArray(paquete)) return null;
+  const nombres = new Set();
+  for (const seccion of SECCIONES_DE_DEPENDENCIAS) {
+    const valor = paquete[seccion];
+    if (Array.isArray(valor)) {
+      for (const nombre of valor) if (typeof nombre === 'string') nombres.add(nombre);
+    } else if (valor !== null && typeof valor === 'object') {
+      for (const nombre of Object.keys(valor)) nombres.add(nombre);
+    }
+  }
+  return nombres;
+}
+
+/** Caché de `backend/package.json` por ruta real, válida mientras no cambien la fecha ni el tamaño del archivo. */
+const cachePaquetes = new Map();
+
+/**
+ * Los paquetes que declara `<cwd>/backend/package.json` (con `realpath`, criterio 111), leídos una vez por ejecución mientras el
+ * archivo no cambie. `null` si falta, no se puede leer o no es un JSON con un objeto (la regla falla cerrada, criterio 128).
+ */
+function paquetesDeclaradosDelBackend(cwd) {
+  try {
+    const ruta = fs.realpathSync.native(path.resolve(cwd, 'backend', 'package.json'));
+    const datos = fs.statSync(ruta);
+    const huella = `${datos.mtimeMs}:${datos.size}`;
+    const guardado = cachePaquetes.get(ruta);
+    if (guardado?.huella === huella) return guardado.nombres;
+    const nombres = paquetesDeclaradosEn(JSON.parse(fs.readFileSync(ruta, 'utf8')));
+    cachePaquetes.set(ruta, { huella, nombres });
+    return nombres;
+  } catch {
+    return null;
+  }
+}
+
 const reglaAccesoBase = {
   meta: {
     type: 'problem',
@@ -149,6 +226,8 @@ const reglaAccesoBase = {
     const esPrincipal = archivoComparable === `${raiz}/backend/src/main.ts`;
     // El acceso a la base solo se exige a los módulos: `infraestructura/prisma/` y `cli/` sí llegan a Prisma y a pg.
     const revisaModulos = !enCli && !enPrisma;
+    // Criterio 128: en todo backend/src/, sin excepciones de carpeta. Los paquetes se leen de <cwd>/backend/package.json.
+    const declarados = paquetesDeclaradosDelBackend(context.cwd);
 
     const informar = (nodo, mensaje = MENSAJE_ACCESO_BASE) =>
       context.report({ node: nodo, messageId: 'acceso', data: { mensaje } });
@@ -158,6 +237,11 @@ const reglaAccesoBase = {
      * `cargar-env` y de `dotenv` (de valor o de tipo, por cualquiera de las vías).
      */
     function revisarDestino(nodo, especificador) {
+      // Criterio 129: ni de valor ni de tipo, por ninguna vía, ni como ruta a node_modules/.
+      if (revisaModulos && llevaAUnClienteDeBase(especificador)) {
+        informar(nodo, MENSAJE_CLIENTE_DE_BASE);
+        return;
+      }
       if (!esPrincipal && !enCli && !enEntorno && esDotenv(especificador)) {
         informar(nodo, MENSAJE_CARGA_ENV);
         return;
@@ -195,8 +279,16 @@ const reglaAccesoBase = {
       }
     }
 
+    /** Criterio 128: un valor solo viene de un módulo de Node o de un paquete declarado en backend/package.json. */
+    function revisarDeclarado(nodo, especificador) {
+      if (declarados === null) return; // ya informado en `Program`
+      const nombre = nombreDePaquete(especificador);
+      if (nombre !== null && !declarados.has(nombre)) informar(nodo, MENSAJE_PAQUETE_NO_DECLARADO);
+    }
+
     /** Revisa la ruta de un módulo que se carga como valor. */
     function revisarRuta(nodo, ruta) {
+      revisarDeclarado(nodo, ruta);
       if (revisaModulos && (esModuloProhibido(ruta) || esModuloNode(ruta))) informar(nodo);
     }
 
@@ -264,10 +356,14 @@ const reglaAccesoBase = {
     }
 
     return {
+      Program(nodo) {
+        if (declarados === null) informar(nodo, MENSAJE_SIN_PACKAGE_JSON);
+      },
       ImportDeclaration(nodo) {
         const ruta = String(nodo.source.value);
         revisarDestino(nodo, ruta);
         if (enCli && esModuloNode(ruta) && importaValores(nodo)) revisarCreateRequireImportado(nodo);
+        if (importaValores(nodo)) revisarDeclarado(nodo, ruta);
         if (!revisaModulos || !importaValores(nodo)) return;
         if (esModuloProhibido(ruta)) {
           informar(nodo);

@@ -41,8 +41,9 @@ export function crearClienteDelDueno(url: string, opciones: OpcionesClienteDelDu
 
 /**
  * Ejecuta `trabajo` en una transacción de plataforma. Igual que `BaseDatos`, la primera sentencia fija **los dos**
- * valores de contexto con `set_config(…, true)` (locales a la transacción): `app.academia_id` vacío y `app.plataforma`
- * en `si`, aunque la conexión traiga otros por la URL (`options`), por el rol o por la base (criterio 90), y la zona horaria
+ * valores de contexto con `pg_catalog.set_config(…, true)` (locales a la transacción): `app.academia_id` vacío y
+ * `app.plataforma` en `si`, el `search_path` en `pg_catalog, public, pg_temp` y `standard_conforming_strings` en `on` (criterios
+ * 121 y 122; cada función calificada con `pg_catalog.`, porque PostgreSQL la resuelve antes de fijar el `search_path`), aunque la conexión traiga otros por la URL (`options`), por el rol o por la base (criterio 90), y la zona horaria
  * en `UTC` (criterio 98: el adaptador de Prisma envía las fechas sin desfase) y los parámetros de formato `DateStyle`,
  * `IntervalStyle`, `extra_float_digits` y `bytea_output` (criterio 107: el adaptador interpreta el texto que devuelve
  * PostgreSQL y ese texto depende de la sesión). A continuación cierra todo cursor que haya
@@ -51,7 +52,7 @@ export function crearClienteDelDueno(url: string, opciones: OpcionesClienteDelDu
  */
 export function enPlataforma<T>(cliente: PrismaClient, trabajo: (tx: ClienteTransaccion) => Promise<T>): Promise<T> {
   return cliente.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.academia_id', '', true), set_config('app.plataforma', 'si', true), set_config('TimeZone', 'UTC', true), set_config('DateStyle', 'ISO, MDY', true), set_config('IntervalStyle', 'postgres', true), set_config('extra_float_digits', '1', true), set_config('bytea_output', 'hex', true)`;
+    await tx.$queryRaw`SELECT pg_catalog.set_config('search_path', 'pg_catalog, public, pg_temp', true), pg_catalog.set_config('standard_conforming_strings', 'on', true), pg_catalog.set_config('app.academia_id', '', true), pg_catalog.set_config('app.plataforma', 'si', true), pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true), pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true), pg_catalog.set_config('bytea_output', 'hex', true)`;
     await cerrarCursores(tx);
     return trabajo(tx);
   });

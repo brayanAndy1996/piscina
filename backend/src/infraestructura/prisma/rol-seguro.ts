@@ -68,3 +68,33 @@ export function problemasDeConfiguracion(fila: FilaConfiguracionRol): string[] {
           'ALTER ROLE aquagestion_app IN DATABASE <base> RESET ALL;)',
       ];
 }
+
+/**
+ * Fila que devuelve la consulta sobre los esquemas de la base (spec 001, criterio 123, precisión P-29).
+ */
+export interface FilaEsquemas {
+  /** Dueño de cualquier esquema de la base (`pg_namespace.nspowner`), no solo de `public`. */
+  readonly dueno_de_esquema: boolean;
+  /** `CREATE` sobre cualquier esquema de la base, concedido al rol o a `PUBLIC`. */
+  readonly crea_en_esquema: boolean;
+  /** Existe un esquema con el nombre del rol: el `search_path` por defecto (`"$user", public`) lo buscaría antes. */
+  readonly esquema_con_su_nombre: boolean;
+}
+
+const CONDICIONES_DE_ESQUEMAS: readonly (readonly [keyof FilaEsquemas, string])[] = [
+  ['dueno_de_esquema', 'es dueño de un esquema de la base (ALTER SCHEMA <esquema> OWNER TO <dueño>;)'],
+  [
+    'crea_en_esquema',
+    'tiene CREATE sobre un esquema de la base (REVOKE CREATE ON SCHEMA <esquema> FROM <rol de la API>; o … FROM PUBLIC;)',
+  ],
+  ['esquema_con_su_nombre', 'existe un esquema con el nombre del rol (renombra o elimina ese esquema)'],
+];
+
+/**
+ * Decide si los esquemas de la base hacen inseguro al rol de la API (criterio 123): un problema por cada campo distinto de
+ * `false` (falla cerrada, como `problemasDelRol`). Función pura: no toca la base. Aparte de `problemasDelRol` y
+ * `problemasDeConfiguracion`, cuyo resultado no cambia.
+ */
+export function problemasDeEsquemas(fila: FilaEsquemas): string[] {
+  return CONDICIONES_DE_ESQUEMAS.filter(([campo]) => fila[campo] !== false).map(([, texto]) => texto);
+}

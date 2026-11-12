@@ -57,7 +57,14 @@ interface SesionVerificada extends SuperadminAutenticado {
 }
 
 /** Resultado de una operación de inicio de sesión que ya se confirmó en la base. */
-type ResultadoAcierto = { tipo: 'ACIERTO'; superadmin: FilaSesion } | { tipo: 'BLOQUEADA' } | { tipo: 'DESAPARECIDO' };
+type ResultadoAcierto =
+  { tipo: 'ACIERTO'; superadmin: FilaSesion } | { tipo: 'BLOQUEADA' } | { tipo: 'DESAPARECIDO' } | { tipo: 'CAMBIADA' };
+
+/** Lo que se leyó de la fila para verificar la clave: el ingreso solo vale si sigue siendo lo vigente (criterio 120). */
+interface ClaveVerificada {
+  readonly claveHash: string;
+  readonly versionToken: number;
+}
 type ResultadoFallo = { tipo: 'FALLO' } | { tipo: 'BLOQUEADA' } | { tipo: 'DESAPARECIDO' };
 
 /**
@@ -110,7 +117,10 @@ export class SesionPlataformaService {
     // El hash tarda decenas de milisegundos: se calcula fuera de la transacción para no retener la conexión.
     const correcta = await verificarClave(fila.clave_hash, clave);
     if (!correcta) return this.rechazarIntento(fila.id, ip);
-    return this.aceptarIntento(fila.id, ip);
+    return this.aceptarIntento(fila.id, ip, {
+      claveHash: fila.clave_hash,
+      versionToken: Number(fila.version_token),
+    });
   }
 
   /**
@@ -205,20 +215,28 @@ export class SesionPlataformaService {
     throw credencialesInvalidas();
   }
 
-  /** Con la clave correcta: bajo el bloqueo de la fila, vuelve a comprobar que no la bloquearon mientras tanto. */
+  /**
+   * Con la clave correcta: bajo el bloqueo de la fila, vuelve a comprobar que la clave y la versión de token siguen
+   * siendo las que se verificaron (criterio 120: si cambiaron, no se emite nada ni se escribe nada) y que no la bloquearon
+   * mientras tanto.
+   */
   private async aceptarIntento(
     id: string,
     ip: string | null,
+    leida: ClaveVerificada,
   ): Promise<{ superadmin: SuperadminAutenticado; token: string }> {
     const resultado = await this.baseDatos.comoPlataforma(async (tx): Promise<ResultadoAcierto> => {
       const ahora = this.reloj.ahora();
       const filas = await tx.cliente.$queryRaw<
-        (FilaSesion & Pick<FilaSuperadmin, 'intentos_fallidos' | 'bloqueado_hasta'>)[]
+        (FilaSesion & Pick<FilaSuperadmin, 'clave_hash' | 'intentos_fallidos' | 'bloqueado_hasta'>)[]
       >`
-        SELECT id::text AS id, correo, nombre, version_token, intentos_fallidos, bloqueado_hasta
+        SELECT id::text AS id, correo, nombre, clave_hash, version_token, intentos_fallidos, bloqueado_hasta
           FROM superadmins WHERE id = ${id}::uuid FOR UPDATE`;
       const actual = filas[0];
       if (!actual) return { tipo: 'DESAPARECIDO' };
+      if (actual.clave_hash !== leida.claveHash || Number(actual.version_token) !== leida.versionToken) {
+        return { tipo: 'CAMBIADA' };
+      }
       const bloqueadoHasta = fechaDeBaseONula(actual.bloqueado_hasta);
       if (estaBloqueado({ intentosFallidos: actual.intentos_fallidos, bloqueadoHasta }, ahora)) {
         return { tipo: 'BLOQUEADA' };
@@ -235,6 +253,13 @@ export class SesionPlataformaService {
       throw cuentaBloqueada();
     }
     if (resultado.tipo === 'DESAPARECIDO') throw credencialesInvalidas();
+    if (resultado.tipo === 'CAMBIADA') {
+      this.registro.warn(
+        { superadminId: id, ip },
+        'Inicio de sesión de plataforma rechazado: la clave o las sesiones cambiaron durante la verificación',
+      );
+      throw credencialesInvalidas();
+    }
     const { superadmin } = resultado;
     const token = this.tokens.firmar(
       { sub: superadmin.id, tipo: TIPO_TOKEN_PLATAFORMA, ver: superadmin.version_token },

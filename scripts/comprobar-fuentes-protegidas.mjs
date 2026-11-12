@@ -4,7 +4,9 @@
 //   - `git ls-files -- backend/src/generated` lista algún archivo (esa carpeta está en `.gitignore` y la crea `prisma generate`);
 //   - dentro de `backend/src/generated/` hay algo que no sea la carpeta `prisma/`;
 //   - en `backend/src/` o `packages/contratos/src/` hay un archivo cuyo nombre contiene `.test.` y no termina exactamente en
-//     `.test.ts`, `.test.mts`, `.test.cts`, `.test.js`, `.test.mjs` o `.test.cjs` (criterio 110): pide renombrarlo, esté o no en git.
+//     `.test.ts`, `.test.mts`, `.test.cts`, `.test.js`, `.test.mjs` o `.test.cjs` (criterio 110): pide renombrarlo, esté o no en git;
+//   - `backend/package.json` declara un paquete que no está en `DEPENDENCIAS_BACKEND_PERMITIDAS` de `scripts/lib/dependencias-backend.mjs`,
+//     o no se puede leer (criterio 127, P-30).
 // Si `git` no está disponible, falla diciendo el motivo. Solo usa módulos de Node: funciona igual en Windows, Mac y Linux.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +15,7 @@ import {
   entradasAjenasEnGenerated,
   enlacesSimbolicos,
 } from './lib/fuentes-protegidas.mjs';
+import { problemasDeDependencias } from './lib/dependencias-backend.mjs';
 import { ejecutarGit, listaNul } from './lib/git.mjs';
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -51,6 +54,8 @@ for (const ruta of entradasAjenasEnGenerated(path.join(raiz, 'backend', 'src', '
     `Entrada ajena en backend/src/generated (solo se admite la carpeta prisma/): ${path.relative(raiz, ruta)}`,
   );
 }
+
+problemas.push(...problemasDeDependencias(raiz));
 
 if (problemas.length > 0) {
   console.error(problemas.join('\n'));
