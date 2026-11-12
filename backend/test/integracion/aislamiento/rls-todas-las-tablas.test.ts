@@ -325,10 +325,8 @@ async function problemasDelInsert(
   const nombre = nombreDe(t);
   const columnas = await columnasDelInsert(ejecutor, t, A);
   const insertar = `INSERT INTO ${calificada(t)} (${columnas}) SELECT ${columnas} FROM pg_catalog.jsonb_populate_record(NULL::${calificada(t)}, $1::jsonb)`;
-  const esParticion = t.raiz !== nombre;
 
   // Fila de prueba: una fila nueva de B, creada por una llamada del sembrador.
-  let filaDePrueba: string | undefined;
   if (sembrar === undefined) {
     return [`[sin-sembrar] ${nombre}: no hay sembrador para crear la fila de prueba del INSERT`];
   }
@@ -336,34 +334,29 @@ async function problemasDelInsert(
   await sembrar(B);
   const nuevas = [...(await filasDeAcademia(ejecutor, t, B))].filter((fila) => !antesDeSembrar.has(fila));
   if (nuevas[0] === undefined) {
-    // Una particion puede no recibir la fila (el sembrador siembra la tabla raiz): se prueba con la forma anterior.
-    if (!esParticion) {
-      return [
-        `[sin-sembrar] ${nombre}: el sembrador no creo una fila nueva de B en esta llamada (cada llamada debe crear una fila nueva)`,
-      ];
-    }
-  } else {
-    filaDePrueba = nuevas[0];
+    // P-33 (ronda 7): si una llamada no crea ninguna fila nueva de la tabla, la prueba falla nombrandola (tambien una particion).
+    return [
+      `[sin-sembrar] ${nombre}: el sembrador no creo una fila nueva de B en esta llamada (cada llamada debe crear una fila nueva)`,
+    ];
   }
+  const filaDePrueba = nuevas[0];
 
   // La borra como dueno con el contexto de B. Si no puede, se usa la forma anterior (copia de una fila de A) con 42501 exacto.
   let borrada = false;
-  if (filaDePrueba !== undefined) {
-    try {
-      borrada =
-        (await ejecutor.escribirComoDueno(
-          { academiaId: B },
-          `DELETE FROM ${calificada(t)} t WHERE pg_catalog.to_jsonb(t) = $1::jsonb`,
-          [filaDePrueba],
-        )) > 0;
-    } catch (error) {
-      console.warn(
-        `[criterio 138] AVISO: el dueno no puede borrar la fila de prueba de ${nombre} (${codigoDe(error) ?? 'error'}); se usa la copia de una fila de A y se exige exactamente 42501.`,
-      );
-    }
+  try {
+    borrada =
+      (await ejecutor.escribirComoDueno(
+        { academiaId: B },
+        `DELETE FROM ${calificada(t)} t WHERE pg_catalog.to_jsonb(t) = $1::jsonb`,
+        [filaDePrueba],
+      )) > 0;
+  } catch (error) {
+    console.warn(
+      `[criterio 138] AVISO: el dueno no puede borrar la fila de prueba de ${nombre} (${codigoDe(error) ?? 'error'}); se usa la copia de una fila de A y se exige exactamente 42501.`,
+    );
   }
 
-  if (borrada && filaDePrueba !== undefined) {
+  if (borrada) {
     const antes = await filasDeAcademia(ejecutor, t, B);
     const intento = await ejecutor.intentarComoApp({ academiaId: A }, insertar, [filaDePrueba]);
     if (intento.fallo && intento.codigo !== '42501') {
@@ -609,19 +602,41 @@ describe('criterio 133 y 138: autocomprobacion, la prueba detecta las tablas tra
     }
   }
 
-  /** Sembrador de una tabla trampa: UNA fila nueva de la academia, como dueno con su contexto, dentro de la transaccion. */
-  function sembradorDeTrampa(cliente: pg.ClientBase, nombre: string): Sembrar {
+  /** Sembrador que escribe en la transaccion del dueno (sin confirmar): `sql` inserta UNA fila nueva ($1 = academia). */
+  function sembradorEnTransaccion(cliente: pg.ClientBase, sql: string): Sembrar {
     return async (academiaId) => {
       await cliente.query("SELECT set_config('app.academia_id', $1, true)", [academiaId]);
       try {
-        await cliente.query(
-          TRAMPAS[nombre]?.sembrar ?? `INSERT INTO public.${nombre} (academia_id, dato) VALUES ($1::uuid, 'trampa')`,
-          [academiaId],
-        );
+        await cliente.query(sql, [academiaId]);
       } finally {
         await cliente.query("SELECT set_config('app.academia_id', '', true)");
       }
     };
+  }
+
+  /** Sembrador de una tabla trampa: UNA fila nueva de la academia, como dueno con su contexto, dentro de la transaccion. */
+  function sembradorDeTrampa(cliente: pg.ClientBase, nombre: string): Sembrar {
+    return sembradorEnTransaccion(
+      cliente,
+      TRAMPAS[nombre]?.sembrar ?? `INSERT INTO public.${nombre} (academia_id, dato) VALUES ($1::uuid, 'trampa')`,
+    );
+  }
+
+  /** Equivalentes en la transaccion de los sembradores reales de 001 (sembradores.ts): una fila nueva por llamada. */
+  const SEMBRADO_EN_TRANSACCION: Readonly<Record<string, string>> = {
+    'public.auditoria': `INSERT INTO public.auditoria (id, academia_id, fecha_hora, actor_tipo, accion, entidad)
+       VALUES (gen_random_uuid(), $1::uuid, now(), 'SISTEMA', 'SEMBRADA_PARA_RLS', 'prueba')`,
+    'public.configuraciones': `INSERT INTO public.configuraciones (academia_id, clave, valor, actualizado_en)
+       VALUES ($1::uuid, 'sembrada_' || replace(gen_random_uuid()::text, '-', ''), '{}'::jsonb, now())`,
+  };
+
+  /** Filas confirmadas de B en las tablas, como texto ordenado (para comprobar que la autocomprobacion no confirmo nada). */
+  async function filasConfirmadasDeB(reales: readonly TablaDeAcademia[]): Promise<string[]> {
+    const salida: string[] = [];
+    for (const t of reales) {
+      for (const fila of await filasDeAcademia(ejecutorReal, t, B)) salida.push(`${nombreDe(t)} ${fila}`);
+    }
+    return salida.sort();
   }
 
   async function conTrampas<T>(
@@ -768,15 +783,21 @@ describe('criterio 133 y 138: autocomprobacion, la prueba detecta las tablas tra
     const reales = tablas.filter((t) => ['public.auditoria', 'public.configuraciones'].includes(nombreDe(t)));
     expect(reales).toHaveLength(2);
 
-    const problemas = await conTrampas([], async (_cliente, ejecutor) => {
+    const filasDeBAntes = await filasConfirmadasDeB(reales);
+
+    // Los sembradores reales confirman con `ejecutarComo` (otra conexion): dentro de la autocomprobacion, que se revierte, se usan
+    // sembradores equivalentes que escriben en la transaccion del dueno. El paso real sigue usando SEMBRADORES_POR_TABLA.
+    const problemas = await conTrampas([], async (cliente, ejecutor) => {
       const salida: string[] = [];
       for (const t of reales) {
-        salida.push(...(await problemasDeLaTabla(ejecutor, t, A, B, SEMBRADORES_POR_TABLA[t.raiz])));
+        const sembrar = sembradorEnTransaccion(cliente, SEMBRADO_EN_TRANSACCION[nombreDe(t)] ?? '');
+        salida.push(...(await problemasDeLaTabla(ejecutor, t, A, B, sembrar)));
       }
       return salida;
     });
 
     expect(problemas).toEqual([]);
+    expect(await filasConfirmadasDeB(reales), 'la autocomprobacion dejo filas de B confirmadas').toEqual(filasDeBAntes);
   });
 
   it('criterio 133: lo creado en la autocomprobacion se revirtio (las tablas y funciones trampa ya no existen)', async () => {
