@@ -105,8 +105,24 @@ export function casosDeEsPuntoDeEntrada(etiqueta, obtener) {
       expect(obtener()(urlDelModulo, rutaOtro)).toBe(false);
     });
 
+    // P-44: `argv1 = process.argv[1]` es el valor por defecto, asi que pasar `undefined` o no pasar nada toma `process.argv[1]` (el de
+    // vitest, que existe). Para ejercitar de verdad la rama "argv1 falta" se deja `process.argv[1]` en `undefined` y se restaura al final.
+    it('(p4) argv1 ausente (process.argv[1] undefined, sin pasar el argumento ni pasando undefined): falso, sin lanzar', () => {
+      const esPuntoDeEntrada = obtener();
+      const original = process.argv[1];
+      process.argv[1] = undefined;
+      try {
+        expect(process.argv[1]).toBeUndefined();
+        expect(() => esPuntoDeEntrada(urlDelModulo)).not.toThrow();
+        expect(esPuntoDeEntrada(urlDelModulo)).toBe(false);
+        expect(esPuntoDeEntrada(urlDelModulo, undefined)).toBe(false);
+      } finally {
+        process.argv[1] = original;
+      }
+      expect(process.argv[1]).toBe(original);
+    });
+
     it.each([
-      ['undefined', undefined],
       ['la cadena vacia', ''],
       ['una ruta que no existe', () => path.join(carpeta, 'no-existe-r17.mjs')],
     ])('(p4) argv1 %s: falso, sin lanzar', (_nombre, argv1) => {

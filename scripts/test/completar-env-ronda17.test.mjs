@@ -44,7 +44,8 @@ const CONJUNTO_A = [
   ['e3', `${U}export ${VARIABLES_5433[0]}\n${VARIABLES_5433.slice(1).join('\n')}\n`],
   ['e4 comillas dobles', `${U}${entreComillas(VARIABLES_5433[0], '"')}\n${VARIABLES_5433.slice(1).join('\n')}\n`],
   ['e4 comillas simples', `${U}${entreComillas(VARIABLES_5433[0], "'")}\n${VARIABLES_5433.slice(1).join('\n')}\n`],
-  ['e5', `${U}PUERTO_API=3000 # comentario\n${VARIABLES_5433.join('\n')}\n`],
+  // (e5): la linea con el BOM es la unica de PUERTO_API (la lista no la repite), asi que si el BOM no se quita `completarEnv` la agregaria.
+  ['e5', `${U}PUERTO_API=3000 # comentario\n${VARIABLES_5433.filter((linea) => nombreDe(linea) !== 'PUERTO_API').join('\n')}\n`],
   ['e6', `${U}\n${VARIABLES_5433.join('\n')}\n`],
   ['e7 (control sin BOM, \\r\\n)', `${VARIABLES_5433.join('\r\n')}\r\n`],
   ['e8 (solo el BOM)', U],
@@ -186,6 +187,19 @@ describe('criterio 170: completarEnv y env:completar con un .env con BOM o con f
         expect(textoEnv().startsWith(texto)).toBe(true);
       },
     );
+
+    it('e5: PUERTO_API aparece una sola vez, tras el BOM, y completarEnv no la agrega ni cambia su valor 3000', () => {
+      const texto = CONJUNTO_A.find(([nombre]) => nombre === 'e5')[1];
+      expect(texto.split('PUERTO_API=')).toHaveLength(2);
+      expect(texto.indexOf('PUERTO_API=')).toBe(1);
+      escribir(texto);
+      expect(dotenv.parse(texto)['PUERTO_API']).toBe('3000');
+
+      const resultado = completarEnv(carpeta);
+
+      expect(resultado.agregadas).not.toContain('PUERTO_API');
+      expect(dotenv.parse(textoEnv())['PUERTO_API']).toBe('3000');
+    });
 
     it.each(CONJUNTO_A.slice(1, 7))(
       '%s sin la ultima variable: agrega solo esa, al final, y los bytes de antes quedan iguales',
