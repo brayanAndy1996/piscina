@@ -2170,10 +2170,11 @@ Todos son _(crítico)_.
      - la primera sentencia y sus parámetros tienen solo caracteres ASCII, así que se interpretan igual con cualquier
        `client_encoding` (como el `\` en el criterio 122);
      - en `backend/src/cli/`, la regla del criterio 83 admite además exactamente
-       `set_config('client_encoding', 'UTF8', true)`, con o sin `pg_catalog.` y sin distinguir mayúsculas en el nombre de
-       la variable (como en el criterio 98); otro valor (`'LATIN1'`, `'SQL_ASCII'`, `'utf8'`) o un tercer argumento
-       distinto de `true` sigue fallando, y fuera de `cli/` y de `infraestructura/prisma/` sigue prohibida toda llamada a
-       `set_config`.
+       `set_config('client_encoding', 'UTF8', true)`, con o sin `pg_catalog.` y sin distinguir mayúsculas ni en el nombre
+       de la variable ni en el valor, igual que las excepciones de los criterios 98, 107, 121 y 122 (`'utf8'` pasa)
+       _(precisado: decisión del orquestador tras T107, 12/11/2026; antes decía que `'utf8'` fallaba)_; otro valor
+       (`'LATIN1'`, `'SQL_ASCII'`) o un tercer argumento distinto de `true` sigue fallando, y fuera de `cli/` y de
+       `infraestructura/prisma/` sigue prohibida toda llamada a `set_config`.
 
      Prueba de integración con la vía (a) del criterio 107, con la API de pruebas en `DATABASE_POOL_MAX=1`: un
      `conAcademia(A, …)` cuyo `trabajo` ejecuta `set_config('client_encoding', 'LATIN1', false)` y confirma; después, en la
@@ -2190,8 +2191,9 @@ Todos son _(crítico)_.
        `current_setting('client_encoding')` es `UTF8`, y leído como dueño con una conexión nueva, el texto es exactamente
        `Ñandú`.
 
-     Y la prueba de la regla de lint (como en el criterio 92): en `cli/` pasan la llamada nueva con y sin `pg_catalog.`;
-     fallan los otros valores y `set_config('client_encoding', 'UTF8', false)`. Las vías (b) a (e) del criterio 107 no son
+     Y la prueba de la regla de lint (como en el criterio 92): en `cli/` pasan la llamada nueva con y sin `pg_catalog.`, y
+     también con el valor `'utf8'` _(decisión del orquestador tras T107, 12/11/2026)_; fallan los otros valores
+     (`'LATIN1'`, `'SQL_ASCII'`) y `set_config('client_encoding', 'UTF8', false)`. Las vías (b) a (e) del criterio 107 no son
      obligatorias para este parámetro; si se agregan y la conexión no se puede abrir por el propio parámetro, el caso se
      omite con aviso. _(crítico)_
 147. **Parámetros que cambian lo que se confirma o lo que se escribe, fijos en cada transacción** _(ataque ronda 9, O2;
@@ -2257,7 +2259,7 @@ Todos son _(crítico)_.
      (o al revés, según la URL del caso): código 1; la salida nombra las dos variables y la parte, y no contiene la
      contraseña ni la URL; y, leído como dueño, no se creó ninguna de las bases del caso que no existían. Control: la
      misma parte principal que `DATABASE_URL` más `?sslmode=disable` en `DATABASE_URL_APP` pasa. Prueba unitaria de la
-     función del hook que lee y valida la URL de la app (P-35): con cada diferencia lanza un error que nombra las dos
+     función del hook que lee y valida la URL de la app, `leerUrlAppParaRol` (P-35): con cada diferencia lanza un error que nombra las dos
      variables y la parte, sin la contraseña, y no ejecuta `psql`. _(crítico)_
 
 ## Casos límite
@@ -2950,10 +2952,11 @@ _(contrato de la ronda 8 del ataque, 12/11/2026; criterios 141 a 143)_. No son r
   Compara `host` en minúsculas, `puerto` como número y `base` exacta; no mira `usuario`, `clave` ni la cadena de
   consulta. `crearBases` (`scripts/crear-bases.mjs`) la llama después de `leerUrlsBases`, `leerUrlApp` y las
   comprobaciones del usuario (criterio 6), antes de abrir la conexión; con alguna diferencia lanza un `Error` con el
-  mensaje del criterio 148. El hook (`.claude/hooks/preparar-sesion.mjs`) exporta una función (nombre orientativo:
-  `leerUrlAppParaRol(entorno, desarrollo)`) con lo que hoy hace el paso 3b antes de consultar el rol: lee
-  `DATABASE_URL_APP` con `leerUrlApp`, comprueba el usuario (criterio 6) y llama a `diferenciasConDesarrollo` con
-  `conexion.desarrollo`; lanza el error sin ejecutar `psql`, y el paso 3b la usa. El texto del mensaje es libre; las
+  mensaje del criterio 148. El hook (`.claude/hooks/preparar-sesion.mjs`) exporta la función
+  `leerUrlAppParaRol(entorno, desarrollo)` _(nombre fijo, ya no orientativo: decisión del orquestador tras T107,
+  12/11/2026)_, con `desarrollo = leerConexion(...).desarrollo`, con lo que hoy hace el paso 3b antes de consultar el rol:
+  lee `DATABASE_URL_APP` con `leerUrlApp`, comprueba el usuario (criterio 6) y llama a `diferenciasConDesarrollo` con
+  ese `desarrollo`; lanza el error sin ejecutar `psql`, y el paso 3b la usa. El texto del mensaje es libre; las
   pruebas buscan `DATABASE_URL_APP`, `DATABASE_URL` (no solo como parte de `DATABASE_URL_APP`) y la palabra de cada parte
   (`servidor`, `puerto`, `base`), y que no aparezcan la contraseña ni la URL.
 

@@ -1549,7 +1549,8 @@ pg_catalog.set_config('transform_null_equals', 'off', true)
 - `crearBases`: después de las dos comprobaciones del usuario y de la validación de nombres de base, antes de
   `new pg.Client`. Mensaje orientativo: "DATABASE_URL_APP debe apuntar al mismo servidor, puerto y base que DATABASE_URL
   (difieren: base). Corrige DATABASE_URL_APP en el .env: la API usaría otra base que la que revisa db:crear."
-- Hook: extraer de la rama 3b a una función exportada (P-35) la lectura de `DATABASE_URL_APP`, las dos comprobaciones del
+- Hook: extraer de la rama 3b a la función exportada `leerUrlAppParaRol(entorno, desarrollo)` (P-35; nombre fijo por
+  decisión del orquestador tras T107, 12/11/2026; `desarrollo = leerConexion(...).desarrollo`) la lectura de `DATABASE_URL_APP`, las dos comprobaciones del
   usuario y la nueva; la rama la llama dentro de su `try` y, con error, `mal('Rol de la aplicación', …)` como hoy.
 - `.env.example`: el comentario de `POSTGRES_PUERTO` pasa a decir "cambia también el puerto en DATABASE_URL,
   DATABASE_URL_PRUEBAS y DATABASE_URL_APP". `env:completar` no cambia los `.env` existentes; la guía local (T24) lo
