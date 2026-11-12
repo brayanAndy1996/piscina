@@ -1,3 +1,5 @@
+import { types } from 'node:util';
+
 import { Prisma } from '../../generated/prisma/client';
 import { codigoDeErrorDeBase, leerSeguro } from './errores-base';
 
@@ -222,52 +224,88 @@ function leerClave(objeto: object, clave: PropertyKey): unknown {
   }
 }
 
-/** Propias (texto y Symbol, enumerables o no) y enumerables heredadas. Lanza si el objeto no deja listarlas (un Proxy). */
-function clavesDe(objeto: object): PropertyKey[] {
-  const claves = new Set<PropertyKey>(Reflect.ownKeys(objeto));
-  // Se buscan también las heredadas enumerables: pino las serializa.
-  for (const clave in objeto) claves.add(clave);
+/** Binarios por la ranura interna del motor; nunca por instanceof, prototipo ni Symbol.toStringTag (criterio 167). */
+const esHojaBinaria = (valor: object): boolean => ArrayBuffer.isView(valor) || types.isAnyArrayBuffer(valor);
+
+/**
+ * Las claves de `objeto` (propias, texto y Symbol, enumerables o no, y enumerables heredadas), o `undefined` si pasan del tope o no
+ * se dejan listar (falla cerrada, criterio 167). Primero se mira `length` (arreglos, `String` y objetos con forma de arreglo), luego
+ * `Reflect.ownKeys`, y solo si no pasan del tope se recorre `for…in`, que se corta al pasarlo. Nunca junta más de
+ * `CLAVES_MAXIMAS + 1` claves por su cuenta.
+ */
+function clavesDe(objeto: object): PropertyKey[] | undefined {
+  const largo = leerClave(objeto, 'length');
+  if (typeof largo === 'number' && largo > CLAVES_MAXIMAS) return undefined;
+  let propias: PropertyKey[];
+  try {
+    propias = Reflect.ownKeys(objeto);
+  } catch {
+    return undefined;
+  }
+  if (propias.length > CLAVES_MAXIMAS) return undefined;
+  const claves = new Set<PropertyKey>(propias);
+  try {
+    // Se buscan también las heredadas enumerables: pino las serializa.
+    for (const clave in objeto) {
+      claves.add(clave);
+      if (claves.size > CLAVES_MAXIMAS) return undefined;
+    }
+  } catch {
+    return undefined;
+  }
   return [...claves];
 }
 
 interface Busqueda {
   readonly deLaBase: readonly object[];
   readonly agotada: boolean;
+  /** Verdadero si la búsqueda saltó al menos una hoja binaria (criterio 167, R16-1). */
+  readonly conBinarios: boolean;
 }
 
 /** Recorre el grafo de `raiz` por niveles y junta los errores de la base (sin entrar en ellos ni en las `CausaLimpia`). */
 function buscarErroresDeLaBase(raiz: object): Busqueda {
   const vistos = new WeakSet<object>([raiz]);
   const deLaBase: object[] = [];
+  let conBinarios = false;
   let pendientes: object[] = [raiz];
   let visitados = 1;
   for (let nivel = 0; pendientes.length > 0; nivel += 1) {
     const siguientes: object[] = [];
     for (const objeto of pendientes) {
-      let claves: PropertyKey[];
-      try {
-        claves = clavesDe(objeto);
-      } catch {
-        return { deLaBase, agotada: true };
-      }
-      if (claves.length > CLAVES_MAXIMAS) return { deLaBase, agotada: true };
+      const claves = clavesDe(objeto);
+      if (claves === undefined) return { deLaBase, agotada: true, conBinarios };
+      const valores: unknown[] = [];
       for (const clave of claves) {
         const valor = leerClave(objeto, clave);
+        // Una `cause` función no se llama nunca: pino la llamaría (criterio 168).
+        if (clave === 'cause' && typeof valor === 'function') return { deLaBase, agotada: true, conBinarios };
+        valores.push(valor);
+      }
+      // `cause` y `errors` por su nombre (getters y heredadas incluidas), fuera del tope de claves (criterio 168).
+      const causa = leerClave(objeto, 'cause');
+      if (typeof causa === 'function') return { deLaBase, agotada: true, conBinarios };
+      valores.push(causa, leerClave(objeto, 'errors'));
+      for (const valor of valores) {
         if (!esObjeto(valor) || vistos.has(valor)) continue;
         vistos.add(valor);
+        if (esHojaBinaria(valor)) {
+          conBinarios = true;
+          continue;
+        }
         if (valor instanceof CausaLimpia) continue;
         if (esErrorDeBase(valor)) {
           deLaBase.push(valor);
           continue;
         }
         visitados += 1;
-        if (nivel + 1 > PROFUNDIDAD_MAXIMA || visitados > OBJETOS_MAXIMOS) return { deLaBase, agotada: true };
+        if (nivel + 1 > PROFUNDIDAD_MAXIMA || visitados > OBJETOS_MAXIMOS) return { deLaBase, agotada: true, conBinarios };
         siguientes.push(valor);
       }
     }
     pendientes = siguientes;
   }
-  return { deLaBase, agotada: false };
+  return { deLaBase, agotada: false, conBinarios };
 }
 
 interface MensajesDeLaBase {
@@ -347,6 +385,9 @@ function convertir(valor: unknown, nivel: number, contexto: Contexto): unknown {
  *   `codigoPrisma`, `sqlstate`, `codigoDeSistema`, `modelo` y `pila` (los marcos);
  * - un `Error` con un error de la base en cualquier propiedad de su grafo: un objeto nuevo con solo `tipo`, `mensaje`, `pila`,
  *   `causa`, `errores`, `erroresDeLaBase` y `truncado`; si un tope se agota, falla cerrada `{ tipo, truncado: true }`;
+ * - un `Error` con un binario (`Buffer`, arreglo tipado, `ArrayBuffer`…) en su grafo, aunque sin errores de la base: la misma forma
+ *   convertida, sin el binario (criterio 167, R16-1); si se agota un tope o hay una `cause` función (nunca se llama, criterio 168),
+ *   falla cerrada;
  * - cualquier otro `Error` (también una `CausaLimpia` y un `ErrorTransaccionAbortada`): el mismo objeto;
  * - lo que no es un `Error`: `{ tipo: typeof valor }`, nunca su valor.
  */
@@ -355,8 +396,8 @@ export function errorParaRegistro(error: unknown): unknown {
     if (!(error instanceof Error)) return { tipo: typeof error };
     if (error instanceof CausaLimpia) return error;
     if (esErrorDeBase(error)) return limpio(error);
-    const { deLaBase, agotada } = buscarErroresDeLaBase(error);
-    if (deLaBase.length === 0 && !agotada) return error;
+    const { deLaBase, agotada, conBinarios } = buscarErroresDeLaBase(error);
+    if (deLaBase.length === 0 && !agotada && !conBinarios) return error;
     if (agotada) {
       const encontrados = deLaBase.slice(0, DE_LA_BASE_MAXIMOS).map(limpio);
       return {
