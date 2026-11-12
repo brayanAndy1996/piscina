@@ -1877,6 +1877,11 @@ queda marcado "(… ataque ronda 7)", sin borrar su texto. Contrato: precisión 
      comprueba el `WITH CHECK` de RLS después de los disparadores `BEFORE` y antes de los `CHECK`, las restricciones únicas y
      las llaves foráneas.
 
+     Nota _(revisión T93 de la ronda 7, 12/11/2026; no cambia el criterio)_: si la fila de prueba de B no se puede insertar
+     por un error distinto de `42501` (una restricción, un disparador de validación), el paso pasa siempre que no quede
+     escrita ninguna fila nueva de B. Una política mal escrita que solo se haga visible con un `INSERT` que sí se pueda
+     completar no se detecta por este paso; la cubre el criterio 132 (ver "Riesgos aceptados").
+
      Autocomprobación (amplía la del criterio 133, con las mismas condiciones: `SET LOCAL ROLE aquagestion_app`, omitida
      con aviso en la nube), con tablas de ejemplo con `academia_id`, RLS forzada, políticas correctas salvo donde se dice, y
      `SELECT` e `INSERT` para la app:
@@ -2899,6 +2904,11 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   fila de prueba válida en B (criterio 138), el registro del código de cada error distinto de `42501`, la autocomprobación
   (que exige detectar las tablas mal hechas con el mismo mecanismo) y la prueba de forma del criterio 132, que no depende de
   la ejecución.
+- **Fila de prueba que no se puede insertar en el `INSERT` con otra academia** _(revisión T93 de la ronda 7, 12/11/2026)_:
+  en el paso del `INSERT` del criterio 138, si la fila de prueba de B no se puede insertar por un error distinto de `42501`
+  (una restricción, un disparador de validación), la prueba pasa siempre que no quede escrita ninguna fila nueva de B. Una
+  política mal escrita que solo se haga visible con un `INSERT` que sí se pueda completar no se detecta por este paso; la
+  cubre el criterio 132, que rechaza toda política de una tabla con `academia_id` que no tenga la forma exigida.
 - **Forma de las políticas leída como texto** _(ataque ronda 6)_: la prueba del criterio 132 analiza el texto que devuelve
   `pg_get_expr`, no el árbol interno de PostgreSQL. Con `search_path` fijado, un operador o una función de otro esquema
   aparecen calificados y no cumplen; la prueba de ejecución del criterio 133 es la segunda capa.
