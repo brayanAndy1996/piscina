@@ -331,6 +331,38 @@ las garantías de ejecución de 001.
       de extensiones, forma de las políticas, prueba de ejecución por tabla, transacción usada desde otro contexto y lint
       del SQL); si hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 7 (12/11/2026)
+
+Fallas F1 a F3 y observación O5 de la ronda 7 (sobre `bb3ff2d`); criterios 137 a 140 de `spec.md` (sección P) y precisión
+de P-33 (ronda 7). O1, O2, O4 y O6 quedan como notas en la sección 19 del plan. La ronda no encontró fallas críticas ni
+altas.
+
+- [ ] T92 · test-writer · Pruebas protegidas en rojo de los criterios 137 a 140 (archivos en "Protegidas del ataque
+      ronda 7" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación. En el mismo commit:
+      adaptar `aislamiento/rls-todas-las-tablas.test.ts` al criterio 138 (fila de prueba válida en B, juicio por lo escrito,
+      autocomprobación con disparadores, sin quitar casos), `politicas.ts` y `forma-politicas.test.ts` al 140, y
+      `sembradores.ts` si algún sembrador no crea una fila nueva por llamada (P-33, ronda 7); comprobar que ningún ejemplo
+      de `eslint/regla-transaccion-guardada.test.mjs` cambia de resultado con el 139 (si alguno cambiara, detenerse e
+      informar). Commit: "Pruebas protegidas (001), ataque ronda 7: extensiones en db:crear, INSERT en otra academia,
+      EventEmitterAsyncResource y subconsulta en las políticas (en rojo)" (criterios 133, 137 a 140)
+- [ ] T93 · tester · Confirmar que T92 falla por la razón esperada: `db:crear` informa un privilegio de más sobre un
+      objeto de la extensión instalada en `public` (137) y la regla no señala `EventEmitterAsyncResource` ni
+      `getBuiltinModule('async_hooks')` (139). Se informan como verdes por diseño: la API con la extensión y los controles
+      del 137, la prueba de catálogo del 137, la prueba de ejecución del 133 adaptada al 138 y su autocomprobación, y la
+      forma de las políticas con la subconsulta (140), porque cambian solo pruebas. Lo que exige superusuario, instalar
+      extensiones o `SET ROLE aquagestion_app` se confirma en la CI de Linux o en Docker
+- [ ] T94 · backend · `problemasDePrivilegios` de `scripts/crear-bases.mjs` sin objetos de extensiones en las tres ramas de
+      su consulta, conservando el formato de sus mensajes (plan, sección 19) (criterio 137)
+- [ ] T95 · backend · `eslint/regla-transaccion-guardada.mjs`: `EventEmitterAsyncResource` en cualquier forma y
+      `getBuiltinModule` salvo con un literal que no sea `async_hooks`, fuera de `backend/src/infraestructura/` (criterio
+      139)
+- [ ] T96 · backend · Si la prueba de catálogo del 137 o las de 138 y 140 señalan algo con las migraciones actuales,
+      corregirlo con una migración nueva (sin editar las aplicadas) (criterios 137, 138, 140)
+- [ ] T97 · orquestador · `git diff` desde el commit de T92: T94 a T96 no tocaron pruebas protegidas
+- [ ] T98 · adversarial · Ronda 8 sobre todo lo anterior, en especial 137 a 140 (API y `db:crear` ante extensiones,
+      objetos agregados a una extensión, fila de prueba del `INSERT` con disparadores y restricciones, emisores y recursos
+      asíncronos que conservan el contexto, forma de las políticas con subconsulta); si hay fallas, se repite el ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67), `README.md` (qué está construido) y las notas

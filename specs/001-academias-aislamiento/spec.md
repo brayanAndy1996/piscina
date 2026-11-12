@@ -105,6 +105,15 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
     en la academia de la primera.
   - 136: aislamiento; `lastval()` y `currval()` devuelven valores de la sesión, que la conexión del pool comparte entre
     academias; y un falso positivo (`SET CONSTRAINTS`) empujaría a saltarse la regla.
+- **P. Correcciones del ataque, ronda 7 (137 a 140):**
+  - 137: aislamiento (D-23); si la API y `db:crear` deciden distinto sobre el mismo rol, el responsable no puede confiar
+    en `db:crear` para saber si la API va a atender, y una corrección propuesta sobre un objeto de extensión rompería la
+    extensión del hosting; además, la exclusión de los objetos de extensiones no debe tapar las tablas propias.
+  - 138 y 140: aislamiento; las guardas de las políticas y de su ejecución protegen las tablas de todas las historias
+    siguientes, y un falso positivo (un disparador legítimo, la subconsulta habitual por rendimiento) empujaría a
+    debilitarlas o a saltárselas.
+  - 139: aislamiento; un emisor de eventos que conserva el contexto de una transacción deja que otra petición escriba en
+    la academia de la primera.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -977,7 +986,9 @@ nuevos: precisiones P-19 a P-24. Todos son _(crítico)_.
      declarar cursores en el código (criterio 94). _(crítico)_
 102. **Ningún privilegio de tabla de más** _(ataque ronda 3, O3; complementa los criterios 2, 80 y 81)_
      _(complementado por el criterio 125, ataque ronda 5: casos de vista y vista materializada)_ _(alcance ampliado por el
-     criterio 130, ataque ronda 6: todos los esquemas que no son del sistema, funciones y `USAGE` de esquemas)_. Dada la
+     criterio 130, ataque ronda 6: todos los esquemas que no son del sistema, funciones y `USAGE` de esquemas)_
+     _(alcance ajustado por el criterio 137, ataque ronda 7: los objetos que pertenecen a una extensión no se cuentan,
+     tampoco en `public`, ni en la API ni en `db:crear`)_. Dada la
      comprobación del rol (en la API, la del criterio 80; en `npm run db:crear`, sobre la base de desarrollo y la de
      pruebas), entonces calcula los privilegios efectivos de `aquagestion_app` (concedidos al rol o a `PUBLIC`) sobre
      cada tabla, tabla particionada, vista, vista materializada, tabla foránea y secuencia del esquema `public`: a
@@ -1593,7 +1604,9 @@ cada elemento (como la lista del criterio 10):
 
 - **Esquemas permitidos además de `public`** (criterio 130): ninguno.
 
-130. **Privilegios del rol en todos los esquemas** _(ataque ronda 6, F1 (a) y (c); **amplía** los criterios 102 y 123)_.
+130. **Privilegios del rol en todos los esquemas** _(ataque ronda 6, F1 (a) y (c); **amplía** los criterios 102 y 123)_
+     _(precisado por el criterio 137, ataque ronda 7: la API y `db:crear` excluyen los objetos de extensiones de la misma
+     forma en todas sus comprobaciones de privilegios)_.
      Dada la comprobación del rol (en la API, la del criterio 80; en `npm run db:crear`, sobre la base de desarrollo y la de
      pruebas), entonces, además de lo que ya comprueba:
      - calcula los privilegios efectivos de `aquagestion_app` (concedidos al rol, heredados o a `PUBLIC`, con las funciones
@@ -1661,7 +1674,9 @@ cada elemento (como la lista del criterio 10):
      del 10: la excepción no vale fuera de `public`), una vista sin `security_invoker` y una función `SECURITY DEFINER` (124),
      y una tabla con `academia_id` y `UNIQUE (numero)` (126); cada una aparece en el resultado de su consulta. Si el dueño no
      puede crear esquemas, la autocomprobación se omite con aviso; las consultas sobre la base real corren igual. _(crítico)_
-132. **Cada política de una tabla de academia exige su academia** _(ataque ronda 6, F2 (a); complementa el criterio 11)_.
+132. **Cada política de una tabla de academia exige su academia** _(ataque ronda 6, F2 (a); complementa el criterio 11)_
+     _(precisado por el criterio 140, ataque ronda 7: `academia_id = (SELECT app_academia_actual())` equivale a la
+     comparación directa)_.
      Dado que la prueba del criterio 11 acepta cualquier expresión que contenga la comparación (por ejemplo
      `academia_id = app_academia_actual() OR app_es_plataforma()`, `… OR <cualquier cosa>` o
      `EXISTS (SELECT 1 FROM auditoria a WHERE a.academia_id = app_academia_actual())`, que no depende de la fila), entonces,
@@ -1692,7 +1707,8 @@ cada elemento (como la lista del criterio 10):
      `academia_id` (`academias`, `superadmins` y `auditoria_plataforma`) no cambian. Lector de las expresiones: P-33.
      _(crítico)_
 133. **Ninguna tabla de academia se ve fuera de su academia, en ejecución** _(ataque ronda 6, F2 (b); **generaliza** los
-     criterios 13, 17 y 18)_. Dadas las migraciones aplicadas y, en **cada** tabla con `academia_id` que encuentra el catálogo
+     criterios 13, 17 y 18)_ _(ajustado por el criterio 138, ataque ronda 7: el `INSERT` con la academia de B pasa si falla
+     con cualquier error o si no deja escrita ninguna fila de B)_. Dadas las migraciones aplicadas y, en **cada** tabla con `academia_id` que encuentra el catálogo
      (criterio 131; no una lista fija), al menos una fila de A y una de B creadas por la prueba con el sembrador de esa tabla
      (P-33; si una tabla no tiene sembrador, la prueba falla nombrándola, como la lista del criterio 10), entonces, como app:
      - sin contexto, y con `app.academia_id` vacío: `SELECT` devuelve 0 filas;
@@ -1737,7 +1753,8 @@ cada elemento (como la lista del criterio 10):
      existen (leído como dueño con `pg`); y la transacción de A termina bien, con sus propias consultas dentro de `trabajo`
      funcionando. Además, dentro de `conAcademia(A, …)` con un `conAcademia(B, …)` anidado (el plan pide no anidar, nota
      O1), usar el `tx` de A dentro del `trabajo` de B rechaza. _(crítico)_
-135. **El lint señala una transacción guardada fuera de su `trabajo`** _(ataque ronda 6, F3; complementa el criterio 134)_.
+135. **El lint señala una transacción guardada fuera de su `trabajo`** _(ataque ronda 6, F3; complementa el criterio 134)_
+     _(ampliado por el criterio 139, ataque ronda 7: `EventEmitterAsyncResource` y `getBuiltinModule` de `async_hooks`)_.
      Dado el código de `backend/src/` (sin las pruebas, criterio 110), entonces `npm run lint` (el lint normal,
      `eslint.config.mjs`; no el paso protegido) falla con una regla propia (orientativo:
      `aquagestion/sin-transaccion-guardada`) si se asigna (`=`, `??=`, `||=` o `&&=`) a una propiedad de `this` (`this.x`,
@@ -1781,6 +1798,147 @@ cada elemento (como la lista del criterio 10):
      Ningún ejemplo de las pruebas protegidas de las rondas 1 a 5 cambia de resultado (ninguno usa `SET CONSTRAINTS`,
      `lastval` ni `currval`); si alguno cambiara, el test-writer se detiene e informa. Prueba de la regla como en el
      criterio 92. _(crítico; prueba de la regla de lint)_
+
+### P. Correcciones del ataque adversarial, ronda 7
+
+Criterios agregados tras la ronda 7 del ataque (12/11/2026, sobre el commit `bb3ff2d`). La ronda no encontró fallas críticas
+ni altas: las garantías de ejecución de 001 resistieron. Encontró tres fallas medias y una observación, todas en las guardas:
+la API y `db:crear` decidían distinto ante una extensión instalada en `public`, la prueba de ejecución de las políticas
+rechazaba un disparador legítimo, la de su forma rechazaba la subconsulta habitual por rendimiento, y un
+`EventEmitterAsyncResource` creado dentro de `trabajo` conserva su contexto cuando otra petición emite. Son decisiones
+técnicas del orquestador, no reglas de negocio nuevas. Donde un criterio ajusta o amplía uno anterior lo dice, y el anterior
+queda marcado "(… ataque ronda 7)", sin borrar su texto. Contrato: precisión de P-33 (ronda 7). Todos son _(crítico)_.
+
+137. **La API y `db:crear` deciden lo mismo ante los objetos de extensiones** _(ataque ronda 7, F1; **ajusta el alcance**
+     del criterio 102 y precisa el 130; decisión del orquestador)_. Dado que, desde la ronda 6, la API calcula los
+     privilegios de la app solo con la consulta del criterio 130, que no cuenta los objetos de extensiones en ningún esquema,
+     mientras que `db:crear` sigue usando además la del criterio 102 (`problemasDePrivilegios`), que sí los cuenta en
+     `public` (con `CREATE EXTENSION pg_stat_statements SCHEMA public`, que concede `SELECT` a `PUBLIC` sobre sus vistas, la
+     API atiende y `db:crear` termina con código 1 proponiendo `REVOKE` sobre una vista de la extensión), entonces:
+     - ninguna comprobación de privilegios de la app (criterios 102, 125 y 130), ni en la API ni en `db:crear`, cuenta un
+       objeto de extensión (definición de la sección O: fila de `pg_catalog.pg_depend` con `deptype = 'e'` hacia
+       `pg_extension`) en ningún esquema, **incluido `public`**: ni la relación ni sus columnas, ni la secuencia, ni la
+       función (para `conObjetosPropios` ya no contaban);
+     - `db:crear` no nombra esos objetos como problema ni propone `REVOKE` sobre ellos;
+     - un privilegio de más sobre un objeto que no es de extensión se sigue rechazando en las dos, en `public` y en los
+       demás esquemas, aunque haya extensiones instaladas;
+     - para un mismo estado de la base, la API rechaza por privilegios (con `ErrorRolBaseDatosInseguro`, criterio 4) si y
+       solo si `db:crear` informa al menos un privilegio de más. Las demás condiciones del rol (criterios 80, 103 y 123) no
+       cambian;
+     - para que la exclusión no tape las tablas propias (un `ALTER EXTENSION … ADD TABLE auditoria` sacaría la tabla de
+       todas las comprobaciones), una prueba de catálogo falla si es objeto de extensión alguna tabla de `PRIVILEGIOS_APP`
+       (`public.<tabla>`), alguna función de `FUNCIONES_APP` o alguna relación con columna `academia_id` de cualquier esquema
+       que no sea `pg_catalog`, `information_schema`, `pg_toast` ni temporal (también de un esquema de extensión).
+
+     Prueba de integración, con una API nueva por caso y restaurando al final. Preparación: como superusuario,
+     `CREATE EXTENSION pg_stat_statements SCHEMA public` (Docker y CI); si no se puede, como dueño, una extensión de confianza
+     en `public` (orientativo: `pgcrypto`) más `CREATE VIEW public.vista_de_extension AS SELECT 1 AS x`,
+     `GRANT SELECT ON public.vista_de_extension TO PUBLIC` y `ALTER EXTENSION pgcrypto ADD VIEW public.vista_de_extension`;
+     si la extensión ya estaba instalada por otro o no se puede instalar ninguna, el caso se omite con aviso (la prueba solo
+     quita lo que creó). Entonces:
+     1. con la extensión instalada: `conAcademia`, `comoPlataforma` y `resolverAcademia` responden sin rechazar, y la
+        comprobación de `db:crear` sobre la base de pruebas (como en las pruebas de los criterios 102 y 130) no informa
+        ningún privilegio de más ni ningún texto que nombre un objeto de la extensión o un `REVOKE` sobre él;
+     2. control, con la extensión todavía instalada: `CREATE VIEW public.vista_extra AS SELECT 1 AS x` y
+        `GRANT SELECT ON public.vista_extra TO PUBLIC`: la API rechaza con `ErrorRolBaseDatosInseguro` (el log nombra
+        `vista_extra` y `SELECT`) y `db:crear` termina con código 1 nombrando `vista_extra` y
+        `REVOKE SELECT ON vista_extra FROM PUBLIC;` (la forma de la corrección del criterio 102);
+     3. control: `GRANT TRUNCATE ON auditoria TO aquagestion_app` con la extensión instalada: las dos rechazan.
+
+     Prueba de catálogo sobre las migraciones aplicadas (pasa hoy) y autocomprobación, como dueño, en una transacción que se
+     revierte: con una extensión de confianza creada por la prueba, una tabla `public.tabla_de_extension` con
+     `academia_id uuid` agregada con `ALTER EXTENSION … ADD TABLE` aparece en el resultado (si el dueño no puede crear la
+     extensión, la autocomprobación se omite con aviso). _(crítico)_
+138. **El `INSERT` en otra academia se juzga por lo que escribe, no por el código del error** _(ataque ronda 7, F2;
+     **ajusta** la quinta viñeta del criterio 133; decisión del orquestador)_. Dado que un disparador
+     `BEFORE INSERT … FOR EACH ROW` legítimo (uno que fuerza `academia_id` al contexto, o que valida y lanza un error) hace
+     que el `INSERT` del criterio 133 con la `academia_id` de B termine con otro código (`23505`, `P0001`) o sin error,
+     aunque la tabla no deja escribir en otra academia, entonces el paso del `INSERT` del criterio 133 (para cada tabla con
+     `academia_id`) queda así:
+     - **fila de prueba:** como dueño con el contexto de B, la prueba llama otra vez al sembrador de la tabla para B,
+       toma una fila de esa tabla creada por esa llamada (la compara con las que había antes), la guarda (como
+       `to_jsonb`) y la borra; así la fila es válida en B (sus llaves foráneas apuntan a filas de B y cumple los `CHECK`) y
+       no choca con ninguna restricción única. Si el dueño no puede borrarla (por ejemplo, un disparador que lo impide), la
+       prueba usa para esa tabla la forma anterior del criterio 133 (copia de una fila de A con la `academia_id` de B) y
+       exige exactamente `42501` (falla cerrada), y lo informa;
+     - **intento:** como app, en contexto de A, un `INSERT` de esa fila con todas sus columnas salvo las generadas y las
+       `GENERATED ALWAYS`; la transacción del intento termina (se confirma si no hubo error) antes de comprobar;
+     - **comprobación:** como dueño con el contexto de B, la prueba lee otra vez las filas de B de la tabla. El paso pasa
+       si el `INSERT` falló con `42501` o con cualquier otro error, o si terminó sin error, y en los tres casos ninguna
+       fila con la `academia_id` de B que no estaba antes del intento quedó escrita. Falla solo si quedó escrita una fila
+       de B; el mensaje nombra la tabla. Un error distinto de `42501` se informa con su código en el registro de la
+       prueba (así se ve un error de la propia prueba); la autocomprobación garantiza que el mecanismo detecta;
+     - las demás viñetas del criterio 133, la comprobación previa de las filas sembradas y la lista de sembradores no
+       cambian (cada sembrador debe crear una fila nueva en cada llamada: precisión de P-33, ronda 7); las filas que el intento haya escrito en A (por un disparador que fuerza la academia) se pueden quedar.
+
+     Por qué la fila de prueba cambia (precisión del especificador sobre la decisión): con la copia de una fila de A, una
+     política mal hecha deja pasar la fila y la base la rechaza después por la llave primaria (`23505`) o por la llave
+     foránea compuesta hacia un padre de A (`23503`); con "cualquier error pasa" esa política no se detectaría. PostgreSQL
+     comprueba el `WITH CHECK` de RLS después de los disparadores `BEFORE` y antes de los `CHECK`, las restricciones únicas y
+     las llaves foráneas.
+
+     Autocomprobación (amplía la del criterio 133, con las mismas condiciones: `SET LOCAL ROLE aquagestion_app`, omitida
+     con aviso en la nube), con tablas de ejemplo con `academia_id`, RLS forzada, políticas correctas salvo donde se dice, y
+     `SELECT` e `INSERT` para la app:
+     - pasan (no se detectan): una tabla con un disparador `BEFORE INSERT … FOR EACH ROW` que pone
+       `NEW.academia_id := app_academia_actual()`; otra con el mismo disparador que además pone un `id` nuevo (el `INSERT`
+       termina sin error y la fila queda en A); y otra con un disparador que lanza un error (`RAISE EXCEPTION`, `P0001`);
+     - se detectan (fallan): la tabla del criterio 133 con `WITH CHECK (academia_id IS NOT NULL)`; la misma con una
+       restricción `UNIQUE (academia_id, clave)` y una llave foránea compuesta `(academia_id, padre_id)` hacia una tabla
+       padre de ejemplo (la fila de prueba no choca con ninguna de las dos); y una tabla con política mal hecha y un
+       disparador `BEFORE INSERT` que no cambia nada.
+
+     _(crítico)_
+139. **Ningún emisor que conserve el contexto de una transacción** _(ataque ronda 7, F3; **amplía** el criterio 135)_. Dado
+     que los listeners de un `EventEmitterAsyncResource` corren en el contexto asíncrono donde se creó el emisor (si se crea
+     dentro del `trabajo` de A, se guarda fuera y otra petición B emite, el listener usa la transacción de A y el envoltorio
+     lo acepta, criterio 134: B escribe en A), y que `process.getBuiltinModule` carga `async_hooks` sin importarlo, entonces,
+     en el código de `backend/src/` fuera de `backend/src/infraestructura/` (sin las pruebas, criterio 110), `npm run lint`
+     (el lint normal, como el criterio 135) falla con:
+     - cualquier aparición del nombre `EventEmitterAsyncResource`: como nombre importado o reexportado
+       (`import { EventEmitterAsyncResource as E } from 'node:events'`, `export { EventEmitterAsyncResource } from 'events'`),
+       como propiedad con punto o calculada con un literal o una plantilla sin marcadores (`events.EventEmitterAsyncResource`,
+       `EventEmitter.EventEmitterAsyncResource`, `require('events')['EventEmitterAsyncResource']`,
+       `(await import('node:events')).EventEmitterAsyncResource`), como clave de un patrón de desestructuración
+       (`const { EventEmitterAsyncResource: E } = events`) o como identificador; venga de `events`, de `node:events` o de
+       cualquier otro lado;
+     - `getBuiltinModule` (como propiedad de cualquier objeto, con punto o calculada, o desestructurado) salvo en una llamada
+       directa `<objeto>.getBuiltinModule('<literal>')` cuyo argumento es un literal de cadena distinto de `async_hooks` y
+       de `node:async_hooks`: fallan `process.getBuiltinModule('async_hooks')`, `process.getBuiltinModule('node:async_hooks')`,
+       `process.getBuiltinModule(nombre)` (argumento que no es un literal), `const { getBuiltinModule } = process` y
+       `const g = process.getBuiltinModule`; pasa `process.getBuiltinModule('node:crypto')`.
+
+     Siguen pasando `import { EventEmitter } from 'node:events'`, `new EventEmitter()` y los eventos emitidos dentro de
+     `trabajo` (criterio 134). Dentro de `backend/src/infraestructura/` la regla no cambia. Lo que no se detecta en ejecución
+     (un `EventEmitterAsyncResource` obtenido por un nombre armado en tiempo de ejecución) queda en "Riesgos aceptados", con
+     la explicación de por qué el envoltorio no puede distinguirlo. Prueba de la regla con la clase `ESLint` y
+     `eslint.config.mjs`, como en el criterio 135, con cada forma que falla y las que pasan. _(crítico; prueba de la regla
+     de lint)_
+140. **La subconsulta escalar de la función cuenta como la comparación** _(ataque ronda 7, O5; **precisa** el criterio 132 y
+     P-33)_. Dado que `academia_id = (SELECT app_academia_actual())` es la forma habitual de escribir la política para que
+     PostgreSQL evalúe la función una vez por consulta y no por fila, y que su sentido es el mismo que la comparación
+     directa, entonces, en la regla de forma del criterio 132:
+     - un lado de la comparación puede ser la llamada `app_academia_actual()` o una subconsulta escalar que solo la
+       selecciona: `(SELECT app_academia_actual())`, con o sin `public.` delante de la función, con o sin un alias simple
+       (`pg_get_expr` la escribe `( SELECT app_academia_actual() AS app_academia_actual)`), con cualquier espaciado y en
+       cualquier orden (`(SELECT app_academia_actual()) = academia_id`);
+     - la subconsulta no puede tener nada más: ni `FROM`, `WHERE`, `LIMIT`, `UNION`, otra columna ni otra función; y el
+       operador sigue siendo `=` (no `IN`, `= ANY` ni `IS NOT DISTINCT FROM`);
+     - esta subconsulta no es la "subconsulta" que el criterio 132 excluye como término: lo excluido sigue siendo una
+       comparación con `academia_id` que está dentro de una subconsulta (como el `EXISTS` del ejemplo);
+     - lo demás del criterio 132 no cambia (conjunción de primer nivel, sin `app_es_plataforma` ni `set_config`, toda
+       política permisiva, `USING` y `WITH CHECK` según el comando).
+
+     Autocomprobación del criterio 132 ampliada: no detecta `USING (academia_id = (SELECT app_academia_actual()))`,
+     `USING ((SELECT public.app_academia_actual()) = academia_id)`,
+     `WITH CHECK (academia_id = (SELECT app_academia_actual() AS a))` ni
+     `USING (academia_id = (SELECT app_academia_actual()) AND clave <> 'x')`; y sí detecta
+     `USING (academia_id = (SELECT app_academia_actual() FROM academias LIMIT 1))`,
+     `USING (academia_id = (SELECT app_academia_actual() WHERE true))`,
+     `USING (academia_id IN (SELECT app_academia_actual()))`,
+     `USING (academia_id = (SELECT app_academia_actual()) OR app_es_plataforma())` y
+     `USING (academia_id = (SELECT app_academia_actual() UNION SELECT app_academia_actual()))`. Más casos unitarios de
+     `cumpleFormaDeAcademia` con el texto que devuelve `pg_get_expr` para cada uno. _(crítico)_
 
 ## Casos límite
 
@@ -2403,6 +2561,18 @@ hechas. No son reglas de negocio nuevas.
   `"public"`, `"app_academia_actual"` y `"academia_id"`. Un sembrador corre como dueño con el contexto de esa academia (sirve con
   un dueño superusuario o no) y crea, si las necesita, las filas padre de la misma academia.
 
+  _(precisión de la ronda 7 del ataque, 12/11/2026; criterios 138 y 140)_
+  - **Lado de la función (criterio 140).** En `cumpleFormaDeAcademia`, el lado de la función de la comparación es, quitando
+    paréntesis exteriores, `app_academia_actual()` (con o sin `public.`) o una subconsulta escalar
+    `( SELECT <función> [AS <alias>] )` donde `<función>` es exactamente esa llamada y `<alias>` es un identificador simple
+    (sin comillas, en minúsculas, o entre comillas dobles); espacios libres después de `(` y antes de `)`. Cualquier otra
+    palabra dentro de la subconsulta (`FROM`, `WHERE`, `LIMIT`, `UNION`, una coma) hace que el término no cumpla. La
+    búsqueda de `app_es_plataforma` y `set_config` sigue sobre toda la expresión.
+  - **Sembradores (criterio 138).** La firma `Sembrador` no cambia. Una llamada del sembrador debe crear al menos una fila
+    nueva de su tabla para esa academia cada vez que se llama (no reutilizar una fija); la prueba encuentra la fila nueva
+    comparando las filas de la academia antes y después de la llamada. Si una llamada no crea ninguna fila nueva, la prueba
+    falla nombrando la tabla.
+
 ## Cambios al modelo de datos
 
 Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados por PostgreSQL
@@ -2546,6 +2716,26 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
     (criterio 133); sus políticas son exactamente la comparación o una conjunción con ella (criterio 132); ningún servicio
     guarda `tx` fuera de `trabajo` (criterios 134 y 135); no se anidan transacciones, los `id` los genera la base y no se
     usan `lastval` ni `currval` (plan, notas O1, O3 y O4).
+- **Ronda 7 del ataque (criterios 137 a 140):**
+  - `problemasDePrivilegios` de `scripts/crear-bases.mjs` (criterio 102) excluye los objetos de extensiones también en
+    `public` (criterio 137). Las pruebas protegidas del criterio 102 en `db:crear` no cambian: ninguno de sus casos usa un
+    objeto de extensión. `privilegiosDeMas` (P-20), `privilegiosDeMasEnEsquemas` (P-31) y sus pruebas unitarias no cambian:
+    la exclusión está en las consultas;
+  - la prueba protegida del criterio 133 (`aislamiento/rls-todas-las-tablas.test.ts`) cambia el paso del `INSERT` como
+    dice el criterio 138; la adapta el test-writer en el commit de pruebas protegidas de la ronda 7, sin quitar casos de su
+    autocomprobación: la tabla con `WITH CHECK (academia_id IS NOT NULL)` se sigue detectando. Los sembradores de
+    `public.auditoria` y `public.configuraciones` ya crean una fila nueva en cada llamada (una clave aleatoria; P-33); si
+    alguno no lo hiciera, se ajusta en el mismo commit;
+  - `backend/test/utilidades/politicas.ts` (P-33) acepta la subconsulta escalar (criterio 140); los ejemplos de la
+    autocomprobación del criterio 132 que se detectaban se siguen detectando, en el mismo commit;
+  - la regla del criterio 135 agrega las formas del criterio 139; ningún ejemplo que pasa en
+    `eslint/regla-transaccion-guardada.test.mjs` usa `EventEmitterAsyncResource` ni `getBuiltinModule` (si alguno cambiara
+    de resultado, el test-writer se detiene e informa);
+  - las historias siguientes: un objeto de AquaGestión nunca se agrega a una extensión (criterio 137); una tabla de academia
+    puede tener disparadores `BEFORE INSERT` que fuercen o validen la academia (criterio 138) y escribir sus políticas con
+    `(SELECT app_academia_actual())` (criterio 140); su sembrador crea una fila nueva en cada llamada; no se usan
+    `EventEmitterAsyncResource` ni colas o lotes compartidos entre peticiones dentro de `trabajo` (criterio 139; plan,
+    notas O1 y O4 de la ronda 7).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -2668,7 +2858,12 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   catálogo no cuentan los objetos que pertenecen a una extensión (criterios 130 y 131), porque los hostings instalan
   extensiones con `EXECUTE` para `PUBLIC` y rechazarlas daría falsos positivos. Instalar una extensión es una migración que
   se ve en la revisión, y el lint rechaza las funciones que ejecutan texto o conectan a otra base (`dblink…`, criterio 109)
-  y las llamadas calificadas con otro esquema.
+  y las llamadas calificadas con otro esquema. _(Ampliado en la ronda 7: la exclusión vale también en `public`, en la API y
+  en `db:crear` por igual, criterio 137. Una vista o tabla de una extensión en `public` con `SELECT` para `PUBLIC`, como las
+  de `pg_stat_statements`, queda al alcance de la app; no contiene datos de las academias. `ALTER EXTENSION … ADD`
+  convierte un objeto propio en objeto de extensión: es una migración visible en la revisión, y la prueba de catálogo del
+  criterio 137 falla si lo hace con una tabla de `PRIVILEGIOS_APP`, una función de `FUNCIONES_APP` o una tabla con
+  `academia_id`.)_
 - **Esquemas propios del hosting** _(ataque ronda 6)_: si el hosting crea un esquema con tablas o funciones propias y da
   `USAGE` a `PUBLIC`, la comprobación del rol rechaza (falla cerrada, criterio 130) y la API no atiende datos. Se resuelve
   con el hosting (D-21): una especificación agrega ese esquema a "Esquemas permitidos además de `public`", con su
@@ -2682,7 +2877,28 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   La garantía es el criterio 134: desde otro contexto asíncrono el envoltorio rechaza. Un módulo que capture a propósito el
   contexto (`AsyncLocalStorage.snapshot()` o `AsyncResource.bind`) lo evitaría; por eso el criterio 135 prohíbe importar
   `async_hooks` fuera de `infraestructura/`, y el revisor lo busca. `enPlataforma` (comandos y semilla) no se ata a un
-  contexto: cada comando es un proceso que corre una sola vez.
+  contexto: cada comando es un proceso que corre una sola vez. _(Ampliado en la ronda 7, O2: tampoco ve una transacción
+  guardada cuyo tipo es una unión (`TransaccionAcademia | null`), un `trabajo` guardado en una variable tipada antes de
+  pasarlo a `conAcademia`, ni un delegado guardado (`this.d = tx.cliente.configuraciones`). En todas, la garantía sigue
+  siendo el criterio 134.)_
+- **Contexto restaurado por un recurso asíncrono** _(ataque ronda 7, F3)_: `EventEmitterAsyncResource`,
+  `AsyncResource.bind` y `AsyncLocalStorage.snapshot()` restauran todo el contexto asíncrono del momento en que se crearon,
+  con todos los `AsyncLocalStorage` a la vez; si se crean dentro del `trabajo` de A y se ejecutan desde otra petición, el
+  envoltorio ve la marca de A y acepta (criterio 134). No hay una forma fiable de detectarlo en ejecución: desde dentro del
+  envoltorio, un callback legítimo de `trabajo` (un temporizador, un evento, la continuación de una promesa) y uno
+  restaurado desde otra petición tienen el mismo contexto; un segundo almacén también lo restaura el recurso; y vigilar con
+  `async_hooks.createHook` los recursos que se ejecutan anidados dentro de otro contexto daría falsos positivos con los
+  propios controladores (un pool que entrega una conexión liberada por otra petición ejecuta así el callback de quien
+  esperaba) y tiene un costo en todo el proceso. Se acepta con estas mitigaciones: el lint normal prohíbe
+  `EventEmitterAsyncResource`, `getBuiltinModule` de `async_hooks` (criterio 139) y toda importación de `async_hooks`
+  (criterio 135) fuera de `infraestructura/`; un nombre armado en tiempo de ejecución no lo ve el lint (como el SQL armado,
+  riesgo "El lint es una segunda capa"), y lo buscan el revisor y el adversarial.
+- **Error de la propia prueba en el `INSERT` con otra academia** _(ataque ronda 7, F2)_: desde el criterio 138, cualquier
+  error del intento cuenta como "no escribió en B", así que una fila de prueba mal armada para una tabla (por ejemplo, una
+  columna de un tipo que `jsonb_populate_record` no convierte) pasaría sin probar el `WITH CHECK` de esa tabla. Lo acotan la
+  fila de prueba válida en B (criterio 138), el registro del código de cada error distinto de `42501`, la autocomprobación
+  (que exige detectar las tablas mal hechas con el mismo mecanismo) y la prueba de forma del criterio 132, que no depende de
+  la ejecución.
 - **Forma de las políticas leída como texto** _(ataque ronda 6)_: la prueba del criterio 132 analiza el texto que devuelve
   `pg_get_expr`, no el árbol interno de PostgreSQL. Con `search_path` fijado, un operador o una función de otro esquema
   aparecen calificados y no cumplen; la prueba de ejecución del criterio 133 es la segunda capa.
@@ -2933,9 +3149,28 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
 - **`lastval` y `currval` prohibidos en el lint** (criterio 136). Alternativa descartada: solo una nota en el plan (la
   regla cuesta una entrada en la lista de funciones prohibidas).
 
+### Decisiones técnicas tras el ataque, ronda 7 (12/11/2026)
+
+- **La API y `db:crear` excluyen los objetos de extensiones en todos los esquemas, incluido `public`** (criterio 137;
+  decisión del orquestador, alineada con el criterio 130 y su riesgo aceptado). Alternativas descartadas: que la API vuelva
+  a contarlos en `public` (rechazaría hostings que instalan `pg_stat_statements` u otras extensiones en `public`, y la API
+  no atendería) y dejar la divergencia (`db:crear` propondría `REVOKE` sobre objetos de la extensión, que la dañan, y el
+  responsable no sabría qué decide la API). La prueba de catálogo del criterio 137 impide que la exclusión tape las tablas
+  propias.
+- **El `INSERT` con otra academia se juzga por lo que deja escrito, con una fila de prueba válida en B** (criterio 138;
+  decisión del orquestador sobre el resultado, precisión del especificador sobre la fila). Alternativas descartadas: exigir
+  `42501` (falso positivo con disparadores legítimos) y "cualquier error pasa" con la copia de una fila de A (una política
+  mal hecha quedaría oculta por el `23505` de la llave primaria o el `23503` de una llave foránea compuesta).
+- **`EventEmitterAsyncResource` y `getBuiltinModule` de `async_hooks` en el lint normal; sin detección en ejecución**
+  (criterio 139). Alternativas descartadas: detectarlo en el envoltorio con `async_hooks.createHook` (falsos positivos con
+  los controladores y costo en todo el proceso; riesgo aceptado "Contexto restaurado por un recurso asíncrono") y prohibir
+  `events` entero (los eventos emitidos dentro de `trabajo` son legítimos, criterio 134).
+- **La subconsulta escalar `(SELECT app_academia_actual())` cuenta como la comparación** (criterio 140). Alternativa
+  descartada: exigir la llamada directa (empujaría a peores planes en tablas grandes o a saltarse la prueba).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 6 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 7 del ataque son decisiones técnicas y no abren preguntas de
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").

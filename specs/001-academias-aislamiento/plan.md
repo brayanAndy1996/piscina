@@ -602,6 +602,16 @@ La reutiliza 002 para los usuarios de academia.
   - `eslint/regla-transaccion-guardada.test.mjs` (135) y `eslint/regla-sql-sesion-ronda6.test.mjs` (136);
   - adaptación de `backend/test/utilidades/search-path.ts` (criterio 121) como dice "Impacto en especificaciones
     anteriores", ronda 6, en el mismo commit.
+- **Protegidas del ataque ronda 7 (test-writer)** _(criterios 137 a 140; nombres orientativos)_:
+  - `aislamiento/privilegios-extensiones.test.ts` (137, API: extensión en `public` y controles) y
+    `scripts/test/integracion/rol-app-ronda7.test.mjs` (137, `db:crear` con los mismos casos); los casos se omiten con aviso
+    si no se puede instalar ninguna extensión;
+  - `aislamiento/catalogo-extensiones.test.ts` (137, tablas propias que no son objetos de extensión, con autocomprobación);
+  - ajuste de `aislamiento/rls-todas-las-tablas.test.ts` (133 y 138: fila de prueba válida en B, juicio por lo escrito y
+    autocomprobación con disparadores) y, si hace falta, de `backend/test/utilidades/sembradores.ts` (P-33, ronda 7);
+  - ajuste de `backend/test/utilidades/politicas.ts` y de `aislamiento/forma-politicas.test.ts` (140, con los casos
+    unitarios de `cumpleFormaDeAcademia` y la autocomprobación ampliada);
+  - `eslint/regla-transaccion-guardada-ronda7.test.mjs` (139).
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -1238,6 +1248,97 @@ agregan a la lista de funciones prohibidas del criterio 94 (la misma detección 
 - **O4. Valores de sesión.** `lastval()` y `currval()` devuelven el último valor obtenido **en la sesión**, que la
   conexión del pool comparte entre academias: se usa `INSERT … RETURNING` (el lint los prohíbe desde el criterio 136).
 
+### 19. Correcciones del ataque, ronda 7 (criterios 137 a 140)
+
+La ronda 7 no encontró fallas críticas ni altas. Lo que corrige: 137 alinea `db:crear` con la API ante los objetos de
+extensiones; 138 y 140 quitan dos falsos positivos de las pruebas de las políticas sin abrir huecos; 139 amplía la regla de
+lint del criterio 135. No hay migraciones nuevas. Lo único que cambia en código de producción es `scripts/crear-bases.mjs` y
+la regla de lint; 138 y 140 cambian solo pruebas protegidas y sus utilidades.
+
+**`db:crear` sin objetos de extensiones en `public` (criterio 137).**
+
+- En `problemasDePrivilegios` (`scripts/crear-bases.mjs`), las tres ramas de la consulta (tabla, secuencia y columna)
+  agregan la condición "no es objeto de extensión" sobre `c.oid` con el fragmento de la sección 18
+  (`NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND
+  d.objid = c.oid AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')`). Las columnas
+  de una relación de extensión quedan fuera por la misma condición sobre la relación.
+- `problemasDePrivilegiosEnEsquemas` ya los excluye (sección 18). La API no cambia: su consulta única (criterio 130) ya
+  los excluye en todo esquema.
+- Alternativa considerada y descartada: que `db:crear` deje de llamar a `problemasDePrivilegios` y use solo la consulta
+  del criterio 130 para `public`, como la API. Se descarta por ahora porque cambia el formato de los mensajes que esperan
+  las protegidas del criterio 102 en `db:crear` (`REVOKE TRUNCATE ON auditoria FROM aquagestion_app;`, sin esquema). Si el
+  backend prefiere unificar, debe conservar esos mensajes.
+- Prueba de catálogo (criterio 137, orientativa):
+
+  ```sql
+  SELECT n.nspname, c.relname
+    FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast') AND n.nspname !~ '^pg_(toast_)?temp_'
+     AND EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                  WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
+                    AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+     AND (EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'academia_id'
+                   AND a.attnum > 0 AND NOT a.attisdropped)
+          OR (n.nspname = 'public' AND c.relname = ANY ($1::text[])))   -- tablas de PRIVILEGIOS_APP
+  ```
+
+  más la misma idea sobre `pg_proc` con `FUNCIONES_APP` (nombre y `pg_get_function_identity_arguments`). Aquí no se
+  excluyen los esquemas de extensiones: justo se buscan los objetos de extensión.
+- Instalación en la prueba de integración: comprobar antes en `pg_extension` si la extensión ya existe (si existe, no se
+  toca y se prueba con la otra vía o se omite); `pg_stat_statements` se puede crear sin estar en
+  `shared_preload_libraries` (solo falla al consultar sus vistas, que la prueba no consulta). Para la vía de confianza,
+  `ALTER EXTENSION … ADD VIEW` exige ser dueño de la extensión y de la vista: las crea el mismo dueño. Al restaurar:
+  `ALTER EXTENSION … DROP VIEW`, `DROP VIEW` y `DROP EXTENSION` solo de lo creado.
+
+**Fila de prueba válida en B (criterio 138).**
+
+- Función de ayuda en `rls-todas-las-tablas.test.ts` (orientativa): `filasDeAcademia(tabla, academiaId)` lee como dueño con
+  el contexto de esa academia `SELECT pg_catalog.to_jsonb(t)::text FROM <tabla> t WHERE academia_id = $1` y devuelve un
+  conjunto de textos. La fila nueva es la diferencia entre el conjunto después y antes de llamar al sembrador.
+- Borrado: como dueño con el contexto de B, `DELETE FROM <tabla> t WHERE pg_catalog.to_jsonb(t) = $1::jsonb` (o por la
+  llave primaria, si la tabla la tiene: más simple y exacto). Si falla, se usa la forma anterior con `42501` exacto y se
+  informa.
+- Intento: como app en contexto de A (`ejecutarComo('app', …, { academiaId: A })`), `INSERT INTO <tabla> (<columnas>)
+  SELECT <columnas> FROM pg_catalog.jsonb_populate_record(NULL::<tabla>, $1)`, con las columnas como en la sección 18 (sin
+  `attgenerated <> ''` ni `attidentity = 'a'`). La llave primaria (`id`) va en la fila: como se borró, no choca.
+- Comprobación: `filasDeAcademia(tabla, B)` otra vez; falla si hay algún texto que no estaba en el conjunto tomado
+  después del borrado. Para leer B en la nube, el dueño necesita el contexto de B (pasa por RLS por el `FORCE`).
+- Autocomprobación: dentro de la transacción del dueño que se revierte, el borrado y el intento van en un `SAVEPOINT`
+  propio; el intento con `SET LOCAL ROLE aquagestion_app` y el contexto de A; si termina sin error, `RESET ROLE` y la
+  lectura de B como dueño antes de `ROLLBACK TO SAVEPOINT` (que deshace el intento y el cambio de rol). La tabla padre de
+  ejemplo y la llave foránea compuesta se crean en la misma transacción.
+
+**Regla de lint (criterio 139).** En `eslint/regla-transaccion-guardada.mjs`, para archivos fuera de
+`backend/src/infraestructura/`:
+
+- `Identifier`, `ImportSpecifier.imported`, `ExportSpecifier.local/exported`, `MemberExpression.property` (con punto, o
+  calculada con `Literal` o `TemplateLiteral` sin expresiones) y la clave de un `Property` dentro de un `ObjectPattern`: si
+  el nombre es `EventEmitterAsyncResource`, informar. No hace falta saber de qué módulo viene: el nombre basta.
+- `getBuiltinModule`: se informa toda aparición del nombre (propiedad, clave de patrón, identificador) salvo cuando el
+  nodo es el `callee.property` de una `CallExpression` cuyo primer argumento es un `Literal` de cadena (o una plantilla sin
+  expresiones) distinto de `async_hooks` y `node:async_hooks`.
+- Mensaje orientativo: "No uses EventEmitterAsyncResource ni cargues async_hooks fuera de infraestructura/: conservan el
+  contexto de una transacción y otra petición podría usarla (criterios 134 y 139)."
+
+**Notas para las historias siguientes (sin criterio propio; ataque ronda 7).**
+
+- **O1. Un objeto por transacción no se guarda en `this`.** Un repositorio o una unidad de trabajo creada dentro de
+  `trabajo` que guarda `tx` en `this` (`new RepositorioPagos(tx)` con `this.tx = tx` en el constructor) hace fallar la regla
+  del criterio 135, aunque el objeto viva solo dentro de esa transacción. El patrón recomendado: repositorios sin estado,
+  con `tx` como parámetro de cada función (`this.pagos.registrar(tx, datos)`), como `registrarEnAcademia(tx, entrada)` de la
+  auditoría. No se abre una excepción en la regla.
+- **O2. Formas que la regla 135 no ve.** Uniones de tipos (`TransaccionAcademia | null`), un `trabajo` guardado en una
+  variable tipada antes de pasarlo, y un delegado guardado (`this.d = tx.cliente.configuraciones`). Están en "Riesgos
+  aceptados" de la especificación (transacciones guardadas que el lint no sigue): las cubre el criterio 134 en ejecución.
+- **O4. Sin colas ni lotes compartidos entre peticiones dentro de `trabajo`.** Una cola o un lote que vive fuera de
+  `trabajo` (un campo del servicio, una variable del módulo) y que se vacía con un temporizador programado dentro del
+  `trabajo` de A procesaría con la transacción de A lo que agregó B (el temporizador hereda el contexto de A, criterio
+  134, y el envoltorio acepta). Las colas y los lotes se crean dentro de `trabajo` y se vacían antes de que termine; lo que
+  deba procesarse después va a una tarea con su propia transacción por academia (nota O1 de la ronda 6).
+- **O6. `pg_notify` sigue prohibido.** Es coherente con el criterio 84 (`LISTEN`, `UNLISTEN`, `NOTIFY` y `pg_notify(`
+  fallan el lint fuera de `infraestructura/prisma/`): una notificación sale de la transacción y la recibe cualquier
+  conexión, de cualquier academia. Si una historia necesita avisos entre procesos, lo decide su especificación.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -1307,6 +1408,11 @@ agregan a la lista de funciones prohibidas del criterio 94 (la misma detección 
 | Envoltorio atado con `AsyncLocalStorage` (criterio 134) | Solo lint; atarlo a la petición HTTP | El lint no ve alias; las tareas programadas no tienen petición |
 | Regla de la transacción guardada en el lint normal (criterio 135) | En el paso protegido | Cambiaría la lista de reglas del criterio 96; la garantía está en el 134 |
 | `SET CONSTRAINTS … DEFERRED/IMMEDIATE` permitido; `lastval`/`currval` prohibidos (criterio 136) | Función en `infraestructura/prisma/`; solo una nota | Es local a la transacción; prohibir los valores de sesión cuesta una entrada en la lista |
+| `db:crear` excluye los objetos de extensiones también en `public`, como la API (ataque ronda 7, criterio 137) | Que la API vuelva a contarlos en `public`; unificar en una sola consulta ya | Los hostings instalan extensiones en `public`; unificar cambiaría los mensajes que esperan las protegidas del criterio 102 |
+| Prueba de catálogo: ninguna tabla o función propia es objeto de extensión (criterio 137) | Confiar solo en la revisión | `ALTER EXTENSION … ADD` sacaría una tabla de todas las comprobaciones |
+| Fila de prueba válida en B (sembrada y borrada) y juicio por lo escrito (criterio 138) | Exigir `42501`; copiar una fila de A y aceptar cualquier error | Falso positivo con disparadores; la copia de A ocultaría una política mal hecha tras un `23505` o `23503` |
+| `EventEmitterAsyncResource` y `getBuiltinModule` de `async_hooks` en el lint normal (criterio 139) | Detección en el envoltorio con `createHook`; prohibir `events` | Falsos positivos con los controladores y costo global; los eventos dentro de `trabajo` son legítimos |
+| Subconsulta escalar de `app_academia_actual()` aceptada (criterio 140) | Solo la llamada directa | Es la forma recomendada por rendimiento y significa lo mismo |
 
 ## Migraciones
 
@@ -1325,6 +1431,8 @@ agregan a la lista de funciones prohibidas del criterio 94 (la misma detección 
 - Ronda 6: sin migraciones nuevas. Con las migraciones actuales, los privilegios de la app en todos los esquemas (criterio
   130), las pruebas de catálogo ampliadas (131) y la forma y ejecución de las políticas de `auditoria` y `configuraciones`
   (132 y 133) ya cumplen; si alguna prueba señalara algo, se corrige con una migración nueva.
+- Ronda 7: sin migraciones nuevas. Ninguna tabla ni función de las migraciones es objeto de extensión (criterio 137), y
+  las políticas de `auditoria` y `configuraciones` cumplen los criterios 138 y 140.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
