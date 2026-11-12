@@ -323,8 +323,8 @@ export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) 
 
 /**
  * Privilegios efectivos de `usuarioApp` (concedidos al rol o a PUBLIC) en todos los esquemas revisados de la base a la que está
- * conectado `clienteBase` (criterio 130, P-31): todos menos `pg_catalog`, `information_schema`, `pg_toast`, los temporales y los de
- * extensiones, y sin los objetos de extensiones. Calcula los de tabla, columna y secuencia (de cualquier esquema), `EXECUTE` sobre
+ * conectado `clienteBase` (criterio 130, P-31): todos menos `pg_catalog`, `information_schema`, `pg_toast` y los temporales (también
+ * los esquemas que pertenecen a una extensión, criterio 141), y sin los objetos de extensiones (un tipo compuesto cuenta por su `reltype`). Calcula los de tabla, columna y secuencia (de cualquier esquema), `EXECUTE` sobre
  * las funciones de `public` y de los esquemas con `USAGE`, y `USAGE` sobre cada esquema, y los compara con lo permitido. Los de
  * tabla, columna y secuencia de `public` los informa `problemasDePrivilegios` (criterio 102), así que aquí no se repiten. Un
  * problema por cada privilegio de más, con su corrección (`REVOKE … FROM <rol>;` o `FROM PUBLIC;` si llega por PUBLIC). No
@@ -337,16 +337,15 @@ export async function problemasDePrivilegiosEnEsquemas(clienteBase, { base, usua
          FROM pg_catalog.pg_namespace n
         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
           AND n.nspname !~ '^pg_(toast_)?temp_'
-          AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
-                           WHERE d.classid = 'pg_catalog.pg_namespace'::pg_catalog.regclass AND d.objid = n.oid
-                             AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
      ), relaciones AS (
        SELECT e.nombre AS esquema, c.oid, c.relname::text AS nombre, c.relkind
          FROM esquemas e
          JOIN pg_catalog.pg_class c ON c.relnamespace = e.oid
         WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
-                           WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
-                             AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+                           WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e'
+                             AND ((d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid)
+                                  OR (c.relkind = 'c' AND d.classid = 'pg_catalog.pg_type'::pg_catalog.regclass
+                                      AND d.objid = c.reltype)))
      ), funciones AS (
        SELECT e.nombre AS esquema, e.oid AS esquema_oid, p.oid, p.proname::text AS nombre,
               pg_catalog.pg_get_function_identity_arguments(p.oid)::text AS argumentos

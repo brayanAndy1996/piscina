@@ -26,6 +26,29 @@ export function esNombreValido(nombre) {
   return PATRON_NOMBRE.test(nombre);
 }
 
+/**
+ * Parámetros de conexión que el cliente `pg` toma de la cadena de consulta por encima de la parte principal de la URL
+ * (spec 001, criterio 143, P-34). Igual que `PARAMETROS_DE_CONEXION_PROHIBIDOS` de
+ * `backend/src/infraestructura/entorno/url-postgres.ts`.
+ */
+export const PARAMETROS_DE_CONEXION_PROHIBIDOS = ['user', 'host', 'hostaddr', 'password', 'port', 'dbname', 'database'];
+
+/**
+ * Nombres de `PARAMETROS_DE_CONEXION_PROHIBIDOS` presentes en la cadena de consulta de `url`: en minúsculas, sin
+ * repetir y en orden de aparición; `[]` si no hay. No devuelve valores. Lanza `TypeError` si `url` no es una URL que
+ * `new URL` acepte.
+ */
+export function parametrosDeConexionProhibidos(url) {
+  const encontrados = [];
+  for (const nombre of new URL(url).searchParams.keys()) {
+    const minusculas = nombre.toLowerCase();
+    if (PARAMETROS_DE_CONEXION_PROHIBIDOS.includes(minusculas) && !encontrados.includes(minusculas)) {
+      encontrados.push(minusculas);
+    }
+  }
+  return encontrados;
+}
+
 /** Descompone una URL de PostgreSQL. Lanza un error que nombra la variable, sin incluir el valor. */
 export function analizarUrlPostgres(valor, nombreVariable) {
   if (!valor) throw new Error(`Falta la variable ${nombreVariable} en el .env.`);
@@ -37,6 +60,12 @@ export function analizarUrlPostgres(valor, nombreVariable) {
   }
   if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
     throw new Error(`La variable ${nombreVariable} debe ser una URL de PostgreSQL (postgresql://).`);
+  }
+  const prohibidos = parametrosDeConexionProhibidos(valor);
+  if (prohibidos.length > 0) {
+    throw new Error(
+      `La variable ${nombreVariable} no puede llevar ${prohibidos.length === 1 ? 'el parámetro' : 'los parámetros'} ${prohibidos.join(', ')} en la cadena de consulta: el usuario, el servidor y la base van en la parte principal de la URL.`,
+    );
   }
   const base = decodeURIComponent(url.pathname.replace(/^\//, ''));
   if (!base) throw new Error(`La variable ${nombreVariable} debe indicar el nombre de la base de datos.`);

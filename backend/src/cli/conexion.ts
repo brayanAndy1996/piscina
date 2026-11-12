@@ -2,6 +2,7 @@ import path from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import dotenv from 'dotenv';
 import { PrismaClient } from '../generated/prisma/client';
+import { parametrosDeConexionProhibidos } from '../infraestructura/entorno/url-postgres';
 import { cerrarCursores, type ClienteTransaccion } from '../infraestructura/prisma';
 
 /**
@@ -20,6 +21,23 @@ export function cargarEnvDeLaRaiz(): void {
 export function leerVariable(env: Readonly<Record<string, string | undefined>>, nombre: string): string | undefined {
   const valor = env[nombre];
   return valor !== undefined && valor.trim() !== '' ? valor : undefined;
+}
+
+/**
+ * Problema de una URL de conexión antes de abrirla (spec 001, criterio 143, P-34): `undefined` si está bien. Rechaza una URL
+ * con `user`, `host`, `hostaddr`, `password`, `port`, `dbname` o `database` en la cadena de consulta, porque `pg` los toma por
+ * encima de la parte principal; y, por falla cerrada, una URL que `new URL` no acepte. El mensaje nombra la variable y los
+ * parámetros, nunca la URL, sus valores ni la contraseña.
+ */
+export function problemaDeUrlDeConexion(url: string, nombreVariable: string): string | undefined {
+  let prohibidos: string[];
+  try {
+    prohibidos = parametrosDeConexionProhibidos(url);
+  } catch {
+    return `La variable ${nombreVariable} no es una URL válida.`;
+  }
+  if (prohibidos.length === 0) return undefined;
+  return `La variable ${nombreVariable} no puede llevar ${prohibidos.length === 1 ? 'el parámetro' : 'los parámetros'} ${prohibidos.join(', ')} en la cadena de consulta: el usuario, el servidor y la base van en la parte principal de la URL.`;
 }
 
 /** Opciones de `crearClienteDelDueno`: `max` limita el pool de conexiones (por defecto, el de `pg`; spec 001, P-23). */

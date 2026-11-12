@@ -274,16 +274,15 @@ export class BaseDatos implements OnModuleDestroy {
               FROM pg_catalog.pg_namespace n
              WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                AND n.nspname !~ '^pg_(toast_)?temp_'
-               AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
-                                WHERE d.classid = 'pg_catalog.pg_namespace'::pg_catalog.regclass AND d.objid = n.oid
-                                  AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
           ), relaciones AS (
             SELECT e.nombre AS esquema, c.oid, c.relname::text AS nombre, c.relkind
               FROM esquemas e
               JOIN pg_catalog.pg_class c ON c.relnamespace = e.oid
              WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
-                                WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
-                                  AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+                                WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e'
+                                  AND ((d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid)
+                                       OR (c.relkind = 'c' AND d.classid = 'pg_catalog.pg_type'::pg_catalog.regclass
+                                           AND d.objid = c.reltype)))
           ), funciones AS (
             SELECT e.nombre AS esquema, e.oid AS esquema_oid, p.oid, p.proname::text AS nombre,
                    pg_catalog.pg_get_function_identity_arguments(p.oid)::text AS argumentos

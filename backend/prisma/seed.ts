@@ -1,7 +1,13 @@
 // Semilla de datos de ejemplo para desarrollo (spec 001, criterio 61): las academias `delfines` y `tiburones` y el
 // superadmin de desarrollo. Solo agrega lo que falta: repetirla no falla ni duplica ni modifica lo que ya existe.
 // Nunca corre con NODE_ENV=production. No imprime la contraseña.
-import { cargarEnvDeLaRaiz, crearClienteDelDueno, enPlataforma, leerVariable } from '../src/cli/conexion';
+import {
+  cargarEnvDeLaRaiz,
+  crearClienteDelDueno,
+  enPlataforma,
+  leerVariable,
+  problemaDeUrlDeConexion,
+} from '../src/cli/conexion';
 import { mensajeSeguro } from '../src/cli/mensaje-seguro';
 import { guardarSuperadmin, hayDatosDeSuperadmin, leerDatosSuperadmin } from '../src/cli/superadmin-datos';
 import { leerNodeEnv } from '../src/infraestructura/entorno/node-env';
@@ -28,6 +34,11 @@ async function sembrar(): Promise<number> {
   const url = leerVariable(process.env, 'DATABASE_URL');
   if (url === undefined) {
     console.error('Falta la variable DATABASE_URL.');
+    return 1;
+  }
+  const problemaUrl = problemaDeUrlDeConexion(url, 'DATABASE_URL');
+  if (problemaUrl) {
+    console.error(`No se hizo ningún cambio. ${problemaUrl}`);
     return 1;
   }
 

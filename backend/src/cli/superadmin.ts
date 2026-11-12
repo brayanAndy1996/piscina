@@ -3,7 +3,13 @@
 // DATABASE_URL del entorno o del .env (las del entorno mandan). Nunca imprime la contraseña.
 import { RelojSistema } from '../infraestructura/reloj/reloj-sistema';
 import { hashearClave } from '../infraestructura/seguridad/claves';
-import { cargarEnvDeLaRaiz, crearClienteDelDueno, enPlataforma, leerVariable } from './conexion';
+import {
+  cargarEnvDeLaRaiz,
+  crearClienteDelDueno,
+  enPlataforma,
+  leerVariable,
+  problemaDeUrlDeConexion,
+} from './conexion';
 import { mensajeSeguro } from './mensaje-seguro';
 import { guardarSuperadmin, leerDatosSuperadmin } from './superadmin-datos';
 
@@ -14,7 +20,11 @@ async function ejecutar(): Promise<number> {
   const problemas = lectura.ok ? [] : [...lectura.problemas];
   const urlBase = leerVariable(process.env, 'DATABASE_URL');
   if (urlBase === undefined) problemas.push('Falta la variable DATABASE_URL.');
-  if (!lectura.ok || urlBase === undefined) {
+  else {
+    const problemaUrl = problemaDeUrlDeConexion(urlBase, 'DATABASE_URL');
+    if (problemaUrl) problemas.push(problemaUrl);
+  }
+  if (!lectura.ok || urlBase === undefined || problemas.length > 0) {
     console.error(`No se hizo ningún cambio. Corrige la configuración:\n${problemas.map((p) => `- ${p}`).join('\n')}`);
     return 1;
   }

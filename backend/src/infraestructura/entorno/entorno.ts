@@ -1,4 +1,5 @@
 import { leerNodeEnv, type NodeEnv } from './node-env';
+import { parametrosDeConexionProhibidos } from './url-postgres';
 
 /** Variables de entorno que lee la API, ya validadas. La API ya no lee `DATABASE_URL` (spec 001, criterio 5). */
 export interface Entorno {
@@ -86,6 +87,13 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
     problemas.push('Falta la variable DATABASE_URL_APP.');
   } else if (!esUrlPostgres(urlApp)) {
     problemas.push('La variable DATABASE_URL_APP debe ser una URL de PostgreSQL (postgresql:// o postgres://).');
+  } else {
+    const prohibidos = parametrosDeConexionProhibidos(urlApp);
+    if (prohibidos.length > 0) {
+      problemas.push(
+        `La variable DATABASE_URL_APP no puede llevar ${prohibidos.length === 1 ? 'el parámetro' : 'los parámetros'} ${prohibidos.join(', ')} en la cadena de consulta: el usuario, el servidor y la base van en la parte principal de la URL.`,
+      );
+    }
   }
 
   const lecturaNodeEnv = leerNodeEnv(env);
