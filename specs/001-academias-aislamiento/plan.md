@@ -19,11 +19,14 @@ piscina/
 ├── eslint.protegido.config.mjs          nuevo, ataque ronda 3: paso con --no-inline-config (criterio 96)
 ├── .github/workflows/ci.yml             + DATABASE_URL_APP y JWT_SECRETO en Linux (y en el E2E)
 ├── .claude/hooks/preparar-sesion.mjs    + creación del rol aquagestion_app (criterio 8); ronda 2: atributos (81);
-│                                        ronda 17: entornoParaHijos sin BOM y esPuntoDeEntrada propio (169, 171)
+│                                        ronda 17: entornoParaHijos sin BOM y esPuntoDeEntrada propio (169, 171);
+│                                        ronda 18: cargarAnalizadorEnv, analizarEnvMinimo, entornoParaInstalar (174)
 ├── scripts/
+│   ├── package.json                     ronda 18: + dotenv, mismo rango que el backend (criterio 172)
 │   ├── lib/entorno.mjs                  + leerUrlApp(), urlAppSobre(base); ronda 8: parámetros de conexión en la
 │   │                                    cadena de consulta (criterio 143, P-34); ronda 17: quitarBom, analizarEnv,
-│   │                                    clavesPosiblesEnv (criterios 169 y 170, P-43)
+│   │                                    clavesPosiblesEnv (criterios 169 y 170, P-43); ronda 18: analizarEnv =
+│   │                                    dotenv.parse, cargado al primer uso (criterio 172, P-45)
 │   ├── lib/punto-de-entrada.mjs         nuevo, ataque ronda 17: esPuntoDeEntrada y rutasIguales (criterio 171, P-44);
 │   │                                    lo usan crear-bases, completar-env, compilar-contratos-si-falta y verificar-*
 │   ├── lib/rol-app.mjs                  nuevo, ataque ronda 2: consulta y evaluación del rol (criterio 81);
@@ -32,7 +35,8 @@ piscina/
 │   ├── crear-bases.mjs                  + asegurarRolApp() (criterio 6); ronda 2: lista completa y TEMPORARY (81, 82);
 │   │                                    ronda 5: esquemas del rol (123)
 │   ├── completar-env.mjs                nuevo (criterio 63); ronda 17: analizarEnv, ilegibles, bytes conservados y
-│   │                                    UTF-16 (criterio 170)
+│   │                                    UTF-16 (criterio 170); ronda 18: existente = dotenv, comprobación antes de
+│   │                                    escribir (criterio 173)
 │   └── test/…                           pruebas de lo anterior; actualización de migraciones.test.mjs (criterio 65)
 ├── packages/contratos/src/
 │   ├── academias.ts · plataforma.ts     nuevos (+ *.test.ts)
@@ -49,7 +53,8 @@ piscina/
 │   ├── src/infraestructura/prisma/      BaseDatos, PrismaService interno, errores, verificación del rol;
 │   │                                    ronda 3: envoltorio, sin proveedor del cliente, privilegios-app.ts (98 a 103)
 │   ├── src/infraestructura/entorno/     ronda 3: retirarVariablesSensibles, llamada desde main.ts (criterio 99);
-│   │                                    ronda 8: url-postgres.ts (criterio 143, P-34)
+│   │                                    ronda 8: url-postgres.ts (criterio 143, P-34); ronda 18: opciones-dotenv.ts,
+│   │                                    usado por cargar-env.ts, cli/conexion.ts y prisma.config.ts (criterio 175)
 │   ├── src/infraestructura/seguridad/   claves (argon2) y tokens (JWT con RELOJ)
 │   ├── src/comun/errores/               ErrorNegocio
 │   ├── src/comun/filtros/               filtro: ErrorNegocio y detalles de validación (criterio 66)
@@ -66,6 +71,7 @@ piscina/
 │   ├── rutas/Rutas.tsx                  + /plataforma/*
 │   └── modulos/plataforma/              Ingresar, Academias, ruta protegida
 ├── e2e/pruebas/plataforma.spec.ts       criterio 71
+├── e2e/playwright.config.ts             ronda 18: las seis opciones de dotenv.config escritas (criterio 175)
 └── docs/guia-local-windows.md           criterio 67 (documentador)
 ```
 
@@ -729,6 +735,32 @@ La reutiliza 002 para los usuarios de academia.
     `DATABASE_URL_APP` primera), con la corrección de `backend/test/utilidades/base-pruebas.ts` y
     `backend/test/utilidades/base-datos.ts` (quitar el BOM inicial antes de `parseEnv`) en el mismo commit: son
     utilidades de prueba y `base-datos.ts` está protegida, así que no las puede tocar el backend.
+  - _(Ronda 18: `entorno-bom-ronda17.test.mjs`, `completar-env-ronda17.test.mjs` y `lectura-env-ronda17.test.ts` cambian
+    en casos concretos, y `preparar-sesion-ronda17.test.mjs` solo en un comentario; ver la lista siguiente.)_
+- **Protegidas del ataque ronda 18 (test-writer)** _(criterios 172 a 175; nombres orientativos salvo los de P-45)_:
+  - `scripts/test/ayuda-env-ronda18.mjs` (nuevo, sin pruebas propias): los conjuntos (d) y (f), el generador con semilla
+    fija, `VARIABLES_5433`, `URL_5432`, `URL_5433` y `RESTO`, y la carga del `dotenv` del backend; lo importan las pruebas
+    de abajo;
+  - `scripts/test/entorno-dotenv-ronda18.test.mjs` (172: (s1) coherencia de (a), (d) y (f) entre `analizarEnv`,
+    `dotenv.parse` y `cargarEnv`; (s2) reproducciones F1 y F2; (s4) versión y rango; (s5) carga perezosa con la copia en
+    una carpeta temporal; (s6) prueba estática de `parseEnv` y del literal `'dotenv'`). La comparación de (s1) con
+    `dotenv.config({ ...opcionesDotenv(ruta), processEnv: {} })` usa las seis opciones escritas en la prueba, igual que
+    P-45 (los scripts no importan código de `backend/src`);
+  - `scripts/test/completar-env-ronda18.test.mjs` (173: (c1) a (c6), con `completarEnv` y como comando);
+  - `scripts/test/preparar-sesion-ronda18.test.mjs` (174: (h1) a (h9); (h3) con el enlace a la carpeta del `dotenv`
+    instalado, borrado al final sin `recursive`);
+  - `backend/test/utilidades/lectura-env-ronda18.test.ts` (172, (s3): `leerEntornoBases` y `leerUrlAppConfigurada` con (d1)
+    a (d7)), con la corrección de `backend/test/utilidades/base-pruebas.ts` y `base-datos.ts` (leer con `dotenv.parse`) en
+    el mismo commit, como en la ronda 17;
+  - `backend/src/infraestructura/entorno/opciones-dotenv-ronda18.test.ts` (175: (o1), (o2) con la comprobación previa del
+    ataque y los espías de `console`, y (o3) estática);
+  - **ajustes a protegidas de la ronda 17** (mismo commit, cada uno con un comentario que cita el criterio y el motivo):
+    `scripts/test/entorno-bom-ronda17.test.mjs` (la prueba estática de `parseEnv` con `PERMITIDOS = []` y su nombre;
+    comentarios del encabezado), `backend/test/utilidades/lectura-env-ronda17.test.ts` (el caso "un U+FEFF que no está al
+    principio" espera la `DATABASE_URL` que da `dotenv.parse`; encabezado), `scripts/test/completar-env-ronda17.test.mjs`
+    (los dos casos de (b4) "como comando" e "ilegibles" con el resultado por texto del criterio 173; comentarios) y
+    `scripts/test/preparar-sesion-ronda17.test.mjs` (solo el comentario del encabezado). Nada más de esos archivos
+    cambia.
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -2885,6 +2917,11 @@ export function clavesPosiblesEnv(texto) {
 - La prueba de coherencia carga `dotenv` del backend con `createRequire(path.join(raiz, 'backend', 'package.json'))`
   (el workspace `scripts` no lo declara; no se agrega como dependencia).
 
+_(Ronda 18: lo anterior de "Lectura del `.env`" queda **reemplazado** por la sección 30: `analizarEnv` es
+`dotenv.parse`, `scripts` declara `dotenv`, las utilidades de prueba leen con `dotenv.parse`, el hook usa
+`cargarAnalizadorEnv`, y `clavesPosiblesEnv` no es más amplia que `dotenv` (F2) y solo alimenta el aviso. Se conserva el
+texto.)_
+
 **`env:completar` (criterio 170).** Orientativo:
 
 ```js
@@ -2913,6 +2950,9 @@ export function completarEnv(raiz = raizProyecto) {
 - `fs.appendFileSync` no toca los bytes anteriores, así que el BOM y los `\r\n` se conservan y no se escribe un segundo BOM.
 - `pareceUtf16`: `bytes[0] === 0xff && bytes[1] === 0xfe`, o `0xfe, 0xff`, o `bytes.includes(0)`. Un `.env` UTF-8 válido no
   tiene bytes `00`.
+
+_(Ronda 18: `leidas` ∪ `posibles` como existentes y el aviso de `ilegibles` sin agregar quedan **reemplazados** por la
+sección 30, criterio 173. El resto (UTF-16, `appendFileSync`, salto inicial sin el BOM) no cambia.)_
 
 **Punto de entrada (criterio 171, P-44).** Orientativo:
 
@@ -2962,7 +3002,8 @@ ruta: límite por IP antes del controlador (como el del criterio 75), caché cor
 "Notas para historias futuras" de la spec y, en el cierre, a la nota de 005 en `specs/backlog.md` (T24).
 
 **Revisión de 001.** Ningún script de `scripts/` ni el hook vuelven a comparar `process.argv[1]` a mano ni a llamar a
-`parseEnv` por su cuenta (lo exigen las pruebas estáticas de 169 y 171).
+`parseEnv` por su cuenta (lo exigen las pruebas estáticas de 169 y 171). _(Ronda 18: `parseEnv` ya no aparece en
+ninguno, criterio 172.)_
 
 Texto propuesto para `docs/guia-local-windows.md` (lo agrega el documentador en el cierre, T24), en "Problemas
 frecuentes":
@@ -2973,6 +3014,200 @@ frecuentes":
 > - **`env:completar` avisa que "los scripts no la pueden leer".** Esa línea tiene algo invisible al principio (por
 >   ejemplo, un espacio duro copiado de una página) o usa `:` en lugar de `=`. Escríbela de nuevo a mano como
 >   `NOMBRE=valor`.
+
+_(Ronda 18: la segunda viñeta queda **reemplazada** por el texto propuesto en la sección 30; la primera se conserva.)_
+
+### 30. Correcciones del ataque, ronda 18 (criterios 172 a 175)
+
+La ronda 18 (sobre `d8b5cdd`) no encontró fallas en el núcleo (RLS, rol, Superadmin, registro de errores, punto de
+entrada). Encontró dos fallas medias de la misma familia que la F1 de la ronda 17 (F1: con una variable repetida, los
+scripts con `parseEnv` tomaban la primera y el backend con `dotenv` la última; F2: `dotenv` lee una clave con un salto de
+línea antes del `=` y `env:completar` la agregaba igual) y dos observaciones (O1: variables `DOTENV_*` que cambian cómo
+el backend carga el `.env`; O2: mayúsculas en Windows, riesgo aceptado). La decisión del orquestador cierra la familia en
+vez de perseguir diferencias: **un solo analizador, `dotenv.parse`**. No hay migraciones nuevas ni cambios en
+`packages/` ni `frontend/`.
+
+Código que cambia: `scripts/package.json` y `package-lock.json`, `scripts/lib/entorno.mjs`, `scripts/completar-env.mjs` y
+`.claude/hooks/preparar-sesion.mjs` (backend, T178 y T179); `backend/src/infraestructura/entorno/opciones-dotenv.ts`
+(nuevo), `cargar-env.ts`, `backend/src/cli/conexion.ts`, `backend/prisma.config.ts` y `e2e/playwright.config.ts`
+(backend, T180); y `backend/test/utilidades/base-pruebas.ts` y `base-datos.ts` (test-writer, T176, en el commit de pruebas
+protegidas).
+
+**Lectura del `.env` en los scripts (criterio 172, P-45).** Orientativo:
+
+```js
+// scripts/lib/entorno.mjs — sin `import … from 'dotenv'`: el hook importa este módulo antes de npm ci.
+import { createRequire } from 'node:module';
+
+let dotenvCargado = null;
+function dotenv() {
+  if (dotenvCargado) return dotenvCargado;
+  try {
+    dotenvCargado = createRequire(import.meta.url)('dotenv');
+  } catch {
+    throw new Error('Falta el paquete dotenv, con el que se lee el .env. Ejecuta npm ci (o npm install) y vuelve a intentarlo.');
+  }
+  return dotenvCargado;
+}
+
+export const analizarEnv = (texto) => dotenv().parse(texto);   // sin opciones: el analizador por defecto
+```
+
+- `createRequire(import.meta.url)` resuelve desde `scripts/lib/`: encuentra el `dotenv` del workspace `scripts` (en
+  `scripts/node_modules` o, deduplicado, en el `node_modules` de la raíz). Con el mismo rango que el backend, npm deja una
+  sola copia; la prueba (s4) compara las versiones resueltas desde los dos `package.json`.
+- Se guarda solo el módulo cargado, no el fallo: si falta, cada llamada lo vuelve a intentar.
+- `dotenv.parse` no lee opciones del entorno (solo `config` lo hace), así que O1 no afecta a los scripts.
+- `quitarBom` se queda (la usa `completarEnv` para decidir el salto de línea inicial). `parseEnv` y su import se quitan.
+- `leerEntornoBases` y `leerUrlAppConfigurada`: `import dotenv from 'dotenv'` (el backend lo declara; la regla del criterio
+  117 permite importarlo en pruebas y utilidades de prueba) y `dotenv.parse(fs.readFileSync(ruta, 'utf8'))`; sin la
+  línea que quitaba el BOM.
+
+**`env:completar` (criterio 173).** Orientativo:
+
+```js
+const actual = bytes.toString('utf8');
+const antes = analizarEnv(actual);
+const delEjemplo = analizarEnv(ejemplo);
+const bloques = leerBloques(ejemplo);
+const faltantes = bloques.filter((b) => !Object.hasOwn(antes, b.nombre));
+const posibles = clavesPosiblesEnv(actual);
+const ilegibles = faltantes.filter((b) => posibles.has(b.nombre)).map((b) => b.nombre);
+const conAviso = ilegibles.length > 0 ? { ilegibles } : {};
+if (faltantes.length === 0) return { accion: 'sin-cambios', agregadas: [] };
+const agregado = armarAgregado(actual, faltantes);              // como hoy: salto inicial sin el BOM, bloques con \n
+const esperado = { ...antes };
+for (const b of faltantes) esperado[b.nombre] = delEjemplo[b.nombre];
+const cambiadas = diferencias(analizarEnv(actual + agregado), esperado);   // claves con otro valor, de más o de menos
+if (cambiadas.length > 0) throw new Error(mensajeLecturaCambiaria(cambiadas));   // sin valores; nada escrito
+fs.appendFileSync(rutaEnv, agregado);
+return { accion: 'completado', agregadas: faltantes.map((b) => b.nombre), ...conAviso };
+```
+
+- Con `faltantes` vacío no puede haber `ilegibles` (son parte de `agregadas`), así que `sin-cambios` va siempre sin la
+  clave.
+- `Object.hasOwn`: `dotenv.parse` devuelve un objeto común; una variable llamada `constructor` o `__proto__` en
+  `.env.example` no está prevista, pero así no se confunde con una propiedad heredada.
+- `diferencias` compara claves y valores exactos (como conjuntos de claves) y devuelve los nombres en orden alfabético;
+  el mensaje los nombra sin valores. `actual + agregado` es exactamente lo que `dotenv` leerá del archivo (se agrega con
+  `appendFileSync` y el archivo se lee como UTF-8 en los dos casos).
+- El comando, para cada nombre de `ilegibles`, imprime el aviso nuevo después de "Se agregaron…". El texto de la ronda
+  17 ("los scripts no la pueden leer") deja de existir.
+
+**Hook (criterio 174, P-45).** Orientativo:
+
+```js
+// .claude/hooks/preparar-sesion.mjs — sin import estático de dotenv
+import { createRequire } from 'node:module';
+
+const RAIZ_DEL_REPOSITORIO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+export function cargarAnalizadorEnv(raizRepo = RAIZ_DEL_REPOSITORIO) {
+  try {
+    const dotenv = createRequire(path.join(raizRepo, 'scripts', 'package.json'))('dotenv');
+    if (typeof dotenv?.parse === 'function') return { origen: 'dotenv', analizar: (texto) => dotenv.parse(texto) };
+  } catch {
+    // sin dotenv (antes de npm ci): lector mínimo
+  }
+  return { origen: 'minimo', analizar: analizarEnvMinimo };
+}
+
+const NOMBRE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const VALOR = /^(?:[^\s#"'`\\]+(?: [^\s#"'`\\]+)*)?$/;           // sin espacios al borde; solo U+0020 dentro
+const PROHIBIDOS = /[\u0000-\u0009\u000B-\u001F\u007F]|[^\S \n\r]|\r(?!\n)/;   // control y espacios Unicode
+
+export function analizarEnvMinimo(texto) {
+  const sinBom = texto.startsWith('﻿') ? texto.slice(1) : texto;
+  const negarse = (detalle) => {
+    throw new Error(`El .env tiene una forma que el hook solo puede leer con dotenv (${detalle}). Se leerá después de npm ci: reintenta con ${COMANDO_REINTENTO}.`);
+  };
+  const prohibido = PROHIBIDOS.exec(sinBom);
+  if (prohibido) negarse(`línea ${numeroDeLinea(sinBom, prohibido.index)}`);
+  const valores = {};
+  sinBom.split('\n').forEach((cruda, indice) => {
+    const linea = cruda.endsWith('\r') ? cruda.slice(0, -1) : cruda;
+    if (linea === '' || linea.startsWith('#')) return;
+    const sinExport = linea.startsWith('export ') ? linea.slice(7) : linea;
+    const igual = sinExport.indexOf('=');
+    const nombre = igual > 0 ? sinExport.slice(0, igual) : '';
+    const valor = sinExport.slice(igual + 1);
+    if (!NOMBRE.test(nombre) || !VALOR.test(valor)) negarse(`línea ${indice + 1}`);
+    if (Object.hasOwn(valores, nombre)) negarse(`la variable ${nombre} está repetida`);
+    valores[nombre] = valor;
+  });
+  return valores;
+}
+```
+
+- Ojo con `linea.startsWith('export ')` y una variable que se llame `export` (`export=1`): `sinExport` sería `export=1`
+  sin quitar nada, porque no empieza con `export ` (con espacio); y `export export=1` da `export`, como `dotenv`. La
+  propiedad (h7) lo vigila.
+- La expresión `PROHIBIDOS` incluye `[^\S \n\r]` (cualquier espacio de `\s` que no sea U+0020, `\n` ni `\r`): cubre
+  U+FEFF fuera de la posición 0, U+00A0, U+2028, U+2029, U+3000, `\t`, `\v` y `\f`. Si (h7) encuentra un texto aceptado
+  que difiere, se estrecha la forma (nunca se amplía) y se informa.
+- `entornoParaHijos(raiz, entorno, analizador)`: igual que hoy, con `analizador.analizar(texto)` en lugar de la línea de
+  `parseEnv`. `entornoParaInstalar`: `try { return entornoParaHijos(…) } catch { return { ...entorno } }`.
+- `prepararSesion`: la llamada de `npm ci` pasa a `env: entornoParaInstalar(raiz)`; las demás quedan con
+  `entornoParaHijos(raiz)`. Cada llamada crea su analizador, así que la del paso 5 (después de `npm ci`) ya usa `dotenv`.
+- Hay que verificar en la implementación que `require` no recuerda una resolución fallida en el mismo proceso (la prueba
+  (h3) lo comprueba). Si la recordara, `cargarAnalizadorEnv` usa un `createRequire` nuevo en cada llamada (ya lo hace) y,
+  si aun así fallara, el backend se detiene e informa.
+- `import { parseEnv } from 'node:util'` se quita del hook.
+
+**Opciones de `dotenv.config` (criterio 175, P-45).** Orientativo:
+
+```ts
+// backend/src/infraestructura/entorno/opciones-dotenv.ts
+/** Todas las opciones que dotenv 18 también toma de DOTENV_* (o DOTENV_CONFIG_*): escritas, mandan sobre el entorno. */
+export function opcionesDotenv(ruta: string) {
+  return { path: ruta, encoding: 'utf8', override: false, quiet: true, debug: false, fast: false } as const;
+}
+
+// cargar-env.ts
+dotenv.config(opcionesDotenv(path.resolve(__dirname, '..', '..', '..', '..', '.env')));
+// cli/conexion.ts
+dotenv.config(opcionesDotenv(path.resolve(__dirname, '..', '..', '..', '.env')));
+// prisma.config.ts
+dotenv.config(opcionesDotenv(path.resolve(__dirname, '..', '.env')));
+// e2e/playwright.config.ts (no importa código del backend)
+cargarEnv({ path: path.join(raiz, '.env'), encoding: 'utf8', override: false, quiet: true, debug: false, fast: false });
+```
+
+- `dotenv` 18 arma las opciones de `config` como `{ ...opcionesDelEntorno(), ...opciones }` sin las `undefined`: lo
+  escrito manda. `quiet` también se lee de la opción si está escrita. `fast: false` asegura el mismo analizador que
+  `dotenv.parse` sin opciones (el que usan los scripts).
+- Si el cargador de `prisma.config.ts` (la CLI de Prisma) no admite importar `./src/infraestructura/entorno/opciones-dotenv`,
+  se escriben las seis opciones en `prisma.config.ts`, como en Playwright; la prueba (o3) acepta las dos formas.
+- **Verificación (T180):** confirmar que la CLI de Prisma 7 no carga el `.env` por su cuenta (trae `c12` con `dotenv` 17).
+  Si lo hiciera, que no pise lo definido (`scripts/prisma.mjs` pasa `DATABASE_URL` en el entorno) y que no tome
+  `DOTENV_*`; si no se puede asegurar, el backend se detiene e informa.
+- `opciones-dotenv.ts` no importa `dotenv` (ni un tipo): la regla del criterio 117 no cambia. El tipo de retorno es el
+  literal (`as const`), compatible con `DotenvConfigOptions`.
+
+**Pruebas (detalle de la sección 13).** El generador de (f) es determinista y el mismo en todas las pruebas que lo usan
+(`ayuda-env-ronda18.mjs`); 20 000 llamadas a `dotenv.parse` y a `analizarEnvMinimo` tardan menos de un segundo; (c5) con
+3000 escrituras en una carpeta temporal, unos segundos (límite de la prueba: 60 s). (h3) crea el enlace a la carpeta del
+`dotenv` instalado (`path.dirname(require.resolve('dotenv/package.json'))` desde el backend) dentro de la carpeta
+temporal y lo borra al final con `fs.rmSync(enlace)` (sin `recursive`) o `fs.rmdirSync` en Windows.
+
+**Notas para el revisor.** `parseEnv` no aparece en `scripts/`, `.claude/hooks/` ni `backend/test/utilidades/`; el único
+`'dotenv'` de `scripts/` (sin pruebas) está en `scripts/lib/entorno.mjs`; toda llamada a `dotenv.config` del backend y de
+`e2e/` lleva las seis opciones; `package-lock.json` cambió por `npm install`, no a mano; las protegidas de la ronda 17
+solo cambian en los casos listados en los criterios 172 y 173.
+
+Texto propuesto para `docs/guia-local-windows.md` (lo agrega el documentador en el cierre, T24), en "Problemas
+frecuentes", en lugar de la segunda viñeta de la ronda 17:
+
+> - **`env:completar` avisa de "una línea que parece definir" una variable.** Esa línea no la lee nadie (ni la API ni los
+>   scripts): por ejemplo, `NOMBRE:valor` sin un espacio después de los dos puntos, o quedó dentro de un valor entre
+>   comillas que no se cerró. El comando ya agregó la variable al final desde `.env.example`; revisa la línea, deja una
+>   sola definición como `NOMBRE=valor` y borra la otra.
+> - **`env:completar` dice que agregar cambiaría cómo se lee tu `.env`.** La última línea tiene una comilla (`"`, `'` o
+>   `` ` ``) sin cerrar. Ciérrala o quítala y vuelve a ejecutar `npm run env:completar`.
+> - **Una variable aparece dos veces en el `.env`.** Vale la **última** (para la API y para los scripts). Deja una sola.
+> - **"Falta el paquete dotenv".** Ejecuta `npm ci` antes de los comandos `db:*` y de `env:completar`.
+> - Escribe los nombres de las variables exactamente como en `.env.example` (en mayúsculas) y no definas variables que
+>   empiecen con `DOTENV_`.
 
 ## Decisiones
 
