@@ -1,11 +1,14 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
 // Criterio 169 (ataque ronda 17, F1), utilidades de prueba: `leerEntornoBases` (`base-pruebas.ts`) y `leerUrlAppConfigurada`
-// (`base-datos.ts`) quitan el U+FEFF inicial del `.env` antes de `parseEnv`, como hace `dotenv` en el backend. Con el codigo de `6e3d69e`
-// la primera clave quedaba como "\uFEFFDATABASE_URL" y las utilidades usaban la URL por defecto (puerto 5432) o ninguna.
-// Las dos utilidades se corrigen en el mismo commit que esta prueba (T170): no cambia ninguna otra conducta.
+// (`base-datos.ts`) leen el `.env` como lo lee el backend con `dotenv`, de modo que el U+FEFF inicial no se queda pegado a la primera
+// clave. Con el codigo de `6e3d69e` la primera clave quedaba como "\uFEFFDATABASE_URL" y las utilidades usaban la URL por defecto (puerto
+// 5432) o ninguna. Las dos utilidades se corrigen en el mismo commit que esta prueba (T170): no cambia ninguna otra conducta.
+// Ronda 18 (criterio 172, T176): las utilidades leen con `dotenv.parse` (antes, `parseEnv` tras quitar el BOM a mano); por eso el caso del
+// U+FEFF que no esta al principio pasa a esperar lo que lee `dotenv.parse` del mismo texto. Los demas casos no cambian de resultado.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import dotenv from 'dotenv';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { URL_APP_POR_DEFECTO, leerUrlAppConfigurada } from './base-datos';
 import { leerEntornoBases } from './base-pruebas';
@@ -96,11 +99,16 @@ describe('criterio 169: las utilidades de prueba leen el .env sin el BOM inicial
     });
 
     it('un U+FEFF que no esta al principio no se quita (solo se quita el inicial)', () => {
-      escribirEnv(`PUERTO_API=3000\r\n${U}DATABASE_URL=postgresql://x:y@127.0.0.1:5433/aquagestion\r\n`);
+      // Ronda 18 (criterio 172, T176): `dotenv` si lee esa linea (su `\s` incluye U+FEFF), asi que ahora se espera lo mismo que
+      // `dotenv.parse`; esperar `undefined` exigia leer distinto que el backend (la falla F1 de la ronda 18).
+      const texto = `PUERTO_API=3000\r\n${U}DATABASE_URL=postgresql://x:y@127.0.0.1:5433/aquagestion\r\n`;
+      escribirEnv(texto);
 
       const entorno = leerEntornoBases(carpeta, {});
 
-      expect(entorno['DATABASE_URL']).toBeUndefined();
+      expect(dotenv.parse(texto)['DATABASE_URL']).toBe('postgresql://x:y@127.0.0.1:5433/aquagestion');
+      expect(entorno['DATABASE_URL']).toBe(dotenv.parse(texto)['DATABASE_URL']);
+      expect(entorno['DATABASE_URL']).toBe('postgresql://x:y@127.0.0.1:5433/aquagestion');
     });
   });
 

@@ -1,8 +1,10 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
 // Ataque ronda 17, parte del hook de sesion (`.claude/hooks/preparar-sesion.mjs`), precisiones P-43 y P-44:
-// - Criterio 169: `entornoParaHijos(raiz, entorno = process.env)` pasa a exportarse y lee el `.env` de `raiz` quitando el U+FEFF inicial
-//   (con su propia copia de la regla: el hook no importa modulos del repositorio de forma estatica, criterio 47 de 000), sin sobrescribir
-//   lo ya definido y sin modificar el objeto recibido.
+// - Criterio 169: `entornoParaHijos(raiz, entorno = process.env)` pasa a exportarse y lee el `.env` de `raiz` sin que el U+FEFF inicial
+//   quede pegado a la primera clave, sin sobrescribir lo ya definido y sin modificar el objeto recibido. (Ronda 18, criterio 174: ya no
+//   tiene "su propia copia de la regla" de lectura: lee con el analizador que le dan, por omision `cargarAnalizadorEnv()`: `dotenv` si esta
+//   instalado y, antes de `npm ci`, un lector minimo; el hook sigue sin importar modulos del repositorio de forma estatica, criterio 47 de
+//   000. El resultado de estas pruebas no cambia.)
 // - Criterio 171: el hook exporta su propia copia de `esPuntoDeEntrada` (misma firma y mismo resultado que la de `scripts/lib/`), la llama
 //   con `esPuntoDeEntrada(import.meta.url)` y es el unico lugar del hook donde aparece `process.argv[1]`.
 import fs from 'node:fs';

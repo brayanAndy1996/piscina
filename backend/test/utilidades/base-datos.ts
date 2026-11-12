@@ -1,7 +1,7 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseEnv } from 'node:util';
+import dotenv from 'dotenv';
 import pg from 'pg';
 
 /**
@@ -28,9 +28,8 @@ export function leerUrlAppConfigurada(raiz: string, entorno: Readonly<Record<str
   if (delEntorno) return delEntorno;
   const ruta = path.join(raiz, '.env');
   if (fs.existsSync(ruta)) {
-    const texto = fs.readFileSync(ruta, 'utf8');
-    // Como `dotenv`: se quita un U+FEFF inicial (BOM) antes de analizar (spec 001, criterio 169).
-    const delArchivo = parseEnv(texto.startsWith('\uFEFF') ? texto.slice(1) : texto)['DATABASE_URL_APP']?.trim();
+    // Con `dotenv.parse`, el mismo analizador que usa el backend: BOM, variable repetida y comillas se leen igual (spec 001, criterio 172).
+    const delArchivo = dotenv.parse(fs.readFileSync(ruta, 'utf8'))['DATABASE_URL_APP']?.trim();
     if (delArchivo) return delArchivo;
   }
   return URL_APP_POR_DEFECTO;

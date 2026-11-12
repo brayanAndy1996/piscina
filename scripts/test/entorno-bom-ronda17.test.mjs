@@ -1,11 +1,13 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
 // Criterio 169 (ataque ronda 17, F1; AMPLIA el criterio 63 y complementa el 148), precision P-43, parte de `scripts/lib/entorno.mjs`:
-// `quitarBom(texto)` quita un U+FEFF solo si es el primer caracter; `analizarEnv(texto)` es `parseEnv(quitarBom(texto))`; `cargarEnv` y
-// todo lector de un `.env` de `scripts/` usan `analizarEnv`, de modo que un `.env` guardado con BOM (PowerShell 5.1) se lee como lo lee el
-// backend con `dotenv`. Reproduccion (e1): `U` + las variables activas de `.env.example` con el puerto 5433 y `\r\n`: con el codigo de
+// `quitarBom(texto)` quita un U+FEFF solo si es el primer caracter; `analizarEnv(texto)` lee el `.env` como lo lee el backend con `dotenv`
+// (desde el criterio 172, ataque ronda 18, es `dotenv.parse(texto)`; en la ronda 17 era `parseEnv(quitarBom(texto))`); `cargarEnv` y todo
+// lector de un `.env` de `scripts/` usan `analizarEnv`, de modo que un `.env` guardado con BOM (PowerShell 5.1) se lee como lo lee el
+// backend. Reproduccion (e1): `U` + las variables activas de `.env.example` con el puerto 5433 y `\r\n`: con el codigo de
 // `6e3d69e`, `cargarEnv` dejaba `DATABASE_URL` sin definir (la clave quedaba como `"\uFEFFDATABASE_URL"`).
-// Si para algun texto del conjunto (a) `parseEnv` (sin el BOM) y `dotenv.parse` dieran claves o valores distintos, el test-writer se
-// detiene e informa: la prueba de coherencia de abajo lo comprueba y no ajusta el conjunto para esconderlo.
+// Ronda 18 (criterio 172, T176): la prueba estatica del final ya no permite `parseEnv` en ningun lector (la lista de permitidos queda
+// vacia) porque todos leen con `dotenv.parse`; el resto del archivo no cambia de resultado. La coherencia con `dotenv.parse` de (a) pasa a
+// ser por construccion.
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -15,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as entorno from '../lib/entorno.mjs';
 
 const raizReal = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-/** El `dotenv` instalado del backend (el workspace `scripts` no lo declara). */
+/** El `dotenv` instalado del backend (desde el criterio 172 el workspace `scripts` declara el mismo rango y la misma version). */
 const dotenv = createRequire(path.join(raizReal, 'backend', 'package.json'))('dotenv');
 const U = '\uFEFF';
 
@@ -202,12 +204,9 @@ describe('criterio 169: cargarEnv lee el .env como el backend', () => {
 });
 
 describe('criterio 169: nadie mas analiza el .env por su cuenta (prueba estatica de parseEnv)', () => {
-  const PERMITIDOS = [
-    '.claude/hooks/preparar-sesion.mjs',
-    'backend/test/utilidades/base-datos.ts',
-    'backend/test/utilidades/base-pruebas.ts',
-    'scripts/lib/entorno.mjs',
-  ];
+  // Ronda 18 (criterio 172, ataque ronda 18, T176): ningun lector usa `parseEnv` (todos leen con `dotenv.parse`), asi que la lista de
+  // permitidos de la ronda 17 (entorno.mjs, el hook y las dos utilidades de prueba) queda vacia.
+  const PERMITIDOS = [];
 
   /** Archivos de codigo bajo `carpeta` (relativa a la raiz), sin los excluidos; rutas relativas con `/`. */
   function archivos(carpeta, { excluirCarpeta = () => false, excluirArchivo = () => false } = {}) {
@@ -234,7 +233,7 @@ describe('criterio 169: nadie mas analiza el .env por su cuenta (prueba estatica
     ...archivos('backend/test/utilidades', { excluirArchivo: (nombre) => /\.test\./.test(nombre) }),
   ];
 
-  it('el texto parseEnv aparece solo en entorno.mjs, el hook y las dos utilidades de prueba', () => {
+  it('ningun archivo de scripts/, del hook ni de las utilidades de prueba contiene el texto parseEnv', () => {
     const conParseEnv = buscados()
       .filter((relativa) => fs.readFileSync(path.join(raizReal, relativa), 'utf8').includes('parseEnv'))
       .sort();

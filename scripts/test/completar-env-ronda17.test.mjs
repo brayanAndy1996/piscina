@@ -1,8 +1,13 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
 // Criterio 170 (ataque ronda 17, F1; AMPLIA el criterio 63; R17-1 y R17-2 aceptadas por el orquestador), precision P-43:
-// `completarEnv` y `npm run env:completar` leen con `analizarEnv`, nunca agregan una variable que `dotenv` lee del archivo (`clavesPosiblesEnv`
-// es la regla amplia: en la duda, existe y no se agrega, y el resultado lleva `ilegibles`), conservan byte a byte lo que ya habia (BOM y
-// `\r\n` incluidos, sin un segundo U+FEFF) y se niegan a escribir en un `.env` que parece UTF-16 o tiene un byte 00 (codigo 1).
+// `completarEnv` y `npm run env:completar` leen con `analizarEnv`, conservan byte a byte lo que ya habia (BOM y `\r\n` incluidos, sin un
+// segundo U+FEFF) y se niegan a escribir en un `.env` que parece UTF-16 o tiene un byte 00 (codigo 1). En la ronda 17, ademas, nunca
+// agregaban una variable que `dotenv` lee del archivo (`clavesPosiblesEnv` era la regla amplia: en la duda, existe y no se agrega, y el
+// resultado llevaba `ilegibles`).
+// Ronda 18 (criterios 172 y 173, T176): `analizarEnv` es `dotenv.parse` y una variable cuenta como existente exactamente si esta en
+// `analizarEnv(actual)`; `clavesPosiblesEnv` ya no decide que se agrega, solo alimenta el aviso `ilegibles`, que pasa a ser parte de
+// `agregadas`. Por eso, en (b4), el texto con un valor entre comillas dobles en varias lineas que contiene `DATABASE_URL=dentro` (que
+// `dotenv` no lee) ahora SI agrega `DATABASE_URL`; los otros cuatro textos de (b4), que `dotenv` lee, siguen dejando el archivo igual.
 // Con el codigo de `6e3d69e`, con (e1) como `.env` el comando agregaba `DATABASE_URL` (5432) y `dotenv` tomaba la ultima.
 // Pruebas (b1) a (b6) del criterio; `dotenv.parse` es el del backend.
 import { spawnSync } from 'node:child_process';
@@ -70,7 +75,11 @@ const EJEMPLO_B = [
   '',
 ].join('\n');
 
-/** Conjunto (b): formas que `dotenv` puede leer y `parseEnv` quiza no. Cada texto ya trae PUERTO_API y JWT_SECRETO. */
+/**
+ * Conjunto (b): formas raras del `.env`. Las cuatro primeras las lee `dotenv` (y desde el criterio 172 tambien los scripts); la ultima
+ * (valor entre comillas dobles en varias lineas) no define `DATABASE_URL`: esa linea queda dentro del valor de `JWT_SECRETO`.
+ * Cada texto ya trae PUERTO_API y JWT_SECRETO.
+ */
 const CONJUNTO_B = [
   ['dos archivos con BOM concatenados', `PUERTO_API=1\nJWT_SECRETO=x\n${U}DATABASE_URL=${URL_B}\n`],
   ['U+00A0 al principio de la linea', `PUERTO_API=1\nJWT_SECRETO=x\n\u00A0DATABASE_URL=${URL_B}\n`],
@@ -272,42 +281,59 @@ describe('criterio 170: completarEnv y env:completar con un .env con BOM o con f
       expect(textoEnv().startsWith(texto)).toBe(true);
     });
 
+    // Ronda 18 (criterio 173, T176): resultado explicito por texto. Desde 172, `analizarEnv` es `dotenv.parse` y la condicion de antes ("la lee
+    // dotenv y no analizarEnv") no se cumple nunca. Los cuatro textos que `dotenv` lee: sin `ilegibles` y `agregadas: []`. El del valor entre
+    // comillas en varias lineas: `dotenv` no lee `DATABASE_URL`, asi que se agrega y `ilegibles` la nombra.
+    const LEIDOS_POR_DOTENV = CONJUNTO_B.slice(0, 4);
+    const DENTRO_DE_UN_VALOR = CONJUNTO_B[4];
+
     it.each(CONJUNTO_B)(
       '%s: si DATABASE_URL la lee dotenv y no analizarEnv, el resultado lleva ilegibles',
-      (_nombre, texto) => {
+      (nombre, texto) => {
         escribir(texto);
         const leeDotenv = Object.keys(dotenv.parse(texto)).includes('DATABASE_URL');
-        const leeAnalizarEnv = Object.keys(funcion('analizarEnv')(texto)).includes('DATABASE_URL');
+        const esElDelValor = nombre === DENTRO_DE_UN_VALOR[0];
+        expect(leeDotenv, 'segun dotenv.parse, DATABASE_URL se lee solo en los cuatro primeros textos').toBe(
+          !esElDelValor,
+        );
 
         const resultado = completarEnv(carpeta);
 
-        if (leeDotenv && !leeAnalizarEnv) {
+        if (esElDelValor) {
+          expect(resultado.agregadas).toEqual(['DATABASE_URL']);
           expect(resultado.ilegibles).toEqual(['DATABASE_URL']);
-        }
-        if (leeAnalizarEnv) {
-          expect(resultado.ilegibles ?? []).not.toContain('DATABASE_URL');
+        } else {
+          expect(LEIDOS_POR_DOTENV.map(([etiqueta]) => etiqueta)).toContain(nombre);
+          expect(resultado.ilegibles).toBeUndefined();
+          expect(resultado.agregadas).toEqual([]);
         }
       },
     );
 
+    // Ronda 18 (criterio 173, T176): nuevo resultado por texto. Los cuatro que `dotenv` lee: lo de antes (codigo 0, archivo igual, sin
+    // "Se agregaron" ni la clave). El del valor entre comillas en varias lineas: "Se agregaron" con `DATABASE_URL`, el archivo empieza con los
+    // bytes de antes y `dotenv.parse` da la `DATABASE_URL` de `EJEMPLO_B`. El nombre de la prueba se conserva.
     it.each(CONJUNTO_B)(
       '%s como comando: termina con 0, nombra la variable ilegible sin su valor y deja el archivo igual',
-      (_nombre, texto) => {
+      (nombre, texto) => {
         escribir(texto);
         const antes = Buffer.from(bytesEnv());
-        const leeDotenv = Object.keys(dotenv.parse(texto)).includes('DATABASE_URL');
-        const leeAnalizarEnv = Object.keys(funcion('analizarEnv')(texto)).includes('DATABASE_URL');
+        const esElDelValor = nombre === DENTRO_DE_UN_VALOR[0];
 
         const resultado = ejecutar();
 
         expect(resultado.status).toBe(0);
-        expect(bytesEnv().equals(antes)).toBe(true);
         const salida = `${resultado.stdout}\n${resultado.stderr}`;
         expect(salida).not.toContain(CLAVE_B);
-        expect(salida).not.toContain('Se agregaron');
-        if (leeDotenv && !leeAnalizarEnv) {
+        if (esElDelValor) {
+          expect(resultado.stdout).toContain('Se agregaron');
           expect(salida).toContain('DATABASE_URL');
           expect(salida).not.toContain('127.0.0.1');
+          expect(bytesEnv().subarray(0, antes.length).equals(antes)).toBe(true);
+          expect(dotenv.parse(textoEnv())['DATABASE_URL']).toBe(dotenv.parse(EJEMPLO_B)['DATABASE_URL']);
+        } else {
+          expect(bytesEnv().equals(antes)).toBe(true);
+          expect(salida).not.toContain('Se agregaron');
         }
       },
     );
