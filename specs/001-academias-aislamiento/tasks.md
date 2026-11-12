@@ -623,6 +623,48 @@ adopta (decisiones de la ronda 13); la O2 amplía el riesgo aceptado "Dos senten
       semilla, pino-http, el registro de Nest; errores de Prisma no reconocidos por `esErrorDeBase`; getters que lanzan y
       ciclos en `errorParaRegistro`; y que las protegidas anteriores sigan igual); si hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 14 (12/11/2026)
+
+Falla F1 (media) y observaciones O1 y O2 de la ronda 14 (sobre `623c15b`); criterios 163 y 164 de `spec.md` (sección W),
+ampliación de P-41 y precisión de P-42. Plan, sección 26. La O1 no lleva criterio: corrige el riesgo aceptado "Promesa
+descartada que escapa al lint" y agrega la nota para el revisor del plan, sección 26.
+
+- [ ] T148 · test-writer · Pruebas protegidas en rojo de los criterios 163 y 164 (archivos en "Protegidas del ataque ronda
+      14" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: las unitarias (u1) a
+      (u6) de `errorParaRegistro` con errores falsos, los errores reales (a), (b) y (c) en `conAcademia` con la
+      comprobación previa de que el ataque se reproduce, directos y como `cause` de un `Error` propio, las rutas de un
+      controlador de prueba con el registro capturado y el manejador de P-40 con el error (c) (163); y la configuración de
+      lint con las formas de temporizadores que fallan y que pasan en el paso protegido (`.ts`, `.js`, `.mjs`, con
+      comentarios que no la apagan), los envoltorios de tipos, el lint normal con tipos en `ejemplo.service.ts`, y pruebas
+      y frontend fuera de alcance (164). Comprobar que ninguna protegida anterior cambia de resultado por estas pruebas, en
+      especial `registro-de-errores.test.ts` y `regla-promesas-descartadas-ronda13.test.mjs` (si alguna cambiara,
+      detenerse e informar). Commit: "Pruebas protegidas (001), ataque ronda 14: pila sin el mensaje y funciones async en
+      temporizadores (en rojo)" (criterios 163 y 164)
+- [ ] T149 · tester · Confirmar que T148 falla por la razón esperada: con `623c15b`, la `pila` de (u1), (u2), (u3), (u6),
+      (a), (b) y (c) y el registro de las rutas contienen `44556677` o `penicilina-r14`, y el manejador de P-40 recibe el
+      valor (163); `process.nextTick(async …)`, `setImmediate(async …)` y las demás formas de (iii), y las formas con `as
+      unknown`, no dan error de la regla propia en ningún paso (164). Se informan como verdes por diseño: (u4) y (u5) si ya
+      pasan, las formas que no deben dar error y las pruebas y el frontend fuera de alcance. Una forma de (iii) que en el
+      lint normal ya señala `no-misused-promises` sigue en rojo, porque la prueba exige el error de la regla propia
+- [ ] T150 · backend · `registro-de-errores.ts`: `pila` leída después del encabezado exacto `nombre: mensaje` (o `name`
+      con mensaje vacío), con comparación por igualdad y salto de línea después; sin coincidencia o con valores que no son
+      cadenas, sin `pila`; `limpio` y la cadena de causas con la misma función; buscar otros lugares que filtren marcos
+      (plan, sección 26) (criterio 163)
+- [ ] T151 · backend · `eslint/regla-promesas-descartadas.mjs`: caso (iii) con `nextTick`, `setImmediate`, `setTimeout`,
+      `setInterval` y `queueMicrotask` por nombre de identificador o de propiedad; envoltorios de tipos en (ii) y (iii);
+      mensaje y comentario de cabecera con el criterio 164; `npm run lint` en verde sin apagar reglas (si la regla señala
+      código actual, corregirlo si es una función `async` pasada de verdad, o detenerse e informar) (plan, sección 26)
+      (criterio 164)
+- [ ] T152 · backend · Revisar que ningún servicio de 001 guarde promesas sin esperarlas dentro de `trabajo` ni pase
+      funciones `async` a temporizadores; si hay alguno, corregirlo (plan, sección 26, nota para el revisor) (O1, criterio
+      164)
+- [ ] T153 · orquestador · `git diff` desde el commit de T148: T150 a T152 no tocaron pruebas protegidas
+- [ ] T154 · adversarial · Ronda 15 sobre todo lo anterior, en especial 163 y 164 (errores con `stack` que no empieza con
+      el encabezado, `name` o `message` cambiados, getters, mensajes vacíos, `\r\n`, causas y `AggregateError` anidados,
+      errores de Prisma o del adaptador reales que aún muestren valores por cualquier camino del registro; formas de pasar
+      funciones `async` a temporizadores u otras funciones que escapen a la regla y a `no-misused-promises`; envoltorios de
+      tipos; y que las protegidas anteriores sigan igual); si hay fallas, se repite el ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
@@ -633,7 +675,8 @@ adopta (decisiones de la ronda 13); la O2 amplía el riesgo aceptado "Dos senten
       (consultas a la vez, errores atrapados y bloqueos con `$executeRaw`). Desde la ronda 12: las tres viñetas del plan,
       sección 24 (cada paso con `await`, escrituras que fallan sin dejar nada, `academias` y `findMany` con `in`). Desde
       la ronda 13: las tres viñetas del plan, sección 25 (sin promesas descartadas, registros sin mensajes de Prisma,
-      cargas masivas con `createMany` o `$executeRaw`)
+      cargas masivas con `createMany` o `$executeRaw`). Desde la ronda 14: las dos viñetas del plan, sección 26 (toda
+      promesa esperada dentro de la transacción y nada de funciones `async` en temporizadores; la pila sin el mensaje)
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)

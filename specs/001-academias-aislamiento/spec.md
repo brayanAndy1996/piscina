@@ -164,6 +164,13 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   - 161 y 162: datos sensibles (Ley 29733, RNF-05); el registro técnico de un 500 o de un rechazo sin manejar copiaba el
     mensaje de Prisma con los valores de la consulta (un DNI, y desde las historias siguientes datos médicos o de menores,
     o el token del QR), y cualquiera con acceso a los registros los leía.
+- **W. Correcciones del ataque, ronda 14 (163 y 164):**
+  - 163: datos sensibles (Ley 29733, RNF-05); un valor rechazado por PostgreSQL o un `Json` mostrado por Prisma con una
+    línea que empieza con espacios y `at ` pasaba como marco de la pila, y el registro técnico de un 500 mostraba el DNI o
+    la alergia que el criterio 162 debía quitar.
+  - 164: auditoría (RN-22) y, desde las historias siguientes, pagos, caja, aforo y asistencia; una función `async` pasada a
+    `process.nextTick` no la ve ninguna regla de lint, y si su consulta falla mientras `trabajo` sigue en curso nada marca
+    la transacción y se confirma lo anterior sin la auditoría (la misma familia que las rondas 12 y 13).
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -2744,7 +2751,13 @@ P-38 y P-40. Todos son _(crítico)_.
 
 159. **Ninguna promesa descartada en `backend/src`: `void` y funciones `async` sin manejar no pasan el lint** _(ataque
      ronda 13, F1 (a); **amplía** el criterio 96; **precisa** el 156 ("formas que el lint acepta") y el 157 (`main.ts`);
-     decisión del orquestador, forma de la regla del especificador)_. Dado que una promesa descartada dentro de `trabajo`
+     decisión del orquestador, forma de la regla del especificador)_ _(ampliado por el criterio 164, ataque ronda 14, O2:
+     la regla propia también falla con una función `async` escrita en el lugar pasada como argumento a `process.nextTick`,
+     `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask`, y mira a través de `as`, `satisfies`, `!` y `<T>`;
+     y precisado en su última viñeta por la ronda 14, O1: el 160 solo cubre lo que rechaza **después** de que `trabajo`
+     terminó; una promesa guardada en una variable y nunca esperada cuya operación rechaza mientras `trabajo` sigue
+     esperando otra consulta no la marca nada, ver el riesgo aceptado "Promesa descartada que escapa al lint", corregido)_.
+     Dado que una promesa descartada dentro de `trabajo`
      (`void (async () => { await …; await … })()`, una función `async` llamada sin `await`) puede rechazar sin que nadie lo
      vea, también por un error que no sale del envoltorio (por ejemplo, `ipParaAuditoria` que lanza entre dos consultas),
      y que el envoltorio no puede saber que esa función iba a seguir llamando, entonces:
@@ -2894,7 +2907,10 @@ P-38 y P-40. Todos son _(crítico)_.
      (1) y (3) mostraban el valor. Siguen pasando sin cambiar de resultado las protegidas de los criterios 149 a 158.
      _(crítico)_
 162. **El registro técnico de un error de Prisma o de la base no lleva mensajes, valores ni datos** _(ataque ronda 13, O1;
-     **precisa** los criterios 149 y 157 y P-40; decisión del orquestador, forma del especificador; RNF-05 y Ley 29733)_.
+     **precisa** los criterios 149 y 157 y P-40; decisión del orquestador, forma del especificador; RNF-05 y Ley 29733)_
+     _(precisado por el criterio 163, ataque ronda 14, F1: "las líneas de marco de la pila" se leen solo **después** de
+     quitar del `stack` el encabezado exacto `nombre: mensaje`; si el `stack` no empieza con ese encabezado, o `name`,
+     `message` o `stack` no son cadenas o leerlos lanza, no hay `pila`; vale en cada nivel de la cadena de causas)_.
      Dado que el filtro de errores (500) y el manejador de rechazos registran el error tal cual, y que los mensajes de
      Prisma pueden llevar los argumentos de la consulta (`PrismaClientValidationError` muestra el `data` completo; un P2007
      o un `22P02` muestran el valor rechazado: un DNI, el token del QR o, desde las historias siguientes, datos médicos),
@@ -2942,6 +2958,130 @@ P-38 y P-40. Todos son _(crítico)_.
      y el del manejador mostraban los valores. Siguen pasando sin cambiar de resultado las protegidas del filtro de errores
      (`filtro-errores.test.ts`), del criterio 157 (unitaria y proceso hijo), de `mensajeSeguro` y de los criterios 35, 46 y
      149. _(crítico)_
+
+### W. Correcciones del ataque adversarial, ronda 14
+
+Criterios agregados tras la ronda 14 del ataque (12/11/2026, sobre el commit `623c15b`). La ronda encontró una falla media
+(F1: la `pila` que `errorParaRegistro` conserva de un error de la base se filtraba línea por línea sobre el `stack` completo,
+que empieza con `nombre: mensaje`; una línea del mensaje que empieza con espacios y `at ` pasaba como marco y el valor salía
+en el registro) y dos observaciones (O1: el riesgo aceptado "Promesa descartada que escapa al lint" describía mal el caso
+habitual; O2: una función `async` pasada a `process.nextTick` no la ve ninguna regla de lint). Son decisiones técnicas del
+orquestador (F1, O1 y O2) y del especificador (forma del encabezado con mensaje vacío y de la ampliación de la regla), no
+reglas de negocio nuevas. La O1 no lleva criterio: corrige el texto del riesgo aceptado (sin mecanismo en ejecución, por las
+mismas razones por las que la ronda 13 descartó la F1 (c)) y agrega una nota para el revisor en el plan (sección 26). Donde
+un criterio amplía o precisa uno anterior lo dice, y el anterior queda marcado "(… ataque ronda 14)", sin borrar su texto.
+Contrato: ampliación de P-41 y precisión de P-42. Todos son _(crítico)_.
+
+163. **La `pila` que se registra de un error de la base empieza después del encabezado `nombre: mensaje`** _(ataque ronda
+     14, F1; **precisa** el criterio 162 y P-42; decisión del orquestador, forma del encabezado con mensaje vacío del
+     especificador)_. Dado que `errorParaRegistro` tomaba como marcos todas las líneas del `stack` que empiezan con espacios y
+     `at `, que el `stack` empieza con `nombre: mensaje`, y que el mensaje puede llevar líneas con esa forma (PostgreSQL
+     repite el valor tal cual en `22P02`, `22007`, `22008`, `22003` o un valor de enum inválido; Prisma muestra las claves de
+     un `Json` sin comillas en un error de validación), así que el valor salía en `pila` (reproducido con
+     `` $queryRaw`SELECT ${'15/03/2010\n    at DNI 44556677 alergia penicilina-r14'}::date` ``, con `configuracion.create`
+     con `valor: { 'at nacimiento': '44556677', alergias: 'penicilina-r14' }` y con `auditoria.create` con
+     `ip: 'x\n    at 44556677'`), entonces:
+     - la `pila` de un error de la base (la rama "error de Prisma o de la base" del criterio 162) se obtiene así: se leen
+       `name`, `message` y `stack` sin dejar que un getter lance; el **encabezado** es `` `${name}: ${message}` `` o, si
+       `message` es la cadena vacía, `name` solo (así lo escribe V8); si `stack` empieza con ese encabezado exacto
+       (comparación de la parte inicial por igualdad de cadenas, con la longitud del encabezado; nunca una expresión
+       regular ni un patrón construido con el mensaje) y lo que sigue está vacío o empieza con `\n`, se quita el encabezado
+       y **solo en lo que sigue** se conservan las líneas de marco (las que empiezan con espacios y `at `), con el máximo
+       de marcos de hoy;
+     - si el `stack` no empieza con el encabezado exacto, si lo que sigue al encabezado no empieza con `\n`, si `name`,
+       `message` o `stack` no son cadenas, o si leer alguno lanza, se omite `pila` (falla cerrada: se pierde el
+       diagnóstico, nunca se muestra el mensaje). Lo demás del objeto limpio (`tipo`, `codigoPrisma`, `sqlstate`,
+       `codigoDeSistema`, `modelo`) se sigue registrando;
+     - vale igual en cada nivel de la cadena de causas (`cause` y `errors`, hasta 10 niveles): todo error de la base que
+       `errorParaRegistro` convierte a su forma limpia, sea el error recibido o una causa de un `Error` propio, obtiene su
+       `pila` de esta forma; y en cualquier otro lugar de `backend/src` que conserve marcos de la pila de un error de la base;
+     - no cambia: un `Error` que no es de la base se sigue registrando con su `mensaje` y su `pila` completos (criterio 162;
+       riesgo aceptado "Mensajes propios que copian el de Prisma"), la `CausaLimpia` (mensaje fijo), `mensajeSeguro` (no usa
+       la pila), lo que se responde al cliente y el nivel de los registros.
+
+     Pruebas unitarias (P-42), con errores falsos con forma de error de Prisma (`name: 'PrismaClientKnownRequestError'`,
+     `code: 'P2007'`) y un mensaje `'valor inválido\n    at DNI 44556677 alergia penicilina-r14'`: (u1) con `stack` igual al
+     encabezado seguido de `\n    at f (/repo/backend/src/f.ts:1:1)\n    at g (/repo/backend/src/g.ts:2:2)`, `pila` es
+     exactamente esos dos marcos; (u2) con un `stack` alterado que no empieza con el encabezado (`'Otro: algo\n    at DNI
+     44556677 alergia penicilina-r14\n    at f (…)'`), el resultado no tiene `pila`; (u3) con el encabezado seguido de
+     `' extra\n    at DNI 44556677'` (no sigue un salto de línea), no tiene `pila`; (u4) con `message` vacío y `stack`
+     `'PrismaClientKnownRequestError\n    at f (…)'`, `pila` es ese marco; (u5) con `stack`, `message` o `name` que no son
+     cadenas, o con un getter de cualquiera de los tres que lanza: no lanza, no tiene `pila` y conserva `tipo` y
+     `codigoPrisma`; (u6) un `Error` propio con el error de (u2) como `cause`, y un `AggregateError` con él en `errors`: la
+     causa convertida no tiene `pila` y nada contiene los valores. En todos, `util.inspect(resultado, { depth: null })` y
+     `JSON.stringify(resultado)` no contienen `44556677` ni `penicilina-r14`. Pruebas de integración con la API de pruebas y la
+     academia A; errores reales provocados en `conAcademia(A, …)` sin atraparlos (la llamada rechaza con ese error,
+     criterio 22): (a) `` tx.cliente.$queryRaw`SELECT ${'15/03/2010\n    at DNI 44556677 alergia penicilina-r14'}::date` ``
+     (SQLSTATE `22007` o `22008`, según el servidor; la prueba acepta los dos y exige el que corresponda en el resultado);
+     (b) `tx.cliente.configuracion.create` con `valor: { 'at nacimiento': '44556677', alergias: 'penicilina-r14' }` y lo
+     que haga falta para que Prisma rechace con un `PrismaClientValidationError` que muestre el `valor` (orientativo: un
+     campo que el modelo no tiene, como en el caso (a) del criterio 162); (c) `tx.cliente.auditoria.create` con
+     `ip: 'x\n    at 44556677'` (P2007 o `22P02`; la prueba acepta cualquiera de los dos). Para cada uno, la prueba
+     comprueba primero que el ataque se reproduce (el `stack` del error tiene una línea que empieza con espacios y `at ` y
+     contiene `44556677`; si no, el test-writer se detiene e informa) y después: `util.inspect(errorParaRegistro(error),
+     { depth: null })` y su `JSON.stringify` no contienen `44556677` ni `penicilina-r14` y contienen el `tipo` (y el
+     `codigoPrisma` o el `sqlstate` si el error los tiene); lo mismo con un `Error` propio que lo lleva como `cause`. Por la
+     API, con el registro de la app capturado (`destinoRegistro`, nivel `info`): un controlador de prueba con una ruta por
+     cada error (a), (b) y (c) responde 500 `ERROR_INTERNO`, hay un registro de nivel `error` con el `tipo`, y ningún
+     registro contiene `44556677` ni `penicilina-r14`. Unitaria de `crearManejadorDeRechazos` (P-40) con el error (c):
+     `util.inspect` de lo que recibe `registro.error` no contiene `44556677`. Con el código de `623c15b`, (u1), (u2), (u3),
+     (u6), (a), (b) y (c) mostraban el valor en `pila`. Siguen pasando sin cambiar de resultado las protegidas de los criterios
+     161 y 162 (`registro-de-errores.test.ts`, `registro-sin-datos.test.ts`, `rechazos-ronda13.test.ts`,
+     `mensaje-seguro-ronda13.test.ts`; la pila falsa de esas pruebas empieza con el encabezado exacto, así que sigue
+     teniendo sus marcos), del filtro de errores y del criterio 157. Si alguna cambiara, el test-writer o el backend se
+     detienen e informan. _(crítico)_
+164. **Una función `async` pasada a `process.nextTick`, `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask` no
+     pasa el lint** _(ataque ronda 14, O2; **amplía** el criterio 159 y P-41; decisión del orquestador, forma del
+     especificador)_. Dado que `process.nextTick(async () => { … })` no da error con el lint con tipos (su parámetro es
+     `Function`, y `@typescript-eslint/no-misused-promises` no lo revisa), que la regla propia del criterio 159 solo mira
+     `void` y la llamada directa, y que una función así lanzada dentro de `trabajo` puede rechazar sin que nadie lo vea (si
+     rechaza mientras `trabajo` sigue en curso, nada marca la transacción: riesgo aceptado "Promesa descartada que escapa al
+     lint"), entonces:
+     - la regla propia `aquagestion-promesas/sin-promesas-descartadas` (sin tipos, en el lint normal y en el paso
+       protegido, en `ARCHIVOS_DE_CODIGO` salvo las pruebas y el cliente generado, como en el 159) falla además con
+       (iii) toda llamada (`CallExpression`, también dentro de una `ChainExpression` y en cualquier posición, no solo como
+       sentencia) a una de esas funciones con al menos un argumento que es una función `async` escrita en el lugar (flecha
+       o expresión de función con `async: true`). "Una de esas funciones" es: un identificador llamado `nextTick`,
+       `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask` (también importado de `node:timers` o desestructurado
+       de `process`), o un acceso a miembro cuya propiedad tiene uno de esos nombres, con punto o con corchetes y una cadena
+       literal o una plantilla sin expresiones, cualquiera que sea el objeto (`process.nextTick`, `globalThis.setTimeout`,
+       `timers.setImmediate`, `process['nextTick']`, `process?.nextTick`);
+     - _(precisión del especificador)_ en (ii) y (iii), la regla mira a través de los envoltorios de tipos de TypeScript
+       (`as`, `satisfies`, `!` y `<T>`, también anidados): fallan `setTimeout((async () => { … }) as () => void, 0)` y
+       `((async () => { … })() as unknown);` como sentencia. Los paréntesis no forman nodo y ya se ven;
+     - en el paso protegido ningún comentario la apaga (criterio 96);
+     - siguen pasando: esas funciones con una función que no es `async` (`process.nextTick(() => { … })`,
+       `setTimeout(function () { … }, 0)`, `setImmediate(resolver)`, `queueMicrotask(() => hacer().catch(fn))`), y una
+       función `async` pasada a cualquier otra función (`await Promise.all(lista.map(async (x) => …))`; las funciones que
+       esperan un retorno `void` ya las revisa `no-misused-promises` con tipos en el lint normal);
+     - no aplica al frontend, a `backend/test/`, a las pruebas de `backend/src/` ni a `e2e/` (como el 159);
+     - el código actual pasa (el `setImmediate` de `asentar()` recibe una función que no es `async`); si la regla señala
+       otro lugar, el backend lo corrige si es una función `async` pasada de verdad, o se detiene e informa;
+     - límite (riesgo aceptado "Promesa descartada que escapa al lint"): la regla no ve una función `async` con nombre
+       pasada por referencia (`process.nextTick(hacer)` con `async function hacer`), un alias (`const nt =
+       process.nextTick; nt(async () => …)`), ni `.call`, `.apply` o `Reflect.apply` sobre esas funciones.
+
+     Prueba de la configuración de lint (con la clase `ESLint`, como las de los criterios 96 y 159). Con
+     `eslint.protegido.config.mjs` y `allowInlineConfig: false`, en `.ts`, `.js` y `.mjs` de `backend/src/modulos/ejemplo/`,
+     dan error de `aquagestion-promesas/sin-promesas-descartadas`: `process.nextTick(async () => { await x; });`,
+     `process.nextTick(async function () { await x; });`, `setImmediate(async () => { … });`,
+     `setTimeout(async () => { … }, 0);`, `setInterval(async () => { … }, 10);`, `queueMicrotask(async () => { … });`,
+     `globalThis.queueMicrotask(async () => { … });`, `process['nextTick'](async () => { … });`,
+     `process?.nextTick(async () => { … });`, `const { nextTick } = process; nextTick(async () => { … });` y
+     `const t = setTimeout(async () => { … }, 0);` (la llamada no es una sentencia), también precedidos de
+     `// eslint-disable-next-line aquagestion-promesas/sin-promesas-descartadas` y de `/* eslint-disable */`; en `.ts`,
+     también `setTimeout((async () => { … }) as () => void, 0);` y `((async () => { … })() as unknown);`. No dan error de la
+     regla propia: `process.nextTick(() => { hacer().catch(fn); });`, `setTimeout(function () { return 1; }, 0);`,
+     `setImmediate(resolver);`, `queueMicrotask(() => undefined);`, `await Promise.all(lista.map(async (x) => x));` ni
+     `otra(async () => 1);`. Con `eslint.config.mjs` (con tipos), en `backend/src/modulos/ejemplo/ejemplo.service.ts`, dan
+     error de la regla propia `process.nextTick(async () => { await tx.cliente.configuracion.update(…); await
+     auditoria.registrarEnAcademia(tx, …); });` y `setImmediate(async () => { … });`. Un archivo `*.test.ts` de
+     `backend/src/` con `process.nextTick(async () => { … })` no da error de la regla propia, y uno de `frontend/src/` con
+     `setTimeout(async () => { … }, 0)` tampoco. Y `npm run lint` pasa sobre el repositorio (lo confirma el tester). Con el
+     código de `623c15b`, las formas con `process.nextTick` no daban error en ningún paso. Siguen pasando sin cambiar de
+     resultado las pruebas protegidas del criterio 159 (`eslint/regla-promesas-descartadas-ronda13.test.mjs`) y del 96 (la
+     regla propia mantiene su identificador y no es de `js.configs.recommended` ni de `typescript-eslint`). Si alguna
+     cambiara, el test-writer o el backend se detienen e informan. _(crítico)_
 
 ## Casos límite
 
@@ -3064,6 +3204,18 @@ P-38 y P-40. Todos son _(crítico)_.
   pasado ese número, PostgreSQL desborda la caché de subtransacciones y todo el servidor se vuelve más lento mientras la
   transacción sigue abierta. Para cargas masivas: `createMany`, `updateMany` o `deleteMany` (una operación, un punto) o
   `$executeRaw` (plan, sección 25).
+- **Un valor con saltos de línea y `at ` en un error de la base** _(ataque ronda 14)_: el registro técnico no lo muestra;
+  la `pila` se lee después del encabezado `nombre: mensaje` (criterio 163). Si el `stack` de un error no empieza con ese
+  encabezado (una librería que cambia el formato de la pila, un mensaje cambiado después de crear el error), el registro
+  sale sin `pila`, con el tipo y los códigos.
+- **Promesa guardada en una variable dentro de `trabajo` y nunca esperada** _(ataque ronda 14, O1)_: si su operación
+  rechaza mientras `trabajo` sigue esperando otra consulta (lo habitual con la cola serial), nada marca la transacción y se
+  confirma lo anterior sin lo que faltaba; solo queda el registro del criterio 157. Lo evita la regla para el equipo (toda
+  promesa creada dentro de `trabajo` se espera antes de devolver), que vigila el revisor (riesgo aceptado "Promesa
+  descartada que escapa al lint", corregido en la ronda 14).
+- **Función `async` pasada a `process.nextTick`, `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask`**
+  _(ataque ronda 14, O2)_: no pasa el lint (criterio 164). Para diferir trabajo después de una transacción se espera la
+  operación y se hace después, fuera de `trabajo` (los efectos secundarios van después de confirmar).
 
 ## Reglas de negocio aplicables
 
@@ -3777,8 +3929,9 @@ _(contrato de la ronda 12 del ataque, 12/11/2026; criterios 156 a 158)_. No son 
 
 _(contrato de la ronda 13 del ataque, 12/11/2026; criterios 159 a 162)_. No son reglas de negocio nuevas.
 
-- **P-41. Regla de promesas descartadas (criterio 159).** `eslint/regla-promesas-descartadas.mjs` (nombre orientativo del
-  archivo) exporta la configuración que agregan `eslint.config.mjs` y `eslint.protegido.config.mjs` (las dos importan el
+- **P-41. Regla de promesas descartadas (criterio 159).** _(Ampliado por el criterio 164, ataque ronda 14: caso (iii) y
+  envoltorios de tipos; ver "Ampliación de P-41" en el contrato de la ronda 14.)_ `eslint/regla-promesas-descartadas.mjs`
+  (nombre orientativo del archivo) exporta la configuración que agregan `eslint.config.mjs` y `eslint.protegido.config.mjs` (las dos importan el
   mismo bloque, como con `configuracionSqlSesion`, y usan `ARCHIVOS_DE_CODIGO`, `EXENCION_PRUEBAS` y
   `EXENCION_CLIENTE_GENERADO` de `eslint/archivos-de-codigo.mjs`). Nombres fijos (los usan las pruebas):
   - complemento `aquagestion-promesas`, regla `sin-promesas-descartadas` (identificador
@@ -3791,8 +3944,9 @@ _(contrato de la ronda 13 del ataque, 12/11/2026; criterios 159 a 162)_. No son 
     `'@typescript-eslint/no-floating-promises': ['error', { ignoreVoid: false, ignoreIIFE: false, checkThenables: true }]`.
     No se agrega al paso protegido (exige información de tipos, que ese paso no usa, y la prueba del criterio 96 rechaza
     reglas de `typescript-eslint` en él).
-- **P-42. Errores para el registro (criterios 161 y 162).** `backend/src/infraestructura/prisma/registro-de-errores.ts`
-  (nombre orientativo del archivo) define y `backend/src/infraestructura/prisma/index.ts` exporta (nombres fijos: los
+- **P-42. Errores para el registro (criterios 161 y 162).** _(Precisado por el criterio 163, ataque ronda 14: cómo se
+  obtiene `pila`; ver "Precisión de P-42" en el contrato de la ronda 14.)_
+  `backend/src/infraestructura/prisma/registro-de-errores.ts` (nombre orientativo del archivo) define y `backend/src/infraestructura/prisma/index.ts` exporta (nombres fijos: los
   importan las pruebas):
 
   ```ts
@@ -3830,6 +3984,27 @@ _(contrato de la ronda 13 del ataque, 12/11/2026; criterios 159 a 162)_. No son 
 - **Precisión de P-40 (criterio 162).** La firma no cambia. Con un `Error`, el manejador llama a
   `registro.error({ err: errorParaRegistro(motivo) }, <mensaje fijo>)` (que, para un `Error` que no es de la base, es el
   mismo objeto); con lo demás, `{ tipo: typeof motivo }`, como hoy.
+
+_(contrato de la ronda 14 del ataque, 12/11/2026; criterios 163 y 164)_. No son reglas de negocio nuevas.
+
+- **Ampliación de P-41 (criterio 164).** El complemento, la regla, su identificador, los archivos a los que aplica y el
+  bloque con tipos no cambian. La regla propia falla además con:
+  - (iii) una `CallExpression` (en cualquier posición, también dentro de una `ChainExpression`) cuyo `callee` es un
+    `Identifier` con nombre `nextTick`, `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask`, o un
+    `MemberExpression` cuya propiedad tiene uno de esos nombres (no computada, o computada con un `Literal` de cadena o un
+    `TemplateLiteral` sin expresiones), y con al menos un argumento que, quitando los envoltorios de tipos, es una
+    `ArrowFunctionExpression` o una `FunctionExpression` con `async: true`;
+  - envoltorios de tipos: `TSAsExpression`, `TSSatisfiesExpression`, `TSNonNullExpression` y `TSTypeAssertion`, también
+    anidados, se quitan antes de mirar el argumento de (iii) y, en (ii), la expresión de la sentencia y el `callee`.
+
+  El mensaje de (iii) es texto libre en español (pide esperar la operación con `await` dentro de `trabajo` o hacer el
+  trabajo diferido después de confirmar). La prueba comprueba el identificador de la regla, no el texto ni el
+  `messageId`.
+- **Precisión de P-42 (criterio 163).** Las firmas no cambian. El campo `pila` del objeto limpio de un error de la base se
+  obtiene quitando del `stack` el encabezado exacto (`` `${name}: ${message}` ``, o `name` si `message` es `''`) y
+  conservando solo las líneas de marco de lo que sigue, que debe estar vacío o empezar con `\n`; si no se cumple, o si
+  `name`, `message` o `stack` no son cadenas o leerlos lanza, el objeto no tiene `pila`. Vale en cada nivel de la cadena de
+  causas.
 
 ## Cambios al modelo de datos
 
@@ -4406,19 +4581,47 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   (importaciones, generación de mensualidades, cierres) se usa `createMany`, `updateMany` o `deleteMany` (una operación,
   un punto de guardado) o `$executeRaw` (ninguno), nunca un bucle de escrituras de un modelo dentro de una transacción. Lo
   vigila el revisor desde la historia 005.
-- **Promesa descartada que escapa al lint** _(ataque ronda 13, criterios 159 y 160)_: las reglas del criterio 159 no ven
-  una promesa guardada en una variable que nadie espera (`const p = (async () => { … })();`) ni una pasada a una función
+- **Promesa descartada que escapa al lint** _(ataque ronda 13, criterios 159 y 160; **corregido** tras la ronda 14, O1, y
+  ampliado con el criterio 164)_: las reglas del criterio 159 no ven una promesa guardada en una variable y nunca esperada
+  (`const p = (async () => { … })();`: `@typescript-eslint/no-unused-vars` la señala si `p` no se usa en absoluto, pero no
+  si se usa sin esperarla, por ejemplo guardándola en un objeto o pasándola a otra función) ni una pasada a una función
   que no la espera, y el paso protegido (sin tipos) no ve una función `async` con nombre llamada sin `await` (el lint
-  normal sí). Si esa función falla dentro del envoltorio después de que `trabajo` terminó, el criterio 160 hace rechazar
-  la operación; pero si falla **fuera** del envoltorio (por ejemplo, `ipParaAuditoria` que lanza entre dos consultas), la
+  normal sí). Desde la ronda 14 (criterio 164), la regla propia sí ve una función `async` escrita en el lugar pasada a
+  `process.nextTick`, `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask`; no ve una función `async` con nombre
+  pasada por referencia a esas funciones, un alias de ellas ni `.call`, `.apply` o `Reflect.apply`.
+  **Qué pasa en ejecución con esa promesa (texto corregido en la ronda 14):** el criterio 160 solo marca la transacción si
+  la operación del envoltorio rechaza **después** de que `trabajo` terminó (desde `asentar()`). Con la cola serial, lo
+  habitual es lo contrario: la operación de la promesa olvidada se entrega y rechaza mientras `trabajo` sigue esperando su
+  consulta siguiente; ese rechazo es "mientras `trabajo` sigue en curso" (criterios 153, 154 y 160: no marca nada), así que
+  `trabajo` devuelve, se confirma lo anterior y falta lo que venía después en la función olvidada (por ejemplo, la
+  auditoría). Reproducido en la ronda 14: en `conAcademia`, `await configuracion.create(<cobro>)`; `const paso = (async
+  () => { await configuracion.update(<no existe>); await auditoria… })()`; `await configuracion.findMany(…)`; `return
+  'OK'` → se confirma el cobro sin auditoría y solo queda el registro del criterio 157 (ya limpio por el 162). El 160 la
+  cubre solo si la operación rechaza después de que `trabajo` devolvió. Si la función falla **fuera** del envoltorio (por
+  ejemplo, `ipParaAuditoria` que lanza entre dos consultas), la consulta siguiente nunca se llama y pasa lo mismo, en
+  cualquier momento. _(Texto anterior, que la ronda 14 corrige: "Si esa función falla dentro del envoltorio después de
+  que `trabajo` terminó, el criterio 160 hace rechazar la operación; pero si falla **fuera** del envoltorio (…), la
   consulta siguiente nunca se llama, nada marca la transacción y se confirma lo anterior sin lo que faltaba (el rechazo
-  queda en el registro por el manejador del criterio 157, ya limpio por el 162). Lo mismo con una llamada con un argumento
+  queda en el registro por el manejador del criterio 157, ya limpio por el 162)". Era cierto, pero daba a entender que
+  el caso dentro del envoltorio quedaba cubierto, y lo habitual es que no.)_ La forma con `.catch` al final de la cadena
+  (`x.then(…).catch(fn)`) sigue siendo comportamiento esperado: si el rechazo llega mientras `trabajo` corre, se atrapa y
+  se sigue (153); si llega después, la operación rechaza (160). No se agrega un mecanismo en ejecución, por las mismas
+  razones por las que la ronda 13 descartó la marca por `unhandledRejection` (F1 (c)). Lo mismo con una llamada con un argumento
   no admitido dentro de una continuación durante `asentar()` (el criterio 156 decide que no marca): es un error de
   programación que falla siempre y lo ven las pruebas de la historia. Se acepta porque el lint cubre las formas
   habituales (`void`, la función escrita en el lugar, la llamada como sentencia) y no hay una forma fiable de saber desde
   `BaseDatos` que una función ajena iba a seguir llamando (la marca por `unhandledRejection` se evaluó y se descartó:
   "Decisiones técnicas tras el ataque, ronda 13"). Regla para el equipo, como en la ronda 12: dentro de `trabajo`, cada
-  paso con `await`. Lo buscan el revisor y el adversarial.
+  paso con `await`. Lo buscan el revisor y el adversarial. _(Precisado tras la ronda 14, O1: dentro de `trabajo`, **toda
+  promesa creada se espera antes de devolver**, también la guardada en una variable o en un objeto; el revisor lo vigila en
+  cada historia, plan, sección 26.)_
+- **Encabezado de la pila que no coincide** _(ataque ronda 14, criterio 163)_: si el `stack` de un error de la base no
+  empieza con `nombre: mensaje` (una librería que reemplaza `Error.prepareStackTrace` con otro formato, o un `message` que
+  alguien cambió después de que se formó la pila), el registro técnico sale sin `pila`. Se acepta: se pierde parte del
+  diagnóstico, nunca se muestra un dato. Si el mensaje se acortó después de formada la pila exactamente en un salto de
+  línea, las líneas que quedaron del mensaje anterior se leerían como si siguieran al encabezado; es un error de
+  programación (nadie cambia el `message` de un error de Prisma en AquaGestión) que el revisor busca junto con "Mensajes
+  propios que copian el de Prisma".
 - **Mensajes propios que copian el de Prisma** _(ataque ronda 13, criterio 162)_: `errorParaRegistro` limpia los errores de
   Prisma y de la base y los que los llevan como `cause`, pero no puede limpiar un `Error` propio cuyo mensaje se armó con
   el de Prisma (`` new Error(`falló: ${error.message}`) ``). Regla para el equipo: un error propio nunca copia el mensaje de
@@ -4888,9 +5091,44 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   errores, criterio 157) y tiene la pila que hace falta para depurar. Alternativa descartada: registrar de todo error solo
   el tipo (perdería el diagnóstico de los errores propios, que no llevan datos de la base).
 
+### Decisiones técnicas tras el ataque, ronda 14 (12/11/2026)
+
+- **La `pila` se lee después de quitar el encabezado exacto `nombre: mensaje`, comparado por igualdad** (criterio 163;
+  decisión del orquestador). El mensaje es lo único del `stack` que puede llevar datos, y V8 lo escribe al principio; con
+  la longitud del encabezado se sabe dónde termina sin interpretar su contenido. Alternativas descartadas: seguir filtrando
+  línea por línea con un patrón más estricto para los marcos (por ejemplo, exigir `(archivo:línea:columna)`; un valor
+  puede imitar cualquier forma de marco, y PostgreSQL lo repite tal cual); buscar el mensaje dentro del `stack` con una
+  expresión regular o con `indexOf` (un mensaje repetido o parcial confundiría el corte); y no registrar nunca la pila de
+  un error de la base (se pierde el diagnóstico de dónde ocurrió, que no lleva datos).
+- **Si el encabezado no coincide, no hay `pila`** (criterio 163). Falla cerrada: una librería con otro formato de pila o
+  un mensaje cambiado quitan el diagnóstico, no muestran el dato. Alternativa descartada: filtrar los marcos de todas
+  formas (es la falla de la ronda 14).
+- **Con `message` vacío, el encabezado es solo `name`** (criterio 163; precisión del especificador). Así escribe V8 la
+  primera línea cuando el mensaje es la cadena vacía, y no hay ningún dato que quitar. Alternativa descartada: exigir
+  siempre `nombre: ` (omitiría la pila sin motivo en esos errores).
+- **El riesgo aceptado "Promesa descartada que escapa al lint" se corrige y no se agrega un mecanismo en ejecución**
+  (O1; decisión del orquestador). La promesa guardada en una variable que rechaza mientras `trabajo` sigue en curso es
+  indistinguible, para el envoltorio, del rechazo que `trabajo` atrapa a propósito (criterio 153); marcarla rompería ese
+  patrón, y las razones de la ronda 13 contra la marca por `unhandledRejection` siguen valiendo. Alternativas descartadas:
+  marcar todo rechazo no esperado por `trabajo` (no se puede saber quién espera una promesa) y una regla de lint que exija
+  esperar toda variable que guarda una promesa (necesita seguir el flujo de datos; `no-floating-promises` no lo hace).
+  Queda la regla para el equipo, que vigila el revisor.
+- **`process.nextTick`, `setImmediate`, `setTimeout`, `setInterval` y `queueMicrotask` con una función `async` escrita en
+  el lugar, en la regla propia sin tipos** (criterio 164; decisión del orquestador, forma del especificador). La regla sin
+  tipos va en los dos pasos, como el resto de P-41, y cubre también los temporizadores que `no-misused-promises` ya ve con
+  tipos, para que el paso protegido no dependa del lint normal. Por nombre de la propiedad, sea cual sea el objeto, para
+  cubrir `globalThis`, `timers` y la desestructuración sin seguir alias. Alternativas descartadas: activar
+  `no-misused-promises` con más opciones (no revisa un parámetro de tipo `Function`); `no-restricted-syntax` (ya lo usa la
+  regla del reloj sobre los mismos archivos y se pisarían, como en la ronda 13); y prohibir esas funciones en
+  `backend/src` (el `setImmediate` de `asentar()` y los temporizadores legítimos con funciones que no son `async`).
+- **Los envoltorios de tipos (`as`, `satisfies`, `!`, `<T>`) no esconden la función `async`** (criterio 164; precisión del
+  especificador). Son la forma más simple de evadir la regla sin tipos (`(async () => { … })() as unknown;`), y
+  `no-floating-promises` tampoco ve una promesa convertida a `unknown`. Alternativa descartada: dejarlo para la revisión
+  (cuesta unas líneas en la regla).
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 13 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 14 del ataque son decisiones técnicas y no abren preguntas de
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").
