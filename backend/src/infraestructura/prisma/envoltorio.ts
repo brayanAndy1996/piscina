@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma } from '../../generated/prisma/client';
 import { ErrorTransaccionAbortada } from './errores';
+import { causaLimpia, type CircunstanciaDeLaCausa } from './registro-de-errores';
 import { aSql, sonPartesDePlantilla } from './sql-seguro';
 import type { ClienteTransaccion } from './tipos';
 
@@ -118,12 +119,14 @@ export interface EnvoltorioDeTransaccion {
 export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion {
   let activa = true;
   const marca: object = Object.freeze({});
-  // Nombre de la primera operación que volvió con `undefined` (criterio 154) o que llegó tarde (criterio 156). Solo el nombre: nunca argumentos ni parámetros.
-  let incompleta: string | null = null;
-  // Desde que se llama a `asentar()` (criterio 156): una llamada rechazada (envoltorio apagado u otro contexto) marca la transacción.
+  // Primera operación que marcó la transacción (criterios 154, 156 y 160): su nombre, por qué y, si fue un rechazo, el error (que solo
+  // se usa para sacar el tipo y los códigos de la causa limpia, criterio 161). Nunca argumentos ni parámetros.
+  let incompleta: { operacion: string; circunstancia: CircunstanciaDeLaCausa; error?: unknown } | null = null;
+  // Desde que se llama a `asentar()` (criterios 156 y 160): una llamada rechazada (envoltorio apagado u otro contexto) y el rechazo
+  // de una operación ya entregada marcan la transacción.
   let cerrando = false;
   const marcarTardia = (operacion: string): void => {
-    if (cerrando) incompleta ??= `${operacion} (llegó después de que el envoltorio se apagó)`;
+    if (cerrando) incompleta ??= { operacion, circunstancia: 'llamada-tardia' };
   };
   const exigirActiva = (operacion: string): void => {
     if (!activa) {
@@ -151,32 +154,50 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
   const enviarSeguida = <T>(crear: () => PromiseLike<T>, operacion: string): Promise<T> => {
     const anterior = ultima;
     const promesa = new Promise<T>((resolver, rechazar) => {
+      // Rechaza con lo que llegue, tal cual (criterios 153 y 154): puede no ser un `Error`.
+      const rechazarTal: (motivo?: unknown) => void = rechazar;
       const entregar = (): void => {
         if (descartada) {
           rechazar(new Error('La transacción ya terminó.'));
           return;
         }
+        // Criterio 160: desde `asentar()`, `trabajo` ya devolvió su valor y nadie puede decidir seguir tras un rechazo, aunque lo
+        // atrape una continuación: la operación marca la transacción y rechaza con `ErrorTransaccionAbortada`, sin el error original.
+        // Mientras `trabajo` corre, el rechazo llega tal cual y no marca (criterios 153 y 154).
+        const fallar = (error: unknown): void => {
+          if (cerrando) {
+            incompleta ??= { operacion, circunstancia: 'rechazo-tras-trabajo', error };
+            rechazar(
+              new ErrorTransaccionAbortada({
+                motivo: 'incompleta',
+                cause: causaLimpia(error, operacion, 'rechazo-tras-trabajo'),
+              }),
+            );
+            return;
+          }
+          rechazarTal(error);
+        };
         try {
           crear().then((valor) => {
             // Criterio 154: ninguna operación expuesta devuelve `undefined` en Prisma 7; si lo hace, la consulta no se ejecutó.
             if (valor === undefined) {
-              incompleta ??= operacion;
+              incompleta ??= { operacion, circunstancia: 'sin-resultado' };
               rechazar(
                 new ErrorTransaccionAbortada({
                   motivo: 'incompleta',
-                  cause: new Error(`Operación sin resultado: ${operacion}`),
+                  cause: causaLimpia(undefined, operacion, 'sin-resultado'),
                 }),
               );
               return;
             }
             resolver(valor);
-          }, rechazar);
+          }, fallar);
         } catch (error) {
-          rechazar(error instanceof Error ? error : new Error(String(error)));
+          fallar(error instanceof Error ? error : new Error(String(error)));
         }
       };
       if (anterior === null) entregar();
-      else void anterior.then(entregar);
+      else anterior.then(entregar, nada); // `anterior` nunca rechaza; el segundo argumento la deja manejada (criterio 159)
     });
     const asentada: Promise<void> = promesa.then(nada, nada).then(() => {
       pendientes.delete(asentada);
@@ -255,7 +276,7 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
       if (incompleta !== null) {
         throw new ErrorTransaccionAbortada({
           motivo: 'incompleta',
-          cause: new Error(`Operación sin resultado: ${incompleta}`),
+          cause: causaLimpia(incompleta.error, incompleta.operacion, incompleta.circunstancia),
         });
       }
     },

@@ -4,6 +4,10 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import { configuracionAccesoBase } from './eslint/regla-acceso-base.mjs';
 import { configuracionPrisma } from './eslint/regla-prisma.mjs';
+import {
+  configuracionPromesasConTipos,
+  configuracionPromesasDescartadas,
+} from './eslint/regla-promesas-descartadas.mjs';
 import { configuracionReloj } from './eslint/regla-reloj.mjs';
 import { configuracionSqlSesion } from './eslint/regla-sql-sesion.mjs';
 import { configuracionTransaccionGuardada } from './eslint/regla-transaccion-guardada.mjs';
@@ -37,6 +41,11 @@ export default tseslint.config(
       },
     },
   },
+
+  // Ninguna promesa descartada en backend/src (criterio 159): la regla propia sin tipos y `no-floating-promises` con tipos, con las
+  // opciones más estrictas. Van después de `aquagestion/typescript` para que sus opciones reemplacen las de `recommendedTypeChecked`.
+  configuracionPromesasDescartadas,
+  configuracionPromesasConTipos,
 
   // Configuración en TypeScript de la raíz (por ejemplo, vitest.config.mts) y archivos .mts/.cts: sin información de tipos.
   {

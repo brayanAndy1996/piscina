@@ -16,6 +16,7 @@ import {
 import { codigoDeErrorDeBase } from './errores-base';
 import { conPuntosDeGuardado } from './puntos-de-guardado';
 import { privilegiosDeMasEnEsquemas, type PrivilegioEnEsquema } from './privilegios-app';
+import { CausaLimpia } from './registro-de-errores';
 import {
   problemasDeConfiguracion,
   problemasDeEsquemas,
@@ -262,13 +263,14 @@ export class BaseDatos implements OnModuleDestroy {
 
   /**
    * Registro técnico del criterio 149: un mensaje fijo y, si se conoce, el SQLSTATE. Nunca el mensaje del error de Prisma (puede
-   * llevar valores de los parámetros), ni los parámetros, ni la URL.
+   * llevar valores de los parámetros), ni los parámetros, ni la URL. Para el motivo `incompleta` (criterios 154, 156 y 160), el
+   * texto de la causa limpia: la circunstancia, el nombre de la operación (por ejemplo, `academia.update`) y el tipo y los códigos
+   * del error (por ejemplo, `P2025`), nunca los argumentos ni el mensaje de Prisma (criterios 161 y 162).
    */
   #registrarAbortada(error: ErrorTransaccionAbortada): void {
     if (error.motivo === 'incompleta') {
-      // La causa es solo "Operación sin resultado: <nombre>": nunca argumentos ni parámetros.
-      const operacion = error.cause instanceof Error ? ` ${error.cause.message}.` : '';
-      this.registro.warn(`${error.mensaje}${operacion}`);
+      const detalle = error.cause instanceof CausaLimpia ? ` ${error.cause.message}` : '';
+      this.registro.warn(`${error.mensaje}${detalle}`);
       return;
     }
     const sqlstate = codigoDeErrorDeBase(error.cause);

@@ -3,6 +3,7 @@ import type { ErrorApi } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
 import { ZodError } from 'zod';
+import { errorParaRegistro } from '../../infraestructura/prisma';
 import { ErrorNegocio } from '../errores';
 import { detallesDeZod, MENSAJE_SOLICITUD_INVALIDA } from '../validacion';
 
@@ -72,10 +73,10 @@ export class FiltroErrores implements ExceptionFilter {
       if (estado < PRIMER_ESTADO_DE_SERVIDOR) {
         return { estado, cuerpo: ERRORES_POR_ESTADO[estado] ?? ERROR_GENERICO_CLIENTE };
       }
-      this.registro.error({ err: excepcion }, 'Error del servidor');
+      this.registro.error({ err: errorParaRegistro(excepcion) }, 'Error del servidor');
       return { estado, cuerpo: ERROR_INTERNO };
     }
-    this.registro.error({ err: excepcion }, 'Error no controlado');
+    this.registro.error({ err: errorParaRegistro(excepcion) }, 'Error no controlado');
     return { estado: HttpStatus.INTERNAL_SERVER_ERROR, cuerpo: ERROR_INTERNO };
   }
 }

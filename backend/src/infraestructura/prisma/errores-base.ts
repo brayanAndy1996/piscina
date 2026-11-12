@@ -13,20 +13,28 @@ const esRegistro = (valor: unknown): valor is Record<string, unknown> => typeof 
 const sqlstateDe = (valor: unknown): string | null =>
   typeof valor === 'string' && PATRON_SQLSTATE.test(valor) ? valor : null;
 
+/** Lee una propiedad sin dejar que un getter lance (los errores del registro nunca deben fallar al leerse). */
+export function leerSeguro(valor: unknown, clave: string): unknown {
+  try {
+    return esRegistro(valor) ? valor[clave] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Los lugares donde puede viajar el SQLSTATE: el error mismo, su `cause` y `meta.driverAdapterError.cause` de Prisma. */
 function candidatos(error: Record<string, unknown>): unknown[] {
-  const causa = esRegistro(error['cause']) ? error['cause'] : {};
-  const meta = esRegistro(error['meta']) ? error['meta'] : {};
-  const delAdaptador = esRegistro(meta['driverAdapterError']) ? meta['driverAdapterError'] : {};
-  const causaDelAdaptador = esRegistro(delAdaptador['cause']) ? delAdaptador['cause'] : {};
+  const causa = leerSeguro(error, 'cause');
+  const delAdaptador = leerSeguro(leerSeguro(error, 'meta'), 'driverAdapterError');
+  const causaDelAdaptador = leerSeguro(delAdaptador, 'cause');
   return [
-    error['originalCode'],
-    error['code'],
-    causa['originalCode'],
-    causa['code'],
-    causaDelAdaptador['originalCode'],
-    causaDelAdaptador['code'],
-    meta['code'],
+    leerSeguro(error, 'originalCode'),
+    leerSeguro(error, 'code'),
+    leerSeguro(causa, 'originalCode'),
+    leerSeguro(causa, 'code'),
+    leerSeguro(causaDelAdaptador, 'originalCode'),
+    leerSeguro(causaDelAdaptador, 'code'),
+    leerSeguro(leerSeguro(error, 'meta'), 'code'),
   ];
 }
 
@@ -37,10 +45,10 @@ export function codigoDeErrorDeBase(error: unknown): string | null {
     const codigo = sqlstateDe(candidato);
     if (codigo) return codigo;
   }
-  return error['code'] === 'P2002' ? UNICIDAD : null;
+  return leerSeguro(error, 'code') === 'P2002' ? UNICIDAD : null;
 }
 
 /** Verdadero con el código `P2002` de Prisma o con el SQLSTATE `23505` (violación de una restricción única). */
 export function esViolacionDeUnicidad(error: unknown): boolean {
-  return codigoDeErrorDeBase(error) === UNICIDAD || (esRegistro(error) && error['code'] === 'P2002');
+  return codigoDeErrorDeBase(error) === UNICIDAD || leerSeguro(error, 'code') === 'P2002';
 }

@@ -15,6 +15,13 @@ export {
   ErrorTransaccionAbortada,
 } from './errores';
 export { comprobarTransaccionViva } from './transaccion-viva';
+export {
+  CausaLimpia,
+  causaLimpia,
+  errorParaRegistro,
+  esErrorDeBase,
+  type CircunstanciaDeLaCausa,
+} from './registro-de-errores';
 export { PrismaModule } from './prisma.module';
 export { join, sql, vacio, type Fragmento, type ValorSql } from './sql-seguro';
 export type {

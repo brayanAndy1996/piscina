@@ -3,6 +3,7 @@ import { PinoLogger } from 'nestjs-pino';
 import { crearApp } from './crear-app';
 import { ErrorEntorno, retirarVariablesSensibles, validarEntorno } from './infraestructura/entorno';
 import { cargarEnvRaiz } from './infraestructura/entorno/cargar-env';
+import { errorParaRegistro } from './infraestructura/prisma';
 import { crearManejadorDeRechazos } from './infraestructura/proceso/rechazos';
 
 async function arrancar(): Promise<void> {
@@ -32,4 +33,8 @@ async function arrancar(): Promise<void> {
   process.on('unhandledRejection', crearManejadorDeRechazos(registro));
 }
 
-void arrancar();
+arrancar().catch((error: unknown) => {
+  // Criterio 157: un fallo al arrancar sigue terminando el proceso con error (antes lo hacía Node con el rechazo sin manejar).
+  console.error('No se pudo arrancar la API.', errorParaRegistro(error)); // criterio 162: un error de la base, sin sus valores
+  process.exit(1);
+});
