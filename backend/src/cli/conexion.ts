@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import dotenv from 'dotenv';
 import { PrismaClient } from '../generated/prisma/client';
 import { parametrosDeConexionProhibidos } from '../infraestructura/entorno/url-postgres';
-import { cerrarCursores, type ClienteTransaccion } from '../infraestructura/prisma';
+import { cerrarCursores, comprobarTransaccionViva, type ClienteTransaccion } from '../infraestructura/prisma';
 
 /**
  * Utilidades de los comandos del proyecto (`npm run plataforma:superadmin`, `npm run db:semilla`). Los comandos usan
@@ -57,6 +58,9 @@ export function crearClienteDelDueno(url: string, opciones: OpcionesClienteDelDu
   });
 }
 
+/** Turnos del ciclo de eventos que `enPlataforma` cede antes de comprobar la transacción (criterio 150). */
+const TURNOS_DE_CESION = 3;
+
 /**
  * Ejecuta `trabajo` en una transacción de plataforma. Igual que `BaseDatos`, la primera sentencia fija **los dos**
  * valores de contexto con `pg_catalog.set_config(…, true)` (locales a la transacción): `app.academia_id` vacío y
@@ -66,14 +70,27 @@ export function crearClienteDelDueno(url: string, opciones: OpcionesClienteDelDu
  * `IntervalStyle`, `extra_float_digits` y `bytea_output` (criterio 107: el adaptador interpreta el texto que devuelve
  * PostgreSQL y ese texto depende de la sesión). Fija también `client_encoding` en `UTF8` (criterio 146: el adaptador envía y
  * lee siempre UTF-8) y `synchronous_commit` en `on`, `array_nulls` en `on` y `transform_null_equals` en `off` (criterio 147:
- * lo que se confirma y lo que se escribe no depende de la sesión). A continuación cierra todo cursor que haya
- * sobrevivido en la conexión (`CLOSE ALL`, criterio 101). Toda transacción de academia que agregue un comando en el futuro
+ * lo que se confirma y lo que se escribe no depende de la sesión). Fija además la marca aleatoria de la transacción en
+ * `app.transaccion` (criterio 151). A continuación cierra todo cursor que haya sobrevivido en la conexión (`CLOSE ALL`, criterio
+ * 101). Cuando `trabajo` termina bien comprueba que la transacción no quedó abortada ni fue reemplazada por un `ROLLBACK` o un
+ * `COMMIT` escritos dentro (criterios 150 y 151) y, si no, rechaza con `ErrorTransaccionAbortada` sin confirmar nada. Toda transacción de academia que agregue un comando en el futuro
  * fija también los dos valores.
  */
 export function enPlataforma<T>(cliente: PrismaClient, trabajo: (tx: ClienteTransaccion) => Promise<T>): Promise<T> {
   return cliente.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_catalog.set_config('search_path', 'pg_catalog, public, pg_temp', true), pg_catalog.set_config('standard_conforming_strings', 'on', true), pg_catalog.set_config('app.academia_id', '', true), pg_catalog.set_config('app.plataforma', 'si', true), pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true), pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true), pg_catalog.set_config('bytea_output', 'hex', true), pg_catalog.set_config('client_encoding', 'UTF8', true), pg_catalog.set_config('synchronous_commit', 'on', true), pg_catalog.set_config('array_nulls', 'on', true), pg_catalog.set_config('transform_null_equals', 'off', true)`;
+    const marca = randomUUID();
+    await tx.$queryRaw`SELECT pg_catalog.set_config('search_path', 'pg_catalog, public, pg_temp', true), pg_catalog.set_config('standard_conforming_strings', 'on', true), pg_catalog.set_config('app.academia_id', '', true), pg_catalog.set_config('app.plataforma', 'si', true), pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true), pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true), pg_catalog.set_config('bytea_output', 'hex', true), pg_catalog.set_config('client_encoding', 'UTF8', true), pg_catalog.set_config('synchronous_commit', 'on', true), pg_catalog.set_config('array_nulls', 'on', true), pg_catalog.set_config('transform_null_equals', 'off', true), pg_catalog.set_config('app.transaccion', ${marca}, true)`;
     await cerrarCursores(tx);
-    return trabajo(tx);
+    const resultado = await trabajo(tx);
+    // Criterios 150 y 151: si `trabajo` atrapó un error de la base y siguió, la transacción quedó abortada y el `COMMIT` de Prisma
+    // solo respondería `ROLLBACK`, sin error. Se cede el turno para que lleguen a la conexión las consultas que `trabajo` envió sin
+    // `await`, y se comprueba que la transacción sigue viva y es la misma (la marca). Si `trabajo` lanza, no se llega aquí.
+    for (let turno = 0; turno < TURNOS_DE_CESION; turno += 1) {
+      await new Promise<void>((continuar) => {
+        setImmediate(continuar);
+      });
+    }
+    await comprobarTransaccionViva(tx, marca);
+    return resultado;
   });
 }

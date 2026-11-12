@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PinoLogger } from 'nestjs-pino';
@@ -9,8 +10,10 @@ import {
   ErrorAcademiaNoEncontrada,
   ErrorAcademiaSuspendida,
   ErrorRolBaseDatosInseguro,
+  ErrorTransaccionAbortada,
   MENSAJE_ROL_INSEGURO,
 } from './errores';
+import { codigoDeErrorDeBase } from './errores-base';
 import { privilegiosDeMasEnEsquemas, type PrivilegioEnEsquema } from './privilegios-app';
 import {
   problemasDeConfiguracion,
@@ -20,6 +23,7 @@ import {
   type FilaEsquemas,
   type FilaRol,
 } from './rol-seguro';
+import { comprobarTransaccionViva } from './transaccion-viva';
 import type {
   AcademiaResuelta,
   ClienteTransaccion,
@@ -167,7 +171,8 @@ export class BaseDatos implements OnModuleDestroy {
    * la transacción), el `search_path` en `pg_catalog, public, pg_temp` y `standard_conforming_strings` en `on` (criterios 121 y
    * 122), la zona horaria en `UTC` y los parámetros de formato que el adaptador de Prisma interpreta
    * (`DateStyle`, `IntervalStyle`, `extra_float_digits` y `bytea_output`), `client_encoding` en `UTF8` (criterio 146), y
-   * `synchronous_commit` en `on`, `array_nulls` en `on` y `transform_null_equals` en `off` (criterio 147), sin importar lo que traiga la conexión del pool:
+   * `synchronous_commit` en `on`, `array_nulls` en `on` y `transform_null_equals` en `off` (criterio 147), y la marca aleatoria de la
+   * transacción en `app.transaccion` (criterios 149 a 151: al final se comprueba que sigue abierta la misma), sin importar lo que traiga la conexión del pool:
    * valores de sesión de un módulo, `options` de la URL o valores por defecto del rol, de la base o del servidor (criterios 72,
    * 98, 107, 121 y 122). Cada función va calificada con `pg_catalog.`: PostgreSQL la resuelve con el `search_path` que trae la
    * conexión, antes de fijarlo, y un esquema del atacante antes de `pg_catalog` podría tapar `set_config`. Una sola sentencia,
@@ -177,7 +182,7 @@ export class BaseDatos implements OnModuleDestroy {
    */
   async #fijarContexto(
     tx: Prisma.TransactionClient,
-    contexto: { readonly academiaId: string; readonly plataforma: boolean },
+    contexto: { readonly academiaId: string; readonly plataforma: boolean; readonly marca: string },
   ): Promise<void> {
     const plataforma = contexto.plataforma ? 'si' : '';
     await tx.$queryRaw`
@@ -189,7 +194,8 @@ export class BaseDatos implements OnModuleDestroy {
              pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true),
              pg_catalog.set_config('bytea_output', 'hex', true), pg_catalog.set_config('client_encoding', 'UTF8', true),
              pg_catalog.set_config('synchronous_commit', 'on', true), pg_catalog.set_config('array_nulls', 'on', true),
-             pg_catalog.set_config('transform_null_equals', 'off', true)`;
+             pg_catalog.set_config('transform_null_equals', 'off', true),
+             pg_catalog.set_config('app.transaccion', ${contexto.marca}, true)`;
     await cerrarCursores(tx);
   }
 
@@ -204,14 +210,28 @@ export class BaseDatos implements OnModuleDestroy {
   ): Promise<T> {
     return this.#prisma.$transaction(
       async (tx) => {
-        await this.#fijarContexto(tx, contexto);
-        const { cliente, terminar, ejecutar } = envolver(tx);
+        const marca = randomUUID();
+        await this.#fijarContexto(tx, { ...contexto, marca });
+        const { cliente, terminar, ejecutar, asentar } = envolver(tx);
+        let resultado: T;
         try {
           // Criterio 134: `trabajo` corre en el contexto asíncrono de esta transacción; el envoltorio no responde en otro.
-          return await ejecutar(() => trabajo(cliente));
+          resultado = await ejecutar(() => trabajo(cliente));
         } finally {
           terminar();
         }
+        // Criterios 149 a 151: solo en el camino bueno (si `trabajo` lanza, ese error sale tal cual, criterio 22). Primero se
+        // esperan las consultas que `trabajo` envió sin `await`; luego se comprueba que la transacción sigue viva y es la misma
+        // y, antes del `COMMIT` de Prisma, se rechaza si no lo es: un `COMMIT` sobre una transacción abortada solo responde
+        // `ROLLBACK`, sin error.
+        await asentar();
+        try {
+          await comprobarTransaccionViva(tx, marca);
+        } catch (error) {
+          if (error instanceof ErrorTransaccionAbortada) this.#registrarAbortada(error);
+          throw error;
+        }
+        return resultado;
       },
       {
         isolationLevel: opciones.aislamiento,
@@ -219,6 +239,15 @@ export class BaseDatos implements OnModuleDestroy {
         timeout: DURACION_MAXIMA_MS,
       },
     );
+  }
+
+  /**
+   * Registro técnico del criterio 149: un mensaje fijo y, si se conoce, el SQLSTATE. Nunca el mensaje del error de Prisma (puede
+   * llevar valores de los parámetros), ni los parámetros, ni la URL.
+   */
+  #registrarAbortada(error: ErrorTransaccionAbortada): void {
+    const sqlstate = codigoDeErrorDeBase(error.cause);
+    this.registro.warn(`${error.mensaje}${sqlstate === null ? '' : ` SQLSTATE: ${sqlstate}.`}`);
   }
 
   /**
@@ -241,7 +270,7 @@ export class BaseDatos implements OnModuleDestroy {
   async #comprobarRol(): Promise<void> {
     const { rol, configuracion, efectivos, esquemas, afectados } = await this.#prisma.$transaction(
       async (tx) => {
-        await this.#fijarContexto(tx, { academiaId: '', plataforma: false });
+        await this.#fijarContexto(tx, { academiaId: '', plataforma: false, marca: randomUUID() });
         const filas = await tx.$queryRaw<FilaRol[]>`
           SELECT r.rolsuper, r.rolbypassrls, r.rolreplication, r.rolcreaterole, r.rolcreatedb,
                  EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid) AS es_miembro,

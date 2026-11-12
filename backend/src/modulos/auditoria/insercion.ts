@@ -1,4 +1,5 @@
 import type { ClienteTransaccion } from '../../infraestructura/prisma';
+import { ipParaAuditoria } from './ip';
 
 /** Lo que se registra de una acción crítica: quién, cuándo (lo pone el servicio) y qué (RN-22, RNF-06). */
 export interface EntradaAuditoria {
@@ -14,7 +15,7 @@ export interface EntradaAuditoria {
   datosAntes?: unknown;
   datosDespues?: unknown;
   motivo?: string | null;
-  /** IP del cliente tal como la ve Express (`req.ip`). */
+  /** IP del cliente tal como la ve Express (`req.ip`); se normaliza con `ipParaAuditoria` (criterio 152). */
   ip?: string | null;
 }
 
@@ -35,6 +36,7 @@ export async function insertarEnAuditoriaPlataforma(
   fechaHora: Date,
   entrada: EntradaAuditoria,
 ): Promise<void> {
+  const ip = ipParaAuditoria(entrada.ip);
   await cliente.$executeRaw`
     INSERT INTO auditoria_plataforma
       (id, fecha_hora, actor_tipo, actor_id, accion, entidad, entidad_id,
@@ -43,7 +45,7 @@ export async function insertarEnAuditoriaPlataforma(
       (gen_random_uuid(), ${fechaHora}::timestamptz,
        ${entrada.actorTipo}::tipo_actor, ${entrada.actorId}::uuid, ${entrada.accion}, ${entrada.entidad},
        ${entrada.entidadId}, ${comoJson(entrada.datosAntes)}::jsonb, ${comoJson(entrada.datosDespues)}::jsonb,
-       ${entrada.motivo ?? null}, ${entrada.ip ?? null}::inet)`;
+       ${entrada.motivo ?? null}, ${ip}::inet)`;
 }
 
 /** Inserta una fila en `auditoria` con el cliente de una transacción de la academia `academiaId`. */
@@ -53,6 +55,7 @@ export async function insertarEnAuditoriaDeAcademia(
   fechaHora: Date,
   entrada: EntradaAuditoria,
 ): Promise<void> {
+  const ip = ipParaAuditoria(entrada.ip);
   await cliente.$executeRaw`
     INSERT INTO auditoria
       (id, academia_id, fecha_hora, actor_tipo, actor_id, accion, entidad, entidad_id,
@@ -61,5 +64,5 @@ export async function insertarEnAuditoriaDeAcademia(
       (gen_random_uuid(), ${academiaId}::uuid, ${fechaHora}::timestamptz,
        ${entrada.actorTipo}::tipo_actor, ${entrada.actorId}::uuid, ${entrada.accion}, ${entrada.entidad},
        ${entrada.entidadId}, ${comoJson(entrada.datosAntes)}::jsonb, ${comoJson(entrada.datosDespues)}::jsonb,
-       ${entrada.motivo ?? null}, ${entrada.ip ?? null}::inet)`;
+       ${entrada.motivo ?? null}, ${ip}::inet)`;
 }

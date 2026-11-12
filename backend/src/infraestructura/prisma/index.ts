@@ -8,7 +8,13 @@ import { Prisma } from '../../generated/prisma/client';
 export { BaseDatos } from './base-datos';
 export { cerrarCursores } from './cursores';
 export { codigoDeErrorDeBase, esViolacionDeUnicidad } from './errores-base';
-export { ErrorAcademiaNoEncontrada, ErrorAcademiaSuspendida, ErrorRolBaseDatosInseguro } from './errores';
+export {
+  ErrorAcademiaNoEncontrada,
+  ErrorAcademiaSuspendida,
+  ErrorRolBaseDatosInseguro,
+  ErrorTransaccionAbortada,
+} from './errores';
+export { comprobarTransaccionViva } from './transaccion-viva';
 export { PrismaModule } from './prisma.module';
 export { join, sql, vacio, type Fragmento, type ValorSql } from './sql-seguro';
 export type {

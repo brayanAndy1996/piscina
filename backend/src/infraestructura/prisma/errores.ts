@@ -29,3 +29,21 @@ export class ErrorRolBaseDatosInseguro extends ErrorNegocio {
     super(500, 'ERROR_INTERNO', MENSAJE_ROL_INSEGURO);
   }
 }
+
+/**
+ * La transacción quedó abortada, o ya no es la que abrió `BaseDatos`, cuando `trabajo` terminó bien (spec 001, criterios 149
+ * a 151, P-36): `trabajo` atrapó un error de la base y siguió, escribió un `ROLLBACK` o un `COMMIT`, o una consulta enviada
+ * sin `await` falló después. Prisma revierte la transacción y la operación rechaza con este error: nunca se devuelve el valor
+ * de `trabajo` como si se hubiera guardado. Es un error del servidor (500 `ERROR_INTERNO`); el mensaje es solo para el
+ * registro técnico. `cause` guarda el error de la base, si lo hubo (puede llevar valores: no se registra completo).
+ */
+export class ErrorTransaccionAbortada extends ErrorNegocio {
+  constructor(opciones?: { readonly cause?: unknown }) {
+    super(
+      500,
+      'ERROR_INTERNO',
+      'La transacción quedó abortada por un error de la base que el trabajo atrapó y no propagó; no se confirmó nada.',
+    );
+    if (opciones?.cause !== undefined) this.cause = opciones.cause;
+  }
+}
