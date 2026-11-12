@@ -29,6 +29,10 @@ Tras la ronda 5 se agregaron los criterios 120 a 129 (sección N de `spec.md`) y
 tareas son T71 a T81, antes del cierre. Los criterios 80, 102 y 107 y la precisión P-28 quedaron complementados o con
 la excepción de `cli/` ampliada.
 
+Tras la ronda 6 se agregaron los criterios 130 a 136 (sección O de `spec.md`) y las precisiones P-31 a P-33; sus tareas
+son T82 a T91, antes del cierre. Los criterios 9 a 13, 17, 18, 84, 94, 100, 102, 106, 121, 123, 124 y 126 y la precisión
+P-26 quedaron ampliados, complementados o con la preparación de su prueba ajustada.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -287,6 +291,45 @@ plan.
 - [ ] T80 · orquestador · `git diff` desde el commit de T72: T73 a T79 no tocaron pruebas protegidas
 - [ ] T81 · adversarial · Ronda 6 sobre todo lo anterior, en especial 120 a 129 (sesión durante un restablecimiento,
       `search_path`, esquemas, objetos del catálogo y dependencias); si hay fallas, se repite el ciclo
+
+## Ataque adversarial, ronda 6 (12/11/2026)
+
+Fallas F1 a F3 y observaciones O2 y O4 de la ronda 6 (sobre `84b367b`); criterios 130 a 136 de `spec.md` (sección O) y
+precisiones P-31 a P-33. O1, O3 y O4 quedan además como notas en la sección 18 del plan. La ronda no encontró fallas en
+las garantías de ejecución de 001.
+
+- [ ] T82 · test-writer · Pruebas protegidas en rojo de los criterios 130 a 136 (archivos en "Protegidas del ataque
+      ronda 6" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación, incluidas las
+      utilidades `politicas.ts` y `sembradores.ts` (P-33). En el mismo commit: ampliar a los esquemas revisados las pruebas
+      de catálogo de los criterios 9, 10, 11, 12, 124 y 126 (criterio 131), y adaptar `backend/test/utilidades/search-path.ts`
+      (criterio 121) como dice "Impacto en especificaciones anteriores", ronda 6, sin quitar casos ni cambiar lo que
+      comprueban; comprobar que ningún ejemplo de las protegidas de lint de las rondas 1 a 5 cambia de resultado con el
+      criterio 136 (si alguno cambiara, detenerse e informar). Commit: "Pruebas protegidas (001), ataque ronda 6:
+      privilegios en todos los esquemas, catálogo fuera de public, forma y ejecución de las políticas, transacción
+      guardada y SQL de sesión (en rojo)" (criterios 121, 130 a 136)
+- [ ] T83 · tester · Confirmar que T82 falla por la razón esperada (vista de `reportes` u otro privilegio fuera de
+      `public` aceptado, `privilegiosDeMasEnEsquemas` inexistente, `tx` de otra transacción usado sin rechazo, regla de
+      la transacción guardada inexistente, `SET CONSTRAINTS` rechazado, `lastval`/`currval` aceptados) y no por errores
+      de las pruebas. Las que pasan ya en verde por diseño (131, 132 y 133 sobre las migraciones actuales, sus
+      autocomprobaciones y la prueba del criterio 121 adaptada) se informan como tales. Las que exigen crear esquemas,
+      superusuario o `SET ROLE aquagestion_app` se confirman en la CI de Linux o en Docker
+- [ ] T84 · backend · `FUNCIONES_APP`, `ESQUEMAS_PERMITIDOS` y `privilegiosDeMasEnEsquemas` en `privilegios-app.ts`
+      (P-31); consulta de privilegios en los esquemas revisados en `#comprobarRol`, con el log que nombra esquema, objeto
+      y privilegio (criterio 130)
+- [ ] T85 · backend · Lo mismo en `scripts/lib/rol-app.mjs` y en `problemasDePrivilegios` de `scripts/crear-bases.mjs`,
+      con las correcciones `REVOKE … FROM aquagestion_app` o `FROM PUBLIC` (criterio 130)
+- [ ] T86 · backend · Envoltorio atado a su contexto con `AsyncLocalStorage`: marca por transacción, comprobación en cada
+      llamada y `ejecutar` en `#transaccion` (P-32) (criterio 134)
+- [ ] T87 · backend · Regla `eslint/regla-transaccion-guardada.mjs` en el lint normal, con la prohibición de
+      `async_hooks` fuera de `infraestructura/` (criterio 135)
+- [ ] T88 · backend · `regla-sql-sesion.mjs`: `SET CONSTRAINTS … DEFERRED/IMMEDIATE` como sentencia permitida y `lastval`
+      y `currval` en la lista de funciones prohibidas (criterio 136)
+- [ ] T89 · backend · Si las pruebas de 131, 132 o 133 señalan algo con las migraciones actuales, corregirlo con una
+      migración nueva (sin editar las aplicadas) (criterios 131 a 133)
+- [ ] T90 · orquestador · `git diff` desde el commit de T83: T84 a T89 no tocaron pruebas protegidas
+- [ ] T91 · adversarial · Ronda 7 sobre todo lo anterior, en especial 130 a 136 (privilegios fuera de `public`, objetos
+      de extensiones, forma de las políticas, prueba de ejecución por tabla, transacción usada desde otro contexto y lint
+      del SQL); si hay fallas, se repite el ciclo
 
 ## Cierre
 

@@ -587,6 +587,21 @@ La reutiliza 002 para los usuarios de academia.
   - `scripts/test/dependencias-backend.test.mjs` (127, unitarias de P-30 con carpetas temporales);
   - `eslint/regla-paquetes-declarados.test.mjs` (128), `eslint/regla-clientes-de-base.test.mjs` (129) y casos de la
     regla de `cli/` en `eslint/regla-sql-sesion-ronda5.test.mjs` (121 y 122).
+- **Protegidas del ataque ronda 6 (test-writer)** _(criterios 130 a 136; nombres orientativos)_:
+  - `backend/src/infraestructura/prisma/privilegios-esquemas.test.ts` (130, unitaria de `privilegiosDeMasEnEsquemas` y
+    de las listas), `aislamiento/privilegios-esquemas.test.ts` (130, integración; los casos con esquema se omiten con aviso
+    si el dueño no puede crearlos), `scripts/test/rol-app-ronda6.test.mjs` (unitaria de P-31 en `rol-app.mjs` y listas
+    iguales) y `scripts/test/integracion/rol-app-ronda6.test.mjs` (130 en `db:crear`, casos 1 y 2);
+  - ajuste de `aislamiento/catalogo.test.ts`, `aislamiento/catalogo-objetos.test.ts` y
+    `aislamiento/catalogo-unicidad.test.ts` a los esquemas revisados, y `aislamiento/catalogo-esquemas.test.ts` (131,
+    autocomprobación con `reportes_prueba`);
+  - `backend/test/utilidades/politicas.ts` y `sembradores.ts` (P-33), `aislamiento/forma-politicas.test.ts` (132) y
+    `aislamiento/rls-todas-las-tablas.test.ts` (133; la autocomprobación de ejecución se omite con aviso donde el dueño no
+    pueda `SET ROLE aquagestion_app`);
+  - `aislamiento/transaccion-guardada.test.ts` (134);
+  - `eslint/regla-transaccion-guardada.test.mjs` (135) y `eslint/regla-sql-sesion-ronda6.test.mjs` (136);
+  - adaptación de `backend/test/utilidades/search-path.ts` (criterio 121) como dice "Impacto en especificaciones
+    anteriores", ronda 6, en el mismo commit.
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -1091,6 +1106,138 @@ const ORDEN = Object.freeze({ reciente: sql`ORDER BY fecha_hora DESC`, accion: s
 const filas2 = await tx.cliente.$queryRaw`SELECT … FROM auditoria ${ORDEN[orden]}`;
 ```
 
+### 18. Correcciones del ataque, ronda 6 (criterios 130 a 136)
+
+La ronda 6 no encontró fallas en las garantías de ejecución de 001. Lo que corrige son guardas para las historias
+siguientes: 130 y 131 llevan la comprobación del rol y las pruebas de catálogo a todos los esquemas; 132 y 133 fijan la
+forma de las políticas y la prueban en ejecución sobre toda tabla de academia; 134 y 135 impiden usar una transacción
+fuera de su `trabajo`; 136 ajusta el lint del SQL. No hay migraciones nuevas.
+
+**Esquemas revisados (criterios 130 y 131).** Fragmentos SQL comunes (orientativos), para la API, `db:crear` y las pruebas:
+
+```sql
+-- esquemas revisados
+n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND n.nspname !~ '^pg_(toast_)?temp_'
+  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                   WHERE d.classid = 'pg_catalog.pg_namespace'::pg_catalog.regclass AND d.objid = n.oid
+                     AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+-- objeto de extensión (relación; para funciones, classid = pg_proc y objid = p.oid)
+EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+         WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
+           AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+```
+
+**Comprobación del rol (criterio 130).**
+
+- `#comprobarRol` agrega, en la misma transacción (con la primera sentencia, criterio 121), una consulta que devuelve las
+  filas de `PrivilegioEnEsquema` (P-31) con `UNION ALL`:
+  - relaciones `r, p, v, m, f` de los esquemas revisados, sin objetos de extensiones: privilegios de tabla
+    (`has_table_privilege`) y de columna (`has_column_privilege`), como hoy pero con `n.nspname` en la fila;
+  - secuencias `S`: `has_sequence_privilege` con `USAGE`, `SELECT` y `UPDATE`;
+  - funciones (`pg_proc`, sin objetos de extensiones) de `public` y de los esquemas revisados con
+    `has_schema_privilege(current_user, n.oid, 'USAGE')`: `has_function_privilege(current_user, p.oid, 'EXECUTE')`, con
+    `pg_get_function_identity_arguments(p.oid)` como `argumentos`;
+  - esquemas revisados: `has_schema_privilege(current_user, n.oid, 'USAGE')`, con `conObjetosPropios` =
+    existe una relación (cualquier `relkind`) o una función del esquema que no es objeto de extensión.
+- Todo calificado con `pg_catalog.` (criterio 121); `current_user` no se puede tapar.
+- `problemas.push(...privilegiosDeMasEnEsquemas(filas))`. Para no repetir mensajes, la consulta del criterio 102 sobre
+  `public` puede quedarse (sus pruebas la usan) y el registro técnico une los textos sin duplicados; o `#comprobarRol`
+  puede dejar de llamar a `privilegiosDeMas` si `privilegiosDeMasEnEsquemas` aplica la misma regla en `public` (P-31). Lo
+  decide el backend; las pruebas solo miran el rechazo y lo que nombra el log.
+- El log del rechazo nombra esquema, objeto, columna y privilegio (texto de P-31), sin la URL ni la contraseña.
+- `scripts/crear-bases.mjs`: `problemasDePrivilegios` agrega la misma consulta con `'aquagestion_app'` en lugar de
+  `current_user` y llama a `privilegiosDeMasEnEsquemas` de `scripts/lib/rol-app.mjs`. Para la corrección `FROM PUBLIC`,
+  mira si el privilegio llega por `PUBLIC` con `pg_catalog.aclexplode(relacl | attacl | proacl | nspacl)` y `grantee = 0`,
+  como en el criterio 123. La conexión del script ya fija `search_path` (ronda 5).
+- `FUNCIONES_APP` y `ESQUEMAS_PERMITIDOS` se escriben en los dos archivos con el mismo contenido; la prueba los compara.
+
+**Pruebas de catálogo en todos los esquemas (criterio 131).** En `catalogo.test.ts`, `catalogo-objetos.test.ts` y
+`catalogo-unicidad.test.ts`, cada `n.nspname = 'public'` pasa al fragmento de esquemas revisados y se agrega la exclusión
+de objetos de extensiones; las listas y excepciones se comparan como `esquema.nombre` (`public._prisma_migrations`). Las
+funciones de ayuda devuelven `esquema.tabla` y usan `pg_catalog.quote_ident` al armar `regclass`.
+
+**Forma de las políticas (criterio 132).**
+
+- Consulta (orientativa), como dueño, en una transacción con `SET LOCAL search_path = pg_catalog, public`:
+
+  ```sql
+  SELECT n.nspname AS esquema, c.relname AS tabla, p.polname AS nombre, p.polcmd AS comando, p.polpermissive AS permisiva,
+         pg_catalog.pg_get_expr(p.polqual, p.polrelid) AS usando,
+         pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid) AS comprobando
+    FROM pg_catalog.pg_policy p
+    JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   WHERE <esquemas revisados> AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                          WHERE a.attrelid = c.oid AND a.attname = 'academia_id'
+                                            AND a.attnum > 0 AND NOT a.attisdropped)
+  ```
+
+- `pg_get_expr` escribe la comparación como `(academia_id = app_academia_actual())` y una conjunción como
+  `((academia_id = app_academia_actual()) AND (clave <> 'x'::text))`. `terminosDeConjuncion` (P-33) recorre el texto
+  con un contador de paréntesis que ignora lo que está entre comillas simples y dobles, quita los paréntesis que encierran
+  toda la expresión, corta en ` AND ` de profundidad 0 y repite con cada término que, sin sus paréntesis exteriores, es a
+  su vez una conjunción. Con `search_path` fijo, el `=` de `uuid` sale sin calificar y uno de otro esquema sale como
+  `OPERATOR(otro.=)`.
+- `polcmd`: `r` (SELECT), `a` (INSERT), `w` (UPDATE), `d` (DELETE), `*` (ALL). Las de `INSERT` no tienen `USING`.
+
+**Prueba de ejecución sobre toda tabla de academia (criterio 133).**
+
+- Descubre las tablas con `academia_id` (relkind `r` y `p`) en los esquemas revisados. Para una partición, sirve el
+  sembrador de su tabla padre (la fila cae en la partición); la prueba consulta cada tabla y cada partición.
+- `SEMBRADORES_POR_TABLA` (P-33) hoy: `public.auditoria` (una fila con `actor_tipo = 'SISTEMA'`) y
+  `public.configuraciones` (una clave aleatoria que cumple el `CHECK`, `valor = '{}'`). Cada sembrador usa
+  `ejecutarComo('propietario', …, { academiaId })`.
+- La copia para el `INSERT` con B: como dueño, `SELECT pg_catalog.to_jsonb(t) FROM <tabla> t WHERE academia_id = A LIMIT 1`;
+  se cambia `academia_id`; como app en contexto de A, `INSERT INTO <tabla> (<columnas>) SELECT <columnas> FROM
+  pg_catalog.jsonb_populate_record(NULL::<tabla>, $1)`, con las columnas de `pg_attribute` sin `attgenerated <> ''` ni
+  `attidentity = 'a'`. PostgreSQL comprueba el `WITH CHECK` antes que las restricciones únicas, así que el resultado
+  esperado es `42501` aunque la fila choque con la llave primaria.
+- Autocomprobación: la misma función de comprobación recibe un ejecutor; en la autocomprobación, el ejecutor corre dentro de
+  la transacción del dueño con `SAVEPOINT`, `SET LOCAL ROLE aquagestion_app`, `set_config(…, true)` del contexto, la consulta
+  y `ROLLBACK TO SAVEPOINT` (que deshace el `SET LOCAL ROLE`). Si `SET ROLE` falla con `42501` (la nube), se omite con aviso.
+
+**Envoltorio atado al contexto (criterio 134).**
+
+- En `envoltorio.ts`: `const almacen = new AsyncLocalStorage<object>()` del módulo. `envolver(tx)` crea `const marca =
+  Object.freeze({})`; `exigirActiva` pasa a comprobar `activa && almacen.getStore() === marca`, con un mensaje distinto
+  para cada caso (orientativo: "La transacción ya terminó." y "Esta transacción pertenece a otra operación: pásala como
+  parámetro dentro de trabajo, no la guardes."). Se agrega `ejecutar: (fn) => almacen.run(marca, fn)`.
+- En `#transaccion`: `return await ejecutar(() => trabajo(cliente))`, y la consulta de `estado` de `conAcademia` también
+  corre dentro (hoy está dentro del `trabajo` interno que recibe `#transaccion`, así que basta con envolver esa función).
+- `AsyncLocalStorage` propaga el contexto por promesas, temporizadores y `EventEmitter` creados dentro de `fn`; no por un
+  objeto creado fuera que guarda callbacks y los llama después desde otro contexto (por ejemplo, un `DataLoader` compartido):
+  esas estructuras se crean dentro de `trabajo`.
+- Costo: una búsqueda en el almacén por llamada; despreciable frente al viaje a la base.
+
+**Regla de lint de la transacción guardada (criterio 135).** `eslint/regla-transaccion-guardada.mjs`, en el bloque de
+`backend/src` de `eslint.config.mjs` (no en `eslint.protegido.config.mjs`). Usa `context.sourceCode.getScope(nodo)` para
+resolver el identificador del valor: si su definición es un `Parameter` cuyo nodo función es el argumento `trabajo` de una
+llamada `X.conAcademia(_, f)` o `X.comoPlataforma(f)`, o un identificador con `typeAnnotation` cuyo nombre (o la parte
+derecha de un nombre calificado) es uno de los tres tipos, informa. El destino se acepta si su raíz (siguiendo `.object`)
+es `ThisExpression`, o un identificador cuya variable está en el ámbito `module` o `global`. La prohibición de `async_hooks`
+se puede reutilizar de la detección de vías de importación del criterio 85.
+
+**Lint del SQL (criterio 136).** En `eslint/regla-sql-sesion.mjs`, antes de rechazar un `SET` como sentencia, se acepta
+el tramo si coincide (sin distinguir mayúsculas, sobre el texto normalizado) con algo como
+`^set\s+constraints\s+(all|<ident>(\s*,\s*<ident>)*)\s+(deferred|immediate)$`, con `<ident>` =
+`(public\s*\.\s*)?([a-z_][a-z0-9_$]*|"([^"]|"")+")`; el marcador de `${…}` no es un `<ident>`. `lastval` y `currval` se
+agregan a la lista de funciones prohibidas del criterio 94 (la misma detección de llamadas, con o sin `pg_catalog.`).
+
+**Notas para las historias siguientes (sin criterio propio; ataque ronda 6).**
+
+- **O1. No anidar transacciones.** Una tarea programada o un proceso que recorre academias primero lista con
+  `comoPlataforma`, cierra esa transacción, y después llama a `conAcademia` por cada academia, una tras otra o con un
+  límite de concurrencia menor que `DATABASE_POOL_MAX`. Nunca `conAcademia` dentro del `trabajo` de otra transacción: ocupa
+  dos conexiones, con `DATABASE_POOL_MAX` pequeño puede bloquearse esperando una conexión libre, y el criterio 134 rechaza
+  usar la transacción exterior dentro de la interior.
+- **O3. Identificadores e idempotencia.** El `id` de cada fila lo genera la base (`gen_random_uuid()`, criterio 126);
+  el cliente nunca lo envía. Las claves de idempotencia que manda el cliente (doble clic o reintento en cobros,
+  verificación y asistencia; `CLAUDE.md`) van en una columna propia con `UNIQUE (academia_id, clave)`, y el duplicado se
+  detecta con `esViolacionDeUnicidad` (criterio 114). Así una clave repetida en otra academia no choca ni revela nada.
+- **O4. Valores de sesión.** `lastval()` y `currval()` devuelven el último valor obtenido **en la sesión**, que la
+  conexión del pool comparte entre academias: se usa `INSERT … RETURNING` (el lint los prohíbe desde el criterio 136).
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -1151,6 +1298,15 @@ const filas2 = await tx.cliente.$queryRaw`SELECT … FROM auditoria ${ORDEN[orde
 | Rechazar esquemas propios, con `CREATE` o con el nombre del rol (criterio 123) | Rechazar también `USAGE` en otros esquemas | Falsos positivos en hostings con esquemas de extensiones; lo neutraliza el criterio 121 |
 | Pruebas de catálogo con listas de excepciones vacías (criterios 124 y 126) | Revisar cada migración a mano | Se olvida; la prueba falla sola |
 | Lista permitida, solo paquetes declarados y lista negra (criterios 127 a 129) | Solo lista negra; solo la lista del backend | Siempre aparece un cliente nuevo; los paquetes de otros espacios de trabajo llegan a `node_modules` de la raíz |
+| Privilegios de la app en todos los esquemas revisados, sin objetos de extensiones (ataque ronda 6, criterio 130) | Solo `public`; contar también las extensiones | Una vista en otro esquema devolvía todas las academias; las extensiones del hosting darían falsos positivos |
+| `EXECUTE` solo en `public` y en esquemas con `USAGE` (criterio 130) | `EXECUTE` en todo esquema | PostgreSQL lo concede a `PUBLIC` por defecto y sin `USAGE` no se puede llamar |
+| `USAGE` sobre otro esquema rechazado si tiene objetos propios, con lista permitida vacía (criterio 130) | Rechazar todo `USAGE`; aceptarlo siempre | Esquemas de extensiones del hosting; un esquema propio accesible quedaría sin probar |
+| P-31 nuevo en lugar de cambiar `privilegiosDeMas` (criterio 130) | Agregar el esquema a `PrivilegioApp` | Cambiaría P-20 y sus pruebas protegidas |
+| Forma exacta de las políticas con `pg_get_expr` y `search_path` fijo (criterio 132) | "Contiene la comparación"; analizar `polqual` como `pg_node_tree` | Lo primero acepta `OR`; lo segundo es un formato interno no documentado |
+| Prueba de ejecución que descubre las tablas y usa sembradores explícitos (criterio 133) | Lista fija de tablas; generador automático de filas | Las tablas nuevas quedarían sin probar; un generador no cumple `CHECK` ni llaves compuestas |
+| Envoltorio atado con `AsyncLocalStorage` (criterio 134) | Solo lint; atarlo a la petición HTTP | El lint no ve alias; las tareas programadas no tienen petición |
+| Regla de la transacción guardada en el lint normal (criterio 135) | En el paso protegido | Cambiaría la lista de reglas del criterio 96; la garantía está en el 134 |
+| `SET CONSTRAINTS … DEFERRED/IMMEDIATE` permitido; `lastval`/`currval` prohibidos (criterio 136) | Función en `infraestructura/prisma/`; solo una nota | Es local a la transacción; prohibir los valores de sesión cuesta una entrada en la lista |
 
 ## Migraciones
 
@@ -1166,6 +1322,9 @@ const filas2 = await tx.cliente.$queryRaw`SELECT … FROM auditoria ${ORDEN[orde
 - Ronda 5: sin migraciones nuevas. `search_path` y `standard_conforming_strings` se fijan por transacción (criterios 121
   y 122); los esquemas del rol se comprueban, no se cambian (123); las pruebas de catálogo (124 y 126) pasan con las
   migraciones actuales.
+- Ronda 6: sin migraciones nuevas. Con las migraciones actuales, los privilegios de la app en todos los esquemas (criterio
+  130), las pruebas de catálogo ampliadas (131) y la forma y ejecución de las políticas de `auditoria` y `configuraciones`
+  (132 y 133) ya cumplen; si alguna prueba señalara algo, se corrige con una migración nueva.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -1245,5 +1404,13 @@ const filas2 = await tx.cliente.$queryRaw`SELECT … FROM auditoria ${ORDEN[orde
 - **`express` declarado en el backend** _(ataque ronda 5, criterio 128)_: si el rango no coincide con el de
   `@nestjs/platform-express`, npm instala dos copias y los tipos o los middlewares pueden no coincidir; confirmar con
   `npm ls express` en la nube y en la CI de Windows.
+- **`AsyncLocalStorage` con Prisma y Nest** _(ataque ronda 6, criterio 134)_: confirmar que el contexto se conserva a
+  través de `$transaction(async …)` del adaptador y de `nestjs-pino` (que usa su propio almacén), y que la prueba del
+  criterio 106 con 20 consultas en `Promise.all` sigue pasando. Si alguna protegida anterior falla por el contexto, el
+  backend se detiene e informa.
+- **`SET LOCAL ROLE` en la autocomprobación del criterio 133** _(ataque ronda 6)_: exige que el dueño sea superusuario o
+  miembro de `aquagestion_app`; en la nube se omite con aviso y corre en Docker y en la CI.
+- **Texto de `pg_get_expr` entre versiones** _(ataque ronda 6, criterio 132)_: la forma de los paréntesis puede variar
+  entre versiones mayores de PostgreSQL; la autocomprobación con los ejemplos lo detecta al cambiar de versión (hoy la 16).
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.
