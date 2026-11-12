@@ -212,6 +212,7 @@ describe('criterio 128: la regla lee <cwd>/backend/package.json (repositorios te
     carpeta = carpetaTemporal('aqua-paquetes-');
     // Un arbol minimo: un modulo cualquiera; el package.json de cada prueba lo escribe ella.
     escribir(carpeta, 'backend/src/modulos/ejemplo/otro.ts', 'export const o = 1;\n');
+    eslint = undefined; // cada prueba usa su propia carpeta temporal como cwd
   });
   afterEach(() => {
     borrarCarpeta(carpeta);
@@ -307,6 +308,54 @@ describe('criterio 128: la regla lee <cwd>/backend/package.json (repositorios te
 
     expect(await lintear(importa('no-declarado-aqui'), 'backend/src/modulos/ejemplo/otro.service.test.ts')).toEqual([]);
     expect(await lintear(importa('no-declarado-aqui'), 'backend/test/utilidades/ejemplo.ts')).toEqual([]);
+  });
+
+  describe('criterio 128: si backend/package.json no existe, la regla falla cerrada (decision del orquestador tras la ronda 5)', () => {
+    const noEncuentra = (mensajes) => mensajes.filter((mensaje) => /backend[\\/]package\.json/.test(mensaje.message));
+
+    it.each([
+      ['import de un paquete', "import { z } from 'zod';\nexport const x = z;"],
+      [
+        'import de un modulo de Node junto con un paquete',
+        "import { join } from 'node:path';\nimport { z } from 'zod';\nexport const x = [join, z];",
+      ],
+      ['require de un paquete', "export const m = require('zod');"],
+      ['import() de un paquete', "export const cargar = () => import('zod');"],
+      ['export ... from de un paquete', "export { z } from 'zod';"],
+    ])(
+      'criterio 128: %s sin backend/package.json reporta un error que nombra backend/package.json',
+      async (_nombre, codigo) => {
+        const mensajes = await lintear(codigo);
+
+        expect(mensajes.length, codigo).toBeGreaterThan(0);
+        expect(
+          noEncuentra(mensajes).length,
+          `ningun mensaje nombra backend/package.json: ${JSON.stringify(mensajes.map((m) => m.message))}`,
+        ).toBeGreaterThan(0);
+      },
+    );
+
+    it('criterio 128: el error se reporta en el archivo revisado, tambien en cli/ y en infraestructura/prisma/', async () => {
+      for (const archivo of [CLI, PRISMA, 'backend/src/main.ts']) {
+        const mensajes = await lintear("import { z } from 'zod';\nexport const x = z;", archivo);
+
+        expect(noEncuentra(mensajes).length, archivo).toBeGreaterThan(0);
+      }
+    });
+
+    it('criterio 128 (control): con backend/package.json el mismo import pasa', async () => {
+      escribirPaquete(carpeta, { name: '@aquagestion/backend', dependencies: { zod: '^4.6.7' } });
+
+      expect(await lintear("import { z } from 'zod';\nexport const x = z;")).toEqual([]);
+    });
+
+    it('criterio 128: un backend/package.json que no es JSON valido tambien falla cerrado', async () => {
+      escribir(carpeta, 'backend/package.json', '{ esto no es json');
+
+      const mensajes = await lintear("import { z } from 'zod';\nexport const x = z;");
+
+      expect(mensajes.length).toBeGreaterThan(0);
+    });
   });
 
   it('criterio 128: un archivo fuera de backend/src (packages/contratos/src) no esta sujeto', async () => {

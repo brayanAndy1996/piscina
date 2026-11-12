@@ -15,13 +15,19 @@
 // Se prueba con las dos configuraciones (eslint.config.mjs y la del paso protegido).
 import { describe, expect, it } from 'vitest';
 import { CLI, CONFIGURACIONES, MODULO, PRISMA, PUNTO, PUNTO_DESDE_CLI, errores } from './ayuda-lint-ronda4.mjs';
+import { erroresDeclarandoLoImportado } from './ayuda-lint-ronda5.mjs';
 
 const PRISMA_CLIENTE_DESDE_CLI = '../generated/prisma/client';
 
 describe.each(CONFIGURACIONES)('criterio 112 (regla) con %s', (_configuracion, obtener) => {
   /** Rechazado en el archivo indicado y limpio en backend/src/infraestructura/prisma/. */
   async function rechazado(codigo, archivos) {
-    expect(await errores(obtener(), codigo, PRISMA), `en prisma/ no debia fallar: ${codigo}`).toEqual([]);
+    // (ajustado por el criterio 128, decision del orquestador tras la ronda 5) Si el ejemplo importa un paquete no declarado
+    // (`sql-template-tag`), prisma/ se revisa en un repositorio temporal cuyo backend/package.json lo declara.
+    expect(
+      await erroresDeclarandoLoImportado(codigo, PRISMA, () => errores(obtener(), codigo, PRISMA)),
+      `en prisma/ no debia fallar: ${codigo}`,
+    ).toEqual([]);
     for (const archivo of archivos) {
       expect(
         (await errores(obtener(), codigo, archivo)).length,

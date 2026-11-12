@@ -320,6 +320,9 @@ describe('criterios 111 y 118 (P-28): scripts/comprobar-fuentes-protegidas.mjs',
     repo.escribir('.gitignore', 'backend/src/generated/\nnode_modules/\n');
     repo.escribir('backend/src/modulos/ejemplo/ejemplo.service.ts', 'export const m = 1;\n');
     repo.escribir('packages/contratos/src/index.ts', 'export const c = 1;\n');
+    // (ajustado por el criterio 128, decision del orquestador tras la ronda 5; criterio 127, P-30) La comprobacion previa tambien revisa las
+    // dependencias de backend/package.json (P-30): el repositorio temporal lo crea con solo paquetes de la lista permitida.
+    repo.escribir('backend/package.json', '{ "name": "@aquagestion/backend", "dependencies": { "zod": "^4.6.7" } }\n');
     return repo;
   }
 

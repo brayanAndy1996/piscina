@@ -39,6 +39,13 @@ describe.skipIf(!posible)('criterio 111: las reglas de acceso resuelven los enla
     escribir(carpeta, 'backend/src/infraestructura/prisma/base-datos.ts', 'export const interno = 1;\n');
     escribir(carpeta, 'backend/src/modulos/ejemplo/ejemplo.service.ts', 'export const m = 1;\n');
     escribir(carpeta, 'backend/src/modulos/ejemplo/otro.ts', 'export const o = 1;\n');
+    // (ajustado por el criterio 128, decision del orquestador tras la ronda 5) El criterio 128 lee <cwd>/backend/package.json y falla
+    // cerrado si no existe: el repositorio temporal lo crea y declara `pg`, el unico paquete que importan los ejemplos de este archivo.
+    escribir(
+      carpeta,
+      'backend/package.json',
+      `${JSON.stringify({ name: '@aquagestion/backend', dependencies: { pg: '^8.0.0' } })}\n`,
+    );
     eslint = eslintProtegidoEn(carpeta);
   });
   afterEach(() => {

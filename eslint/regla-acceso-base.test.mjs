@@ -27,6 +27,7 @@ import { ESLint } from 'eslint';
 import tseslint from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
 import { obtenerEslintProtegido } from './ayuda-lint-ronda3.mjs';
+import { erroresDeclarandoLoImportado } from './ayuda-lint-ronda5.mjs';
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -56,8 +57,21 @@ const REGLAS_INCIDENTALES = new Set([
   'prefer-const',
 ]);
 
-/** Errores de ESLint (severidad 2) que no son incidentales, para el codigo en el archivo indicado. */
+/**
+ * Errores de ESLint (severidad 2) que no son incidentales, para el codigo en el archivo indicado.
+ * (ajustado por el criterio 128, decision del orquestador tras la ronda 5) En infraestructura/prisma/ y en cli/ (los archivos
+ * exentos de estas reglas), un ejemplo que importa un paquete no declarado en backend/package.json (`pg-pool`,
+ * `@prisma/adapter-neon`) se revisa en un repositorio temporal cuyo backend/package.json lo declara: se sigue comprobando lo mismo
+ * (que esas carpetas estan exentas de la regla del criterio 85) sin que intervenga el criterio 128.
+ */
 async function erroresDeAcceso(codigo, archivo) {
+  if (archivo === PRISMA || archivo === CLI) {
+    return erroresDeclarandoLoImportado(codigo, archivo, () => erroresReales(codigo, archivo));
+  }
+  return erroresReales(codigo, archivo);
+}
+
+async function erroresReales(codigo, archivo) {
   const [resultado] = await eslint.lintText(codigo, { filePath: path.join(raiz, archivo) });
   const fatales = resultado.messages.filter((mensaje) => mensaje.fatal);
   expect(fatales, `error al analizar ${archivo}: ${codigo}`).toEqual([]);

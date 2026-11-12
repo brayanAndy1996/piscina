@@ -19,6 +19,7 @@
 // Un ejemplo que falla por cada forma del ataque y los que pasan. Se prueba con las dos configuraciones.
 import { describe, expect, it } from 'vitest';
 import { CLI, CONFIGURACIONES, PRISMA, errores } from './ayuda-lint-ronda4.mjs';
+import { erroresDeclarandoLoImportado } from './ayuda-lint-ronda5.mjs';
 
 const CLIENTE = "'../generated/prisma/client'";
 const RUNTIME = "'@prisma/client/runtime/client'";
@@ -29,11 +30,21 @@ const IMPORTA_ESPACIO = `import * as G from ${CLIENTE};`;
 describe.each(CONFIGURACIONES)('criterio 113 con %s', (_configuracion, obtener) => {
   /** Falla en cli/ y esta limpio en backend/src/infraestructura/prisma/ (alli estas reglas no se aplican). */
   async function falla(codigo) {
-    expect(await errores(obtener(), codigo, PRISMA), `en prisma/ no debia fallar: ${codigo}`).toEqual([]);
+    // (ajustado por el criterio 128, decision del orquestador tras la ronda 5) Si el ejemplo importa un paquete no declarado
+    // (`@prisma/adapter-neon`), prisma/ se revisa en un repositorio temporal cuyo backend/package.json lo declara.
+    expect(
+      await erroresDeclarandoLoImportado(codigo, PRISMA, () => errores(obtener(), codigo, PRISMA)),
+      `en prisma/ no debia fallar: ${codigo}`,
+    ).toEqual([]);
     expect((await errores(obtener(), codigo, CLI)).length, `el lint no rechazo en cli/: ${codigo}`).toBeGreaterThan(0);
   }
   async function pasa(codigo) {
-    expect(await errores(obtener(), codigo, CLI), `el lint rechazo en cli/: ${codigo}`).toEqual([]);
+    // (ajustado por el criterio 128, decision del orquestador tras la ronda 5) Un ejemplo que importa un paquete no declarado
+    // (`pg-pool`) se revisa en un repositorio temporal cuyo backend/package.json lo declara.
+    expect(
+      await erroresDeclarandoLoImportado(codigo, CLI, () => errores(obtener(), codigo, CLI)),
+      `el lint rechazo en cli/: ${codigo}`,
+    ).toEqual([]);
   }
 
   describe('criterio 113: Prisma (o un alias, o G.Prisma, o G) usado como valor de otra forma que un acceso con punto', () => {
