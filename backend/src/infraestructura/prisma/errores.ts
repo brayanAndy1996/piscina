@@ -30,20 +30,31 @@ export class ErrorRolBaseDatosInseguro extends ErrorNegocio {
   }
 }
 
+/** Por qué la transacción no se confirmó: `abortada` (error de la base atrapado, `ROLLBACK`/`COMMIT` escrito dentro) o `incompleta` (una consulta volvió sin resultado). */
+export type MotivoTransaccionAbortada = 'abortada' | 'incompleta';
+
+const MENSAJE_ABORTADA =
+  'La transacción quedó abortada por un error de la base que el trabajo atrapó y no propagó; no se confirmó nada.';
+const MENSAJE_INCOMPLETA = 'Una consulta de la transacción no llegó a ejecutarse; no se confirmó nada.';
+
 /**
  * La transacción quedó abortada, o ya no es la que abrió `BaseDatos`, cuando `trabajo` terminó bien (spec 001, criterios 149
  * a 151, P-36): `trabajo` atrapó un error de la base y siguió, escribió un `ROLLBACK` o un `COMMIT`, o una consulta enviada
  * sin `await` falló después. Prisma revierte la transacción y la operación rechaza con este error: nunca se devuelve el valor
  * de `trabajo` como si se hubiera guardado. Es un error del servidor (500 `ERROR_INTERNO`); el mensaje es solo para el
  * registro técnico. `cause` guarda el error de la base, si lo hubo (puede llevar valores: no se registra completo).
+ *
+ * `motivo` (criterio 154, ampliación de P-36): `abortada` por defecto; `incompleta` cuando una operación recibió `undefined`
+ * de Prisma (una consulta que el cliente no llegó a ejecutar), con el mensaje correspondiente. `cause` lleva entonces solo el
+ * nombre de la operación.
  */
 export class ErrorTransaccionAbortada extends ErrorNegocio {
-  constructor(opciones?: { readonly cause?: unknown }) {
-    super(
-      500,
-      'ERROR_INTERNO',
-      'La transacción quedó abortada por un error de la base que el trabajo atrapó y no propagó; no se confirmó nada.',
-    );
+  readonly motivo: MotivoTransaccionAbortada;
+
+  constructor(opciones?: { readonly motivo?: MotivoTransaccionAbortada; readonly cause?: unknown }) {
+    const motivo = opciones?.motivo ?? 'abortada';
+    super(500, 'ERROR_INTERNO', motivo === 'incompleta' ? MENSAJE_INCOMPLETA : MENSAJE_ABORTADA);
+    this.motivo = motivo;
     if (opciones?.cause !== undefined) this.cause = opciones.cause;
   }
 }

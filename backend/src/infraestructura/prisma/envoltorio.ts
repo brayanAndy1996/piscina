@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma } from '../../generated/prisma/client';
+import { ErrorTransaccionAbortada } from './errores';
 import { aSql, sonPartesDePlantilla } from './sql-seguro';
 import type { ClienteTransaccion } from './tipos';
 
@@ -13,11 +14,12 @@ import type { ClienteTransaccion } from './tipos';
  *
  * Cada función devuelve una `Promise` nativa (son flechas comunes, no `async`: su prototipo debe seguir siendo
  * `Function.prototype`): la `PrismaPromise` (con `requestTransaction`, que permite reubicar la consulta en otra conexión)
- * nunca sale de aquí. La consulta se envía al llamar a la función (se llama a `then`
- * en ese momento, sin esperar a quien llama) y corre en la conexión y en la transacción de `trabajo`. Cuando `trabajo` termina,
- * con éxito o con error, `terminar()` apaga el envoltorio: una función guardada y llamada después rechaza sin tocar la base.
+ * nunca sale de aquí. La consulta pasa por una cola serial por transacción (criterio 153): se entrega a Prisma (se llama a `then`)
+ * cuando se asentó la anterior y, con la cola vacía, durante la llamada, sin esperar a quien llama; corre en la conexión y en la
+ * transacción de `trabajo`. Cuando `trabajo` termina, con éxito o con error, `terminar()` apaga el envoltorio: una función guardada
+ * y llamada después rechaza sin tocar la base. Una operación que vuelve con `undefined` rechaza y marca la transacción (154).
  *
- * Criterio 134 (P-32): un servicio de Nest es una sola instancia para todas las peticiones, y guardar `tx` en un campo
+ Criterio 134 (P-32): un servicio de Nest es una sola instancia para todas las peticiones, y guardar `tx` en un campo
  * (`this.tx = tx`) dejaría que otra petición use la transacción de otra academia mientras sigue abierta. Por eso cada
  * transacción corre su `trabajo` dentro de un contexto asíncrono propio (`AsyncLocalStorage.run` con una marca única) y cada
  * función del envoltorio comprueba, al llamarse y antes de enviar nada, que el contexto actual es el de su transacción. Lo que
@@ -57,16 +59,6 @@ const MENSAJE_CONSULTA_NO_VALIDA = 'Consulta no válida: usa una plantilla etiqu
 
 /** `Academia` -> `academia`: el nombre del delegado en el cliente de Prisma. */
 const nombreDelDelegado = (modelo: string): string => `${modelo.charAt(0).toLowerCase()}${modelo.slice(1)}`;
-
-/**
- * Dispara la consulta ahora (llama a `then` de inmediato) y devuelve una promesa nativa. La `PrismaPromise` es perezosa: sin
- * esto, la consulta saldría cuando quien llama la espere, y no se sabría en qué orden ni en qué momento.
- */
-function enviar<T>(consulta: PromiseLike<T>): Promise<T> {
-  return new Promise<T>((resolver, rechazar) => {
-    consulta.then(resolver, rechazar);
-  });
-}
 
 const nada = (): void => undefined;
 
@@ -108,6 +100,16 @@ export interface EnvoltorioDeTransaccion {
    * lanzó sin `await` (criterio 149). Se llama después de `terminar()`: ya no entran consultas nuevas. Nunca rechaza.
    */
   readonly asentar: () => Promise<void>;
+  /**
+   * Criterio 153 (P-38): `trabajo` lanzó. Las consultas que seguían en la cola rechazan sin entregarse a Prisma. Se llama junto
+   * con `terminar()`, en el camino del error.
+   */
+  readonly descartar: () => void;
+  /**
+   * Criterio 154 (P-38): lanza `ErrorTransaccionAbortada` (`motivo: 'incompleta'`) si alguna operación volvió con `undefined`,
+   * aunque `trabajo` haya atrapado el rechazo. Se llama después de `asentar()`, antes de comprobar la marca y del `COMMIT`.
+   */
+  readonly exigirCompleta: () => void;
 }
 
 export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion {
@@ -121,14 +123,55 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
       );
     }
   };
-  // Las consultas enviadas y todavía sin asentar. Se guarda una promesa derivada, nunca la que recibe `trabajo` (criterio 106).
+  // Las consultas encoladas o enviadas y todavía sin asentar. Se guarda una promesa derivada, nunca la que recibe `trabajo` (106).
   const pendientes = new Set<Promise<void>>();
-  const enviarSeguida = <T>(consulta: PromiseLike<T>): Promise<T> => {
-    const promesa = enviar(consulta);
+  // Asentamiento de la última consulta encolada (criterio 153): la siguiente se entrega cuando este se cumple.
+  let ultima: Promise<void> | null = null;
+  let descartada = false;
+  // Nombre de la primera operación que volvió con `undefined` (criterio 154). Solo el nombre: nunca argumentos ni parámetros.
+  let incompleta: string | null = null;
+  /**
+   * Cola serial por transacción (criterio 153): Prisma agrupa en un lote las consultas que salen en el mismo turno y, ante el
+   * primer error que no es de la base, deja sin ejecutar las siguientes (sus promesas resuelven con `undefined`). Por eso cada
+   * consulta se entrega a Prisma (se llama a `crear().then`) solo cuando se asentó la anterior; con la cola vacía, durante la
+   * llamada (criterio 106). Cada promesa recibe su propio resultado o error y un rechazo no detiene la cola.
+   */
+  const enviarSeguida = <T>(crear: () => PromiseLike<T>, operacion: string): Promise<T> => {
+    const anterior = ultima;
+    const promesa = new Promise<T>((resolver, rechazar) => {
+      const entregar = (): void => {
+        if (descartada) {
+          rechazar(new Error('La transacción ya terminó.'));
+          return;
+        }
+        try {
+          crear().then((valor) => {
+            // Criterio 154: ninguna operación expuesta devuelve `undefined` en Prisma 7; si lo hace, la consulta no se ejecutó.
+            if (valor === undefined) {
+              incompleta ??= operacion;
+              rechazar(
+                new ErrorTransaccionAbortada({
+                  motivo: 'incompleta',
+                  cause: new Error(`Operación sin resultado: ${operacion}`),
+                }),
+              );
+              return;
+            }
+            resolver(valor);
+          }, rechazar);
+        } catch (error) {
+          rechazar(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+      if (anterior === null) entregar();
+      else void anterior.then(entregar);
+    });
     const asentada: Promise<void> = promesa.then(nada, nada).then(() => {
       pendientes.delete(asentada);
+      if (ultima === asentada) ultima = null;
     });
     pendientes.add(asentada);
+    ultima = asentada;
     return promesa;
   };
   const delegados = tx as unknown as Record<string, Record<string, FuncionDeDelegado>>;
@@ -142,13 +185,13 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
         // Forma de etiqueta: los fragmentos del punto autorizado se cambian por su Sql; los demás valores van como parámetros.
         if (sonPartesDePlantilla(primero, valores.length)) {
           const convertidos = valores.map((valor) => aSql(valor) ?? valor);
-          return enviarSeguida(tx[metodo](primero, ...convertidos));
+          return enviarSeguida(() => tx[metodo](primero, ...convertidos), metodo);
         }
         // Forma de llamada: exactamente un fragmento o un Sql de Prisma.
         if (argumentos.length === 1) {
           const fragmento = aSql(primero);
-          if (fragmento) return enviarSeguida(tx[metodo](fragmento));
-          if (primero instanceof Prisma.Sql) return enviarSeguida(tx[metodo](primero));
+          if (fragmento) return enviarSeguida(() => tx[metodo](fragmento), metodo);
+          if (primero instanceof Prisma.Sql) return enviarSeguida(() => tx[metodo](primero), metodo);
         }
         throw new TypeError(MENSAJE_CONSULTA_NO_VALIDA);
       });
@@ -167,7 +210,7 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
           const real = delegados[nombre];
           const funcion = real?.[operacion];
           if (typeof funcion !== 'function') throw new TypeError(`La operación ${nombre}.${operacion} no existe.`);
-          return enviarSeguida(funcion.apply(real, argumentos) as PromiseLike<unknown>);
+          return enviarSeguida(() => funcion.apply(real, argumentos) as PromiseLike<unknown>, `${nombre}.${operacion}`);
         });
     }
     envoltorio[nombre] = Object.freeze(delegado);
@@ -181,6 +224,17 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
     asentar: async (): Promise<void> => {
       // Una consulta que termina quita su promesa del conjunto: se repite hasta que no quede ninguna.
       while (pendientes.size > 0) await Promise.allSettled([...pendientes]);
+    },
+    descartar: () => {
+      descartada = true;
+    },
+    exigirCompleta: () => {
+      if (incompleta !== null) {
+        throw new ErrorTransaccionAbortada({
+          motivo: 'incompleta',
+          cause: new Error(`Operación sin resultado: ${incompleta}`),
+        });
+      }
     },
   });
 }

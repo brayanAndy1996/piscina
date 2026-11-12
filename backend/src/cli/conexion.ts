@@ -75,6 +75,12 @@ const TURNOS_DE_CESION = 3;
  * 101). Cuando `trabajo` termina bien comprueba que la transacción no quedó abortada ni fue reemplazada por un `ROLLBACK` o un
  * `COMMIT` escritos dentro (criterios 150 y 151) y, si no, rechaza con `ErrorTransaccionAbortada` sin confirmar nada. Toda transacción de academia que agregue un comando en el futuro
  * fija también los dos valores.
+ *
+ * Riesgo aceptado (spec 001, criterio 153, plan sección 23): `trabajo` recibe la transacción de Prisma sin el envoltorio de la
+ * API, así que aquí no hay cola serial. Prisma agrupa en un lote las consultas que salen en el mismo turno y, si una falla con un
+ * error que no es de la base, deja sin ejecutar las siguientes (sus promesas resuelven con `undefined`) y la transacción se
+ * confirmaría sin ellas. Por eso, en comandos y en la semilla NO se lanzan consultas en paralelo dentro de `enPlataforma` (nada de
+ * `Promise.all`, `Promise.allSettled` ni `map` con funciones `async` sobre `tx`): se encadenan con `await`.
  */
 export function enPlataforma<T>(cliente: PrismaClient, trabajo: (tx: ClienteTransaccion) => Promise<T>): Promise<T> {
   return cliente.$transaction(async (tx) => {

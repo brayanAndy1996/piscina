@@ -212,11 +212,15 @@ export class BaseDatos implements OnModuleDestroy {
       async (tx) => {
         const marca = randomUUID();
         await this.#fijarContexto(tx, { ...contexto, marca });
-        const { cliente, terminar, ejecutar, asentar } = envolver(tx);
+        const { cliente, terminar, ejecutar, asentar, descartar, exigirCompleta } = envolver(tx);
         let resultado: T;
         try {
           // Criterio 134: `trabajo` corre en el contexto asíncrono de esta transacción; el envoltorio no responde en otro.
           resultado = await ejecutar(() => trabajo(cliente));
+        } catch (error) {
+          // Criterio 153: las consultas que seguían en la cola no se entregan a Prisma; el error de `trabajo` sale tal cual.
+          descartar();
+          throw error;
         } finally {
           terminar();
         }
@@ -226,6 +230,8 @@ export class BaseDatos implements OnModuleDestroy {
         // `ROLLBACK`, sin error.
         await asentar();
         try {
+          // Criterio 154: una operación que volvió con `undefined` marcó la transacción aunque `trabajo` atrapara el rechazo.
+          exigirCompleta();
           await comprobarTransaccionViva(tx, marca);
         } catch (error) {
           if (error instanceof ErrorTransaccionAbortada) this.#registrarAbortada(error);
@@ -246,6 +252,12 @@ export class BaseDatos implements OnModuleDestroy {
    * llevar valores de los parámetros), ni los parámetros, ni la URL.
    */
   #registrarAbortada(error: ErrorTransaccionAbortada): void {
+    if (error.motivo === 'incompleta') {
+      // La causa es solo "Operación sin resultado: <nombre>": nunca argumentos ni parámetros.
+      const operacion = error.cause instanceof Error ? ` ${error.cause.message}.` : '';
+      this.registro.warn(`${error.mensaje}${operacion}`);
+      return;
+    }
     const sqlstate = codigoDeErrorDeBase(error.cause);
     this.registro.warn(`${error.mensaje}${sqlstate === null ? '' : ` SQLSTATE: ${sqlstate}.`}`);
   }
