@@ -244,14 +244,22 @@ describe('criterio 47: la app no puede cambiar de rol', () => {
     return decodeURIComponent(new URL(url).username);
   }
 
+  // El superusuario de arranque del servidor (oid 10) siempre existe: `postgres` en la nube, el POSTGRES_USER en CI y en Docker.
+  async function superusuarioDeArranque(): Promise<string> {
+    const filas = await consultar<{ rolname: string }>('SELECT rolname FROM pg_catalog.pg_roles WHERE oid = 10');
+    return filas[0]?.rolname ?? '';
+  }
+
   it.each([
-    ['SET ROLE hacia el dueño de las tablas', () => `SET ROLE "${usuarioPropietario()}"`],
-    ['SET ROLE hacia postgres', () => 'SET ROLE postgres'],
-    ['SET SESSION AUTHORIZATION hacia el dueño', () => `SET SESSION AUTHORIZATION "${usuarioPropietario()}"`],
-    ['SET SESSION AUTHORIZATION hacia postgres', () => 'SET SESSION AUTHORIZATION postgres'],
-  ])('criterio 47: %s falla por falta de permisos', async (_nombre, sentencia) => {
+    ['SET ROLE hacia el dueño de las tablas', 'SET ROLE', 'dueno'],
+    ['SET ROLE hacia el superusuario de arranque', 'SET ROLE', 'arranque'],
+    ['SET SESSION AUTHORIZATION hacia el dueño', 'SET SESSION AUTHORIZATION', 'dueno'],
+    ['SET SESSION AUTHORIZATION hacia el superusuario de arranque', 'SET SESSION AUTHORIZATION', 'arranque'],
+  ] as const)('criterio 47: %s falla por falta de permisos', async (_nombre, sentencia, destino) => {
+    const rol = destino === 'dueno' ? usuarioPropietario() : await superusuarioDeArranque();
+    const sql = `${sentencia} "${rol}"`;
     await conClienteComo('app', async (cliente) => {
-      await expect(cliente.query(sentencia())).rejects.toMatchObject({ code: '42501' });
+      await expect(cliente.query(sql)).rejects.toMatchObject({ code: '42501' });
       const { rows } = await cliente.query<{ usuario: string }>('SELECT current_user::text AS usuario');
       expect(rows[0]?.usuario).toBe(ROL);
     });

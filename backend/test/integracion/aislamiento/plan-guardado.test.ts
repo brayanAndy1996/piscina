@@ -108,7 +108,8 @@ describe('criterio 145: un plan guardado en la conexion del pool no lleva la aca
   it('criterio 145 (premisa): el disparador de la prueba funciona: una insercion con el contexto de una academia ve solo sus filas', async () => {
     await prepararEnLaBase();
 
-    const { rows } = await ejecutarComo('propietario', INSERTAR_Y_LEER, [datos.A.id, `${PREFIJO}premisa`], {
+    // Con el rol de la app (sujeto a RLS): el duenio puede ser superusuario (CI y Docker) y entonces se salta RLS y veria A y B.
+    const { rows } = await ejecutarComo('app', INSERTAR_Y_LEER, [datos.A.id, `${PREFIJO}premisa`], {
       academiaId: datos.A.id,
     });
 
