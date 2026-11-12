@@ -15,7 +15,7 @@ import {
 import { conClienteComo, conTransaccionRevertida } from '../../utilidades/base-datos';
 
 // AMPLIADO POR EL CRITERIO 131 (ataque ronda 6, F1 (b)): las consultas miran todos los esquemas revisados (todos menos `pg_catalog`,
-// `information_schema`, `pg_toast`, los temporales y los de una extension; sin los objetos de extensiones), no solo `public`. Los
+// `information_schema`, `pg_toast` y los temporales; sin los objetos de extensiones; criterio 142: un esquema de extension tambien se revisa), no solo `public`. Los
 // nombres se comparan como `esquema.nombre` y la lista de funciones `SECURITY DEFINER` permitidas (hoy vacia) se escribe con el
 // esquema (`public.nombre`). Las consultas estan en `backend/test/utilidades/catalogo.ts`; que detectan objetos de otro esquema lo
 // comprueba `catalogo-esquemas.test.ts`. Lo que se comprueba en `public` no cambia.

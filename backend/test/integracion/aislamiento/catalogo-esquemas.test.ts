@@ -19,7 +19,7 @@ import { puedeCrearEsquemas } from '../../utilidades/ronda5';
 
 // Criterio 131 (ataque ronda 6, F1 (b); amplia los criterios 9, 10, 11, 12, 124 y 126): las pruebas de catalogo revisan las
 // relaciones, funciones, reglas, indices, restricciones y politicas de todos los esquemas revisados (todos menos `pg_catalog`,
-// `information_schema`, `pg_toast`, los temporales y los de una extension; sin los objetos de extensiones), no solo de `public`.
+// `information_schema`, `pg_toast` y los temporales; sin los objetos de extensiones; criterio 142: un esquema de extension tambien se revisa), no solo de `public`.
 //   - Las excepciones por nombre (`_prisma_migrations` del criterio 9 y la lista del criterio 10) valen solo en `public`: una tabla con
 //     ese nombre en otro esquema no tiene excepcion.
 //   - "Tabla con `academia_id`" en los criterios 11, 12, 126, 132 y 133 es una tabla de cualquiera de esos esquemas.

@@ -4,9 +4,11 @@ import type pg from 'pg';
 /**
  * Consultas de catalogo que comparten las pruebas de los criterios 9, 10, 11, 12, 124 y 126 y sus autocomprobaciones (criterio
  * 131, ataque ronda 6). Antes cada prueba miraba solo el esquema `public`; desde el criterio 131 miran los ESQUEMAS REVISADOS:
- * todos los de `pg_catalog.pg_namespace` salvo `pg_catalog`, `information_schema`, `pg_toast`, los temporales (`pg_temp_N` y
- * `pg_toast_temp_N`) y los que pertenecen a una extension; y no cuentan los objetos que pertenecen a una extension
- * (`pg_depend` con `deptype = 'e'` hacia `pg_extension`). Los nombres que devuelven las consultas llevan siempre el esquema
+ * todos los de `pg_catalog.pg_namespace` salvo `pg_catalog`, `information_schema`, `pg_toast` y los temporales (`pg_temp_N` y
+ * `pg_toast_temp_N`); y no cuentan los objetos que pertenecen a una extension (`pg_depend` con `deptype = 'e'` hacia
+ * `pg_extension`). Criterio 142 (ataque ronda 8, F1; ajusta el 131): un esquema que pertenece a una extension (`ALTER EXTENSION ...
+ * ADD SCHEMA`) YA ES un esquema revisado; solo se excluye el objeto de extension (`relacionDeExtension` y `funcionDeExtension`).
+ * Los nombres que devuelven las consultas llevan siempre el esquema
  * (`public.auditoria`), y las excepciones por nombre (`public._prisma_migrations`, la lista del criterio 10, las de los criterios
  * 124 y 126) valen solo en `public`: una tabla con ese nombre en otro esquema no tiene excepcion.
  *
@@ -15,13 +17,13 @@ import type pg from 'pg';
 
 export type Consulta = (cliente: pg.ClientBase) => Promise<string[]>;
 
-/** Condicion SQL: el esquema `n` es un esquema revisado (criterio 131). */
+/**
+ * Condicion SQL: el esquema `n` es un esquema revisado (criterios 131 y 142). Un esquema que pertenece a una extension TAMBIEN lo es
+ * (criterio 142, ataque ronda 8): lo unico que se excluye son los objetos de extension, no el esquema entero.
+ */
 export const esquemasRevisados = (n = 'n'): string =>
   `(${n}.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-     AND ${n}.nspname !~ '^pg_(toast_)?temp_'
-     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend dn
-                      WHERE dn.classid = 'pg_catalog.pg_namespace'::pg_catalog.regclass AND dn.objid = ${n}.oid
-                        AND dn.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND dn.deptype = 'e'))`;
+     AND ${n}.nspname !~ '^pg_(toast_)?temp_')`;
 
 /** Condicion SQL: la relacion `c` (`pg_class`) es un objeto de una extension. */
 export const relacionDeExtension = (c = 'c'): string =>

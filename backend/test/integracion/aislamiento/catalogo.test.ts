@@ -15,8 +15,8 @@ import {
 import { conClienteComo, ejecutarComo } from '../../utilidades/base-datos';
 
 // Criterios 9 a 12 (spec 001). AMPLIADO POR EL CRITERIO 131 (ataque ronda 6, F1 (b)): las pruebas de catalogo miran las relaciones, las
-// restricciones y las politicas de TODOS los esquemas revisados (todos menos `pg_catalog`, `information_schema`, `pg_toast`, los
-// temporales y los de una extension; sin los objetos de extensiones), no solo `public`. Las excepciones por nombre
+// restricciones y las politicas de TODOS los esquemas revisados (todos menos `pg_catalog`, `information_schema`, `pg_toast` y los
+// temporales; sin los objetos de extensiones; criterio 142: un esquema que pertenece a una extension tambien se revisa), no solo `public`. Las excepciones por nombre
 // (`public._prisma_migrations` del criterio 9 y la lista del criterio 10) valen solo en `public`; "tabla con `academia_id`" es una
 // tabla de cualquiera de esos esquemas, y los nombres se comparan como `esquema.tabla`. Lo que se comprueba en `public` no cambia.
 // Las consultas compartidas estan en `backend/test/utilidades/catalogo.ts`; la autocomprobacion de que detectan una tabla de otro
