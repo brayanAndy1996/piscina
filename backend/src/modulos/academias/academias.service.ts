@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { AcademiaResumen, CrearAcademia } from '@aquagestion/contratos';
 import { ErrorNegocio } from '../../comun/errores';
 import { fechaDeBase, fechaDeBaseONula } from '../../comun/fechas';
@@ -166,7 +166,7 @@ export class AcademiasService {
     const filas = await tx.cliente.$queryRaw<{ estado: 'ACTIVA' | 'SUSPENDIDA' }[]>`
       SELECT estado::text AS estado FROM academias WHERE id = ${id}::uuid FOR UPDATE`;
     const fila = filas[0];
-    if (!fila) throw new NotFoundException();
+    if (!fila) throw new ErrorNegocio(404, 'NO_ENCONTRADO', 'No se encontró el recurso solicitado.');
     return fila.estado;
   }
 

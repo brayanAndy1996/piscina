@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 import { ErrorNegocio } from '../../comun/errores';
 import { fechaDeBaseONula } from '../../comun/fechas';
+import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
 import { BaseDatos } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import {
@@ -14,8 +15,6 @@ import {
 } from '../../infraestructura/seguridad';
 import { estaBloqueado, evaluarIntentoFallido, REGLAS_BLOQUEO_SUPERADMIN } from './dominio/bloqueo';
 import { DURACION_SESION_PLATAFORMA_SEGUNDOS, TIPO_TOKEN_PLATAFORMA, type SuperadminAutenticado } from './tipos';
-
-const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function noAutenticado(): ErrorNegocio {
   return new ErrorNegocio(401, 'NO_AUTENTICADO', 'Debes iniciar sesión para continuar.');

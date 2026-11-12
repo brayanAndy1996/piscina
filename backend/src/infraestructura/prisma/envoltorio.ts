@@ -59,7 +59,7 @@ type MetodoCrudo = '$queryRaw' | '$executeRaw';
 const MENSAJE_CONSULTA_NO_VALIDA = 'Consulta no válida: usa una plantilla etiquetada o sql del punto autorizado.';
 
 /** `Academia` -> `academia`: el nombre del delegado en el cliente de Prisma. */
-const nombreDelDelegado = (modelo: string): string => `${modelo.charAt(0).toLowerCase()}${modelo.slice(1)}`;
+export const nombreDelDelegado = (modelo: string): string => `${modelo.charAt(0).toLowerCase()}${modelo.slice(1)}`;
 
 const nada = (): void => undefined;
 

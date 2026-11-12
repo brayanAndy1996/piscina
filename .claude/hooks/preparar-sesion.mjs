@@ -13,8 +13,9 @@
 //   6. Imprime un resumen breve, una línea por paso.
 //
 // Siempre termina con código 0 para no bloquear la sesión; si un paso falla, la salida dice cuál, por qué y cómo
-// reintentar. Nunca imprime la contraseña de la base. Solo usa módulos incluidos en Node (se ejecuta antes de npm ci)
-// y lanza los comandos externos sin shell, con los argumentos separados.
+// reintentar. Nunca imprime la contraseña de la base. Solo usa módulos incluidos en Node (se ejecuta antes de npm ci),
+// salvo `dotenv`, que carga únicamente si ya está instalado; lanza los comandos externos sin shell, con los argumentos
+// separados.
 //
 // Las utilidades de scripts/lib/entorno.mjs se cargan con import() dinámico, solo en la nube y dentro de try/catch:
 // fuera de la nube nunca se leen, y en la nube un fallo al cargarlas se informa como paso fallido.

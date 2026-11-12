@@ -3,6 +3,7 @@ import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PinoLogger } from 'nestjs-pino';
 import { PrismaClient, type Prisma } from '../../generated/prisma/client';
+import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
 import { ENTORNO, type Entorno } from '../entorno';
 import { cerrarCursores } from './cursores';
 import { envolver } from './envoltorio';
@@ -41,8 +42,6 @@ interface FilaEsquemaAfectado {
   crea: boolean;
   su_nombre: boolean;
 }
-
-const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Tiempo máximo para obtener una conexión del pool y para que termine una transacción, en milisegundos. */
 const ESPERA_CONEXION_MS = 10_000;

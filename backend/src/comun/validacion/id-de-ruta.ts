@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, type PipeTransform } from '@nestjs/common';
-
-const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { PATRON_UUID } from './patron-uuid';
 
 /**
  * Pipe para un identificador de la dirección (`/academias/:id/...`): si no es un UUID, el recurso no puede existir y

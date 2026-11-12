@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../generated/prisma/client';
-import { OPERACIONES } from './envoltorio';
+import { nombreDelDelegado, OPERACIONES } from './envoltorio';
 import { ErrorTransaccionAbortada } from './errores';
 import { codigoDeErrorDeBase } from './errores-base';
 
@@ -42,9 +42,6 @@ export interface CapaDePuntosDeGuardado {
   /** Lanza `ErrorTransaccionAbortada` si alguna sentencia de la capa falló o dejó la transacción abortada. */
   readonly exigirSana: () => void;
 }
-
-/** `Academia` -> `academia`: el nombre del delegado en el cliente de Prisma. */
-const nombreDelDelegado = (modelo: string): string => `${modelo.charAt(0).toLowerCase()}${modelo.slice(1)}`;
 
 export function conPuntosDeGuardado(tx: Prisma.TransactionClient): CapaDePuntosDeGuardado {
   // Nombre aleatorio por capa (una transacción). Se genera aquí y se valida: es un identificador, no un parámetro, y nunca sale
