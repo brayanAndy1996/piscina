@@ -684,6 +684,17 @@ La reutiliza 002 para los usuarios de academia.
   - `eslint/regla-promesas-descartadas-ronda14.test.mjs` (164: paso protegido en `.ts`, `.js` y `.mjs` con las formas de
     temporizadores que fallan y que pasan, comentarios que no apagan la regla, envoltorios de tipos; lint normal con tipos
     en `ejemplo.service.ts`; pruebas y frontend fuera de alcance).
+- **Protegidas del ataque ronda 15 (test-writer)** _(criterios 165 y 166; nombres orientativos)_:
+  - `backend/src/infraestructura/prisma/registro-de-errores-ronda15.test.ts` (165, unitarias (u1) a (u14) de
+    `errorParaRegistro` con las excepciones reales de `@nestjs/common` y el error falso `base`, comprobadas con
+    `util.inspect` con `showHidden`, `JSON.stringify` y un `pino` con destino en memoria; 166, unitarias (o1) a (o5) de
+    `errorParaRegistro`, `causaLimpia` y el constructor de `ErrorTransaccionAbortada`);
+  - `backend/src/infraestructura/proceso/rechazos-ronda15.test.ts` (165, manejador de P-40 con (u1) y (u4));
+  - `backend/src/cli/mensaje-seguro-ronda15.test.ts` (165 y 166, `mensajeSeguro` con (u1), (u4), la cadena de (u12) y
+    (o1));
+  - `aislamiento/registro-sin-datos-ronda15.test.ts` (165 con el error real de `auditoria.create`: comprobación previa de
+    que el valor está en su mensaje, `errorParaRegistro` dentro de (u1), (u2), (u8) y (u10), y las rutas (a1) a (a3) de un
+    controlador de prueba con el registro capturado).
 
 ### 14. Correcciones del ataque, ronda 2 (criterios 80 a 91)
 
@@ -2253,6 +2264,8 @@ export function errorParaRegistro(error: unknown): unknown {
   cumple el patrón.
 - `modelo`: de `meta.modelName` solo si está en `Prisma.ModelName`.
 - Nada de esto lanza: cada lectura va por `leer` y la recursión tiene límite de profundidad y un `WeakSet` de vistos.
+- _(Cambiado tras la ronda 15, criterios 165 y 166: `llevaBaseSinLimpiar` y `copiaConCausasLimpias` se reemplazan por la
+  búsqueda en todo el grafo y la conversión de la sección 27; `tipo` de un error de la base, de la lista cerrada.)_
 - `index.ts` exporta `CausaLimpia`, `causaLimpia`, `esErrorDeBase`, `errorParaRegistro` y el tipo
   `CircunstanciaDeLaCausa`.
 
@@ -2397,6 +2410,241 @@ de la ronda 13:
 > - El registro técnico de un error de la base conserva solo los marcos que siguen al encabezado `nombre: mensaje`
 >   (criterio 163).
 
+### 27. Correcciones del ataque, ronda 15 (criterios 165 y 166)
+
+La ronda 15 encontró una falla media (F1: `throw new InternalServerErrorException(error)` y las demás excepciones de 5xx de
+Nest guardan el error de Prisma en `response` y copian su mensaje a `message`; `errorParaRegistro` las devolvía tal cual) y
+tres observaciones (O1: `tipo` sin lista cerrada; O2: `::money` rechaza con un `Error` común con el valor; y cinco formas de
+lint que escapan a las reglas). Lo que corrige: 165 busca errores de la base en todo el grafo del error y registra el que
+los lleva en una forma limpia; 166 cierra la lista de `tipo`. La O2 es una regla para todas las historias (abajo) y las
+formas de lint amplían el riesgo aceptado "Promesa descartada que escapa al lint". No hay migraciones nuevas.
+
+Código de producción que cambia: `backend/src/infraestructura/prisma/registro-de-errores.ts` (búsqueda, conversión y
+`tipo`) y `backend/src/cli/mensaje-seguro.ts`. `filtro-errores.ts`, `rechazos.ts` y `main.ts` no cambian: ya llaman a
+`errorParaRegistro`. `index.ts` no exporta nada nuevo.
+
+**Búsqueda en el grafo (criterio 165, precisión de P-42).** En `registro-de-errores.ts` (orientativo):
+
+```ts
+const PROFUNDIDAD_MAXIMA = 10;
+const OBJETOS_MAXIMOS = 200;
+const CLAVES_MAXIMAS = 100;
+const DE_LA_BASE_MAXIMOS = 10;
+
+/** Lee `objeto[clave]` (texto o Symbol) sin dejar que un getter lance. */
+const leerClave = (objeto: object, clave: PropertyKey): unknown => {
+  try { return Reflect.get(objeto, clave); } catch { return undefined; }
+};
+
+/** Propias (texto y Symbol, enumerables o no) y enumerables heredadas. Lanza si el objeto no deja listarlas (un Proxy). */
+function clavesDe(objeto: object): PropertyKey[] {
+  const claves = new Set<PropertyKey>(Reflect.ownKeys(objeto));
+  // eslint-disable-next-line guard-for-in -- se buscan también las heredadas enumerables: pino las serializa
+  for (const clave in objeto) claves.add(clave);
+  return [...claves];
+}
+
+interface Busqueda { readonly deLaBase: readonly object[]; readonly agotada: boolean }
+
+/** Recorre el grafo de `raiz` por niveles y junta los errores de la base (sin entrar en ellos ni en las CausaLimpia). */
+function buscarErroresDeLaBase(raiz: object): Busqueda {
+  const vistos = new WeakSet<object>([raiz]);
+  const deLaBase: object[] = [];
+  let pendientes: object[] = [raiz];
+  let visitados = 1;
+  for (let nivel = 0; pendientes.length > 0; nivel++) {
+    const siguientes: object[] = [];
+    for (const objeto of pendientes) {
+      let claves: PropertyKey[];
+      try { claves = clavesDe(objeto); } catch { return { deLaBase, agotada: true }; }
+      if (claves.length > CLAVES_MAXIMAS) return { deLaBase, agotada: true };
+      for (const clave of claves) {
+        const valor = leerClave(objeto, clave);
+        if (!esObjeto(valor) || vistos.has(valor)) continue;
+        vistos.add(valor);
+        if (valor instanceof CausaLimpia) continue;
+        if (esErrorDeBase(valor)) { deLaBase.push(valor); continue; }
+        if (nivel + 1 > PROFUNDIDAD_MAXIMA || ++visitados > OBJETOS_MAXIMOS) return { deLaBase, agotada: true };
+        siguientes.push(valor);
+      }
+    }
+    pendientes = siguientes;
+  }
+  return { deLaBase, agotada: false };
+}
+```
+
+- `esObjeto` es el de hoy (`typeof 'object'` y no `null`): las funciones no se recorren (riesgo aceptado "Errores de la
+  base fuera del alcance de la búsqueda").
+- La regla `guard-for-in` puede no estar activa; si no lo está, el comentario sobra. Si el lint señala `for…in` por otra
+  regla, se usa la forma equivalente con `Object.getPrototypeOf` y `Object.keys` en cada prototipo (sin `Object.prototype`).
+
+**Mensajes de la base (criterio 165).**
+
+```ts
+interface MensajesDeLaBase { readonly textos: readonly string[]; readonly verificables: boolean }
+
+function mensajesDeLaBase(deLaBase: readonly object[]): MensajesDeLaBase {
+  const textos: string[] = [];
+  let verificables = true;
+  for (const error of deLaBase) {
+    let mensaje: unknown;
+    try { mensaje = Reflect.get(error, 'message'); } catch { verificables = false; continue; }
+    if (typeof mensaje === 'string') { if (mensaje !== '') textos.push(mensaje); }
+    else if (mensaje !== undefined) verificables = false;
+  }
+  return { textos, verificables };
+}
+
+/** Para `mensaje`: inclusión en los dos sentidos (criterio 165). */
+const copia = (texto: string, de: MensajesDeLaBase): boolean =>
+  !de.verificables || de.textos.some((m) => texto.includes(m) || m.includes(texto));
+```
+
+**Conversión (criterio 165).**
+
+```ts
+/** `name` solo si es el de su constructor y tiene forma de identificador (criterio 165). */
+function nombreDeClase(error: unknown): string {
+  const nombre = leerSeguro(error, 'name');
+  const deLaClase = leerSeguro(leerSeguro(error, 'constructor'), 'name');
+  return typeof nombre === 'string' && nombre === deLaClase && NOMBRE_DE_TIPO.test(nombre) ? nombre : 'Error';
+}
+
+interface Contexto { readonly mensajes: MensajesDeLaBase; readonly colocados: Set<object>; readonly enCadena: WeakSet<object> }
+
+function convertir(valor: unknown, nivel: number, contexto: Contexto): unknown {
+  if (!esObjeto(valor)) return { tipo: typeof valor };
+  if (valor instanceof CausaLimpia) return valor;
+  if (esErrorDeBase(valor)) { contexto.colocados.add(valor); return limpio(valor); }
+  if (!(valor instanceof Error)) return { tipo: typeof valor };
+  if (nivel > PROFUNDIDAD_MAXIMA || contexto.enCadena.has(valor)) return { tipo: 'truncado' };
+  contexto.enCadena.add(valor);
+  const mensaje = leerSeguro(valor, 'message');
+  const pila = pilaSinEncabezado(valor);                    // criterio 163
+  const pilaStack = leerSeguro(valor, 'stack');
+  const conservaMensaje = typeof mensaje === 'string' && !copia(mensaje, contexto.mensajes);
+  const { textos, verificables } = contexto.mensajes;
+  const conservaPila =                                       // criterio 165: solo "contiene", en un sentido
+    pila !== undefined && verificables && typeof mensaje === 'string' && typeof pilaStack === 'string' &&
+    !textos.some((m) => mensaje.includes(m) || pilaStack.includes(m));
+  const causa = leerSeguro(valor, 'cause');
+  const varios = leerSeguro(valor, 'errors');
+  return {
+    tipo: nombreDeClase(valor),
+    ...(conservaMensaje ? { mensaje } : {}),
+    ...(conservaPila ? { pila } : {}),
+    ...(causa === undefined ? {} : { causa: convertir(causa, nivel + 1, contexto) }),
+    ...(Array.isArray(varios)
+      ? { errores: (varios as unknown[]).slice(0, NIVELES_MAXIMOS).map((e) => convertir(e, nivel + 1, contexto)) }
+      : {}),
+  };
+}
+
+export function errorParaRegistro(error: unknown): unknown {
+  try {
+    if (!(error instanceof Error)) return { tipo: typeof error };
+    if (error instanceof CausaLimpia) return error;
+    if (esErrorDeBase(error)) return limpio(error);
+    const { deLaBase, agotada } = buscarErroresDeLaBase(error);
+    if (deLaBase.length === 0 && !agotada) return error;    // como hoy
+    const resto = (colocados: Set<object>) => deLaBase.filter((e) => !colocados.has(e));
+    if (agotada) {
+      const encontrados = deLaBase.slice(0, DE_LA_BASE_MAXIMOS).map(limpio);
+      return { tipo: nombreDeClase(error), truncado: true, ...(encontrados.length > 0 ? { erroresDeLaBase: encontrados } : {}) };
+    }
+    const contexto: Contexto = { mensajes: mensajesDeLaBase(deLaBase), colocados: new Set(), enCadena: new WeakSet() };
+    const convertido = convertir(error, 0, contexto) as Record<string, unknown>;
+    const otros = resto(contexto.colocados);
+    return {
+      ...convertido,
+      ...(otros.length > 0 ? { erroresDeLaBase: otros.slice(0, DE_LA_BASE_MAXIMOS).map(limpio) } : {}),
+      ...(otros.length > DE_LA_BASE_MAXIMOS ? { truncado: true } : {}),
+    };
+  } catch {
+    return { tipo: 'Error' };
+  }
+}
+```
+
+- `copiaConCausasLimpias` y `llevaBaseSinLimpiar` desaparecen (los reemplazan `convertir` y `buscarErroresDeLaBase`);
+  `hijosDe` también, si no queda otro uso.
+- La conversión de la cadena vuelve a leer `cause` y `errors`: si un getter devuelve otra cosa la segunda vez, lo que
+  aparece se convierte con las mismas reglas (un error de la base nuevo sale en su forma limpia, aunque no estuviera en
+  `textos`; su mensaje no se compara: es un getter hostil). Lo nota el adversarial si importa.
+- `limpio(error)` es el de hoy, con `tipo` del criterio 166.
+- La búsqueda cuesta un recorrido acotado del error solo cuando se registra (500, rechazo sin manejar, arranque, comandos):
+  no está en el camino de las peticiones que terminan bien.
+
+**`tipo` de la lista cerrada (criterio 166).**
+
+```ts
+const TIPOS_DE_BASE: ReadonlySet<string> = new Set([
+  'PrismaClientKnownRequestError', 'PrismaClientUnknownRequestError', 'PrismaClientValidationError',
+  'PrismaClientInitializationError', 'PrismaClientRustPanicError', 'DriverAdapterError', 'DatabaseError', 'CausaLimpia',
+]);
+const tipoDeBase = (error: unknown): string => {
+  const nombre = leerSeguro(error, 'name');
+  return typeof nombre === 'string' && TIPOS_DE_BASE.has(nombre) ? nombre : 'ErrorDeBase';
+};
+// datosSeguros(error): tipo = esErrorDeBase(error) ? tipoDeBase(error) : nombreDeClase(error)
+```
+
+- `NOMBRES_DE_BASE` (el conjunto de `esErrorDeBase`) puede ser el mismo conjunto; `esErrorDeBase` no cambia (sigue
+  aceptando los nombres que empiezan por `PrismaClient`).
+- `causaLimpia` toma `tipo` de `datosSeguros`, así que el mensaje y la propiedad `tipo` de la `CausaLimpia` siguen la
+  lista. Con una `CausaLimpia` recibida, su `tipo` ya está en la lista.
+
+**`mensajeSeguro` (criterio 165).** En `cli/mensaje-seguro.ts` (orientativo):
+
+```ts
+function primeroDeLaBase(valor: unknown, vistos = new Set<unknown>()): Record<string, unknown> | undefined {
+  // recorre causa y errores a lo hondo y luego erroresDeLaBase; devuelve el primer objeto con tipo y sin `mensaje`
+  // que vino de `limpio` (tiene codigoPrisma, sqlstate o codigoDeSistema, o su tipo está en la lista cerrada)
+}
+
+export function mensajeSeguro(error: unknown, secretos: readonly (string | undefined)[]): string {
+  let texto: string;
+  if (esErrorDeBase(error) && !(error instanceof CausaLimpia)) texto = textoDeErrorDeBase(errorParaRegistro(error));
+  else if (error instanceof Error) {
+    const registrado = errorParaRegistro(error);
+    if (registrado === error) texto = error.message;
+    else {
+      const r = registrado as Record<string, unknown>;
+      const base = primeroDeLaBase(r);
+      texto = typeof r['mensaje'] === 'string' ? r['mensaje']
+        : base !== undefined ? textoDeErrorDeBase(base)
+        : `error sin detalles (${String(r['tipo'])})`;
+    }
+  } else texto = String(error);
+  // … reemplazo de secretos, primera línea y 300 caracteres, como hoy
+}
+```
+
+`textoDeErrorDeBase` pasa a recibir el objeto limpio (hoy llama a `errorParaRegistro` dentro).
+
+**Regla para todas las historias: sin `money` (O2).** No se usa el tipo `money` de PostgreSQL, ni en columnas ni en
+conversiones (`::money`): sus errores llegan como `[DecimalError]` de `decimal.js`, un `Error` común que no es de la base y
+cuyo mensaje lleva el valor. Los montos van en `numeric` y `Decimal` (`CLAUDE.md`). El revisor lo busca en cada historia
+(`rg -i "money" backend/`). Riesgo aceptado "Tipo `money` en consultas".
+
+**Nota para el revisor (cada historia, ronda 15).** Además de lo de la ronda 13 ("Mensajes propios que copian el de
+Prisma"): a una excepción de Nest se le pasa un mensaje propio y `{ cause: error }`, nunca el error ni su mensaje como
+respuesta (`rg "Exception\((e|err|error)\b" backend/src`, y `.message` dentro de un `catch`). Y las cinco formas de lint de
+la ronda 15 (`async function(){}.bind(…)` pasada a un temporizador, `setTimeout(() => (async () => …)(), 0)`, un `callee`
+condicional o con coma y `x && (async () => …)()`): el riesgo aceptado "Promesa descartada que escapa al lint".
+
+**Revisión de 001.** Se espera que ningún servicio de 001 envuelva un error de la base en una excepción de Nest ni use
+`money` (hoy no hay ninguno); si el revisor encuentra uno, se corrige con un mensaje propio y `{ cause }`.
+
+Texto propuesto para `docs/arquitectura.md` (lo agrega el documentador en el cierre, T24), a continuación de las viñetas
+de la ronda 14:
+
+> - Un error se envuelve con un mensaje propio y `{ cause: error }`: `new InternalServerErrorException('No se pudo …',
+>   { cause: error })`, no `new InternalServerErrorException(error)`. El registro técnico limpia igual el error de la base
+>   en cualquier propiedad (spec 001, criterio 165), pero solo con `{ cause }` se conserva el mensaje propio.
+> - No se usa el tipo `money` de PostgreSQL: los montos van en `numeric` y `Decimal`.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -2505,6 +2753,14 @@ de la ronda 13:
 | Riesgo "Promesa descartada que escapa al lint" corregido, sin mecanismo en ejecución; nota para el revisor (O1) | Marcar todo rechazo no esperado por `trabajo`; regla de lint que siga las variables con promesas | Indistinguible del rechazo atrapado a propósito (153); exige seguir el flujo de datos; valen las razones de la ronda 13 contra F1 (c) |
 | Funciones `async` en el lugar pasadas a `nextTick`, `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask`, en la regla propia, por nombre de la propiedad (criterio 164) | Más opciones de `no-misused-promises`; `no-restricted-syntax`; prohibir esas funciones | No revisa parámetros `Function`; se pisaría con la regla del reloj; `asentar()` y los temporizadores legítimos las usan |
 | La regla mira a través de `as`, `satisfies`, `!` y `<T>` (criterio 164) | Dejarlo a la revisión | Es la evasión más simple de una regla sin tipos y cuesta unas líneas |
+| Errores de la base buscados en todo el grafo del error: propias (enumerables o no, con `Symbol`) y enumerables heredadas (ataque ronda 15, criterio 165) | Agregar `response` y `options` a `cause` y `errors`; serializador `err` propio de pino; limpiar solo en el filtro | Caso por caso, la siguiente librería usa otro nombre; pino no cubre `console.error` ni `mensajeSeguro` y cambiaría el registro de todo `Error` común; el manejador y el arranque también registran |
+| Topes de 10 niveles, 200 objetos y 100 claves con falla cerrada (criterio 165) | Sin topes; devolver el error tal cual al agotarlos | Un getter que crea objetos o un arreglo enorme colgarían el registro; el error de la base podía estar más abajo |
+| `mensaje` del `Error` que lleva uno de la base solo si no copia su mensaje, por inclusión en los dos sentidos (criterio 165) | Nunca `mensaje` (indicación del orquestador); comparar por líneas | Cambiaría el resultado de cuatro protegidas de 162 y 163; las líneas cortas de Prisma (`{`, `}`) quitarían casi todo mensaje propio |
+| `pila` de esos errores con la regla del 163, omitida si `message` o `stack` contienen el mensaje de la base (criterio 165) | La pila completa; nunca pila | El encabezado lleva el mensaje de Prisma en el patrón de Nest; se perdería dónde se lanzó la excepción |
+| `tipo` de un `Error` que no es de la base: `name` igual al de su constructor (criterio 165) | Lista cerrada de la base; lista de excepciones de Nest y propias; el patrón de hoy | Daría `ErrorDeBase` a una excepción de Nest y cambiaría una protegida; se queda corta con cada historia; un `name` asignado a mano pasaría |
+| `tipo` de un error de la base de la lista cerrada de P-42, con `ErrorDeBase` para lo demás (criterio 166) | El patrón de hoy | Es la observación O1: un `name` con datos llegaba al registro |
+| Sin `money` en las consultas, como regla del plan (O2) | `DecimalError` como error de la base; limpiar todo `Error` común | No es de la base y no se sabe si lleva un valor; perdería el diagnóstico de los errores propios |
+| Formas de lint de la ronda 15 al riesgo aceptado (decisión del orquestador) | Ampliar otra vez la regla propia | Alias y formas hostiles sin fin; las cubren la regla para el equipo y el revisor |
 
 ## Migraciones
 
@@ -2540,6 +2796,8 @@ de la ronda 13:
 - Ronda 13: sin migraciones nuevas. El lint, la marca del envoltorio, la causa limpia y el serializador de errores son
   de código.
 - Ronda 14: sin migraciones nuevas. La lectura de la pila y la ampliación de la regla de lint son de código.
+- Ronda 15: sin migraciones nuevas. La búsqueda en el grafo, la lista cerrada de `tipo` y `mensajeSeguro` son de código;
+  la regla de no usar `money` no toca ninguna tabla (ninguna lo usa).
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
@@ -2680,5 +2938,20 @@ de la ronda 13:
 - **Valores que PostgreSQL no repite** _(ataque ronda 14, criterio 163)_: las reproducciones (a) y (c) dependen de que
   PostgreSQL 16 repita el valor rechazado en el mensaje y de que Prisma lo copie al `stack`. La prueba lo comprueba antes
   (si no se reproduce, el test-writer se detiene e informa, en vez de dejar una prueba que pasa sin probar nada).
+- **Forma de las excepciones de Nest 12** _(ataque ronda 15, criterio 165)_: el diseño y las reproducciones suponen que
+  `new InternalServerErrorException(objeto)` y `new HttpException(objeto, 503)` guardan el objeto tal cual en `response` y
+  copian `response.message` a `message` (`HttpException.createBody` e `initMessage`). La prueba lo comprueba antes en (u1);
+  si la versión instalada se comporta distinto, el test-writer se detiene e informa en vez de dejar una prueba que pasa
+  sin probar nada.
+- **Nombres reales de Prisma 7 fuera de la lista** _(ataque ronda 15, criterio 166)_: si algún error real de Prisma o del
+  adaptador tiene un `name` que no está en la lista cerrada (por ejemplo, otra clase `PrismaClient…`), su `tipo` pasa a
+  `ErrorDeBase` y las protegidas de 162 y 163 que comparan `tipo` con `name` en los `PrismaClient…` reales fallarían. El
+  backend se detiene e informa; ampliar la lista es una decisión nueva.
+- **`for…in` y el lint** _(ataque ronda 15, criterio 165)_: recorrer las enumerables heredadas puede chocar con
+  `guard-for-in` o con reglas de `typescript-eslint` sobre `for…in`; si pasa, se usa la forma equivalente con
+  `Object.getPrototypeOf` y `Object.keys` por prototipo, sin apagar la regla.
+- **Costo de la búsqueda en el registro** _(ataque ronda 15, criterio 165)_: hasta 200 objetos y 100 claves por objeto en
+  cada registro de un 5xx o de un rechazo sin manejar; despreciable frente a la petición que falló, y no corre en las que
+  terminan bien. Si una prueba protegida con tiempos ajustados cambiara de resultado, el backend se detiene e informa.
 - **Pruebas de concurrencia (criterios 24, 40, 50, 54):** dependen del tamaño del pool y pueden ser lentas en la CI;
   mantener 10 a 50 operaciones y un `testTimeout` holgado.

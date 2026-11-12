@@ -171,6 +171,12 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   - 164: auditoría (RN-22) y, desde las historias siguientes, pagos, caja, aforo y asistencia; una función `async` pasada a
     `process.nextTick` no la ve ninguna regla de lint, y si su consulta falla mientras `trabajo` sigue en curso nada marca
     la transacción y se confirma lo anterior sin la auditoría (la misma familia que las rondas 12 y 13).
+- **X. Correcciones del ataque, ronda 15 (165 y 166):**
+  - 165: datos sensibles (Ley 29733, RNF-05); con el patrón habitual de NestJS que envuelve el error de Prisma en una
+    excepción de 5xx, el registro técnico del 500 o del 503 mostraba el DNI y la alergia que el criterio 162 debía quitar, y
+    cualquiera con acceso a los registros los leía; y cada historia siguiente (pagos, asistencia, datos médicos) escribirá
+    ese patrón.
+  - 166: datos sensibles; un `tipo` que no sale de una lista cerrada deja pasar al registro lo que un `name` lleve.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 6 a 8 (preparación del rol con
 scripts; la garantía está en 1 y 4), 27 (opciones de aislamiento), 49 (formato del nombre corto; la unicidad sí es
@@ -2641,7 +2647,9 @@ Contrato nuevo: precisiones P-39 y P-40 y precisión de P-38. Todos son _(críti
 157. **Un rechazo sin manejar en la API se registra y no detiene el proceso** _(ataque ronda 12, F1, forma `void`;
      decisión del especificador)_ _(precisado por los criterios 159 y 162, ataque ronda 13: `main.ts` arranca con
      `arrancar().catch(…)` en lugar de `void arrancar()`, y un error de Prisma o de la base se registra en su forma limpia
-     de P-42; un `Error` que no es de la base se sigue registrando como `{ err: <el mismo error> }`)_. Dado que una promesa
+     de P-42; un `Error` que no es de la base se sigue registrando como `{ err: <el mismo error> }`)_ _(precisado por el
+     criterio 165, ataque ronda 15, F1: un `Error` que no es de la base pero lleva uno en cualquier propiedad, a cualquier
+     profundidad, se registra en la forma limpia del 165; sin ninguno, sigue siendo el mismo error)_. Dado que una promesa
      rechazada que nadie maneja (por ejemplo, la de una función
      `async` lanzada con `void` cuya llamada al envoltorio rechaza) hoy termina el proceso de la API (Node 22, modo
      `throw`) y corta las peticiones en curso de todas las academias, entonces:
@@ -2873,7 +2881,9 @@ P-38 y P-40. Todos son _(crítico)_.
      con `ErrorTransaccionAbortada`), 22, 23, 24, 106 y 134. Si alguna cambiara, el test-writer o el backend se detienen e
      informan. _(crítico)_
 161. **La causa de `ErrorTransaccionAbortada` nunca lleva el mensaje de Prisma ni los valores** _(ataque ronda 13, F2;
-     **precisa** los criterios 149, 154 y 158 y P-36; decisión del orquestador, forma del especificador)_. Dado que, cuando
+     **precisa** los criterios 149, 154 y 158 y P-36; decisión del orquestador, forma del especificador)_ _(precisado por el
+     criterio 166, ataque ronda 15, O1: "el tipo del error original (de una lista cerrada)" es la lista de P-42 con
+     `ErrorDeBase` para cualquier otro error de la base; lo que no es de la base, con el `tipo` del criterio 165)_. Dado que, cuando
      la comprobación de la capa de puntos de guardado da `25P02`, la capa marcaba la transacción con el error de la
      escritura como causa, y que el registro del 500 (`FiltroErrores` con `{ err }` y pino, que serializa la `cause`)
      mostraba el mensaje de Prisma con los valores (`invalid input syntax for type inet: "DNI 44556677"`), entonces:
@@ -2910,7 +2920,13 @@ P-38 y P-40. Todos son _(crítico)_.
      **precisa** los criterios 149 y 157 y P-40; decisión del orquestador, forma del especificador; RNF-05 y Ley 29733)_
      _(precisado por el criterio 163, ataque ronda 14, F1: "las líneas de marco de la pila" se leen solo **después** de
      quitar del `stack` el encabezado exacto `nombre: mensaje`; si el `stack` no empieza con ese encabezado, o `name`,
-     `message` o `stack` no son cadenas o leerlos lanza, no hay `pila`; vale en cada nivel de la cadena de causas)_.
+     `message` o `stack` no son cadenas o leerlos lanza, no hay `pila`; vale en cada nivel de la cadena de causas)_
+     _(**ampliado** por el criterio 165, ataque ronda 15, F1: la segunda viñeta ya no mira solo `cause` y `errors`: los
+     errores de la base se buscan en todo el grafo del error (propiedades propias, enumerables o no, y enumerables
+     heredadas, con topes y falla cerrada); el `Error` que los lleva se registra con `tipo` de nombre de clase verificado,
+     `mensaje` y `pila` solo si no copian el mensaje de la base, `causa`, `errores` y `erroresDeLaBase`, nunca otras
+     propiedades; y `mensajeSeguro` resume también ese caso. Y **precisado** por el criterio 166, O1: el `tipo` de un error
+     de la base sale de la lista cerrada de P-42, con `ErrorDeBase` para lo demás)_.
      Dado que el filtro de errores (500) y el manejador de rechazos registran el error tal cual, y que los mensajes de
      Prisma pueden llevar los argumentos de la consulta (`PrismaClientValidationError` muestra el `data` completo; un P2007
      o un `22P02` muestran el valor rechazado: un DNI, el token del QR o, desde las historias siguientes, datos médicos),
@@ -2974,7 +2990,11 @@ Contrato: ampliación de P-41 y precisión de P-42. Todos son _(crítico)_.
 
 163. **La `pila` que se registra de un error de la base empieza después del encabezado `nombre: mensaje`** _(ataque ronda
      14, F1; **precisa** el criterio 162 y P-42; decisión del orquestador, forma del encabezado con mensaje vacío del
-     especificador)_. Dado que `errorParaRegistro` tomaba como marcos todas las líneas del `stack` que empiezan con espacios y
+     especificador)_ _(precisado por el criterio 165, ataque ronda 15: la misma regla da desde ahora la `pila` de cada `Error`
+     que no es de la base dentro del objeto limpio, que además se omite si su `message` o su `stack` contienen el mensaje de
+     un error de la base encontrado o si ese mensaje no se puede verificar; la viñeta "no cambia: un `Error` que no es de la
+     base se sigue registrando con su `mensaje` y su `pila` completos" vale solo cuando no lleva ningún error de la base en
+     su grafo)_. Dado que `errorParaRegistro` tomaba como marcos todas las líneas del `stack` que empiezan con espacios y
      `at `, que el `stack` empieza con `nombre: mensaje`, y que el mensaje puede llevar líneas con esa forma (PostgreSQL
      repite el valor tal cual en `22P02`, `22007`, `22008`, `22003` o un valor de enum inválido; Prisma muestra las claves de
      un `Json` sin comillas en un error de validación), así que el valor salía en `pila` (reproducido con
@@ -3091,6 +3111,180 @@ Contrato: ampliación de P-41 y precisión de P-42. Todos son _(crítico)_.
      resultado las pruebas protegidas del criterio 159 (`eslint/regla-promesas-descartadas-ronda13.test.mjs`) y del 96 (la
      regla propia mantiene su identificador y no es de `js.configs.recommended` ni de `typescript-eslint`). Si alguna
      cambiara, el test-writer o el backend se detienen e informan. _(crítico)_
+
+### X. Correcciones del ataque adversarial, ronda 15
+
+Criterios agregados tras la ronda 15 del ataque (12/11/2026, sobre el commit `6a74044`). La ronda encontró una falla media
+(F1: el patrón habitual de NestJS `catch (error) { throw new InternalServerErrorException(error); }`, y
+`new HttpException(error, 503)` y las demás excepciones de 5xx, guarda el error de Prisma entero en `response` de la
+excepción y Nest copia su mensaje al `message` de la excepción; `errorParaRegistro` solo buscaba errores de la base en `cause`
+y `errors`, devolvía la excepción tal cual y pino serializaba `message`, `stack` y `response` completo, con
+`meta.driverAdapterError.cause.originalMessage`) y tres observaciones (O1: el `tipo` de un error de la base no salía de la
+lista cerrada que pide P-42; O2: `SELECT '44556677'::money` en `$queryRaw` rechaza con un `Error` común de `decimal.js` con el
+valor en el mensaje; y cinco formas de pasar una función `async` a un temporizador o descartarla que ninguna regla de lint
+ve). Son decisiones técnicas del orquestador (F1: corrección de fondo con la búsqueda en todo el grafo del error; O1; O2;
+las formas de lint) y del especificador (forma de la búsqueda, topes, regla de `mensaje` y `pila` y `tipo` de los errores
+que no son de la base), no reglas de negocio nuevas. La O2 no lleva criterio: es una regla del plan para todas las historias
+(sección 27) y un riesgo aceptado ("Tipo `money` en consultas"). Las formas de lint no llevan criterio: amplían el riesgo
+aceptado "Promesa descartada que escapa al lint". Donde un criterio amplía o precisa uno anterior lo dice, y el anterior
+queda marcado "(… ataque ronda 15)", sin borrar su texto. Contrato: precisión de P-42 (firmas sin cambios). Todos son
+_(crítico)_.
+
+165. **Un error de la base guardado en cualquier propiedad de otro error no llega al registro** _(ataque ronda 15, F1;
+     **amplía** el criterio 162 (su segunda viñeta buscaba solo en `cause` y `errors`); **precisa** el 163 (la `pila` de
+     los `Error` que no son de la base dentro del objeto limpio) y el 157; P-42; decisión del orquestador, forma de la
+     búsqueda, de los topes y de la regla de `mensaje` del especificador; RNF-05 y Ley 29733)_. Dado que el patrón habitual de
+     NestJS `catch (error) { throw new InternalServerErrorException(error); }` (también `new HttpException(error, 503)`,
+     `new ServiceUnavailableException(error)` y las demás excepciones de 5xx) deja el error de Prisma entero en `response`
+     de la excepción, que Nest copia `response.message` al `message` de la excepción, que `errorParaRegistro` no lo
+     reconocía (no es un error de la base, y `cause` y `errors` no lo llevan) y lo devolvía tal cual, y que pino serializa
+     `message`, `stack` (con el mensaje en el encabezado) y `response` completo (reproducido por la API: un registro de nivel
+     50 con `DNI 44556677 alergia penicilina-r15`; y en unidad, también por el manejador de rechazos), entonces:
+     - **búsqueda en todo el grafo:** con un `Error` que no es de la base ni una `CausaLimpia`, `errorParaRegistro` busca
+       errores de la base (`esErrorDeBase`, P-42, sin contar las `CausaLimpia`) en todo lo que cuelga de él: el valor de
+       cada propiedad propia, enumerable o no, con clave de texto o `Symbol` (las de `Reflect.ownKeys`), y de cada
+       propiedad enumerable heredada (las que recorre `for…in`, que son las que serializa pino), cuando ese valor es un
+       objeto (`typeof valor === 'object'` y no `null`; también arreglos). Cada valor se lee sin dejar que un getter lance
+       (el que lanza se salta). La búsqueda entra en los objetos y en los `Error` que no son de la base, de nivel en nivel;
+       no entra en un error de la base (se resume entero) ni en una `CausaLimpia`; un `WeakSet` evita volver a un objeto ya
+       visto (ciclos). Se cubren así, entre otros, `response`, `options`, `cause`, `errors`, `meta`, `detalles`, una
+       propiedad no enumerable, una con clave `Symbol` y un error de la base anidado en objetos;
+     - **topes y falla cerrada:** la búsqueda visita como máximo objetos a 10 niveles del error recibido, 200 objetos en
+       total y 100 claves por objeto. Si un tope se agota (queda por visitar un objeto que no es de la base a más de 10
+       niveles, o más de 200 objetos, o un objeto tiene más de 100 claves) o si listar las claves de un objeto lanza (por
+       ejemplo, un `Proxy`), el resultado es el objeto plano `{ tipo, truncado: true }` (con `tipo` como abajo) y, si la
+       búsqueda ya encontró errores de la base, `erroresDeLaBase` con su forma limpia; sin `mensaje`, `pila`, `causa` ni
+       `errores`. Ante la duda, se limpia;
+     - **si no encuentra ninguno** (y ningún tope se agotó), devuelve el mismo `error`, como hoy (criterio 162): el registro
+       de un `Error` común, de una `CausaLimpia` y de un `ErrorTransaccionAbortada` no cambia;
+     - **si encuentra alguno,** devuelve un objeto plano nuevo, nunca el error ni una copia de sus propiedades. El error
+       recibido y cada `Error` que no es de la base de su cadena de `cause` y `errors` se convierten en un objeto con
+       **solo**:
+       - `tipo`: su `name`, solo si es igual al `name` de su constructor (`error.constructor.name`, leído sin dejar que un
+         getter lance) y cumple `^[A-Za-z][A-Za-z0-9]{0,63}$`; si no, `'Error'` (así, `InternalServerErrorException`,
+         `HttpException`, `AggregateError` o `Error`; un `name` asignado a mano no sale);
+       - `mensaje`: su `message`, solo si es una cadena, no contiene el mensaje de ninguno de los errores de la base
+         encontrados y ninguno de esos mensajes lo contiene a él (comparación de cadenas con `includes`, en los dos
+         sentidos). Con el patrón de Nest (`message` igual al de Prisma) no hay `mensaje`; con
+         `new InternalServerErrorException('No se pudo', { cause: error })`, sí (`'No se pudo'`);
+       - `pila`: la que da la regla del criterio 163 (después del encabezado exacto `nombre: mensaje`, solo las líneas de
+         marco), solo si ni su `message` ni su `stack` contienen el mensaje de alguno de los errores de la base encontrados;
+       - `causa` (de su `cause`) y `errores` (de su `errors`, si es un arreglo; hasta 10), cada uno convertido así: un error
+         de la base, a su forma limpia (criterio 162, con la `pila` del 163 y el `tipo` del 166); una `CausaLimpia`, tal cual;
+         un `Error` que no es de la base, con estas mismas reglas (un ciclo en la cadena da `{ tipo: 'truncado' }`);
+         cualquier otro valor, `{ tipo: typeof valor }`, nunca su contenido (un objeto plano con datos en `cause` ya no
+         sale);
+       - y, **solo en el objeto del nivel superior,** `erroresDeLaBase`: la forma limpia de cada error de la base encontrado
+         en el grafo que no quedó ya en `causa` o `errores` de algún nivel, en el orden en que se encontraron (hasta 10; si
+         hay más, además `truncado: true`).
+
+       Cada error de la base aparece una sola vez en el resultado (si está en `cause` y en `response`, sale en `causa`).
+       Nunca salen `message` (salvo como `mensaje`, con la regla anterior), `stack` (salvo como `pila`), `response`,
+       `options`, `status`, `meta` ni ninguna otra propiedad;
+     - **"el mensaje de un error de la base encontrado"** es su `message` cuando es una cadena no vacía; un `message`
+       vacío o `undefined` (por ejemplo, un objeto plano con la forma de la causa del adaptador) no cuenta. Si leer el
+       `message` de alguno lanza, o es algo distinto de una cadena o `undefined`, no se puede verificar: ningún `Error` que
+       no es de la base del resultado lleva `mensaje` ni `pila` (falla cerrada);
+     - **dónde vale:** `errorParaRegistro` es el único punto, así que vale para las dos ramas de `FiltroErrores` que
+       registran (`HttpException` de 5xx, que responde con su estado, y cualquier otra excepción, con 500), el manejador de
+       rechazos (P-40) y el fallo al arrancar de `main.ts`, que no cambian;
+     - **`mensajeSeguro`** (comandos y semilla): con un `Error` que no es de la base y para el que `errorParaRegistro` no
+       devuelve el mismo objeto, el texto es el `mensaje` del objeto limpio si lo tiene; si no, el texto "error de la base
+       (…)" del criterio 162 armado con el primer error de la base del resultado (en `causa` y `errores`, a lo hondo, y
+       luego en `erroresDeLaBase`); y si no hay ninguno (tope agotado), `error sin detalles (<tipo>)`. Con un error de la
+       base, con un `Error` sin errores de la base en su grafo y con lo que no es un `Error`, lo de hoy (después, como hoy,
+       el reemplazo de secretos, la primera línea y el máximo de 300 caracteres);
+     - no cambia: lo que se responde al cliente (`ERROR_INTERNO` con el mensaje genérico, con el estado de la excepción:
+       500, 503…), el nivel de los registros, la forma limpia de un error de la base (salvo `tipo`, criterio 166) y el
+       resultado de un `Error` común. Un `Error` propio con un error de la base como `cause` sigue dando `{ tipo, mensaje,
+       pila, causa }` (lo exigen protegidas de los criterios 162 y 163), salvo que su mensaje copie el de la base; su
+       `pila` pasa a ser solo los marcos (la protegida exige solo que sea una cadena).
+
+     Pruebas unitarias (P-42), con las excepciones reales de `@nestjs/common` y un error falso con forma de error de Prisma
+     (`base`: `name: 'PrismaClientKnownRequestError'`, `code: 'P2007'`, mensaje `'invalid input syntax for type inet: "DNI
+     44556677 alergia penicilina-r15"'`, `stack` con ese encabezado exacto y dos marcos, `meta: { modelName: 'Auditoria',
+     driverAdapterError: { cause: { originalCode: '22P02', originalMessage: <el mismo texto> } } }`). En cada caso,
+     salvo los controles, el resultado no es el mismo objeto, no lanza, y no contienen `44556677`, `penicilina-r15` ni
+     `invalid input syntax`: `util.inspect(resultado, { depth: null, showHidden: true })`, `JSON.stringify(resultado)` ni
+     lo que escribe un `pino` con un destino en memoria y sus serializadores por defecto al registrar
+     `{ err: resultado }` en nivel `error`; las claves del objeto de nivel superior están entre `tipo`, `mensaje`, `pila`,
+     `causa`, `errores`, `erroresDeLaBase` y `truncado`; y, si el caso lleva `base` (salvo la cadena de 30 de (u12), que
+     no llega a verlo), hay exactamente un objeto con `tipo: 'PrismaClientKnownRequestError'` y `codigoPrisma: 'P2007'`
+     (como `objetosConTipo` de las utilidades de la ronda 14):
+     (u1) **reproducción:** `new InternalServerErrorException(base)` (la prueba comprueba antes que `response` es `base` y
+     que `message` contiene `44556677`; si no, se detiene e informa): `tipo: 'InternalServerErrorException'`, sin `mensaje`
+     ni `pila`, `base` en `erroresDeLaBase`; (u2) `new HttpException(base, 503)` y `new ServiceUnavailableException(base)`:
+     lo mismo, con su `tipo`; (u3) **anidado en objetos:** `new InternalServerErrorException({ detalle: { error: base } })`;
+     (u4) **propiedad propia cualquiera:** `Object.assign(new Error('Fallo de prueba r15'), { detalle: base })`:
+     `mensaje: 'Fallo de prueba r15'` y `pila` con solo líneas de marco; (u5) **no enumerable y con `Symbol`:** `base` en
+     una propiedad definida con `Object.defineProperty(…, { value: base, enumerable: false })`, y en otra con clave
+     `Symbol('r15')`; (u6) **heredada:** `class ConExtra extends Error {}`, `ConExtra.prototype.extra = base`,
+     `new ConExtra('Fallo r15')`; (u7) **ciclo:** `const e = new Error('Fallo r15'); e.detalle = { vuelta: e, error: base }`;
+     (u8) **control con `{ cause }`:** `new InternalServerErrorException('No se pudo', { cause: base })`: `mensaje: 'No se
+     pudo'`, `causa` con la forma limpia de `base` y sin `erroresDeLaBase` (aunque `options` también lo lleva); (u9) **el
+     mismo en dos lugares:** `new InternalServerErrorException(base, { cause: base })`: `base` una sola vez, en `causa`;
+     sin `mensaje`; (u10) **intermedio:** `new Error('Fallo r15', { cause: new InternalServerErrorException(base) })`:
+     `mensaje: 'Fallo r15'`, `causa` con `tipo: 'InternalServerErrorException'` sin `mensaje` ni `pila`; (u11) **copia
+     parcial:** `new Error('invalid input syntax for type inet', { cause: base })` y
+     `Object.assign(new Error(<el mensaje de base>), { detalle: base })`: sin `mensaje`; (u12) **topes:** una cadena de 30
+     `Error` por `cause` con `base` al final, `Object.assign(new Error('grande r15'), { lista: Array.from({ length: 1000 },
+     () => ({})) })` (sin `base`), un árbol de más de 200 objetos con menos de 100 claves cada uno (sin `base`), una propiedad
+     cuyo getter devuelve cada vez un objeto nuevo con otro getter igual, y un `Proxy` cuyo `ownKeys` lanza como valor de una
+     propiedad (estas dos, no enumerables, para que la serialización de la propia prueba no las recorra): no lanza,
+     `truncado: true`, sin `mensaje` ni `pila`; (u13) **mensaje no verificable:**
+     `Object.assign(new Error('Fallo r15'), { detalle: <base con un getter de message que lanza> })`: sin `mensaje` ni
+     `pila`; (u14) **controles, el mismo objeto (`toBe`):** `new Error('boom')`, `new Error('x', { cause: new Error('y')
+     })`, `Object.assign(new Error('x'), { detalle: { a: 1, b: [1, 2] } })`, un `Error` con un ciclo sin `base`,
+     `new HttpException('detalle interno', 503)`, un `ErrorNegocio(500, …, { url: 'secreta' })`, una `CausaLimpia` y un
+     `ErrorTransaccionAbortada` con `base` como causa. Unitaria de `crearManejadorDeRechazos` (P-40) con (u1) y con (u4):
+     `registro.error` recibe `{ err: X }` y `X` cumple lo mismo. Unitaria de `mensajeSeguro`: con (u1), el texto contiene
+     `P2007` y ninguno de los tres textos; con (u4), es `Fallo de prueba r15`; con la cadena de 30 de (u12), empieza con
+     `error sin detalles`. Pruebas de integración con la API de pruebas y la academia A, con el error real que provoca
+     `tx.cliente.auditoria.create` con `ip: 'DNI 44556677 alergia penicilina-r15'` en `conAcademia(A, …)` (P2007 o
+     `22P02`; la prueba comprueba antes que su `message` contiene `44556677`; si no, se detiene e informa):
+     `errorParaRegistro` con ese error dentro de (u1), (u2), (u8) y (u10) cumple lo mismo (el objeto de la base, una sola
+     vez, con el `tipo` del error real y su `codigoPrisma` o su `sqlstate`, el que traiga); y por la API, con el registro de
+     la app capturado (`destinoRegistro`, nivel `info`), un controlador de prueba con tres rutas que atrapan el rechazo de
+     `conAcademia` y lanzan (a1) `new InternalServerErrorException(error)` (responde 500 `ERROR_INTERNO`), (a2) `new
+     HttpException(error, 503)` (responde 503 `ERROR_INTERNO`) y (a3) el control `new InternalServerErrorException('No se
+     pudo', { cause: error })` (500): ningún registro contiene `44556677`, `penicilina-r15` ni `invalid input syntax`, y hay
+     un registro de nivel `error` cuyo `err.tipo` es el de la excepción y en cuyo `err` hay un objeto con el `tipo` del
+     error de Prisma y su `codigoPrisma` o su `sqlstate`. Con el código de `6a74044`, (u1) a (u7), (u9) a (u13), el manejador,
+     `mensajeSeguro` con (u1), (a1) y (a2) mostraban el valor. Siguen pasando sin cambiar de resultado las protegidas de los
+     criterios 157 y 161 a 163 (`registro-de-errores.test.ts`, `registro-de-errores-ronda14.test.ts`,
+     `registro-sin-datos.test.ts`, `registro-sin-datos-ronda14.test.ts`, `rechazos.test.ts`, `rechazos-ronda13.test.ts`,
+     `rechazos-ronda14.test.ts`, `rechazos-proceso.test.ts`, `mensaje-seguro.test.ts`, `mensaje-seguro-ronda13.test.ts`) y
+     las del filtro de errores. Si alguna cambiara, el test-writer o el backend se detienen e informan. _(crítico)_
+166. **El `tipo` de un error de la base sale de una lista cerrada** _(ataque ronda 15, O1; **precisa** los criterios 161 y
+     162 y P-42; decisión del orquestador)_. Dado que `datosSeguros` aceptaba como `tipo` cualquier `name` con forma de
+     identificador (por ejemplo, `Dni44556677Alergia` con `code: 'P2007'`, o el `'error'` de `pg`), y que P-42 ya pedía una
+     lista cerrada, entonces:
+     - el `tipo` de la forma limpia de un error de la base (criterio 162), la propiedad `tipo` de una `CausaLimpia` y el
+       tipo que aparece en su mensaje (criterio 161) son el `name` del error solo si es, con comparación exacta (sin pasar
+       a minúsculas ni recortar), uno de: `PrismaClientKnownRequestError`, `PrismaClientUnknownRequestError`,
+       `PrismaClientValidationError`, `PrismaClientInitializationError`, `PrismaClientRustPanicError`,
+       `DriverAdapterError`, `DatabaseError` o `CausaLimpia`; si no, `ErrorDeBase` (también con un `name` que empieza por
+       `PrismaClient` y no está en la lista, o con un objeto plano);
+     - `causaLimpia` con algo que no es un error de la base (un `TypeError` de una llamada, un `Error` común) usa el
+       `tipo` de los errores que no son de la base del criterio 165 (el `name` solo si es el de su constructor y cumple el
+       patrón; si no, `Error`); sin causa (`undefined` o `null`), como hoy;
+     - no cambia lo demás de la forma limpia ni de la `CausaLimpia` (códigos, operación, circunstancia, `code`).
+
+     Pruebas unitarias (P-42): (o1) `Object.assign(new Error('x'), { name: 'Dni44556677Alergia', code: 'P2007' })`:
+     `errorParaRegistro` da `tipo: 'ErrorDeBase'` y `codigoPrisma: 'P2007'`; `causaLimpia` da `tipo: 'ErrorDeBase'`;
+     `new ErrorTransaccionAbortada({ cause })` y `mensajeSeguro` con ese error; en ninguno de los cuatro, `util.inspect` a
+     toda profundidad con `showHidden`, `JSON.stringify` de las propiedades propias ni el texto contienen `44556677`; (o2)
+     con `name: 'error'` y `code: '22P02'` (forma de `pg`): `tipo: 'ErrorDeBase'` y `sqlstate: '22P02'`; (o3) con `name:
+     'PrismaClientOtraCosa'` y `name: 'prismaclientknownrequesterror'` (con `code: 'P2002'`): `ErrorDeBase`; y un objeto
+     plano `{ code: '22P02' }` en `causaLimpia` y como `cause` de un `Error` propio: `ErrorDeBase` (`errorParaRegistro` con
+     el objeto plano solo sigue dando `{ tipo: 'object' }`, como hoy); (o4) las cinco clases reales de Prisma y errores con `name` `DriverAdapterError` y `DatabaseError`
+     conservan su nombre en `errorParaRegistro` y en `causaLimpia`; (o5) `causaLimpia(new TypeError('x DNI 44556677'))`
+     da `tipo: 'TypeError'` sin el valor, y `causaLimpia(Object.assign(new Error('x'), { name: 'Dni44556677' }))` (sin
+     código: no es de la base) da `tipo: 'Error'` y su texto no contiene `44556677`. Con el código de `6a74044`, (o1), (o2)
+     y (o5) daban el `name` como `tipo`. Siguen pasando sin cambiar de resultado las protegidas de los criterios 161 a 163
+     (las que comparan `tipo` con `error.name` lo hacen solo con los `PrismaClient…` reales, que están en la lista). Si
+     alguna cambiara (por ejemplo, porque un error real de Prisma 7 tiene un `name` que empieza por `PrismaClient` y no está
+     en la lista), el test-writer o el backend se detienen e informan. _(crítico)_
 
 ## Casos límite
 
@@ -3225,6 +3419,18 @@ Contrato: ampliación de P-41 y precisión de P-42. Todos son _(crítico)_.
 - **Función `async` pasada a `process.nextTick`, `setImmediate`, `setTimeout`, `setInterval` o `queueMicrotask`**
   _(ataque ronda 14, O2)_: no pasa el lint (criterio 164). Para diferir trabajo después de una transacción se espera la
   operación y se hace después, fuera de `trabajo` (los efectos secundarios van después de confirmar).
+- **`throw new InternalServerErrorException(error)` con un error de Prisma** _(ataque ronda 15)_: responde 500
+  `ERROR_INTERNO` y el registro lleva el tipo de la excepción y la forma limpia del error de Prisma, sin su mensaje ni el de
+  la excepción, que es el mismo (criterio 165). Igual con `new HttpException(error, 503)` (responde 503) o con el error
+  guardado en cualquier propiedad, también no enumerable o anidado. La forma recomendada sigue siendo un mensaje propio y
+  `{ cause: error }`, que conserva el mensaje propio en el registro.
+- **Un error con un grafo enorme o que no se deja recorrer** _(ataque ronda 15)_: más de 10 niveles, de 200 objetos o de
+  100 claves en un objeto, o un `Proxy` que lanza al listar sus claves: se registra `{ tipo, truncado: true }` y lo que
+  se haya encontrado de la base, sin mensaje ni pila (criterio 165, falla cerrada). Se pierde el diagnóstico, nunca se
+  muestra un dato.
+- **Un `name` inventado en un error de la base** _(ataque ronda 15, O1)_: se registra como `ErrorDeBase` (criterio 166).
+- **`::money` en una consulta** _(ataque ronda 15, O2)_: no se usa (plan, sección 27; riesgo aceptado "Tipo `money` en
+  consultas").
 
 ## Reglas de negocio aplicables
 
@@ -3954,7 +4160,9 @@ _(contrato de la ronda 13 del ataque, 12/11/2026; criterios 159 a 162)_. No son 
     No se agrega al paso protegido (exige información de tipos, que ese paso no usa, y la prueba del criterio 96 rechaza
     reglas de `typescript-eslint` en él).
 - **P-42. Errores para el registro (criterios 161 y 162).** _(Precisado por el criterio 163, ataque ronda 14: cómo se
-  obtiene `pila`; ver "Precisión de P-42" en el contrato de la ronda 14.)_
+  obtiene `pila`; ver "Precisión de P-42" en el contrato de la ronda 14.)_ _(Precisado por los criterios 165 y 166, ataque
+  ronda 15: búsqueda de errores de la base en todo el grafo, forma del objeto de un `Error` que los lleva y `tipo` de la
+  lista cerrada; ver "Precisión de P-42" en el contrato de la ronda 15.)_
   `backend/src/infraestructura/prisma/registro-de-errores.ts` (nombre orientativo del archivo) define y `backend/src/infraestructura/prisma/index.ts` exporta (nombres fijos: los
   importan las pruebas):
 
@@ -4019,6 +4227,44 @@ _(contrato de la ronda 14 del ataque, 12/11/2026; criterios 163 y 164)_. No son 
   `name`, `message` o `stack` no son cadenas o leerlos lanza, el objeto no tiene `pila`. Vale en cada nivel de la cadena de
   causas. _(Precisión del orquestador, ronda 14.)_ Si tras el encabezado no queda ninguna línea de marco, el objeto
   tampoco tiene `pila` (la propiedad se omite; nunca es `''`).
+
+_(contrato de la ronda 15 del ataque, 12/11/2026; criterios 165 y 166)_. No son reglas de negocio nuevas.
+
+- **Precisión de P-42 (criterios 165 y 166).** Los nombres, las firmas y los archivos no cambian (`errorParaRegistro(error:
+  unknown): unknown`). Lo que devuelve `errorParaRegistro`:
+
+  ```ts
+  // - lo que no es un Error: { tipo: typeof valor }                                  (como hoy)
+  // - una CausaLimpia: la misma                                                     (como hoy)
+  // - un error de la base: ErrorDeBaseLimpio                                        (como hoy; tipo del criterio 166)
+  // - un Error sin errores de la base en su grafo y sin topes agotados: el mismo    (como hoy)
+  // - un Error con alguno, o con un tope agotado: ErrorConvertido                   (criterio 165)
+  interface ErrorDeBaseLimpio {
+    tipo: string;              // lista cerrada (166): los cinco de Prisma, 'DriverAdapterError', 'DatabaseError', 'CausaLimpia' o 'ErrorDeBase'
+    codigoPrisma?: string; sqlstate?: string; codigoDeSistema?: string; modelo?: string;
+    pila?: string;             // criterio 163
+  }
+  interface ErrorConvertido {
+    tipo: string;              // name, solo si es igual a constructor.name y cumple ^[A-Za-z][A-Za-z0-9]{0,63}$; si no, 'Error'
+    mensaje?: string;          // message, solo si no contiene el mensaje de un error de la base encontrado ni este lo contiene
+    pila?: string;             // regla del 163; se omite si message o stack contienen el mensaje de un error de la base
+    causa?: ErrorConvertido | ErrorDeBaseLimpio | CausaLimpia | { tipo: string };   // de `cause`
+    errores?: (ErrorConvertido | ErrorDeBaseLimpio | CausaLimpia | { tipo: string })[]; // de `errors`, hasta 10
+    erroresDeLaBase?: ErrorDeBaseLimpio[];  // solo en el nivel superior: los encontrados fuera de causa y errores, hasta 10
+    truncado?: true;           // solo en el nivel superior: tope agotado (sin mensaje, pila, causa ni errores) o más de 10
+  }
+  ```
+
+  Búsqueda: valores de tipo objeto de las propiedades propias (`Reflect.ownKeys`: texto y `Symbol`, enumerables o no) y
+  de las enumerables heredadas (`for…in`), leídos sin dejar que un getter lance; entra en objetos y en `Error` que no son
+  de la base; no entra en errores de la base ni en `CausaLimpia`; `WeakSet` de vistos. Topes: 10 niveles, 200 objetos y
+  100 claves por objeto; agotar uno, o que listar las claves lance, es falla cerrada (`{ tipo, truncado: true,
+  erroresDeLaBase? }`). "El mensaje de un error de la base encontrado" es su `message` si es una cadena no vacía; si leerlo
+  lanza o no es cadena ni `undefined`, ningún `ErrorConvertido` del resultado lleva `mensaje` ni `pila`. Cada error de la
+  base aparece una sola vez (primero en `causa`/`errores`). `causaLimpia(error)` toma su `tipo` igual: lista cerrada para un
+  error de la base; para lo demás, el `tipo` de `ErrorConvertido`. `mensajeSeguro` con un `ErrorConvertido`: su `mensaje`;
+  si no tiene, "error de la base (…)" del primer `ErrorDeBaseLimpio` (en `causa`/`errores` a lo hondo, luego en
+  `erroresDeLaBase`); si no hay, `error sin detalles (<tipo>)`. Ninguna función lanza con ninguna entrada.
 
 ## Cambios al modelo de datos
 
@@ -4305,6 +4551,18 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   - las historias siguientes: dentro de `trabajo`, cada paso con `await` y sin promesas descartadas (el lint lo exige);
     ningún error propio copia el mensaje de otro; los registros técnicos de errores pasan por `errorParaRegistro`; las
     cargas masivas usan `createMany`, `updateMany`, `deleteMany` o `$executeRaw` (plan, sección 25).
+- **Ronda 15 del ataque (criterios 165 y 166):**
+  - el filtro de errores (de 000, ampliado en 001), el manejador de rechazos y el arranque de `main.ts` no cambian de
+    código: `errorParaRegistro` busca ahora errores de la base en todo el grafo del error (criterio 165). Un `Error` sin
+    ninguno se sigue registrando igual, así que `filtro-errores.test.ts`, `rechazos.test.ts` y `rechazos-proceso.test.ts`
+    no cambian de resultado; un `Error` propio con uno en `cause` sigue llevando su `mensaje`, pero su `pila` pasa a ser
+    solo los marcos (las protegidas de 162 y 163 exigen solo que sea una cadena);
+  - `mensajeSeguro` resume también un `Error` que lleva un error de la base en cualquier propiedad (criterio 165); con
+    errores comunes, lo de hoy (`mensaje-seguro.test.ts` no cambia);
+  - el `tipo` de un error de la base y de la `CausaLimpia` sale de la lista cerrada (criterio 166); las protegidas que
+    comparan el `tipo` con el `name` lo hacen con errores reales de Prisma, que están en la lista;
+  - las historias siguientes: un error se envuelve con un mensaje propio y `{ cause: error }`, no pasando el error ni su
+    mensaje como respuesta de una excepción de Nest; no se usa el tipo `money` de PostgreSQL (plan, sección 27).
 - **`specs/backlog.md`:** por DR-1, la nota de 001 pierde "y su primer administrador" y la de 002 lo gana (lo hace el
   documentador, T24).
 
@@ -4628,7 +4886,13 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
   "Decisiones técnicas tras el ataque, ronda 13"). Regla para el equipo, como en la ronda 12: dentro de `trabajo`, cada
   paso con `await`. Lo buscan el revisor y el adversarial. _(Precisado tras la ronda 14, O1: dentro de `trabajo`, **toda
   promesa creada se espera antes de devolver**, también la guardada en una variable o en un objeto; el revisor lo vigila en
-  cada historia, plan, sección 26.)_
+  cada historia, plan, sección 26.)_ _(Ampliado tras la ronda 15: tampoco ven, en el paso protegido, y algunas tampoco en
+  el lint normal con tipos, estas formas que el adversarial encontró: `process.nextTick(async function () { … }.bind(this))`
+  (la función `async` envuelta en `.bind`), `setTimeout(() => (async () => { … })(), 0)` (la llamada directa dentro del
+  cuerpo de una flecha, que no es una sentencia), `(c ? setTimeout : setImmediate)(async () => { … })` (el `callee` es una
+  expresión condicional), `(0, process.nextTick)(async () => { … })` (una expresión con coma) y
+  `x && (async () => { … })()` (la llamada dentro de una expresión lógica). Son alias o formas hostiles, como las de la
+  ronda 14; no se amplía la regla (decisión del orquestador). El revisor las busca junto con las anteriores.)_
 - **Encabezado de la pila que no coincide** _(ataque ronda 14, criterio 163)_: si el `stack` de un error de la base no
   empieza con `nombre: mensaje` (una librería que reemplaza `Error.prepareStackTrace` con otro formato, o un `message` que
   alguien cambió después de que se formó la pila), el registro técnico sale sin `pila`. Se acepta: se pierde parte del
@@ -4639,7 +4903,30 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
 - **Mensajes propios que copian el de Prisma** _(ataque ronda 13, criterio 162)_: `errorParaRegistro` limpia los errores de
   Prisma y de la base y los que los llevan como `cause`, pero no puede limpiar un `Error` propio cuyo mensaje se armó con
   el de Prisma (`` new Error(`falló: ${error.message}`) ``). Regla para el equipo: un error propio nunca copia el mensaje de
-  otro; se encadena con `{ cause }`. Lo busca el revisor.
+  otro; se encadena con `{ cause }`. Lo busca el revisor. _(Precisado tras la ronda 15, criterio 165: si el error de la
+  base sigue en el grafo del error propio (por `cause`, `response` o cualquier otra propiedad), un mensaje que lo contiene
+  o que está contenido en él ya no sale; sigue sin cubrirse la copia sin el error de la base en el grafo
+  (`new InternalServerErrorException(error.message)`, `new InternalServerErrorException({ message: error.message })`,
+  `` new Error(`falló: ${error.message}`) `` sin `cause`) y la copia de partes no contiguas. Regla para el equipo, desde la
+  ronda 15: a una excepción de Nest se le pasa un mensaje propio y `{ cause: error }`, nunca el error ni su mensaje como
+  respuesta. El revisor busca `Exception(error`, `Exception(e)`, `Exception(err` y `.message` dentro de un `catch`.)_
+- **Errores de la base fuera del alcance de la búsqueda** _(ataque ronda 15, criterio 165)_: la búsqueda de
+  `errorParaRegistro` mira las propiedades propias (también no enumerables y con `Symbol`) y las enumerables heredadas, a
+  través de objetos y arreglos. No ve un error de la base guardado en el contenido de un `Map`, un `Set` o un `WeakMap`, en
+  un campo privado (`#campo`), en una variable de una clausura, en una propiedad de una función, detrás de un getter
+  heredado no enumerable ni dentro de un `WeakRef`. pino tampoco serializa esos lugares (recorre las propiedades
+  enumerables y `cause`), así que no llegan al registro de la API; sí podría mostrarlos un `console.error` o un
+  `util.inspect` con `showHidden` hecho a mano, que la regla del criterio 162 ya prohíbe. Se acepta: son formas que nadie
+  usa para guardar un error y que el revisor ve.
+- **Diagnóstico perdido en errores grandes** _(ataque ronda 15, criterio 165)_: un error cuyo grafo pasa de 10 niveles,
+  200 objetos o 100 claves en un objeto (por ejemplo, uno que guarde una petición HTTP entera o un `Buffer`) se registra solo
+  con su tipo y `truncado: true`, aunque no lleve ningún dato de la base. Se acepta: falla cerrada; si una historia
+  necesita registrar errores así, pide ajustar los topes con una decisión nueva.
+- **Tipo `money` en consultas** _(ataque ronda 15, O2)_: `` $queryRaw`SELECT ${'44556677'}::money` `` rechaza con un
+  `Error` común de `decimal.js` (`[DecimalError] Invalid argument: 44,556,677.00`), que no es un error de la base y se
+  registraría con el valor. Hoy nada usa `money`. Regla para todas las historias (plan, sección 27): no se usa el tipo
+  `money` de PostgreSQL, ni en columnas ni en conversiones; los montos van en `numeric` y `Decimal` (`CLAUDE.md`). Lo
+  vigila el revisor (`rg -i "money" backend/`).
 - **Argumentos que `trabajo` cambia después de llamar** _(ataque ronda 11, criterio 153)_: una consulta que espera en la
   cola lee sus argumentos cuando le toca; si `trabajo` cambia el objeto que pasó (por ejemplo, `data`) antes de ese
   momento, puede enviarse con el cambio. No cruza academias (el contexto y la RLS son los de la transacción) y es un error de
@@ -5140,9 +5427,52 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
   `no-floating-promises` tampoco ve una promesa convertida a `unknown`. Alternativa descartada: dejarlo para la revisión
   (cuesta unas líneas en la regla).
 
+### Decisiones técnicas tras el ataque, ronda 15 (12/11/2026)
+
+- **Errores de la base buscados en todo el grafo del error** (criterio 165; decisión del orquestador, corrección de fondo).
+  Cierra la familia en lugar de agregar `response` a la lista de propiedades que se miran: la siguiente librería o el
+  siguiente error propio usará otro nombre. Alternativas descartadas: agregar `response` y `options` a `cause` y `errors`
+  (caso por caso); un serializador `err` propio de pino que solo escriba campos permitidos (no cubre `console.error` de
+  `main.ts` ni `mensajeSeguro`, y cambiaría lo que se registra de todo `Error` común, que fijan las protegidas del filtro
+  y del 157); limpiar solo en el filtro (el manejador de rechazos y el arranque también registran).
+- **Propiedades propias, enumerables o no, con `Symbol`, y enumerables heredadas** (criterio 165; forma del
+  especificador). Las propias son lo que pidió el orquestador; las heredadas enumerables se agregan porque pino las
+  serializa (`for…in`). Alternativa descartada: solo las enumerables propias (dejaría fuera lo que `util.inspect` con
+  `showHidden` muestra y lo que hereda un prototipo).
+- **Topes de 10 niveles, 200 objetos y 100 claves, con falla cerrada** (criterio 165; forma del especificador). Un getter
+  que crea objetos nuevos, un arreglo enorme o un `Proxy` no pueden colgar ni romper el registro de un 500. Alternativas
+  descartadas: sin topes (un grafo infinito cuelga el proceso de todas las academias); devolver el error tal cual al
+  agotar un tope (falla abierta: el error de la base podía estar más abajo).
+- **El `Error` que lleva un error de la base conserva su `mensaje` si no copia el de la base** (criterio 165; decisión del
+  especificador que **se aparta** de la indicación del orquestador "nunca `message`"). Las pruebas protegidas de los
+  criterios 162 y 163 exigen que un `Error` propio con un error de la base como `cause` dé su `mensaje`
+  (`registro-de-errores.test.ts`, "un Error propio con un error de Prisma como cause…"; `registro-sin-datos.test.ts`, "un
+  Error propio con este error como cause…"; `registro-de-errores-ronda14.test.ts`, (u6); y
+  `registro-sin-datos-ronda14.test.ts`), y una prueba protegida no se cambia. La regla de inclusión en los dos sentidos
+  quita el mensaje en el patrón de Nest (es el mismo de Prisma) y en las copias contiguas, y la `pila` se lee después del
+  encabezado exacto (criterio 163), así que el mensaje nunca sale por ella. Alternativas descartadas: nunca `mensaje`
+  (cambiaría el resultado de esas cuatro protegidas); comparar línea por línea (las líneas cortas de los mensajes de
+  Prisma, como `{` o `}`, quitarían el mensaje de casi todo error propio); no comparar (el patrón de Nest saldría con el
+  mensaje de Prisma).
+- **`tipo` de un `Error` que no es de la base: su `name` solo si es el de su constructor** (criterio 165; forma del
+  especificador). El nombre de una clase está en el código, no en los datos; así se conserva el diagnóstico
+  (`InternalServerErrorException`, `AggregateError`) y un `name` asignado a mano no sale. Alternativas descartadas: la lista
+  cerrada de los errores de la base (daría `ErrorDeBase` a una excepción de Nest y cambiaría la protegida que espera
+  `Error`); una lista cerrada de excepciones de Nest y de AquaGestión (se queda corta con cada historia); el patrón de hoy
+  (un `name` cualquiera con forma de identificador pasa).
+- **Lista cerrada de `tipo` para los errores de la base** (criterio 166, O1; decisión del orquestador). Cumple P-42.
+  Alternativa descartada: el patrón de hoy (es la observación O1).
+- **Sin `money` en las consultas** (O2; decisión del orquestador). Es una regla del plan para todas las historias y un
+  riesgo aceptado. Alternativas descartadas: tratar `DecimalError` como error de la base (no lo es, y no hay forma de saber
+  si su mensaje lleva un valor) y limpiar los mensajes de todo `Error` común (perdería el diagnóstico de todos los
+  errores propios, que fijan las protegidas del 157 y del filtro).
+- **Las cinco formas de lint de la ronda 15 van al riesgo aceptado** (decisión del orquestador). Son alias o formas
+  hostiles (`.bind`, una flecha que devuelve la llamada, un `callee` condicional o con coma, una expresión lógica); seguir
+  cada una no tiene fin, y la regla para el equipo y el revisor las cubren.
+
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas de la versión en borrador quedaron resueltas por el responsable el 11/11/2026 (DR-1 a DR-10
-en "Decisiones"). Las correcciones de las rondas 1 a 14 del ataque son decisiones técnicas y no abren preguntas de
+en "Decisiones"). Las correcciones de las rondas 1 a 15 del ataque son decisiones técnicas y no abren preguntas de
 negocio. Queda para el hosting (D-21), sin bloquear: qué esquemas del proveedor, si alguno, entran en "Esquemas
 permitidos además de `public`" (riesgo aceptado "Esquemas propios del hosting").

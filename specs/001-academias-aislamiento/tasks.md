@@ -43,6 +43,9 @@ Tras la ronda 12 se agregaron los criterios 156 a 158 (sección U de `spec.md`),
 precisión de P-38; sus tareas son T130 a T138, antes del cierre. Los criterios 21, 26, 30, 106, 149 y 153 quedaron
 ampliados o precisados.
 
+Tras la ronda 15 se agregaron los criterios 165 y 166 (sección X de `spec.md`) y una precisión de P-42; sus tareas son
+T155 a T162, antes del cierre. Los criterios 157, 161, 162 y 163 quedaron ampliados o precisados.
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades de prueba de `backend/test/utilidades/` según el contrato de `spec.md`
@@ -665,6 +668,54 @@ descartada que escapa al lint" y agrega la nota para el revisor del plan, secci�
       funciones `async` a temporizadores u otras funciones que escapen a la regla y a `no-misused-promises`; envoltorios de
       tipos; y que las protegidas anteriores sigan igual); si hay fallas, se repite el ciclo
 
+## Ataque adversarial, ronda 15 (12/11/2026)
+
+Falla F1 (media) y observaciones O1 y O2 de la ronda 15 (sobre `6a74044`), más cinco formas de lint no detectadas;
+criterios 165 y 166 de `spec.md` (sección X) y precisión de P-42. Plan, sección 27. La O2 es una regla del plan para todas
+las historias (sin `money`) y un riesgo aceptado; las formas de lint amplían el riesgo aceptado "Promesa descartada que
+escapa al lint". Nota para el orquestador: el criterio 165 conserva el `mensaje` del `Error` que lleva un error de la base
+cuando no copia el de la base, en lugar de "nunca `message`", porque cuatro pruebas protegidas de 162 y 163 lo exigen
+(spec, "Decisiones técnicas tras el ataque, ronda 15").
+
+- [ ] T155 · test-writer · Pruebas protegidas en rojo de los criterios 165 y 166 (archivos en "Protegidas del ataque ronda
+      15" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: las unitarias (u1) a
+      (u14) de `errorParaRegistro` con las excepciones reales de `@nestjs/common` y el error falso `base`, comprobadas con
+      `util.inspect` con `showHidden`, `JSON.stringify` y un `pino` con destino en memoria, con la comprobación previa de
+      (u1) (`response` es `base` y `message` lleva el valor); el manejador de P-40 con (u1) y (u4); `mensajeSeguro` con
+      (u1), (u4) y la cadena de (u12); el error real de `auditoria.create` en `conAcademia(A, …)` (con la comprobación previa
+      de que su mensaje lleva el valor) dentro de (u1), (u2), (u8) y (u10), y las rutas (a1) a (a3) de un controlador de
+      prueba con el registro capturado (165); y las unitarias (o1) a (o5) de `errorParaRegistro`, `causaLimpia`, el
+      constructor de `ErrorTransaccionAbortada` y `mensajeSeguro` (166). Comprobar que ninguna protegida anterior cambia de
+      resultado por estas pruebas, en especial `registro-de-errores.test.ts`, `registro-de-errores-ronda14.test.ts`,
+      `registro-sin-datos.test.ts` y `registro-sin-datos-ronda14.test.ts` (si alguna cambiara, detenerse e informar).
+      Commit: "Pruebas protegidas (001), ataque ronda 15: errores de la base dentro de excepciones de Nest y tipo de lista
+      cerrada (en rojo)" (criterios 165 y 166)
+- [ ] T156 · tester · Confirmar que T155 falla por la razón esperada: con `6a74044`, en (u1) a (u7), (u9) a (u11) y (u13)
+      el resultado de `errorParaRegistro` (la misma excepción, o la copia de hoy con el mensaje de la base) contiene, con
+      `showHidden` o por pino, `44556677`, `penicilina-r15` o `invalid input syntax`; (u12) no da `truncado`; el manejador y `mensajeSeguro` con (u1) muestran
+      el valor; los registros de las rutas (a1) y (a2) lo contienen (165); (o1), (o2) y (o5) dan el `name` como `tipo`
+      (166). Se informan como verdes por diseño: (u8), (u14), la ruta (a3), (o3) y (o4) si ya pasan
+- [ ] T157 · backend · `registro-de-errores.ts`: `buscarErroresDeLaBase` (propias con `Reflect.ownKeys` y enumerables
+      heredadas, topes de 10 niveles, 200 objetos y 100 claves, falla cerrada), `mensajesDeLaBase`, `convertir` con
+      `nombreDeClase`, la regla de `mensaje` y la de `pila`, `erroresDeLaBase` sin repetidos y `truncado`; quitar
+      `llevaBaseSinLimpiar` y `copiaConCausasLimpias`; `npm run lint` en verde sin apagar reglas (plan, sección 27)
+      (criterio 165)
+- [ ] T158 · backend · `tipoDeBase` con la lista cerrada en `datosSeguros` (forma limpia y `causaLimpia`) y `nombreDeClase`
+      para lo que no es de la base (plan, sección 27) (criterio 166)
+- [ ] T159 · backend · `mensajeSeguro`: con un `Error` convertido, su `mensaje`, o el texto del primer error de la base, o
+      `error sin detalles (<tipo>)`; `textoDeErrorDeBase` recibe el objeto limpio (plan, sección 27) (criterio 165)
+- [ ] T160 · backend · Revisar que ningún servicio de 001 envuelva un error de la base en una excepción de Nest
+      (`rg "Exception\((e|err|error)\b" backend/src`) ni use `money` (`rg -i "money" backend/`); si hay alguno,
+      corregirlo con un mensaje propio y `{ cause }`; confirmar que `filtro-errores.ts`, `rechazos.ts` y `main.ts` siguen
+      llamando a `errorParaRegistro` sin cambios (plan, sección 27) (criterio 165, O2)
+- [ ] T161 · orquestador · `git diff` desde el commit de T155: T157 a T160 no tocaron pruebas protegidas
+- [ ] T162 · adversarial · Ronda 16 sobre todo lo anterior, en especial 165 y 166 (errores de la base escondidos en
+      cualquier propiedad o forma que pino, `console.error` o `util.inspect` serialicen: excepciones de Nest y de otras
+      librerías, objetos anidados, propiedades no enumerables, `Symbol`, heredadas, getters, `Proxy`, ciclos, grafos en el
+      borde de los topes; mensajes y pilas de los errores que no son de la base que copien el de la base por otro camino;
+      `name` y `constructor` alterados; `mensajeSeguro` en comandos y semilla; errores reales de Prisma o del adaptador con
+      un `name` fuera de la lista; y que las protegidas anteriores sigan igual); si hay fallas, se repite el ciclo
+
 ## Cierre
 
 - [ ] T24 · documentador · `docs/guia-local-windows.md` (criterio 67; desde la ronda 9, que al cambiar el puerto de
@@ -676,7 +727,9 @@ descartada que escapa al lint" y agrega la nota para el revisor del plan, secci�
       sección 24 (cada paso con `await`, escrituras que fallan sin dejar nada, `academias` y `findMany` con `in`). Desde
       la ronda 13: las tres viñetas del plan, sección 25 (sin promesas descartadas, registros sin mensajes de Prisma,
       cargas masivas con `createMany` o `$executeRaw`). Desde la ronda 14: las dos viñetas del plan, sección 26 (toda
-      promesa esperada dentro de la transacción y nada de funciones `async` en temporizadores; la pila sin el mensaje)
+      promesa esperada dentro de la transacción y nada de funciones `async` en temporizadores; la pila sin el mensaje).
+      Desde la ronda 15: las dos viñetas del plan, sección 27 (envolver errores con un mensaje propio y `{ cause }`; sin
+      `money`)
 - [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)
