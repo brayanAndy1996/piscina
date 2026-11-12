@@ -2218,6 +2218,11 @@ Una migración `<marca>_academias_aislamiento`. Identificadores `uuid` generados
     prueba del criterio 96 (plan, sección 17). Si algún ejemplo que pasa en las protegidas de lint de las rondas 1 a 4
     importa un paquete no declarado en `backend/package.json` y empieza a fallar por el criterio 128, el test-writer se
     detiene e informa;
+  - _(decisión del orquestador tras la ronda 5, 12/11/2026)_ las pruebas protegidas de rondas anteriores que usan
+    `pg-pool`, `@prisma/adapter-neon` o `sql-template-tag` (no declarados en `backend/package.json`) como ejemplos para
+    probar exenciones de otras reglas pasan a ejecutarse en repositorios temporales cuyo `backend/package.json` declara
+    esos paquetes. Lo que comprueban no cambia: mismos ejemplos, mismas reglas y mismo resultado esperado; solo cambia el
+    repositorio donde corren, para que el criterio 128 no los haga fallar por una razón ajena a la prueba;
   - las historias siguientes: toda restricción única de una tabla de academia incluye `academia_id` (criterio 126); las
     vistas van con `security_invoker = true`, sin vistas materializadas, funciones `SECURITY DEFINER` ni reglas
     (criterio 124); una dependencia nueva del backend se agrega a la lista permitida (criterio 127); el SQL de los módulos
@@ -2546,6 +2551,14 @@ Bryan aprobó la especificación y aceptó la propuesta de cada pregunta abierta
 - **Lista permitida de dependencias, solo paquetes declarados y lista negra de clientes** (criterios 127 a 129).
   Alternativas descartadas: solo la lista negra (siempre aparece un cliente nuevo) y solo la lista de `backend/package.json`
   (un paquete declarado en otro espacio de trabajo llega igual a `node_modules` de la raíz).
+- **El criterio 128 cubre todo `backend/src/`, incluidos `infraestructura/prisma/`, `cli/` y `main.ts`, y falla cerrado
+  si `backend/package.json` falta o no se puede leer o analizar** _(decisión del orquestador tras la ronda 5,
+  12/11/2026)_. Las protegidas anteriores que usaban `pg-pool`, `@prisma/adapter-neon` o `sql-template-tag` como
+  ejemplos corren en repositorios temporales que los declaran, sin cambiar lo que comprueban. Alternativas descartadas:
+  eximir `infraestructura/prisma/` y `cli/` como en el criterio 129 (son justo las carpetas que hablan con la base y
+  donde un paquete no declarado haría más daño); dejar pasar todo si falta `backend/package.json` (un archivo borrado o
+  dañado desactivaría la regla en silencio); y declarar esos paquetes en el `backend/package.json` real para que las
+  pruebas sigan en el repositorio (agregaría dependencias que el backend no usa y ampliaría la lista del criterio 127).
 
 ## Preguntas abiertas
 
