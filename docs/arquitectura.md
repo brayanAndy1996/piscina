@@ -70,8 +70,8 @@ Lo que construye la historia 001 (migraciones en `backend/prisma/migrations/` y 
 - Por eso la fecha de negocio se calcula en el código, con `@date-fns/tz` en `America/Lima` a partir de la hora del reloj
   inyectable (`RELOJ`), y se pasa a la consulta como parámetro. Si tiene que calcularse en SQL, se escribe la zona:
   `(now() AT TIME ZONE 'America/Lima')::date`.
-- Las pruebas de estos cálculos fijan la hora con `RELOJ` en los bordes: 18:59 y 19:00 de Lima, fin de mes y la clase de
-  19:00 a 20:00.
+- Las pruebas de estos cálculos deberán fijar la hora con `RELOJ` en los bordes: 18:59 y 19:00 de Lima, fin de mes y
+  la clase de 19:00 a 20:00.
 
 ## Reglas para las historias siguientes
 

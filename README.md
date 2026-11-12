@@ -46,6 +46,9 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
   ("Academia de Natación Los Delfines") y `tiburones` ("Club de Natación Tiburones") y el superadmin de desarrollo.
 - **Web:** `/plataforma/ingresar` y `/plataforma/academias`, para crear, suspender y reactivar academias y para cerrar
   sesión. `/plataforma` lleva a la lista.
+- **Pruebas E2E de la plataforma:** `e2e/pruebas/plataforma.spec.ts`, con Playwright. El superadmin ingresa, crea,
+  suspende y reactiva una academia, y cierra sesión. A 360 px, la plataforma se ve completa, sin desplazamiento
+  horizontal.
 
 Todavía no existen los usuarios de las academias ni su inicio de sesión: el primer administrador de cada academia lo crea
 la 002 (DR-1).

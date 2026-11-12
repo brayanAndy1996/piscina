@@ -343,6 +343,10 @@ administrador y puede suspenderlas. No ve los datos internos de ninguna academia
 una suscripción a las academias queda **fuera del MVP**: por ahora el Superadmin las da de alta a mano. Cómo inicia
 sesión el Superadmin lo define la especificación de la historia 001.
 
+**Nota (ajuste del 11/11/2026, decisión del responsable):** el texto anterior decía que el Superadmin crea a su primer
+administrador. Esa creación va en la historia `002`, junto con los usuarios y su inicio de sesión (DR-1 de la
+especificación de `001`). El resto de la decisión no cambia.
+
 ## D-30. Lista de historias y estructura de carpetas
 
 **Decisión:** el orden de desarrollo está en [`specs/backlog.md`](../specs/backlog.md) y la estructura de carpetas,

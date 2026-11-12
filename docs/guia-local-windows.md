@@ -205,6 +205,7 @@ superadmin, que administra las academias. Los usuarios de cada academia llegan c
 3. Pulsa **Nueva academia** y escribe un nombre y un nombre corto. Por ejemplo: "Academia de prueba Norte" y
    `prueba-norte`. El nombre corto:
    - tiene de 3 a 30 caracteres: letras minúsculas sin tildes ni ñ, números y guiones;
+   - no puede empezar ni terminar con guion, ni tener guiones seguidos;
    - empieza con una letra y no puede ser una palabra reservada;
    - se guarda en minúsculas aunque lo escribas con mayúsculas, y **no se puede cambiar** después de crear la academia,
      porque los enlaces que ya se hayan enviado dependen de él.
