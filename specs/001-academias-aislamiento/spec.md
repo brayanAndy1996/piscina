@@ -2397,7 +2397,10 @@ hechas. No son reglas de negocio nuevas.
   (fuera de paréntesis y de cadenas) y aplana los términos que son a su vez una conjunción entre paréntesis.
   `cumpleFormaDeAcademia` es verdadera si algún término, sin paréntesis exteriores y quitando `public.` delante de
   `app_academia_actual`, es `academia_id = app_academia_actual()` o `app_academia_actual() = academia_id`, y la expresión
-  no contiene `app_es_plataforma` ni `set_config`. Un sembrador corre como dueño con el contexto de esa academia (sirve con
+  no contiene `app_es_plataforma` ni `set_config`. _(revisión T83 de la ronda 6, 12/11/2026)_ Si la expresión tiene un
+  `OR` de primer nivel (fuera de paréntesis y de cadenas), no es una conjunción y no cumple; `OR` tiene menos precedencia
+  que `AND`. Los identificadores distinguen mayúsculas: sin comillas, solo en minúsculas; con comillas, exactamente
+  `"public"`, `"app_academia_actual"` y `"academia_id"`. Un sembrador corre como dueño con el contexto de esa academia (sirve con
   un dueño superusuario o no) y crea, si las necesita, las filas padre de la misma academia.
 
 ## Cambios al modelo de datos
