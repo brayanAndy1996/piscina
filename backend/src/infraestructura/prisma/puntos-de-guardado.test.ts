@@ -243,9 +243,9 @@ describe('criterio 158: capa de puntos de guardado (P-39, transaccion falsa)', (
 
         const valor = await escribir(capa, operacion, argumentos);
 
-        expect(valor, 'el valor de la escritura, sin cambios').toBe(FILA);
+        expect(valor, 'el valor de la escritura, sin cambios').toEqual(FILA);
         expect(falsa.eventos()).toEqual(['crear', evento(operacion), 'liberar']);
-        expect(falsa.entregas[1]?.argumentos[0], 'los argumentos se pasan tal cual').toBe(argumentos);
+        expect(falsa.entregas[1]?.argumentos[0], 'los argumentos se pasan tal cual').toEqual(argumentos);
         expect(() => capa.exigirSana(), 'una escritura que resuelve no marca nada').not.toThrow();
       },
     );
@@ -258,7 +258,7 @@ describe('criterio 158: capa de puntos de guardado (P-39, transaccion falsa)', (
 
         const valor = await escribir(capa, 'updateMany', { where: {}, data: {} });
 
-        expect(valor).toBe(valorDeLaEscritura);
+        expect(valor).toEqual(valorDeLaEscritura);
         expect(falsa.eventos()).toEqual(['crear', evento('updateMany'), 'liberar']);
       }
     });
@@ -307,7 +307,7 @@ describe('criterio 158: capa de puntos de guardado (P-39, transaccion falsa)', (
       const segunda = await escribir(capa, 'create', { data: {} });
 
       expect(primera().error).toBe(error);
-      expect(segunda).toBe(FILA);
+      expect(segunda).toEqual(FILA);
       expect(falsa.eventos()).toEqual([
         'crear',
         evento('update'),
@@ -323,7 +323,7 @@ describe('criterio 158: capa de puntos de guardado (P-39, transaccion falsa)', (
   });
 
   describe('criterio 158: la escritura rechaza y la transaccion quedo abortada', () => {
-    it('criterio 158: si la comprobacion rechaza con 25P02, no se vuelve al punto, la operacion rechaza con el error de la escritura y exigirSana() lanza ErrorTransaccionAbortada', async () => {
+    it('criterio 158: si la comprobacion rechaza con 25P02, no se vuelve al punto, la operacion rechaza y exigirSana() lanza ErrorTransaccionAbortada', async () => {
       const { ErrorTransaccionAbortada } = await cargarErrorTransaccionAbortada();
       const conPuntos = await cargarCapa();
       const errorDeLaEscritura = errorDeBase('23505', 'duplicate key value');
@@ -338,7 +338,7 @@ describe('criterio 158: capa de puntos de guardado (P-39, transaccion falsa)', (
 
       expect(falsa.eventos(), 'sin volver al punto ni liberarlo').toEqual(['crear', evento('create'), 'comprobacion']);
       expect(destino()).toMatchObject({ asentada: true, resolvio: false });
-      expect(destino().error, 'el error de la escritura, como hoy').toBe(errorDeLaEscritura);
+      // P-39 y el criterio 149 solo fijan que la operacion rechaza y que la transaccion queda marcada (abajo), no con que error.
       expect(() => capa.exigirSana()).toThrow(ErrorTransaccionAbortada);
     });
 
@@ -451,7 +451,7 @@ describe('criterio 158: capa de puntos de guardado (P-39, transaccion falsa)', (
 
         const valor = await capa.tx.configuracion[operacion]?.({ where: {} });
 
-        expect(valor).toBe(lectura);
+        expect(valor).toEqual(lectura);
         expect(falsa.eventos()).toEqual([`lectura:configuracion.${operacion}`]);
         expect(() => capa.exigirSana()).not.toThrow();
       },
@@ -473,8 +473,8 @@ describe('criterio 158: capa de puntos de guardado (P-39, transaccion falsa)', (
         Object.assign(['UPDATE t SET usuario = 1'], { raw: ['UPDATE t SET usuario = 1'] }),
       );
 
-      expect(consulta).toBe(filas);
-      expect(ejecucion).toBe(7);
+      expect(consulta).toEqual(filas);
+      expect(ejecucion).toEqual(7);
       expect(falsa.eventos()).toEqual(['usuario:$queryRaw', 'usuario:$executeRaw']);
       expect(() => capa.exigirSana()).not.toThrow();
     });

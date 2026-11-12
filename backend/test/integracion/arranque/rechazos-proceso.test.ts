@@ -167,8 +167,13 @@ describe('criterio 157: la API real registra un rechazo sin manejar y sigue aten
     await esperarAtencion(puertoDeLaApi);
   }, TIEMPO_COMPILACION + TIEMPO_ARRANQUE);
 
-  afterAll(() => {
-    hijo?.kill();
+  afterAll(async () => {
+    // En Windows no se puede borrar la carpeta mientras el hijo la tiene abierta: se espera su salida (con un maximo).
+    if (hijo !== undefined && terminoElHijo === undefined) {
+      const salio = new Promise<void>((resolver) => hijo?.once('exit', () => resolver()));
+      hijo.kill();
+      await Promise.race([salio, new Promise<void>((resolver) => setTimeout(resolver, 10_000))]);
+    }
     if (carpetaSalida) fs.rmSync(carpetaSalida, { recursive: true, force: true });
   });
 
