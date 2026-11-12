@@ -22,6 +22,7 @@ const CLASES_DE_PRISMA = [
   Prisma.PrismaClientInitializationError,
   Prisma.PrismaClientRustPanicError,
 ];
+/** La lista cerrada de `tipo` de un error de la base (criterio 166, P-42); `esErrorDeBase` acepta además los `PrismaClient…`. */
 const NOMBRES_DE_BASE: ReadonlySet<string> = new Set([
   'PrismaClientKnownRequestError',
   'PrismaClientUnknownRequestError',
@@ -40,6 +41,10 @@ const OPERACION = /^(?:\$queryRaw|\$executeRaw|[a-z][A-Za-z0-9]*\.[a-zA-Z]+)$/;
 const MARCO_DE_PILA = /^\s+at\s/;
 const NIVELES_MAXIMOS = 10;
 const MARCOS_MAXIMOS = 40;
+const PROFUNDIDAD_MAXIMA = 10;
+const OBJETOS_MAXIMOS = 200;
+const CLAVES_MAXIMAS = 100;
+const DE_LA_BASE_MAXIMOS = 10;
 
 const TEXTO_DE_LA_CIRCUNSTANCIA: Readonly<Record<CircunstanciaDeLaCausa, string>> = {
   'sin-resultado': 'Operación sin resultado',
@@ -69,9 +74,27 @@ function sqlstateSeguro(error: unknown): string | null {
   }
 }
 
+/** El nombre de la clase del error (criterio 165): su `name` solo si es el de su constructor y tiene forma de identificador. */
+function nombreDeClase(error: unknown): string {
+  try {
+    const nombre = leerSeguro(error, 'name');
+    const constructor: unknown = esObjeto(error) ? Reflect.get(error, 'constructor') : undefined;
+    const deLaClase: unknown =
+      typeof constructor === 'function' || esObjeto(constructor) ? Reflect.get(constructor, 'name') : undefined;
+    return typeof nombre === 'string' && nombre === deLaClase && NOMBRE_DE_TIPO.test(nombre) ? nombre : 'Error';
+  } catch {
+    return 'Error';
+  }
+}
+
+/** El `tipo` de un error de la base: su `name` solo si está en la lista cerrada (criterio 166); si no, `ErrorDeBase`. */
+function tipoDeBase(error: unknown): string {
+  const nombre = leerSeguro(error, 'name');
+  return typeof nombre === 'string' && NOMBRES_DE_BASE.has(nombre) ? nombre : 'ErrorDeBase';
+}
+
 function datosSeguros(error: unknown): DatosSeguros {
-  const nombre = textoSiCumple(leerSeguro(error, 'name'), NOMBRE_DE_TIPO);
-  const tipo = nombre ?? (error instanceof Error ? 'Error' : 'ErrorDeBase');
+  const tipo = esErrorDeBase(error) ? tipoDeBase(error) : nombreDeClase(error);
   const sqlstate = sqlstateSeguro(error);
   const codigo = leerSeguro(error, 'code');
   const delaCausa = leerSeguro(leerSeguro(error, 'cause'), 'code');
@@ -190,61 +213,140 @@ function limpio(error: unknown): Record<string, unknown> {
   return { ...datosSeguros(error), ...(pila === undefined ? {} : { pila }) };
 }
 
-/** Los errores que cuelgan de este por `cause` y `errors`. */
-function hijosDe(error: unknown): unknown[] {
-  const hijos: unknown[] = [];
-  const causa = leerSeguro(error, 'cause');
-  if (causa !== undefined) hijos.push(causa);
-  const varios = leerSeguro(error, 'errors');
-  if (Array.isArray(varios)) hijos.push(...(varios as unknown[]).slice(0, NIVELES_MAXIMOS));
-  return hijos;
+/** Lee `objeto[clave]` (texto o Symbol) sin dejar que un getter lance. */
+function leerClave(objeto: object, clave: PropertyKey): unknown {
+  try {
+    return Reflect.get(objeto, clave);
+  } catch {
+    return undefined;
+  }
 }
 
-/**
- * ¿Algún nivel de la cadena de `cause` y `errors` es un error de la base que no sea una `CausaLimpia`? Una cadena más profunda que
- * el límite cuenta como que sí: ante la duda, se limpia.
- */
-function llevaBaseSinLimpiar(error: unknown, nivel = 0, vistos = new WeakSet<object>()): boolean {
-  if (!esObjeto(error) || error instanceof CausaLimpia) return false;
-  if (vistos.has(error)) return false;
-  vistos.add(error);
-  if (esErrorDeBase(error)) return true;
-  if (nivel >= NIVELES_MAXIMOS) return hijosDe(error).length > 0;
-  return hijosDe(error).some((hijo) => llevaBaseSinLimpiar(hijo, nivel + 1, vistos));
+/** Propias (texto y Symbol, enumerables o no) y enumerables heredadas. Lanza si el objeto no deja listarlas (un Proxy). */
+function clavesDe(objeto: object): PropertyKey[] {
+  const claves = new Set<PropertyKey>(Reflect.ownKeys(objeto));
+  // Se buscan también las heredadas enumerables: pino las serializa.
+  for (const clave in objeto) claves.add(clave);
+  return [...claves];
 }
 
-/** Copia un error propio que lleva un error de la base en su cadena, con las causas convertidas. */
-function copiaConCausasLimpias(error: unknown, nivel: number, vistos: WeakSet<object>): unknown {
-  if (!esObjeto(error)) return { tipo: typeof error };
-  if (error instanceof CausaLimpia) return error;
-  if (esErrorDeBase(error)) return limpio(error);
-  if (vistos.has(error) || nivel >= NIVELES_MAXIMOS) return { tipo: 'truncado' };
-  vistos.add(error);
-  const mensaje = leerSeguro(error, 'message');
-  const pila = leerSeguro(error, 'stack');
-  const causa = leerSeguro(error, 'cause');
-  const varios = leerSeguro(error, 'errors');
-  return {
-    tipo: textoSiCumple(leerSeguro(error, 'name'), NOMBRE_DE_TIPO) ?? 'Error',
-    ...(typeof mensaje === 'string' ? { mensaje } : {}),
-    ...(typeof pila === 'string' ? { pila } : {}),
-    ...(causa === undefined ? {} : { causa: copiaConCausasLimpias(causa, nivel + 1, vistos) }),
-    ...(Array.isArray(varios)
-      ? {
-          errores: (varios as unknown[])
-            .slice(0, NIVELES_MAXIMOS)
-            .map((e) => copiaConCausasLimpias(e, nivel + 1, vistos)),
+interface Busqueda {
+  readonly deLaBase: readonly object[];
+  readonly agotada: boolean;
+}
+
+/** Recorre el grafo de `raiz` por niveles y junta los errores de la base (sin entrar en ellos ni en las `CausaLimpia`). */
+function buscarErroresDeLaBase(raiz: object): Busqueda {
+  const vistos = new WeakSet<object>([raiz]);
+  const deLaBase: object[] = [];
+  let pendientes: object[] = [raiz];
+  let visitados = 1;
+  for (let nivel = 0; pendientes.length > 0; nivel += 1) {
+    const siguientes: object[] = [];
+    for (const objeto of pendientes) {
+      let claves: PropertyKey[];
+      try {
+        claves = clavesDe(objeto);
+      } catch {
+        return { deLaBase, agotada: true };
+      }
+      if (claves.length > CLAVES_MAXIMAS) return { deLaBase, agotada: true };
+      for (const clave of claves) {
+        const valor = leerClave(objeto, clave);
+        if (!esObjeto(valor) || vistos.has(valor)) continue;
+        vistos.add(valor);
+        if (valor instanceof CausaLimpia) continue;
+        if (esErrorDeBase(valor)) {
+          deLaBase.push(valor);
+          continue;
         }
+        visitados += 1;
+        if (nivel + 1 > PROFUNDIDAD_MAXIMA || visitados > OBJETOS_MAXIMOS) return { deLaBase, agotada: true };
+        siguientes.push(valor);
+      }
+    }
+    pendientes = siguientes;
+  }
+  return { deLaBase, agotada: false };
+}
+
+interface MensajesDeLaBase {
+  readonly textos: readonly string[];
+  readonly verificables: boolean;
+}
+
+/** Los mensajes de los errores de la base encontrados; si alguno no se puede leer o no es una cadena, no son verificables. */
+function mensajesDeLaBase(deLaBase: readonly object[]): MensajesDeLaBase {
+  const textos: string[] = [];
+  let verificables = true;
+  for (const error of deLaBase) {
+    let mensaje: unknown;
+    try {
+      mensaje = Reflect.get(error, 'message');
+    } catch {
+      verificables = false;
+      continue;
+    }
+    if (typeof mensaje === 'string') {
+      if (mensaje !== '') textos.push(mensaje);
+    } else if (mensaje !== undefined) {
+      verificables = false;
+    }
+  }
+  return { textos, verificables };
+}
+
+/** Para `mensaje`: inclusión en los dos sentidos (criterio 165). Sin poder verificar, se toma por copia. */
+const copia = (texto: string, de: MensajesDeLaBase): boolean =>
+  !de.verificables || de.textos.some((m) => texto.includes(m) || m.includes(texto));
+
+interface Contexto {
+  readonly mensajes: MensajesDeLaBase;
+  readonly colocados: Set<object>;
+  readonly enCadena: WeakSet<object>;
+}
+
+/** Convierte el error y su cadena de `cause` y `errors`: los de la base a su forma limpia, los demás con `tipo`, `mensaje` y `pila`. */
+function convertir(valor: unknown, nivel: number, contexto: Contexto): unknown {
+  if (!esObjeto(valor)) return { tipo: typeof valor };
+  if (valor instanceof CausaLimpia) return valor;
+  if (esErrorDeBase(valor)) {
+    contexto.colocados.add(valor);
+    return limpio(valor);
+  }
+  if (!(valor instanceof Error)) return { tipo: typeof valor };
+  if (nivel > PROFUNDIDAD_MAXIMA || contexto.enCadena.has(valor)) return { tipo: 'truncado' };
+  contexto.enCadena.add(valor);
+  const mensaje = leerSeguro(valor, 'message');
+  const pila = pilaSinEncabezado(valor);
+  const pilaCompleta = leerSeguro(valor, 'stack');
+  const conservaMensaje = typeof mensaje === 'string' && !copia(mensaje, contexto.mensajes);
+  const { textos, verificables } = contexto.mensajes;
+  const conservaPila =
+    pila !== undefined &&
+    verificables &&
+    typeof mensaje === 'string' &&
+    typeof pilaCompleta === 'string' &&
+    !textos.some((m) => mensaje.includes(m) || pilaCompleta.includes(m));
+  const causa = leerSeguro(valor, 'cause');
+  const varios = leerSeguro(valor, 'errors');
+  return {
+    tipo: nombreDeClase(valor),
+    ...(conservaMensaje ? { mensaje } : {}),
+    ...(conservaPila ? { pila } : {}),
+    ...(causa === undefined ? {} : { causa: convertir(causa, nivel + 1, contexto) }),
+    ...(Array.isArray(varios)
+      ? { errores: (varios as unknown[]).slice(0, NIVELES_MAXIMOS).map((e) => convertir(e, nivel + 1, contexto)) }
       : {}),
   };
 }
 
 /**
- * Lo que se registra de un error (criterio 162):
- * - un error de Prisma o de la base (`esErrorDeBase`), salvo una `CausaLimpia`: un objeto con solo `tipo`, `codigoPrisma`,
- *   `sqlstate`, `codigoDeSistema`, `modelo` y `pila` (los marcos);
- * - un `Error` propio con un error de la base en su cadena de `cause` o `errors`: `{ tipo, mensaje, pila, causa?, errores? }` con
- *   las causas convertidas;
+ * Lo que se registra de un error (criterios 162, 165 y 166):
+ * - un error de Prisma o de la base (`esErrorDeBase`), salvo una `CausaLimpia`: un objeto con solo `tipo` (de la lista cerrada),
+ *   `codigoPrisma`, `sqlstate`, `codigoDeSistema`, `modelo` y `pila` (los marcos);
+ * - un `Error` con un error de la base en cualquier propiedad de su grafo: un objeto nuevo con solo `tipo`, `mensaje`, `pila`,
+ *   `causa`, `errores`, `erroresDeLaBase` y `truncado`; si un tope se agota, falla cerrada `{ tipo, truncado: true }`;
  * - cualquier otro `Error` (también una `CausaLimpia` y un `ErrorTransaccionAbortada`): el mismo objeto;
  * - lo que no es un `Error`: `{ tipo: typeof valor }`, nunca su valor.
  */
@@ -253,8 +355,24 @@ export function errorParaRegistro(error: unknown): unknown {
     if (!(error instanceof Error)) return { tipo: typeof error };
     if (error instanceof CausaLimpia) return error;
     if (esErrorDeBase(error)) return limpio(error);
-    if (!llevaBaseSinLimpiar(error)) return error;
-    return copiaConCausasLimpias(error, 0, new WeakSet<object>());
+    const { deLaBase, agotada } = buscarErroresDeLaBase(error);
+    if (deLaBase.length === 0 && !agotada) return error;
+    if (agotada) {
+      const encontrados = deLaBase.slice(0, DE_LA_BASE_MAXIMOS).map(limpio);
+      return {
+        tipo: nombreDeClase(error),
+        truncado: true,
+        ...(encontrados.length > 0 ? { erroresDeLaBase: encontrados } : {}),
+      };
+    }
+    const contexto: Contexto = { mensajes: mensajesDeLaBase(deLaBase), colocados: new Set(), enCadena: new WeakSet() };
+    const convertido = convertir(error, 0, contexto) as Record<string, unknown>;
+    const otros = deLaBase.filter((e) => !contexto.colocados.has(e));
+    return {
+      ...convertido,
+      ...(otros.length > 0 ? { erroresDeLaBase: otros.slice(0, DE_LA_BASE_MAXIMOS).map(limpio) } : {}),
+      ...(otros.length > DE_LA_BASE_MAXIMOS ? { truncado: true } : {}),
+    };
   } catch {
     return { tipo: 'Error' };
   }
