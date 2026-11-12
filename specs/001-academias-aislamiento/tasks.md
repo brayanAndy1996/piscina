@@ -810,7 +810,9 @@ T170.
       `analizarEnv` ∪ `clavesPosiblesEnv`, `ilegibles` solo si hay, aviso del comando por variable sin su valor,
       `appendFileSync` sin reescribir (bytes, BOM y `\r\n` conservados; salto inicial decidido sin el BOM) y el rechazo de
       un `.env` UTF-16 o con un byte `00` sin escribir (provisional, R17-2); el hook: `entornoParaHijos(raiz, entorno =
-      process.env)` exportado y con el BOM quitado (plan, sección 29) (criterios 169 y 170)
+      process.env)` exportado y con el BOM quitado (plan, sección 29) (criterios 169 y 170) _(en parte **reemplazada**
+      por T178 y T179, ataque ronda 18: `analizarEnv` pasa a `dotenv.parse`, existentes = solo `analizarEnv`, y el hook
+      lee con `cargarAnalizadorEnv`)_
 - [ ] T173 · backend · `scripts/lib/punto-de-entrada.mjs` con `rutasIguales` y `esPuntoDeEntrada` (P-44); los cinco
       scripts (`crear-bases`, `completar-env`, `compilar-contratos-si-falta`, `verificar-pruebas-protegidas`,
       `verificar-sin-secretos`) la usan con `esPuntoDeEntrada(import.meta.url)` y quitan la comparación de hoy y los
@@ -824,6 +826,78 @@ T170.
       o carreras; scripts lanzados por enlaces, uniones, rutas cortas 8.3, mayúsculas distintas en Windows, `npm run`
       desde subcarpetas o los hooks de git; y que las protegidas anteriores sigan igual); si hay fallas, se repite el
       ciclo
+
+## Ataque adversarial, ronda 18 (12/11/2026)
+
+Sin fallas en el núcleo (RLS, rol, Superadmin, registro de errores, punto de entrada). Fallas F1 y F2 (medias, la misma
+familia que la F1 de la ronda 17: dos analizadores del `.env`) y observaciones O1 (se corrige) y O2 (riesgo aceptado) de
+la ronda 18 (sobre `d8b5cdd`); criterios 172 a 175 de `spec.md` (sección AA) y P-45. Plan, sección 30. Decisión del
+orquestador: un solo analizador, `dotenv.parse`. Las preguntas técnicas R18-1 a R18-4 tienen valores provisionales que ya
+están en los criterios y no bloquean; si el orquestador decide otra cosa, el especificador ajusta el criterio antes de
+T176.
+
+- [ ] T176 · test-writer · Pruebas protegidas en rojo de los criterios 172 a 175 (archivos en "Protegidas del ataque ronda
+      18" del plan, sección 13), con la marca de pruebas protegidas y sin mirar la implementación: la ayuda con los
+      conjuntos (d) y (f) y el generador con semilla fija; (s1) a (s6) (172); (c1) a (c6), con `completarEnv` y como
+      comando, y la comprobación previa de (c4) (173); (h1) a (h9), con el enlace de (h3) y la omisión solo en Windows
+      con motivo (174); (o1) a (o3), con la comprobación previa del ataque en (o2) (175). En el mismo commit:
+      - la corrección de `backend/test/utilidades/base-pruebas.ts` y `base-datos.ts` (leer con `dotenv.parse`, sin la
+        línea del BOM), con su prueba `lectura-env-ronda18.test.ts` (172, (s3));
+      - **ajustes a protegidas de la ronda 17**, cada uno con un comentario que cita el criterio y el motivo, y nada más
+        de esos archivos:
+        - `scripts/test/entorno-bom-ronda17.test.mjs`: la prueba "el texto parseEnv aparece solo en entorno.mjs, el hook y
+          las dos utilidades de prueba" pasa a esperar que ningún archivo del alcance contenga `parseEnv` (`PERMITIDOS =
+          []`, con su nombre nuevo); comentarios del encabezado y de la carga de `dotenv` (criterio 172);
+        - `backend/test/utilidades/lectura-env-ronda17.test.ts`: el caso "un U+FEFF que no está al principio no se quita
+          (solo se quita el inicial)" pasa a esperar `DATABASE_URL` igual a lo que da `dotenv.parse` del mismo texto
+          (`postgresql://x:y@127.0.0.1:5433/aquagestion`); encabezado (criterio 172);
+        - `scripts/test/completar-env-ronda17.test.mjs`: en (b4), "como comando: termina con 0, nombra la variable
+          ilegible sin su valor y deja el archivo igual" con el resultado por texto del criterio 173 (los cuatro que
+          `dotenv` lee: archivo igual y sin "Se agregaron"; el del valor entre comillas en varias líneas: "Se agregaron"
+          con `DATABASE_URL`, archivo que empieza con los bytes de antes y `DATABASE_URL` de `EJEMPLO_B`), y "si
+          DATABASE_URL la lee dotenv y no analizarEnv, el resultado lleva ilegibles" con las expectativas explícitas por
+          texto (sin `ilegibles` y `agregadas: []` en los cuatro; `agregadas` e `ilegibles` `['DATABASE_URL']` en el
+          quinto); comentarios del encabezado y del conjunto (b). Las pruebas de inclusión en `clavesPosiblesEnv` no se
+          tocan;
+        - `scripts/test/preparar-sesion-ronda17.test.mjs`: solo el comentario del encabezado (resultado sin cambios).
+      Comprobar que ninguna otra protegida cambia de resultado, en especial `scripts/test/entorno*.test.mjs`,
+      `scripts/test/completar-env.test.mjs`, `scripts/test/preparar-sesion*.test.mjs`, `scripts/test/rol-app-hook.test.mjs`,
+      `backend/test/utilidades/base-pruebas.test.ts`, `eslint/regla-entorno.test.mjs` y las de `cargar-env` (si alguna
+      cambiara, o si alguna comprobación previa no reproduce el ataque, detenerse e informar). Commit: "Pruebas protegidas
+      (001), ataque ronda 18: un solo analizador del .env (en rojo)" (criterios 172 a 175)
+- [ ] T177 · tester · Confirmar que T176 falla por la razón esperada con `d8b5cdd`: (s1) en (d1) a (d7) y en parte de
+      (f), (s2) y (s3) con `URL_5432` o sin `DATABASE_URL`, (s4) porque `scripts` no declara `dotenv`, (s6) y la prueba
+      estática ajustada de la ronda 17 encuentran `parseEnv` (172); (c2) agrega `DATABASE_URL`, (c3) no agrega, (c4)
+      escribe y cambia `PUERTO_WEB`, (c5) con algún texto, y los dos casos ajustados de (b4) (173); (h1) a (h3) y (h5) a
+      (h9) fallan al importar y (h4) da `URL_5432` o nada (174); (o1) y (o2) fallan al importar y (o3) no encuentra las
+      opciones (175). Los casos que importan funciones nuevas fallan al importar: es la razón esperada. Se informan como
+      verdes por diseño, si ya pasan: (s5), (c1), (c6), el caso ajustado de `lectura-env-ronda17.test.ts` (las utilidades
+      se corrigen en el mismo commit; comprobar con `git show d8b5cdd:backend/test/utilidades/base-pruebas.ts` que antes
+      usaban `parseEnv`) y `lectura-env-ronda18.test.ts`. Informar cuántos textos de (f) difieren con `d8b5cdd`, cuántos
+      acepta el lector mínimo en (h7) y qué casos se omitieron y con qué motivo
+- [ ] T178 · backend · `scripts/package.json` con `dotenv` (mismo rango que el backend) y `package-lock.json` por
+      `npm install`; `scripts/lib/entorno.mjs`: `analizarEnv` = `dotenv.parse` cargado al primer uso con `createRequire`,
+      error que nombra `dotenv` y pide `npm ci` si falta, sin `parseEnv`; `scripts/completar-env.mjs`: existentes = solo
+      `analizarEnv`, `ilegibles` como parte de `agregadas` con el aviso nuevo, y la comprobación antes de escribir con su
+      error (provisional, R18-3) (plan, sección 30) (criterios 172 y 173)
+- [ ] T179 · backend · `.claude/hooks/preparar-sesion.mjs`: `analizarEnvMinimo`, `cargarAnalizadorEnv`,
+      `entornoParaHijos` con el tercer parámetro, `entornoParaInstalar` en el paso de `npm ci`, sin `parseEnv` ni import
+      estático de `dotenv`; fuera de la nube sigue sin hacer nada (provisionales R18-1 y R18-2) (plan, sección 30)
+      (criterio 174)
+- [ ] T180 · backend · `backend/src/infraestructura/entorno/opciones-dotenv.ts`; `cargar-env.ts`, `cli/conexion.ts` y
+      `prisma.config.ts` con `opcionesDotenv` (o las seis opciones escritas en `prisma.config.ts` si su cargador no admite el
+      import); `e2e/playwright.config.ts` con las seis opciones; confirmar que la CLI de Prisma no carga el `.env` por su
+      cuenta (o que no pisa lo definido ni toma `DOTENV_*`; si no se puede asegurar, detenerse e informar); `npm run lint` y
+      `npm run typecheck` en verde (plan, sección 30) (criterio 175)
+- [ ] T181 · orquestador · `git diff` desde el commit de T176: T178 a T180 no tocaron pruebas protegidas (ni
+      `backend/test/utilidades/base-datos.ts` ni `base-pruebas.ts`)
+- [ ] T182 · adversarial · Ronda 19 sobre todo lo anterior, en especial 172 a 175 (otra forma de que los scripts, el
+      hook, las utilidades de prueba y el backend lean valores distintos: otra copia o versión de `dotenv` resuelta por
+      otro camino, `NODE_PATH`, un `dotenv` en una carpeta superior al repositorio, Vite, la CLI de Prisma; el lector
+      mínimo del hook aceptando un texto que `dotenv` lee distinto; `env:completar` cambiando la lectura de lo que ya había
+      por otra vía que la comprobación no vea (codificación, bytes inválidos, archivo cambiado entre la lectura y la
+      escritura); variables `DOTENV_*` o `NODE_OPTIONS` que todavía cambien la carga; y que las protegidas anteriores
+      sigan igual); si hay fallas, se repite el ciclo
 
 ## Cierre
 
@@ -842,8 +916,11 @@ T170.
       `cause` función). Desde la ronda 17: en `docs/guia-local-windows.md`, las dos viñetas de "Problemas frecuentes" del
       plan, sección 29 (`.env` en UTF-8 y aviso de `env:completar`; criterio 67 ampliado) y que el repositorio puede estar
       bajo una unión; en `specs/backlog.md`, la nota O2 en la historia 005 (límite de peticiones de
-      `GET /api/a/{nombreCorto}`, a decidir con el hosting, D-21; spec, "Notas para historias futuras")
-- [ ] T25 · responsable · En Windows: `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
+      `GET /api/a/{nombreCorto}`, a decidir con el hosting, D-21; spec, "Notas para historias futuras"). Desde la ronda
+      18: en `docs/guia-local-windows.md`, las viñetas propuestas en el plan, sección 30 (reemplazan la del aviso "los
+      scripts no la pueden leer" de la ronda 17: línea que no lee nadie, comilla sin cerrar al final, variable repetida
+      (vale la última), `npm ci` antes de los comandos, nombres en mayúsculas y sin `DOTENV_*`; criterio 67 precisado)
+- [ ] T25 · responsable · En Windows (desde la ronda 18, `npm ci` antes de `env:completar`): `git pull`, `npm ci`, `npm run env:completar`, `docker compose up -d`,
       `npm run db:preparar`, `npm run dev`; entrar a `http://localhost:5173/plataforma/ingresar` con el superadmin de
       desarrollo, crear una academia, suspenderla y reactivarla (criterios 62, 63, 67, 69)
 

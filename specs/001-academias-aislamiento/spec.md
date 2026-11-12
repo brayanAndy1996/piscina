@@ -3810,7 +3810,8 @@ crítica", AA).
      Pruebas unitarias (en `scripts/test/` y en `backend/test/utilidades/`): (s1) **coherencia:** para cada texto de (a),
      (d) y (f), `analizarEnv(texto)` es igual (`toEqual`) a `dotenv.parse(texto)`; para (a) y (d), `cargarEnv(env, carpeta)`
      con ese texto como `.env` y `env = {}` deja `env` igual a `dotenv.parse(texto)` y a lo que carga `dotenv.config({
-     ...opcionesDotenv(ruta), processEnv: {} })` (criterio 175); (s2) **reproducción F1 y F2:** con (d1) a (d7),
+     ...opcionesDotenv(ruta), processEnv: {} })` (criterio 175; en la prueba de `scripts/`, las seis opciones de P-45
+     escritas en la prueba); (s2) **reproducción F1 y F2:** con (d1) a (d7),
      `cargarEnv` da `DATABASE_URL` igual a `URL_5433`, `leerUrlsBases(env).desarrollo.puerto` es `5433` y
      `diferenciasConDesarrollo(leerUrlApp(env), leerUrlsBases(env).desarrollo)` es `[]`; (s3) **utilidades de prueba:** con
      (d1) a (d7), `leerEntornoBases(carpeta, {})` da `DATABASE_URL` igual a `URL_5433`; y con (d1) a (d6) cambiando
@@ -3885,13 +3886,15 @@ crítica", AA).
      `agregadas` es `['DATABASE_URL']`, `ilegibles` es `['DATABASE_URL']`, el archivo nuevo empieza con los bytes de antes,
      `dotenv.parse` del archivo da la `DATABASE_URL` del `.env.example` de prueba y conserva los valores de antes; como
      comando: código 0, la salida contiene "Se agregaron" y nombra `DATABASE_URL` en una línea más (el aviso), y no contiene
-     `URL_5433` ni su contraseña; (c4) **la comprobación antes de escribir:** con un `.env.example` de prueba cuyo bloque
-     de `DATABASE_URL_APP` tiene un comentario con una comilla invertida (`# Se crea con \`npm run db:crear\`.`) y un `.env`
-     con todas las demás variables y, como última línea y sin salto final, ``PUERTO_WEB=`5173``: `completarEnv` lanza un
-     `Error` cuyo mensaje contiene `.env` y `PUERTO_WEB` y no contiene `5173`; el archivo queda byte a byte igual; el comando
-     termina con código 1 con ese mensaje. Lo mismo con comillas dobles (`# Se crea con "npm run db:crear".` y
-     `PUERTO_WEB="5173`). La prueba comprueba antes que, agregando a mano el bloque, `dotenv.parse` cambia el valor de
-     `PUERTO_WEB` (si no, se detiene e informa). Con `d8b5cdd`, agregaba y `PUERTO_WEB` cambiaba en silencio; (c5) **fuzz:**
+     `URL_5433` ni su contraseña; (c4) **la comprobación antes de escribir:** con un `.env.example` de prueba con
+     `DATABASE_URL`, `PUERTO_WEB` y `DATABASE_URL_APP`, en el que la línea de comentario justo antes de `DATABASE_URL_APP`
+     **termina** con una comilla invertida (por ejemplo, ``# Se crea con el comando de la guía ` ``; `dotenv` solo cierra
+     un valor entre comillas si la comilla que lo cierra va al final de su línea), y un `.env` con `DATABASE_URL=URL_5433`
+     y, como última línea y sin salto final, ``PUERTO_WEB=`5173``: `completarEnv` lanza un `Error` cuyo mensaje contiene
+     `.env` y `PUERTO_WEB` y no contiene `5173`; el archivo queda byte a byte igual; el comando termina con código 1 con ese
+     mensaje. Lo mismo con comillas dobles (el comentario termina en `"` y la línea es `PUERTO_WEB="5173`). La prueba
+     comprueba antes que, agregando a mano el bloque, `dotenv.parse` cambia el valor de `PUERTO_WEB` (si no, se detiene e
+     informa). Con `d8b5cdd`, agregaba y `PUERTO_WEB` cambiaba en silencio; (c5) **fuzz:**
      los primeros 3000 textos de (f), cada uno como `.env` (un archivo por texto, en la misma carpeta temporal): o
      `completarEnv` lanza el error de (c4) y el archivo queda igual, o ninguna de `agregadas` está en `dotenv.parse(antes)`,
      todas las variables de `.env.example` que no estaban en `dotenv.parse(antes)` están en `agregadas`, y

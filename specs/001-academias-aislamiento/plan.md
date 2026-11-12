@@ -3114,7 +3114,8 @@ export function cargarAnalizadorEnv(raizRepo = RAIZ_DEL_REPOSITORIO) {
 
 const NOMBRE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const VALOR = /^(?:[^\s#"'`\\]+(?: [^\s#"'`\\]+)*)?$/;           // sin espacios al borde; solo U+0020 dentro
-const PROHIBIDOS = /[\u0000-\u0009\u000B-\u001F\u007F]|[^\S \n\r]|\r(?!\n)/;   // control y espacios Unicode
+// control salvo \n y \r, espacios de \s que no son U+0020, \n ni \r, y un \r que no va antes de \n
+const PROHIBIDOS = /[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F]|[^\S \n\r]|\r(?!\n)/;
 
 export function analizarEnvMinimo(texto) {
   const sinBom = texto.startsWith('﻿') ? texto.slice(1) : texto;
@@ -3143,7 +3144,8 @@ export function analizarEnvMinimo(texto) {
   sin quitar nada, porque no empieza con `export ` (con espacio); y `export export=1` da `export`, como `dotenv`. La
   propiedad (h7) lo vigila.
 - La expresión `PROHIBIDOS` incluye `[^\S \n\r]` (cualquier espacio de `\s` que no sea U+0020, `\n` ni `\r`): cubre
-  U+FEFF fuera de la posición 0, U+00A0, U+2028, U+2029, U+3000, `\t`, `\v` y `\f`. Si (h7) encuentra un texto aceptado
+  U+FEFF fuera de la posición 0, U+00A0, U+2028, U+2029, U+3000, `\t`, `\v` y `\f`. El rango de control deja fuera
+  `\n` (U+000A) y `\r` (U+000D); un `\r` solo se admite justo antes de un `\n`. Si (h7) encuentra un texto aceptado
   que difiere, se estrecha la forma (nunca se amplía) y se informa.
 - `entornoParaHijos(raiz, entorno, analizador)`: igual que hoy, con `analizador.analizar(texto)` en lugar de la línea de
   `parseEnv`. `entornoParaInstalar`: `try { return entornoParaHijos(…) } catch { return { ...entorno } }`.
@@ -3333,13 +3335,21 @@ frecuentes", en lugar de la segunda viñeta de la ronda 17:
 | `cause` y `errors` por su nombre en cada objeto visitado (ataque ronda 16, criterio 168) | Solo en el error recibido; todos los getters heredados | pino las lee en cada causa y en cada error de `errors`; pino no lee los demás getters y se ejecutaría código ajeno sin necesidad |
 | `cause` función: falla cerrada sin llamarla (criterio 168) | Llamarla y buscar en el resultado; ignorarla | Ejecuta código ajeno al registrar (puede lanzar, colgar, tener efectos o devolver otra cosa a pino); pino la llama |
 | `errors` función: ni se llama ni es falla cerrada (criterio 168) | Falla cerrada también | pino no la llama ni la serializa; se perdería diagnóstico sin motivo |
-| Quitar el BOM inicial antes de `parseEnv` con una sola función (`analizarEnv`) en todos los lectores de `scripts/`, copiada en el hook y en dos utilidades de prueba (ataque ronda 17, criterio 169) | Usar `dotenv` en los scripts; quitar todos los espacios Unicode al principio de cada línea | El hook corre antes de `npm ci` y no puede cargar `node_modules`; reimplementar `dotenv` a medias |
-| `env:completar` da por existente lo que lee `analizarEnv` o lo que `clavesPosiblesEnv` encuentra, y avisa de lo segundo (criterio 170; R17-1 provisional) | Copiar el analizador de `dotenv`; confiar solo en `analizarEnv` | `dotenv` 18 trae dos analizadores internos y cambia con cada versión; cualquier otra diferencia repetiría la falla |
+| Quitar el BOM inicial antes de `parseEnv` con una sola función (`analizarEnv`) en todos los lectores de `scripts/`, copiada en el hook y en dos utilidades de prueba (ataque ronda 17, criterio 169) _(reemplazada en la ronda 18 por la fila de `dotenv.parse`)_ | Usar `dotenv` en los scripts; quitar todos los espacios Unicode al principio de cada línea | El hook corre antes de `npm ci` y no puede cargar `node_modules`; reimplementar `dotenv` a medias |
+| `env:completar` da por existente lo que lee `analizarEnv` o lo que `clavesPosiblesEnv` encuentra, y avisa de lo segundo (criterio 170; R17-1 provisional) _(reemplazada en la ronda 18: existente = lo que lee `dotenv`)_ | Copiar el analizador de `dotenv`; confiar solo en `analizarEnv` | `dotenv` 18 trae dos analizadores internos y cambia con cada versión; cualquier otra diferencia repetiría la falla |
 | Solo agregar al final con `appendFileSync` (criterio 170) | Reescribir el archivo normalizado | Cambiaría bytes del usuario (BOM, `\r\n`) y el mensaje "no se modificaron" dejaría de ser cierto |
 | `.env` UTF-16: `env:completar` no escribe y termina con 1 (criterio 170, provisional R17-2) | Convertirlo a UTF-8 en el lugar; no detectarlo | Cambia el archivo sin preguntar; agregar UTF-8 a un UTF-16 lo deja ilegible para todos |
 | Punto de entrada con `fs.realpathSync` de los dos lados y una ayuda común, copiada en el hook (ataque ronda 17, criterio 171) | `import.meta.main`; `--preserve-symlinks-main` en cada comando; comparar solo el nombre | No está en todas las versiones de Node 22 admitidas; no cubre los hooks de git ni el uso a mano; un script importado con el mismo nombre se ejecutaría |
 | `realpath` inyectable en `esPuntoDeEntrada` (criterio 171) | Probar la comparación de Windows solo en la CI de Windows | La regla sin mayúsculas se prueba en cualquier sistema; la CI de Windows confirma con una unión real |
 | O2 diferida: sin límite en `GET /api/a/{nombreCorto}` en 001 (ronda 17, decisión del orquestador) | Agregar ya un límite por IP | Depende del hosting (`trust proxy`, límites del proveedor) y de cómo la use la historia 005 |
+| Un solo analizador: `analizarEnv` = `dotenv.parse`, también en las utilidades de prueba; `dotenv` declarado en `scripts` con el mismo rango que el backend (ataque ronda 18, criterio 172; decisión del orquestador) | Seguir con `parseEnv` y cubrir claves repetidas y saltos de línea; copiar el analizador de `dotenv` | Con dos analizadores siempre queda otra diferencia (F1 y F2 eran de la misma familia que la ronda 17); la copia se desactualiza |
+| `dotenv` cargado al primer uso con `createRequire` en `scripts/lib/entorno.mjs`, con falla cerrada si falta (criterio 172) | `import` estático | El hook importa el módulo antes de `npm ci` y fallaría entero |
+| `env:completar`: existente = lo que lee `dotenv`; `clavesPosiblesEnv` solo para el aviso, y la variable se agrega (criterio 173) | Quitar `clavesPosiblesEnv`; seguir sin agregar lo que "parece" definido | Se perdería un aviso útil; sin agregar, el backend se quedaba sin la variable |
+| Comprobación en memoria antes de escribir: lo leído después = lo de antes + lo agregado (criterio 173, R18-3 provisional) | Escribir y avisar; enumerar las formas peligrosas (comillas sin cerrar) | Cambiaría en silencio una variable del usuario; la enumeración siempre deja otra |
+| Hook: `dotenv` si está instalado, si no un lector mínimo que da lo mismo o se niega; `npm ci` sin depender del `.env` (criterio 174, R18-1 y R18-2 provisionales) | Lector mínimo con `parseEnv`; reordenar los pasos; fallar sin `dotenv` | Es el analizador de la falla; cambia el orden del criterio 44 de 000; el hook no podría instalar `dotenv` |
+| Lector mínimo garantizado por una propiedad con fuzz determinista contra `dotenv.parse` (criterio 174) | Casos fijos | Los casos fijos no encuentran la siguiente forma; con semilla fija la prueba es repetible |
+| `opcionesDotenv` con las seis opciones escritas (criterio 175, O1) | Borrar las `DOTENV_*` del entorno al arrancar; riesgo aceptado | Efecto global que no cubre a Prisma ni a Playwright; se cierra con una función |
+| O2 (mayúsculas en Windows) como riesgo aceptado (R18-4 provisional) | Comparar sin mayúsculas en Windows; aviso | El mismo `.env` daría resultados distintos según el sistema; los dos lados ya leen lo mismo |
 
 ## Migraciones
 
@@ -3379,6 +3389,8 @@ frecuentes", en lugar de la segunda viñeta de la ronda 17:
   la regla de no usar `money` no toca ninguna tabla (ninguna lo usa).
 - Ronda 16: sin migraciones nuevas. El costo acotado de la búsqueda y `cause` y `errors` por su nombre son de código.
 - Ronda 17: sin migraciones nuevas. La lectura del `.env` y el punto de entrada son de los scripts y del hook.
+- Ronda 18: sin migraciones nuevas. La lectura del `.env` y las opciones de `dotenv` son de los scripts, el hook, las
+  utilidades de prueba y la carga del entorno del backend.
 - Para el responsable: `npm run db:preparar` crea el rol y aplica la migración; si solo ejecuta `npm run db:migrar`
   sin el rol, la migración falla con el mensaje del criterio 7 y no deja nada a medias (Prisma la marca como fallida:
   la guía explica `npx prisma migrate resolve` o, en desarrollo, `docker compose down -v`).
