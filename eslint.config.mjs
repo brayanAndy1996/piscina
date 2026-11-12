@@ -6,6 +6,7 @@ import { configuracionAccesoBase } from './eslint/regla-acceso-base.mjs';
 import { configuracionPrisma } from './eslint/regla-prisma.mjs';
 import { configuracionReloj } from './eslint/regla-reloj.mjs';
 import { configuracionSqlSesion } from './eslint/regla-sql-sesion.mjs';
+import { configuracionTransaccionGuardada } from './eslint/regla-transaccion-guardada.mjs';
 
 export default tseslint.config(
   {
@@ -88,4 +89,8 @@ export default tseslint.config(
   // 92 a 94). Un comentario `eslint-disable` las apaga aquí; el paso protegido (eslint.protegido.config.mjs, con
   // `--no-inline-config`) las revisa otra vez sin que ningún comentario pueda apagarlas (criterio 96).
   ...configuracionSqlSesion,
+
+  // Una transacción no se guarda fuera de su `trabajo` (en this ni en una variable del módulo) y fuera de infraestructura/ no se importa
+  // async_hooks (criterio 135). Solo en el lint normal: el criterio 134 es la garantía en ejecución.
+  configuracionTransaccionGuardada,
 );

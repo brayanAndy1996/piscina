@@ -182,6 +182,130 @@ export function correccionDePrivilegio(
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Privilegios en todos los esquemas (criterio 130, P-31)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Las únicas funciones sobre las que la app puede tener `EXECUTE` (criterio 130), identificadas por esquema, nombre y argumentos
+ * (`pg_get_function_identity_arguments`). Es la misma lista que `FUNCIONES_APP` de
+ * `backend/src/infraestructura/prisma/privilegios-app.ts`: una prueba compara las dos. Toda historia que agregue una función a
+ * `public` la agrega aquí y allá en su especificación, o revoca en su migración el `EXECUTE` de `PUBLIC`.
+ */
+export const FUNCIONES_APP = Object.freeze(
+  [
+    { esquema: 'public', nombre: 'app_academia_actual', argumentos: '' },
+    { esquema: 'public', nombre: 'app_es_plataforma', argumentos: '' },
+    { esquema: 'public', nombre: 'resolver_academia', argumentos: 'p_nombre_corto text' },
+  ].map((funcion) => Object.freeze(funcion)),
+);
+
+/** "Esquemas permitidos además de `public`" (criterio 130): hoy ninguno. Solo una especificación la amplía, con su justificación. */
+export const ESQUEMAS_PERMITIDOS = Object.freeze([]);
+
+const PRIVILEGIOS_APP_CLAVES = new Set(PRIVILEGIOS_APP.map((p) => JSON.stringify([p.tabla, p.columna, p.privilegio])));
+
+const texto = (valor) => (typeof valor === 'string' ? valor : null);
+
+/** ¿Está permitido el privilegio efectivo? Falla cerrada: un tipo desconocido o un campo que falta no se permite. */
+function estaPermitidoEnEsquema(efectivo) {
+  const esquema = texto(efectivo?.esquema);
+  const objeto = texto(efectivo?.objeto);
+  const privilegio = texto(efectivo?.privilegio);
+  if (esquema === null || privilegio === null) return false;
+  switch (efectivo.tipo) {
+    case 'tabla':
+    case 'secuencia':
+      return (
+        objeto !== null &&
+        esquema === 'public' &&
+        PRIVILEGIOS_APP_CLAVES.has(JSON.stringify([objeto, null, privilegio]))
+      );
+    case 'columna': {
+      const columna = texto(efectivo.columna);
+      if (objeto === null || columna === null || esquema !== 'public') return false;
+      return estaPermitido({ tabla: objeto, columna, privilegio });
+    }
+    case 'funcion': {
+      const argumentos = texto(efectivo.argumentos);
+      return (
+        objeto !== null &&
+        argumentos !== null &&
+        privilegio === 'EXECUTE' &&
+        FUNCIONES_APP.some((f) => f.esquema === esquema && f.nombre === objeto && f.argumentos === argumentos)
+      );
+    }
+    case 'esquema':
+      return (
+        privilegio === 'USAGE' &&
+        (esquema === 'public' || efectivo.conObjetosPropios === false || ESQUEMAS_PERMITIDOS.includes(esquema))
+      );
+    default:
+      return false;
+  }
+}
+
+/** Texto de un privilegio de más para los mensajes: siempre el esquema, el objeto, la columna y el privilegio, los que haya. */
+function describirEnEsquema(efectivo) {
+  const esquema = texto(efectivo?.esquema);
+  const objeto = texto(efectivo?.objeto);
+  const privilegio = texto(efectivo?.privilegio) ?? '(privilegio desconocido)';
+  const nombre = [esquema ?? '(esquema desconocido)', objeto].filter((parte) => parte !== null).join('.');
+  switch (efectivo?.tipo) {
+    case 'esquema':
+      return `${privilegio} en el esquema ${esquema ?? '(esquema desconocido)'}`;
+    case 'tabla':
+      return `${privilegio} en ${nombre}`;
+    case 'columna':
+      return `${privilegio} (${texto(efectivo.columna) ?? '?'}) en ${nombre}`;
+    case 'secuencia':
+      return `${privilegio} en la secuencia ${nombre}`;
+    case 'funcion':
+      return `${privilegio} en la función ${nombre}(${texto(efectivo.argumentos) ?? '?'})`;
+    default:
+      return `${privilegio} en un objeto de tipo desconocido (${texto(efectivo?.tipo) ?? 'sin tipo'}) ${nombre}`;
+  }
+}
+
+/**
+ * Los privilegios efectivos de la app en los esquemas revisados (`{ esquema, tipo, objeto, columna, argumentos, privilegio,
+ * conObjetosPropios? }`) que no están permitidos (los mismos objetos que recibió). Tabla, columna y secuencia solo de `public` y
+ * solo lo de `PRIVILEGIOS_APP`; `EXECUTE` solo sobre `FUNCIONES_APP`; `USAGE` sobre `public`, sobre un esquema sin objetos propios
+ * (`conObjetosPropios` exactamente `false`) o de `ESQUEMAS_PERMITIDOS`. Falla cerrada.
+ */
+export function privilegiosNoPermitidosEnEsquemas(efectivos) {
+  return efectivos.filter((efectivo) => !estaPermitidoEnEsquema(efectivo));
+}
+
+/** Como `privilegiosNoPermitidosEnEsquemas`, un texto por cada uno (criterio 130). Lista vacía: nada de más. */
+export function privilegiosDeMasEnEsquemas(efectivos) {
+  return privilegiosNoPermitidosEnEsquemas(efectivos).map(describirEnEsquema);
+}
+
+/**
+ * Corrección de un privilegio de más de un esquema (criterio 130): `REVOKE SELECT ON reportes.auditoria_todas FROM aquagestion_app;`
+ * o `… FROM PUBLIC;` si llega por `PUBLIC`; `REVOKE SELECT (id) ON reportes.t …`, `REVOKE USAGE ON SEQUENCE …`,
+ * `REVOKE EXECUTE ON FUNCTION reportes.f() …` y `REVOKE USAGE ON SCHEMA reportes …`. Los nombres se citan con comillas dobles solo
+ * si no son identificadores simples en minúsculas.
+ */
+export function correccionDePrivilegioEnEsquema(efectivo, { rol = ROL_POR_DEFECTO, viaPublic = false } = {}) {
+  const citar = (nombre) => (/^[a-z_][a-z0-9_$]*$/.test(nombre) ? nombre : `"${nombre.replaceAll('"', '""')}"`);
+  const destino = viaPublic ? 'PUBLIC' : rol;
+  const calificado = `${citar(efectivo.esquema)}${efectivo.objeto === null ? '' : `.${citar(efectivo.objeto)}`}`;
+  switch (efectivo.tipo) {
+    case 'esquema':
+      return `REVOKE ${efectivo.privilegio} ON SCHEMA ${calificado} FROM ${destino};`;
+    case 'secuencia':
+      return `REVOKE ${efectivo.privilegio} ON SEQUENCE ${calificado} FROM ${destino};`;
+    case 'funcion':
+      return `REVOKE ${efectivo.privilegio} ON FUNCTION ${calificado}(${efectivo.argumentos}) FROM ${destino};`;
+    case 'columna':
+      return `REVOKE ${efectivo.privilegio} (${citar(efectivo.columna)}) ON ${calificado} FROM ${destino};`;
+    default:
+      return `REVOKE ${efectivo.privilegio} ON ${calificado} FROM ${destino};`;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Verificador SCRAM-SHA-256 (criterio 104, P-22)
 // ---------------------------------------------------------------------------------------------------------------------
 

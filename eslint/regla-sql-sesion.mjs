@@ -16,6 +16,8 @@
 // etiquetados), y no se usan `Prisma.raw`, `Prisma.Sql` como valor ni `Prisma.join` con separador. Las cadenas, las plantillas
 // sin etiqueta y las expresiones regulares no se analizan: no llegan a la base. Un comentario `eslint-disable` apaga estas
 // reglas en el lint normal, pero no en el paso protegido (`eslint.protegido.config.mjs` con `--no-inline-config`, criterio 96).
+// Ataque ronda 6 (criterio 136): `SET CONSTRAINTS <lista> DEFERRED|IMMEDIATE` exacta, como sentencia, no cuenta como `SET` de sesión
+// (es local a la transacción); `lastval` y `currval` se prohíben (devuelven el último valor de una secuencia en la sesión).
 // Ataque ronda 4: tampoco se llama a funciones que ejecutan SQL dado como texto (`query_to_xml`, `ts_stat`, `dblink…`, `crosstab…`,
 // `cron.…`) ni a funciones calificadas con un esquema que no sea `pg_catalog` ni `public` (criterio 109); la cláusula `SET` de un
 // `UPDATE`, de `ON CONFLICT DO UPDATE` o de `MERGE … UPDATE` no es `SET` de sesión (115); en `cli/` se admiten además los cuatro
@@ -251,16 +253,18 @@ function partirSql(texto, estado = { uescapeInvalido: false }) {
           i += 1;
         }
       }
+      let identificador = contenido;
       if (prefijo === 'u&') {
         const uescape = leerUescape(texto, i);
         if (uescape) {
           i = uescape.fin;
           if (uescape.escape === null) estado.uescapeInvalido = true;
         }
-        actual += decodificarEscapesU(contenido, uescape?.escape ?? '\\');
-      } else {
-        actual += contenido;
+        identificador = decodificarEscapesU(contenido, uescape?.escape ?? '\\');
       }
+      // Normalmente el identificador entre comillas queda sin ellas; `conservarComillas` (criterio 136) las deja, para distinguir un
+      // nombre entre comillas dobles de varias palabras sueltas.
+      actual += estado.conservarComillas ? `"${identificador.replaceAll('"', '""')}"` : identificador;
       continue;
     }
     if (c === '$' && !PATRON_IDENTIFICADOR.test(actual.at(-1) ?? ' ')) {
@@ -293,9 +297,12 @@ export function normalizarSql(texto) {
   return normalizarConEstado(texto).texto;
 }
 
-/** Como `normalizarSql`, y además informa si algún `UESCAPE` no era un solo carácter válido (criterio 93). */
-function normalizarConEstado(texto) {
-  const estado = { uescapeInvalido: false };
+/**
+ * Como `normalizarSql`, y además informa si algún `UESCAPE` no era un solo carácter válido (criterio 93). Con `conservarComillas`, los
+ * identificadores entre comillas dobles las conservan (solo lo usa el criterio 136).
+ */
+function normalizarConEstado(texto, { conservarComillas = false } = {}) {
+  const estado = { uescapeInvalido: false, conservarComillas };
   const partes = partirSql(String(texto), estado);
   let normalizado = partes
     .map((parte) =>
@@ -361,6 +368,31 @@ const PATRON_ESQUEMA_AJENO = new RegExp(
   String.raw`(?<![\p{L}\p{N}_$.])(?!(?:pg_catalog|public)\.)${IDENTIFICADOR_SQL}(?:\.${IDENTIFICADOR_SQL})+\s*\(`,
   'u',
 );
+
+// Funciones que devuelven el último valor de una secuencia en la SESIÓN (criterio 136): la conexión del pool pasa de una academia a otra,
+// así que se usa `INSERT … RETURNING`. Se busca en el texto sin el contenido de las cadenas: una columna `t.currval` sin paréntesis o una
+// cadena no son una llamada.
+const PATRON_FUNCION_DE_SECUENCIA = /(?<![\p{L}\p{N}_$])(?:pg_catalog\.)?(?:lastval|currval)\s*\(/u;
+
+// `SET CONSTRAINTS <lista> DEFERRED|IMMEDIATE` (criterio 136): local a la transacción, no toca el contexto. Se reconoce sobre el texto
+// normalizado con las comillas dobles conservadas: `ALL` o uno o más nombres (simples o entre comillas dobles, con o sin `public.`).
+const NOMBRE_DE_RESTRICCION = String.raw`(?:public\.)?(?:(?!all(?![a-z0-9_$]))[a-z_][a-z0-9_$]*|"[^"'?;]+")`;
+const PATRON_SET_CONSTRAINTS = new RegExp(
+  String.raw`^set constraints (?:all|${NOMBRE_DE_RESTRICCION}(?: ?, ?${NOMBRE_DE_RESTRICCION})*) (?:deferred|immediate)$`,
+);
+
+/**
+ * Las sentencias `SET CONSTRAINTS …` exactas del texto, ya en la forma del texto normalizado (sin comillas dobles): `violaSentencia`
+ * no las cuenta. El texto de una sentencia exenta solo tiene nombres, comas, puntos y la palabra del modo, así que no puede ocultar otra
+ * sentencia.
+ */
+function setConstraintsExactos(texto) {
+  const exentas = new Set();
+  for (const sentencia of sentenciasDe(normalizarConEstado(texto, { conservarComillas: true }).texto)) {
+    if (PATRON_SET_CONSTRAINTS.test(sentencia)) exentas.add(sentencia.replaceAll('"', ''));
+  }
+  return exentas;
+}
 
 /** Sentencias de transacción, de sesión y de notificación, al inicio de una sentencia. */
 const PATRONES_DE_SENTENCIA = [
@@ -516,14 +548,16 @@ export function analizarSql(texto) {
   const llamadas = llamadasASetConfig(normalizado);
   const llamadasSinUnir = llamadasASetConfig(sinUnir);
   const sinTexto = sinCadenas(normalizado);
+  const exentas = /constraints/i.test(texto) ? setConstraintsExactos(texto) : new Set();
   const sesion =
     uescapeInvalido ||
     PATRONES_EN_CUALQUIER_PARTE.some((patron) => patron.test(normalizado)) ||
     PATRON_FUNCION_DE_TEXTO.test(sinTexto) ||
     PATRON_ESQUEMA_AJENO.test(sinTexto) ||
+    PATRON_FUNCION_DE_SECUENCIA.test(sinTexto) ||
     llamadas.length !== llamadasSinUnir.length ||
     llamadas.some((argumentos, i) => !esLlamadaPermitida(argumentos, llamadasSinUnir[i] ?? [])) ||
-    sentenciasDe(normalizado).some((sentencia) => violaSentencia(sentencia));
+    sentenciasDe(normalizado).some((sentencia) => !exentas.has(sentencia) && violaSentencia(sentencia));
   return { sesion, setConfig: llamadas.length > 0 };
 }
 

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma } from '../../generated/prisma/client';
 import { aSql, sonPartesDePlantilla } from './sql-seguro';
 import type { ClienteTransaccion } from './tipos';
@@ -15,7 +16,17 @@ import type { ClienteTransaccion } from './tipos';
  * nunca sale de aquí. La consulta se envía al llamar a la función (se llama a `then`
  * en ese momento, sin esperar a quien llama) y corre en la conexión y en la transacción de `trabajo`. Cuando `trabajo` termina,
  * con éxito o con error, `terminar()` apaga el envoltorio: una función guardada y llamada después rechaza sin tocar la base.
+ *
+ * Criterio 134 (P-32): un servicio de Nest es una sola instancia para todas las peticiones, y guardar `tx` en un campo
+ * (`this.tx = tx`) dejaría que otra petición use la transacción de otra academia mientras sigue abierta. Por eso cada
+ * transacción corre su `trabajo` dentro de un contexto asíncrono propio (`AsyncLocalStorage.run` con una marca única) y cada
+ * función del envoltorio comprueba, al llamarse y antes de enviar nada, que el contexto actual es el de su transacción. Lo que
+ * `trabajo` inicia (`Promise.all`, funciones `async`, temporizadores, eventos) hereda el contexto; una llamada desde otra
+ * petición, otra transacción (también una anidada) o fuera de toda transacción rechaza con un `Error`.
  */
+
+/** Almacén privado del módulo: la marca de la transacción cuyo `trabajo` está corriendo. */
+const almacen = new AsyncLocalStorage<object>();
 
 /** Operaciones de los modelos que se exponen. */
 const OPERACIONES = [
@@ -63,11 +74,24 @@ function enviar<T>(consulta: PromiseLike<T>): Promise<T> {
  * (criterio 100) y lo que devuelven, `Promise.prototype` (criterio 106).
  */
 function siempreUnaPromesa(accion: () => Promise<unknown>): Promise<unknown> {
+  let promesa: Promise<unknown>;
   try {
-    return accion();
+    promesa = accion();
   } catch (error) {
-    return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    promesa = Promise.reject(error instanceof Error ? error : new Error(String(error)));
   }
+  return sinMarcasDeContexto(promesa);
+}
+
+/**
+ * Quita de la promesa las claves propias que `async_hooks` le pone al crearla mientras hay un `AsyncLocalStorage` activo
+ * (`Symbol(async_id_symbol)`, `Symbol(trigger_async_id_symbol)` y `Symbol(kResourceStore)`): lo que devuelve el envoltorio es una
+ * `Promise` nativa sin claves propias (criterio 106). No afecta al contexto de quien la espera: el contexto de una continuación sale
+ * de la promesa que crea el `await` o el `then` de quien llama, no de esta (y Node vuelve a anotar su identificador si hace falta).
+ */
+function sinMarcasDeContexto<T>(promesa: Promise<T>): Promise<T> {
+  for (const clave of Reflect.ownKeys(promesa)) Reflect.deleteProperty(promesa, clave);
+  return promesa;
 }
 
 export interface EnvoltorioDeTransaccion {
@@ -75,12 +99,20 @@ export interface EnvoltorioDeTransaccion {
   readonly cliente: ClienteTransaccion;
   /** Apaga el envoltorio: toda llamada posterior rechaza sin enviar nada a la base. */
   readonly terminar: () => void;
+  /** Ejecuta `fn` en el contexto asíncrono de esta transacción: solo desde ahí responde el envoltorio (criterio 134). */
+  readonly ejecutar: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
 export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion {
   let activa = true;
+  const marca: object = Object.freeze({});
   const exigirActiva = (): void => {
     if (!activa) throw new Error('La transacción ya terminó.');
+    if (almacen.getStore() !== marca) {
+      throw new Error(
+        'Esta transacción pertenece a otra operación: úsala solo dentro de su trabajo y pásala como parámetro, no la guardes.',
+      );
+    }
   };
   const delegados = tx as unknown as Record<string, Record<string, FuncionDeDelegado>>;
 
@@ -128,5 +160,6 @@ export function envolver(tx: Prisma.TransactionClient): EnvoltorioDeTransaccion 
     terminar: () => {
       activa = false;
     },
+    ejecutar: <T>(fn: () => Promise<T>): Promise<T> => almacen.run(marca, fn),
   });
 }

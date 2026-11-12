@@ -12,7 +12,9 @@ import pg from 'pg';
 import { cargarEnv, esNombreValido, leerUrlApp, leerUrlsBases, USUARIO_APP } from './lib/entorno.mjs';
 import {
   correccionDePrivilegio,
+  correccionDePrivilegioEnEsquema,
   privilegiosNoPermitidos,
+  privilegiosNoPermitidosEnEsquemas,
   problemasDeConfiguracionApp,
   problemasDeEsquemasApp,
   problemasDelRolApp,
@@ -215,6 +217,7 @@ export async function problemasDeLaBase(clientePostgres, abrirCliente, { base, u
     }
     problemas.push(...(await problemasDeEsquemas(clienteBase, { base, usuarioApp })));
     problemas.push(...(await problemasDePrivilegios(clienteBase, { base, usuarioApp })));
+    problemas.push(...(await problemasDePrivilegiosEnEsquemas(clienteBase, { base, usuarioApp })));
   } finally {
     await clienteBase.end();
   }
@@ -306,6 +309,103 @@ export async function problemasDePrivilegios(clienteBase, { base, usuarioApp }) 
         `${fila.via_public ? ' (concedido a PUBLIC)' : ''}. Corrígelo con el dueño o un superusuario: ${correccion}`
       );
     });
+}
+
+/**
+ * Privilegios efectivos de `usuarioApp` (concedidos al rol o a PUBLIC) en todos los esquemas revisados de la base a la que está
+ * conectado `clienteBase` (criterio 130, P-31): todos menos `pg_catalog`, `information_schema`, `pg_toast`, los temporales y los de
+ * extensiones, y sin los objetos de extensiones. Calcula los de tabla, columna y secuencia (de cualquier esquema), `EXECUTE` sobre
+ * las funciones de `public` y de los esquemas con `USAGE`, y `USAGE` sobre cada esquema, y los compara con lo permitido. Los de
+ * tabla, columna y secuencia de `public` los informa `problemasDePrivilegios` (criterio 102), así que aquí no se repiten. Un
+ * problema por cada privilegio de más, con su corrección (`REVOKE … FROM <rol>;` o `FROM PUBLIC;` si llega por PUBLIC). No
+ * modifica nada.
+ */
+export async function problemasDePrivilegiosEnEsquemas(clienteBase, { base, usuarioApp }) {
+  const { rows } = await clienteBase.query(
+    `WITH esquemas AS (
+       SELECT n.oid, n.nspname::text AS nombre
+         FROM pg_catalog.pg_namespace n
+        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+          AND n.nspname !~ '^pg_(toast_)?temp_'
+          AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                           WHERE d.classid = 'pg_catalog.pg_namespace'::pg_catalog.regclass AND d.objid = n.oid
+                             AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+     ), relaciones AS (
+       SELECT e.nombre AS esquema, c.oid, c.relname::text AS nombre, c.relkind
+         FROM esquemas e
+         JOIN pg_catalog.pg_class c ON c.relnamespace = e.oid
+        WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                           WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
+                             AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+     ), funciones AS (
+       SELECT e.nombre AS esquema, e.oid AS esquema_oid, p.oid, p.proname::text AS nombre,
+              pg_catalog.pg_get_function_identity_arguments(p.oid)::text AS argumentos
+         FROM esquemas e
+         JOIN pg_catalog.pg_proc p ON p.pronamespace = e.oid
+        WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                           WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid
+                             AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+     )
+     SELECT r.esquema, 'tabla'::text AS tipo, r.nombre AS objeto, NULL::text AS columna, NULL::text AS argumentos,
+            p.privilegio::text AS privilegio, NULL::boolean AS "conObjetosPropios",
+            pg_catalog.has_table_privilege('public', r.oid, p.privilegio) AS via_public
+       FROM relaciones r
+       CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
+      WHERE r.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND pg_catalog.has_table_privilege($1::name, r.oid, p.privilegio)
+     UNION ALL
+     SELECT r.esquema, 'secuencia'::text, r.nombre, NULL::text, NULL::text, p.privilegio::text, NULL::boolean,
+            pg_catalog.has_sequence_privilege('public', r.oid, p.privilegio)
+       FROM relaciones r
+       CROSS JOIN pg_catalog.unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
+      WHERE r.relkind = 'S'
+        AND pg_catalog.has_sequence_privilege($1::name, r.oid, p.privilegio)
+     UNION ALL
+     SELECT r.esquema, 'columna'::text, r.nombre, a.attname::text, NULL::text, p.privilegio::text, NULL::boolean,
+            pg_catalog.has_column_privilege('public', r.oid, a.attnum, p.privilegio)
+       FROM relaciones r
+       JOIN pg_catalog.pg_attribute a ON a.attrelid = r.oid AND a.attnum > 0 AND NOT a.attisdropped
+       CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
+      WHERE r.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND pg_catalog.has_column_privilege($1::name, r.oid, a.attnum, p.privilegio)
+        AND NOT pg_catalog.has_table_privilege($1::name, r.oid, p.privilegio)
+     UNION ALL
+     SELECT f.esquema, 'funcion'::text, f.nombre, NULL::text, f.argumentos, 'EXECUTE'::text, NULL::boolean,
+            pg_catalog.has_function_privilege('public', f.oid, 'EXECUTE')
+       FROM funciones f
+      WHERE (f.esquema = 'public' OR pg_catalog.has_schema_privilege($1::name, f.esquema_oid, 'USAGE'))
+        AND pg_catalog.has_function_privilege($1::name, f.oid, 'EXECUTE')
+     UNION ALL
+     SELECT e.nombre, 'esquema'::text, NULL::text, NULL::text, NULL::text, 'USAGE'::text,
+            (EXISTS (SELECT 1 FROM relaciones r WHERE r.esquema = e.nombre AND r.relkind NOT IN ('i', 'I', 't'))
+             OR EXISTS (SELECT 1 FROM funciones f WHERE f.esquema = e.nombre)),
+            pg_catalog.has_schema_privilege('public', e.oid, 'USAGE')
+       FROM esquemas e
+      WHERE pg_catalog.has_schema_privilege($1::name, e.oid, 'USAGE')`,
+    [usuarioApp],
+  );
+  // Los de tabla, columna y secuencia de `public` ya los informa `problemasDePrivilegios` (con su formato propio).
+  const efectivos = rows.filter(
+    (fila) => !(fila.esquema === 'public' && ['tabla', 'columna', 'secuencia'].includes(fila.tipo)),
+  );
+  const deMas = privilegiosNoPermitidosEnEsquemas(efectivos);
+  // Si el privilegio es de la tabla entera, el de cada columna es el mismo: la consulta ya no devuelve las columnas en ese caso.
+  return deMas.map((fila) => {
+    const correccion = correccionDePrivilegioEnEsquema(fila, { rol: usuarioApp, viaPublic: fila.via_public === true });
+    const donde =
+      fila.tipo === 'esquema'
+        ? `el esquema ${fila.esquema}`
+        : fila.tipo === 'funcion'
+          ? `la función ${fila.esquema}.${fila.objeto}(${fila.argumentos})`
+          : fila.tipo === 'columna'
+            ? `${fila.esquema}.${fila.objeto}.${fila.columna}`
+            : `${fila.tipo === 'secuencia' ? 'la secuencia ' : ''}${fila.esquema}.${fila.objeto}`;
+    const motivo = fila.tipo === 'esquema' ? ' (el esquema tiene tablas, vistas, secuencias o funciones propias)' : '';
+    return (
+      `El rol de la API tiene el privilegio ${fila.privilegio} de más sobre ${donde} en la base ${base}` +
+      `${fila.via_public ? ' (concedido a PUBLIC)' : ''}${motivo}. Corrígelo con el dueño o un superusuario: ${correccion}`
+    );
+  });
 }
 
 /**

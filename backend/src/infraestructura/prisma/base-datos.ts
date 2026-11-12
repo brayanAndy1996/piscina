@@ -11,7 +11,7 @@ import {
   ErrorRolBaseDatosInseguro,
   MENSAJE_ROL_INSEGURO,
 } from './errores';
-import { privilegiosDeMas, type PrivilegioApp } from './privilegios-app';
+import { privilegiosDeMasEnEsquemas, type PrivilegioEnEsquema } from './privilegios-app';
 import {
   problemasDeConfiguracion,
   problemasDeEsquemas,
@@ -67,7 +67,7 @@ interface FilaAcademia {
  * Seguridad: antes de la primera operación se comprueba que el rol de `DATABASE_URL_APP` no sea superusuario, no
  * tenga BYPASSRLS, REPLICATION, CREATEROLE ni CREATEDB, no sea miembro de otro rol (ni dueño de la base), no pueda
  * crear en la base ni en `public`, no tenga TEMPORARY y no sea dueño de objetos de `public` (`problemasDelRol`), no tenga
- * valores por defecto propios (`problemasDeConfiguracion`) ni privilegios de más sobre las tablas (`privilegiosDeMas`); si
+ * valores por defecto propios (`problemasDeConfiguracion`) ni privilegios de más en ningún esquema (`privilegiosDeMasEnEsquemas`, criterio 130); si
  * algo de eso se cumple, todas las operaciones rechazan con `ErrorRolBaseDatosInseguro` sin ejecutar el trabajo. La
  * comprobación no se hace al arrancar para que la API arranque con la base caída.
  *
@@ -202,9 +202,10 @@ export class BaseDatos implements OnModuleDestroy {
     return this.#prisma.$transaction(
       async (tx) => {
         await this.#fijarContexto(tx, contexto);
-        const { cliente, terminar } = envolver(tx);
+        const { cliente, terminar, ejecutar } = envolver(tx);
         try {
-          return await trabajo(cliente);
+          // Criterio 134: `trabajo` corre en el contexto asíncrono de esta transacción; el envoltorio no responde en otro.
+          return await ejecutar(() => trabajo(cliente));
         } finally {
           terminar();
         }
@@ -264,29 +265,65 @@ export class BaseDatos implements OnModuleDestroy {
                   OR EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s WHERE s.setrole = r.oid)) AS tiene_configuracion
             FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`;
 
-        // Criterio 102: privilegios efectivos (concedidos al rol o a PUBLIC) de tabla, secuencia y columna del esquema public.
-        const efectivos = await tx.$queryRaw<PrivilegioApp[]>`
-          SELECT c.relname::text AS tabla, NULL::text AS columna, p.privilegio::text AS privilegio
-            FROM pg_catalog.pg_class c
-            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        // Criterios 102 y 130: privilegios efectivos (concedidos al rol o a PUBLIC) en todos los esquemas revisados, sin los objetos
+        // de extensiones: de tabla y de columna (las de columna solo si no vienen de la tabla entera), de secuencia, EXECUTE de las
+        // funciones de public y de los esquemas con USAGE, y USAGE de cada esquema con `conObjetosPropios`.
+        const efectivos = await tx.$queryRaw<PrivilegioEnEsquema[]>`
+          WITH esquemas AS (
+            SELECT n.oid, n.nspname::text AS nombre
+              FROM pg_catalog.pg_namespace n
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+               AND n.nspname !~ '^pg_(toast_)?temp_'
+               AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                                WHERE d.classid = 'pg_catalog.pg_namespace'::pg_catalog.regclass AND d.objid = n.oid
+                                  AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+          ), relaciones AS (
+            SELECT e.nombre AS esquema, c.oid, c.relname::text AS nombre, c.relkind
+              FROM esquemas e
+              JOIN pg_catalog.pg_class c ON c.relnamespace = e.oid
+             WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                                WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objid = c.oid
+                                  AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+          ), funciones AS (
+            SELECT e.nombre AS esquema, e.oid AS esquema_oid, p.oid, p.proname::text AS nombre,
+                   pg_catalog.pg_get_function_identity_arguments(p.oid)::text AS argumentos
+              FROM esquemas e
+              JOIN pg_catalog.pg_proc p ON p.pronamespace = e.oid
+             WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+                                WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid
+                                  AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e')
+          )
+          SELECT r.esquema, 'tabla'::text AS tipo, r.nombre AS objeto, NULL::text AS columna, NULL::text AS argumentos,
+                 p.privilegio::text AS privilegio, NULL::boolean AS "conObjetosPropios"
+            FROM relaciones r
             CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS p(privilegio)
-           WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-             AND pg_catalog.has_table_privilege(current_user, c.oid, p.privilegio)
+           WHERE r.relkind IN ('r', 'p', 'v', 'm', 'f')
+             AND pg_catalog.has_table_privilege(current_user, r.oid, p.privilegio)
           UNION ALL
-          SELECT c.relname::text, NULL::text, p.privilegio::text
-            FROM pg_catalog.pg_class c
-            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+          SELECT r.esquema, 'secuencia'::text, r.nombre, NULL::text, NULL::text, p.privilegio::text, NULL::boolean
+            FROM relaciones r
             CROSS JOIN pg_catalog.unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS p(privilegio)
-           WHERE n.nspname = 'public' AND c.relkind = 'S'
-             AND pg_catalog.has_sequence_privilege(current_user, c.oid, p.privilegio)
+           WHERE r.relkind = 'S'
+             AND pg_catalog.has_sequence_privilege(current_user, r.oid, p.privilegio)
           UNION ALL
-          SELECT c.relname::text, a.attname::text, p.privilegio::text
-            FROM pg_catalog.pg_class c
-            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+          SELECT r.esquema, 'columna'::text, r.nombre, a.attname::text, NULL::text, p.privilegio::text, NULL::boolean
+            FROM relaciones r
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = r.oid AND a.attnum > 0 AND NOT a.attisdropped
             CROSS JOIN pg_catalog.unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) AS p(privilegio)
-           WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-             AND pg_catalog.has_column_privilege(current_user, c.oid, a.attnum, p.privilegio)`;
+           WHERE r.relkind IN ('r', 'p', 'v', 'm', 'f')
+             AND pg_catalog.has_column_privilege(current_user, r.oid, a.attnum, p.privilegio)
+             AND NOT pg_catalog.has_table_privilege(current_user, r.oid, p.privilegio)
+          UNION ALL
+          SELECT f.esquema, 'funcion'::text, f.nombre, NULL::text, f.argumentos, 'EXECUTE'::text, NULL::boolean
+            FROM funciones f
+           WHERE (f.esquema = 'public' OR pg_catalog.has_schema_privilege(current_user, f.esquema_oid, 'USAGE'))
+             AND pg_catalog.has_function_privilege(current_user, f.oid, 'EXECUTE')
+          UNION ALL
+          SELECT e.nombre, 'esquema'::text, NULL::text, NULL::text, NULL::text, 'USAGE'::text,
+                 (EXISTS (SELECT 1 FROM relaciones r WHERE r.esquema = e.nombre AND r.relkind NOT IN ('i', 'I', 't'))
+                  OR EXISTS (SELECT 1 FROM funciones f WHERE f.esquema = e.nombre)) AS "conObjetosPropios"
+            FROM esquemas e
+           WHERE pg_catalog.has_schema_privilege(current_user, e.oid, 'USAGE')`;
 
         // Criterio 123: esquemas propios, con CREATE o con el nombre del rol (el `search_path` por defecto lo buscaría antes).
         const esquemas = await tx.$queryRaw<FilaEsquemas[]>`
@@ -315,9 +352,7 @@ export class BaseDatos implements OnModuleDestroy {
         ? problemasDeConfiguracion(configuracion)
         : ['los valores por defecto del rol no se pudieron leer del catálogo']),
     );
-    problemas.push(
-      ...privilegiosDeMas(efectivos.map(({ tabla, columna, privilegio }) => ({ tabla, columna, privilegio }))),
-    );
+    problemas.push(...privilegiosDeMasEnEsquemas(efectivos));
     problemas.push(
       ...(esquemas ? problemasDeEsquemas(esquemas) : ['los esquemas del rol no se pudieron leer del catálogo']),
     );
