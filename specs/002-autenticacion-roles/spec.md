@@ -43,6 +43,16 @@
   proceso sobre el commit `b6b2d77` ("Decisiones"). Se marcan con notas _(ataque ronda 3)_ los criterios 24, 56, 58 y
   59, los casos límite, el contrato, "Riesgos aceptados" (riesgo nuevo "Escrituras en curso al suspender la academia")
   y las preguntas N11 y T5, sin borrar texto. No hay preguntas nuevas.
+- **Ataque ronda 4 (13/11/2026, sobre el commit 115cf7f): sin fallas.** El adversarial no encontró fallas
+  reproducibles con impacto; termina el ciclo adversarial de esta historia. Probó: las correcciones de la ronda 3 (los
+  seis casos del criterio 60 y el criterio 61), el aislamiento entre academias, 19 variantes de ruta y método por rol,
+  la sesión y la versión de token, la concurrencia (reproducción `c2` con 8, 32 y 64 hilos, sin inanición, y revisión
+  de ciclos de espera), DNIs con espacios Unicode, el registro técnico con 14 cuerpos rotos en nivel `trace` (sin DNI
+  ni claves) y la web. No hay criterios nuevos. Se registran dos observaciones como riesgos aceptados ("Bloqueo
+  provocado por terceros", ampliado, e "Ingresar mientras otro dispositivo cierra la sesión") y las decisiones del
+  orquestador sobre T4 y T5 (DT-4 y DT-5, en "Decisiones"), con notas _(ataque ronda 4)_ en el criterio 10, los casos
+  límite, "Impacto", "Riesgos aceptados" y "Preguntas abiertas", sin borrar texto. Solo queda abierta N11 (Bryan), con
+  el valor provisional (a). Siguen la revisión (T18), la suite completa (T19) y la documentación (T20).
 
 ## Objetivo
 
@@ -158,6 +168,11 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
    comprueban que valga nulo tras el plazo (sí tras un restablecimiento, criterio 35).
 10. Dado un usuario `INACTIVO`, cuando entra con la clave correcta, entonces responde 403 `USUARIO_INACTIVO` sin
     cookie; con una clave equivocada responde 401 y cuenta el fallo como en el criterio 9. _(crítico)_
+
+    _Ataque ronda 4 (observación), 13/11/2026:_ si la cuenta se desactiva mientras el ingreso con la clave correcta
+    está en curso (entre la verificación de la clave y la emisión de la sesión), ese ingreso responde 401
+    `CREDENCIALES_INVALIDAS` en lugar de 403 `USUARIO_INACTIVO`, sin cookie. Queda dentro del riesgo aceptado "Ingresar
+    mientras otro dispositivo cierra la sesión"; el criterio no cambia y el siguiente intento ya responde 403.
 11. Dado un nombre corto que no existe o con formato inválido, entonces responde 404 `ACADEMIA_NO_ENCONTRADA`; dada una
     academia suspendida, 403 `ACADEMIA_SUSPENDIDA` (DR-4 de 001). En ambos casos no calcula ningún hash ni cuenta un
     intento. _(crítico)_ (D-27)
@@ -694,6 +709,9 @@ AR3-2 del orquestador. "Actor" y "actor vigente" tienen el sentido de la secció
   (se compara exactamente lo que se escribió).
 - **Sesión abierta y cuenta bloqueada por fallos de otra persona:** la sesión sigue valiendo (como en 001); el
   bloqueo solo impide nuevos ingresos.
+  _(Ataque ronda 4, observación:)_ salvo con el cambio obligatorio pendiente: entonces `POST /api/sesion/clave` responde
+  423 (criterio 24) y toda otra ruta, 403 `CAMBIO_DE_CLAVE_OBLIGATORIO` (criterio 21), así que la sesión no sirve
+  hasta que venza el bloqueo o se restablezca la clave (riesgo aceptado "Bloqueo provocado por terceros").
 - **Dos administradores se desactivan entre sí a la vez:** la academia puede quedar sin administrador activo; el
   Superadmin crea otro (criterio 39). Se acepta.
   _(Ataque ronda 2, R2-F1: ya no.)_ Con el criterio 56, la segunda transacción encuentra a su actor desactivado y
@@ -971,6 +989,12 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
   comprobación del actor la hace la transacción de quien llama (en esta historia, `POST /api/usuarios`). Si el
   orquestador acepta la propuesta de T5, la regla y la función reutilizable pasan a `docs/arquitectura.md` para 007 y
   las demás escrituras.
+  _(Ataque ronda 4, DT-5:)_ el orquestador aceptó T5: la regla rige para toda escritura de usuarios de academia de las
+  historias siguientes, con `bloquearActorVigente` (`backend/src/modulos/autenticacion/actor-vigente.ts`), y el
+  documentador la lleva a `docs/arquitectura.md` (tarea T20).
+- **001, criterio 74 (ataque ronda 4, DT-4):** no cambia. `DELETE /api/plataforma/sesion` con un cuerpo inválido sigue
+  respondiendo 400 sin cerrar; la diferencia con `DELETE /api/sesion` queda como nota en `specs/backlog.md` para una
+  historia propia.
 
 ## Riesgos aceptados
 
@@ -979,6 +1003,13 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
   entrar, pide el restablecimiento en recepción.
 - **Bloqueo provocado por terceros:** un compañero que conoce el DNI puede bloquear la cuenta 15 minutos. Es temporal y
   el restablecimiento lo levanta al instante (criterio 35).
+  _(Ataque ronda 4, observación, 13/11/2026; se amplía, sin cambiar criterios:)_ con el cambio obligatorio pendiente
+  (cuenta nueva o recién restablecida) y la cuenta bloqueada, `POST /api/sesion/clave` responde 423 (criterio 24) y el
+  resto de las rutas de academia, 403 `CAMBIO_DE_CLAVE_OBLIGATORIO` (criterio 21). Así, quien conoce el DNI puede
+  inutilizar una sesión recién abierta por el dueño (no puede cambiar la clave ni hacer nada más) y repetir el bloqueo
+  cada 15 minutos con cinco ingresos fallidos. No da acceso a nadie ni revela datos; lo frenan el límite por IP
+  (criterio 12) y el restablecimiento en recepción, que levanta el bloqueo (criterio 35). Se acepta como el resto de
+  este riesgo.
 - **Saber si un DNI tiene cuenta en una academia:** el 423 solo aparece para DNIs con cuenta, y `USUARIO_INACTIVO` solo
   con la clave correcta. Se acepta como en 001 (correo del superadmin): exige varios intentos y lo limita la IP.
 - **La sesión abierta sigue valiendo si la cuenta se bloquea:** como en 001; desactivar o restablecer la corta.
@@ -1002,6 +1033,10 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
   cuenta cierra sesión en otro dispositivo (sube `version_token`) entre la verificación de la clave y la emisión de la
   sesión, el ingreso responde 401 sin contar un intento fallido (la comprobación de "clave o versión cambiaron" del
   plan, sección 2, paso 6). Es raro, no da acceso a nadie y basta con volver a intentar.
+  _(Ataque ronda 4, observación, 13/11/2026:)_ entra en este mismo riesgo el ingreso con la clave correcta mientras la
+  cuenta se desactiva: la desactivación sube `version_token` (criterio 31), la misma comprobación lo detecta y la
+  respuesta es 401 `CREDENCIALES_INVALIDAS` en lugar de 403 `USUARIO_INACTIVO` (criterio 10), sin cookie. No da acceso
+  y el siguiente intento responde 403.
 - **Commit con escritura frente a commit vacío** _(ataque ronda 1, F1)_: con el criterio 53, los dos caminos envían
   las mismas sentencias, pero solo el de un DNI con cuenta modifica una fila; su `COMMIT` escribe en el registro de
   transacciones (WAL) y puede tardar algo más. Se acepta si la medición de la ronda 2 cumple los umbrales del criterio
@@ -1229,6 +1264,48 @@ Reproducciones: `c1.test.ts` (F1) y `web/w1.test.tsx` (F2), en el espacio de tra
   **Decidido:** sin cambios en esta historia (como ya decía la pregunta T5); se anota junto a la pregunta N11 como
   posible simetría futura.
 
+### Ataque ronda 4 y decisiones del orquestador (13/11/2026)
+
+El adversarial atacó el commit 115cf7f y **no encontró fallas reproducibles con impacto**: termina el ciclo adversarial
+de esta historia. No hay criterios nuevos. Lo que probó:
+
+- **Verificación de la ronda 3:** los seis casos del criterio 60 ((i) `desactivar`, (ii) `solo-version` y (iii) el
+  control, cada uno con 0 y 4 fallos previos) y el criterio 61 en la web; las correcciones aguantan.
+- **Aislamiento entre academias.**
+- **Permisos:** 19 variantes de ruta y método, con cada rol.
+- **Sesión y versión de token.**
+- **Concurrencia:** la reproducción `c2` con 8, 32 y 64 hilos, sin inanición, y una revisión de los posibles ciclos
+  de espera entre bloqueos.
+- **DNI con espacios Unicode.**
+- **Registro técnico:** 14 cuerpos rotos en nivel `trace`, sin ningún DNI ni clave en el registro.
+- **La web.**
+
+Observaciones registradas, sin cambios de código:
+
+- **AR4-1 (observación). Bloqueo de una sesión con el cambio obligatorio pendiente.** Con la cuenta bloqueada,
+  `POST /api/sesion/clave` responde 423 y el resto, 403 `CAMBIO_DE_CLAVE_OBLIGATORIO`: quien conoce el DNI puede
+  inutilizar una sesión recién abierta y repetir el bloqueo cada 15 minutos. **Decidido:** se amplía el riesgo aceptado
+  "Bloqueo provocado por terceros"; los criterios 9, 21 y 24 no cambian; el restablecimiento lo levanta (criterio 35).
+- **AR4-2 (observación). Ingreso con la clave correcta durante una desactivación.** Responde 401
+  `CREDENCIALES_INVALIDAS` en lugar de 403 `USUARIO_INACTIVO`, por la comprobación de "clave o versión cambiaron" del
+  plan (sección 2, paso 6). **Decidido:** queda dentro del riesgo aceptado "Ingresar mientras otro dispositivo cierra la
+  sesión"; el criterio 10 lleva una nota.
+
+Decisiones sobre las preguntas técnicas pendientes:
+
+- **DT-4 (pregunta T4). Cierre de sesión del Superadmin con un cuerpo.** **Decidido (la propuesta):** no se toca la
+  001; `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON sigue respondiendo 400 sin cerrar (criterio 74 de
+  001). La diferencia con `DELETE /api/sesion` (criterio 54) queda como nota en `specs/backlog.md`, para alinearla en
+  una historia propia si se quiere.
+- **DT-5 (pregunta T5). "Quien pide sigue vigente dentro de la transacción que escribe" es regla general.**
+  **Decidido (la propuesta, con la precisión de la ronda 3):** toda transacción que escribe a pedido de un usuario de
+  la academia, en esta historia y en las siguientes (007 con `crearEnTransaccion`, cobros, verificación de pagos,
+  caja, asistencia y las demás), bloquea y comprueba al actor dentro de esa misma transacción con
+  `bloquearActorVigente` (`backend/src/modulos/autenticacion/actor-vigente.ts`), también cuando solo escribe en su
+  propia fila (un contador, una marca); con dos filas de `usuarios`, en una sola sentencia ordenada por `id`. El
+  documentador la lleva a "Reglas para las historias siguientes" de `docs/arquitectura.md` (tarea T20). El Superadmin
+  queda como está (nota de N11, AR3-4).
+
 ### Nota de proceso (ataque ronda 2)
 
 El commit `b6b2d77` ("Pruebas protegidas (002), ataque ronda 2: …") incluyó por error, además de las pruebas
@@ -1264,6 +1341,8 @@ esta sección. Ninguna bloquea. El párrafo que sigue habla de las preguntas de 
 _(Ataque ronda 2, 13/11/2026: se suma T5, para el orquestador, que tampoco bloquea.)_
 _(Ataque ronda 3, 13/11/2026: no hay preguntas nuevas; se agregan notas en N11 (posible simetría futura para el
 Superadmin, decisión AR3-4) y en T5.)_
+_(Ataque ronda 4, 13/11/2026: no hay preguntas nuevas. El orquestador decidió T4 (DT-4) y T5 (DT-5) con su propuesta.
+Solo queda abierta N11, para Bryan, que no bloquea: mientras tanto rige la opción (a).)_
 
 Ninguna. Las 10 preguntas de negocio de la versión en borrador (N1 a N10) las resolvió el responsable el 13/11/2026
 (DR-1 a DR-10 de 002) y las 3 técnicas (T1 a T3), el orquestador ese mismo día (DT-1 a DT-3); su texto y su propuesta
@@ -1292,6 +1371,8 @@ están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy
   provisional, que no bloquea: (a), como riesgo aceptado ("Riesgos aceptados"). Si Bryan elige (c), el especificador
   agrega los criterios y se vuelven a escribir las pruebas protegidas de los criterios 39 y 40.
 
+  _Ataque ronda 4, 13/11/2026:_ sigue pendiente de Bryan, con el valor provisional (a). No bloquea el cierre de 002.
+
   _Ataque ronda 3 (observación, decisión AR3-4), 13/11/2026; posible simetría futura, sin cambios en esta historia:_
   el Superadmin no vuelve a comprobar su sesión dentro de la transacción que crea o restablece un administrador
   (criterios 39 y 40); la verifica solo al empezar la petición (001). Un superadmin cuya sesión se cierra o cuya clave
@@ -1306,6 +1387,8 @@ están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy
   exige tocar pruebas protegidas de 001 y su criterio) y, si el orquestador quiere que los dos cierres se comporten
   igual, abrir una nota en el backlog para alinear `DELETE /api/plataforma/sesion` en una historia propia. Valor
   provisional: sin cambios en 001.
+
+  _Ataque ronda 4, 13/11/2026:_ **decidida (DT-4, "Decisiones"):** no se toca la 001; nota en `specs/backlog.md`.
 
 ### Pregunta nueva tras el ataque, ronda 2 (13/11/2026)
 
@@ -1324,3 +1407,8 @@ están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy
   `POST /api/sesion/clave`: la regla vale para **toda** transacción que escribe a pedido de un usuario de la academia,
   también las que escriben en su propia fila como efecto secundario (un contador, una marca). Si se acepta T5, el
   documentador lo dice así en `docs/arquitectura.md`. Sobre el Superadmin, ver la nota de N11 (AR3-4).
+
+  _Ataque ronda 4, 13/11/2026:_ **decidida (DT-5, "Decisiones"):** sí, regla general para toda escritura de usuarios
+  de academia en las historias siguientes, con `bloquearActorVigente`
+  (`backend/src/modulos/autenticacion/actor-vigente.ts`); el documentador la lleva a `docs/arquitectura.md` (T20). El
+  "valor provisional" de arriba (solo las rutas del criterio 56) queda reemplazado.

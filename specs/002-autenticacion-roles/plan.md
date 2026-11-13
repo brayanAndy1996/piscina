@@ -28,6 +28,10 @@ al actor) y la comprobación previa de la web (sección 10.4: también el cambio
 en la sección 11. Se suman filas a "Decisiones" y a "Riesgos". Nota de proceso sobre el commit `b6b2d77` en "Decisiones"
 de `spec.md`.
 
+**Ataque ronda 4 (13/11/2026, sobre 115cf7f): sin fallas.** Termina el ciclo adversarial; el diseño no cambia. Lo
+probado, las dos observaciones aceptadas como riesgo y las decisiones DT-4 y DT-5 están en la sección 12 y en
+"Ataque ronda 4 y decisiones del orquestador" de `spec.md`. Se suman filas a "Decisiones" y a "Riesgos".
+
 ## Módulos afectados
 
 ```
@@ -261,7 +265,8 @@ desactivar; `crearPersonal` no lee al actor; `restablecer` (transacción 2) bloq
 Diseño:
 
 - **Una función reutilizable** en `modulos/autenticacion` (exportada por su `index.ts`, para 007 y las siguientes si
-  se acepta T5), por ejemplo `bloquearActorVigente(tx, sesion, { objetivoId?, permitirCambioPendiente? })`:
+  se acepta T5; _ataque ronda 4: aceptada, DT-5; vive en `actor-vigente.ts`_), por ejemplo
+  `bloquearActorVigente(tx, sesion, { objetivoId?, permitirCambioPendiente? })`:
   - Sin objetivo: `SELECT id, estado, version_token, debe_cambiar_clave FROM usuarios WHERE academia_id = $1 AND
     id = $2 FOR SHARE`.
   - Con objetivo distinto del actor: **una sola sentencia** que bloquea las dos filas en un orden fijo, `… WHERE
@@ -394,6 +399,27 @@ Diseño:
 - Escrituras en curso al suspender la academia (AR3-3): riesgo aceptado en `spec.md`; `conAcademia` no cambia.
 - El Superadmin dentro de la transacción (AR3-4): nota en N11 de `spec.md`; las rutas de la plataforma no cambian.
 
+### 12. Ataque ronda 4 (sin fallas)
+
+El adversarial atacó 115cf7f y no encontró fallas reproducibles con impacto. Probó: los seis casos del criterio 60 y
+el 61; el aislamiento entre academias; 19 variantes de ruta y método por rol; la sesión y la versión de token; la
+concurrencia con la reproducción `c2` (8, 32 y 64 hilos, sin inanición) y una revisión de ciclos de espera; DNIs con
+espacios Unicode; el registro técnico con 14 cuerpos rotos en nivel `trace`, sin DNI ni claves; y la web.
+
+Sin cambios de código:
+
+- **Bloqueo con el cambio obligatorio pendiente (AR4-1):** riesgo aceptado ampliado "Bloqueo provocado por terceros"
+  de `spec.md`. El orden de las comprobaciones (criterios 21, 24 y 58) no cambia.
+- **Ingreso durante una desactivación (AR4-2):** el resultado `CAMBIADA` de la sección 2, paso 6, responde 401
+  `CREDENCIALES_INVALIDAS` antes de mirar `estado`; queda dentro del riesgo "Ingresar mientras otro dispositivo cierra
+  la sesión". No se reordena: mirar `estado` antes que la versión haría que un ingreso con una clave recién cambiada
+  respondiera según una fila que ya no corresponde a la clave verificada.
+- **DT-4:** `DELETE /api/plataforma/sesion` (001) no cambia; nota en `specs/backlog.md`.
+- **DT-5:** `bloquearActorVigente` (`backend/src/modulos/autenticacion/actor-vigente.ts`) es la regla general para las
+  escrituras de usuarios de academia de las historias siguientes; T20 la documenta en `docs/arquitectura.md`, con el
+  orden por `id` cuando se bloquean dos filas de `usuarios` y el modo exclusivo cuando la misma transacción escribe la
+  fila del actor (sección 11.1).
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -419,6 +445,9 @@ Diseño:
 | Comprobación del actor en una variante del conteo solo para el cambio de clave (AR3-1) | Ponerla dentro de la función de conteo compartida con el ingreso | El ingreso no tiene actor y cambiaría su secuencia de sentencias (criterio 53) |
 | `useConfirmarSesion` también rechaza el cambio obligatorio pendiente, con una opción para el cambio de clave (AR3-2, criterio 61) | Dejarlo al 403 `CAMBIO_DE_CLAVE_OBLIGATORIO` de la API | Contradice el 59 d: la petición sale y la pantalla no explica por qué no se hizo la acción |
 | `conAcademia` sin bloquear la fila de la academia (AR3-3) | `FOR SHARE` sobre `academias` en cada transacción | Toda la academia esperaría detrás de cada suspensión y cambia 001; la ventana es de milisegundos (riesgo aceptado) |
+| "Actor vigente dentro de la transacción que escribe" como regla general, con `bloquearActorVigente` (DT-5, ronda 4) | Solo en las rutas del criterio 56; que cada historia decida | Cobros, verificación, caja y asistencia tienen la misma ventana que R2-F1; una sola función evita que cada escritor la reimplemente |
+| `DELETE /api/plataforma/sesion` sin cambios; nota en el backlog (DT-4, ronda 4) | Alinearlo ya con el criterio 54 | Exige tocar el criterio 74 y pruebas protegidas de 001 dentro de otra historia |
+| Ingreso que choca con una desactivación responde 401, no 403 (AR4-2, ronda 4) | Mirar `estado` antes que la versión en el paso 6 | La versión cambiada dice que la clave verificada ya no vale para esa fila; no da acceso y el siguiente intento responde 403 |
 | Búsqueda por DNI con `POST /api/usuarios/buscar-por-dni` y el DNI en el cuerpo (PO-3) | `GET /api/usuarios/por-dni/{dni}` con el segmento redactado en el registro | La redacción falla abierta (cada lugar que registre la dirección debe taparlo) y no alcanza a los registros del proxy del hosting; con `POST` el DNI no está en la dirección |
 
 ## Migraciones
@@ -472,3 +501,10 @@ Diseño:
 - **Commits de pruebas protegidas con código (proceso, ronda 2):** `b6b2d77` trajo por error
   `usuarios.service.ts`; queda registrado en "Decisiones" de `spec.md` y desde la ronda 3 se revisa el contenido del
   commit antes de hacerlo (tarea T17.22).
+- **Bloqueo repetido de una sesión con el cambio obligatorio pendiente (ronda 4, AR4-1):** quien conoce el DNI deja
+  inservible la sesión del dueño (423 en el cambio de clave, 403 en lo demás) cada 15 minutos. Riesgo aceptado en
+  `spec.md`; lo levanta el restablecimiento. Si en producción se ve abuso, se revisa con 003 (intentos y tiempo
+  configurables).
+- **Regla del actor vigente en las historias siguientes (ronda 4, DT-5):** una historia que escriba sin
+  `bloquearActorVigente` reabre R2-F1. Lo vigilan el revisor y el adversarial de cada historia con la regla de
+  `docs/arquitectura.md`.
