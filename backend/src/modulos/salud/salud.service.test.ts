@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PrismaService } from '../../infraestructura/prisma';
+import type { BaseDatos } from '../../infraestructura/prisma';
 import { LIMITE_BASE_DATOS_MS, SaludService } from './salud.service';
 
 function crearServicio(consulta: () => Promise<unknown>): SaludService {
-  const prisma = { $queryRaw: vi.fn(consulta) } as unknown as PrismaService;
-  return new SaludService(prisma);
+  const baseDatos = { comprobarConexion: vi.fn(consulta) } as unknown as BaseDatos;
+  return new SaludService(baseDatos);
 }
 
 describe('SaludService.comprobar', () => {

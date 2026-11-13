@@ -2,7 +2,15 @@ import js from '@eslint/js';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { configuracionAccesoBase } from './eslint/regla-acceso-base.mjs';
+import { configuracionPrisma } from './eslint/regla-prisma.mjs';
+import {
+  configuracionPromesasConTipos,
+  configuracionPromesasDescartadas,
+} from './eslint/regla-promesas-descartadas.mjs';
 import { configuracionReloj } from './eslint/regla-reloj.mjs';
+import { configuracionSqlSesion } from './eslint/regla-sql-sesion.mjs';
+import { configuracionTransaccionGuardada } from './eslint/regla-transaccion-guardada.mjs';
 
 export default tseslint.config(
   {
@@ -11,7 +19,7 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/dist/**',
       '**/coverage/**',
-      'backend/src/generated/**',
+      'backend/src/generated/prisma/**',
       'backend/prisma/migrations/**',
       'playwright-report/**',
       'test-results/**',
@@ -34,10 +42,15 @@ export default tseslint.config(
     },
   },
 
-  // Configuración en TypeScript de la raíz (por ejemplo, vitest.config.mts): sin información de tipos.
+  // Ninguna promesa descartada en backend/src (criterio 159): la regla propia sin tipos y `no-floating-promises` con tipos, con las
+  // opciones más estrictas. Van después de `aquagestion/typescript` para que sus opciones reemplacen las de `recommendedTypeChecked`.
+  configuracionPromesasDescartadas,
+  configuracionPromesasConTipos,
+
+  // Configuración en TypeScript de la raíz (por ejemplo, vitest.config.mts) y archivos .mts/.cts: sin información de tipos.
   {
     name: 'aquagestion/typescript-sin-tipos',
-    files: ['**/*.mts'],
+    files: ['**/*.mts', '**/*.cts'],
     extends: [...tseslint.configs.recommended],
     languageOptions: { globals: { ...globals.node } },
   },
@@ -45,9 +58,9 @@ export default tseslint.config(
   // Archivos JavaScript y de configuración: sin información de tipos.
   {
     name: 'aquagestion/javascript',
-    files: ['**/*.{js,mjs,cjs}'],
+    files: ['**/*.{js,jsx,mjs,cjs}'],
     extends: [tseslint.configs.disableTypeChecked],
-    languageOptions: { globals: { ...globals.node } },
+    languageOptions: { globals: { ...globals.node }, parserOptions: { ecmaFeatures: { jsx: true } } },
   },
 
   {
@@ -73,4 +86,20 @@ export default tseslint.config(
 
   // Regla del reloj inyectable.
   configuracionReloj,
+
+  // Regla de importaciones de Prisma: solo BaseDatos llega a la base.
+  configuracionPrisma,
+
+  // Regla de acceso a la base: ningún otro camino al cliente de Prisma ni a pg; nadie fuera de cli/ importa cli/ ni los internos
+  // de infraestructura/prisma/ (criterios 85 y 95).
+  ...configuracionAccesoBase,
+
+  // Reglas del SQL: el SQL solo llega a la base en plantillas etiquetadas y solo ese texto se analiza (criterios 73, 83, 84 y
+  // 92 a 94). Un comentario `eslint-disable` las apaga aquí; el paso protegido (eslint.protegido.config.mjs, con
+  // `--no-inline-config`) las revisa otra vez sin que ningún comentario pueda apagarlas (criterio 96).
+  ...configuracionSqlSesion,
+
+  // Una transacción no se guarda fuera de su `trabajo` (en this ni en una variable del módulo) y fuera de infraestructura/ no se importa
+  // async_hooks (criterio 135). Solo en el lint normal: el criterio 134 es la garantía en ejecución.
+  configuracionTransaccionGuardada,
 );

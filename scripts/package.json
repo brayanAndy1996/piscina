@@ -5,6 +5,7 @@
   "description": "Scripts del proyecto, escritos en Node para que funcionen en Windows, Mac y Linux",
   "type": "module",
   "dependencies": {
+    "dotenv": "^18.0.10",
     "pg": "^8.23.1"
   }
 }

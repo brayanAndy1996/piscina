@@ -70,6 +70,9 @@ evitar problemas con las herramientas.
 
 Si el proyecto ya está descargado, no lo vuelvas a clonar: entra a la carpeta y sigue con "Día a día".
 
+Si `C:\proyectos\piscina` es una **unión de Windows** (un acceso creado con `mklink /J` que apunta a otra carpeta), los
+comandos del proyecto funcionan igual, también los que se lanzan desde la unión. No hace falta cambiar nada.
+
 ### Paso 2: crear tu archivo de configuración
 
 ```powershell
@@ -82,10 +85,24 @@ Test-Path .env
 `.env` es tu configuración local. Los valores de `.env.example` ya funcionan con Docker, así que por ahora no cambies
 nada. Git ignora `.env` a propósito: nunca lo subas a GitHub.
 
-Si `.env` ya existe, no lo vuelvas a copiar: `Copy-Item` reemplaza el archivo y perderías tus cambios.
+Si `.env` ya existe, no lo vuelvas a copiar: `Copy-Item` reemplaza el archivo y perderías tus cambios. Si tenías el
+proyecto antes de la historia 001, ve a "Después de traer la historia 001" en lugar de copiarlo otra vez.
 
 También puedes hacerlo con el Explorador de archivos: copia `.env.example`, pega la copia en la misma carpeta y cámbiale
 el nombre a exactamente `.env`. Windows puede añadir "Copia de" al nombre; bórralo.
+
+#### Cómo debe estar tu `.env`
+
+- **Guárdalo en UTF-8**, con o sin BOM: se lee igual. Si lo editas con el Bloc de notas, guárdalo con codificación
+  UTF-8. Si PowerShell lo guardó en UTF-16 (con `>` o con `Out-File` sin `-Encoding`), `env:completar` se niega y no
+  escribe nada: ve a "`env:completar` dice que tu `.env` no está en UTF-8" en los problemas frecuentes.
+- **Una variable por línea, con el formato `NOMBRE=valor`.** Escribe el nombre igual que en `.env.example`, en
+  mayúsculas. En Windows, los nombres de las variables no distinguen mayúsculas (`PgPassword` y `PGPASSWORD` son la
+  misma variable), así que una variable escrita de otra forma puede hacer que `env:completar` agregue de nuevo una que
+  ya tenías.
+- **No definas variables que empiecen con `DOTENV_`.**
+- Los valores de `.env.example` son de ejemplo e inventados, para desarrollo. La contraseña de ejemplo del rol
+  `aquagestion_app` nunca se usa en producción.
 
 ### Paso 3: instalar las dependencias
 
@@ -95,6 +112,9 @@ npm ci
 
 La primera vez tarda varios minutos y muestra muchas líneas: es normal. Ha terminado cuando vuelve a aparecer el
 indicador `PS C:\proyectos\piscina>`. Si aparece un error, revisa "Problemas frecuentes".
+
+Haz este paso antes de cualquier comando que lea tu `.env` (por ejemplo, `env:completar` o `db:preparar`): los scripts
+leen el `.env` con el paquete `dotenv`, que se instala con `npm ci`.
 
 ### Paso 4: encender PostgreSQL
 
@@ -109,15 +129,22 @@ La primera vez Docker descarga la imagen de PostgreSQL 16, que puede tardar unos
 `docker compose ps` debe aparecer `(healthy)`. Si aparece `starting`, espera unos segundos y repite
 `docker compose ps`.
 
-### Paso 5: crear las bases de datos
+### Paso 5: crear el rol y las bases de datos
 
 ```powershell
 npm run db:preparar
 ```
 
-Crea las bases que falten: `aquagestion` (desarrollo) y `aquagestion_pruebas` (pruebas). Después aplica las migraciones
-a ambas y ejecuta la semilla. Hoy la semilla solo escribe `Sin datos de ejemplo todavía.`, porque los datos de ejemplo
-llegan con la historia 001. Es seguro repetir este comando: no borra nada.
+Hace cuatro cosas, en este orden:
+
+1. Crea el rol `aquagestion_app`, con el que la API se conecta a la base (ver `DATABASE_URL_APP` en tu `.env`), si no
+   existe.
+2. Crea las bases que falten: `aquagestion` (desarrollo) y `aquagestion_pruebas` (pruebas).
+3. Aplica las migraciones a las dos bases.
+4. Ejecuta la semilla. Crea, si no existen, las academias de ejemplo `delfines` ("Academia de Natación Los Delfines") y
+   `tiburones` ("Club de Natación Tiburones") y el superadmin de desarrollo, con los datos `SUPERADMIN_*` de tu `.env`.
+
+Es seguro repetir este comando: no borra nada.
 
 ### Paso 6: encender el sistema
 
@@ -144,6 +171,78 @@ La página muestra uno de cuatro estados:
 | Sin conexión con la base de datos   | La API responde, pero PostgreSQL no.             | Abre Docker Desktop y ejecuta `docker compose up -d`.                     |
 | No se pudo contactar al servidor    | La web no alcanza la API.                        | Revisa la ventana de `npm run dev`; si se cerró, ejecútalo otra vez.      |
 
+## Después de traer la historia 001
+
+Si ya tenías el proyecto antes de la historia 001, no repitas "Primera vez". Haz estos pasos una vez, en la carpeta del
+proyecto:
+
+```powershell
+git pull
+npm ci
+npm run env:completar
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- `npm ci` va antes de `env:completar`: el comando lee el `.env` con el paquete `dotenv`, que se instala con `npm ci`.
+- `npm run env:completar` agrega a tu `.env` las variables nuevas que falten, desde `.env.example` (por ejemplo,
+  `DATABASE_URL_APP`, `JWT_SECRETO` y `SUPERADMIN_CORREO`), sin tocar las que ya tienes. Dice cuáles agregó. Si no falta
+  ninguna, lo dice y no cambia nada.
+- `npm run db:preparar` crea el rol `aquagestion_app` que falte y aplica las migraciones nuevas a las dos bases.
+
+Después, entra a la plataforma como se explica en la sección siguiente.
+
+## Entrar a la plataforma y crear una academia de prueba
+
+Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
+superadmin, que administra las academias. Los usuarios de cada academia llegan con historias posteriores.
+
+1. Abre http://localhost:5173/plataforma/ingresar.
+2. Escribe el correo y la clave del superadmin de desarrollo: son `SUPERADMIN_CORREO` y `SUPERADMIN_CLAVE` de tu `.env`.
+   Debes llegar a la lista de academias (`/plataforma/academias`). Al principio aparecen `delfines` y `tiburones`, las
+   academias de ejemplo.
+3. Pulsa **Nueva academia** y escribe un nombre y un nombre corto. Por ejemplo: "Academia de prueba Norte" y
+   `prueba-norte`. El nombre corto:
+   - tiene de 3 a 30 caracteres: letras minúsculas sin tildes ni ñ, números y guiones;
+   - no puede empezar ni terminar con guion, ni tener guiones seguidos;
+   - empieza con una letra y no puede ser una palabra reservada;
+   - se guarda en minúsculas aunque lo escribas con mayúsculas, y **no se puede cambiar** después de crear la academia,
+     porque los enlaces que ya se hayan enviado dependen de él.
+   Si el nombre corto ya está en uso, el formulario lo dice junto a ese campo.
+4. Pulsa **Suspender** en la academia de prueba, escribe el motivo (es obligatorio) y confirma. Su estado pasa a
+   suspendida. Sus datos se conservan.
+5. Pulsa **Reactivar** y confirma. La academia vuelve a estar activa.
+6. Pulsa **Cerrar sesión**. Vuelves a la pantalla de ingreso.
+
+Cada alta, suspensión y reactivación queda registrada en la auditoría de la plataforma. Todavía no hay pantalla para
+verla.
+
+### Crear o restablecer el superadmin
+
+Solo quien administra el servidor puede crear o restablecer un superadmin: no hay registro desde la web. El comando lee
+`SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE`, además de `DATABASE_URL` de tu `.env`. Necesita Docker
+encendido.
+
+En PowerShell, dentro de la carpeta del proyecto:
+
+```powershell
+$env:SUPERADMIN_CORREO = "ana@ejemplo.test"
+$env:SUPERADMIN_NOMBRE = "Ana Pérez"
+$env:SUPERADMIN_CLAVE = "cambia-esta-clave-larga"
+npm run plataforma:superadmin
+```
+
+- Si el correo no existe, el comando crea el superadmin y responde `Superadmin creado: ana@ejemplo.test`.
+- Si el correo ya existe, cambia su nombre y su clave, y responde `Contraseña del superadmin restablecida:
+  ana@ejemplo.test`. Las sesiones abiertas de ese superadmin dejan de valer.
+- La clave tiene entre 12 y 128 caracteres. El comando nunca la muestra. Si algo falla, el mensaje dice qué variable
+  revisar y no cambia nada.
+- Las variables que escribes en PowerShell mandan sobre las de `.env`, así que la clave no tiene que quedar escrita en
+  ningún archivo. Cierra la ventana cuando termines.
+- Si olvidas la clave del superadmin, usa este mismo comando.
+- Si te equivocas cinco veces seguidas al entrar, la cuenta queda bloqueada 15 minutos.
+
 ## Día a día
 
 Cada vez que vuelvas a trabajar, abre PowerShell y ejecuta, en este orden:
@@ -152,6 +251,7 @@ Cada vez que vuelvas a trabajar, abre PowerShell y ejecuta, en este orden:
 cd C:\proyectos\piscina
 git pull
 npm ci
+npm run env:completar
 docker compose up -d
 npm run db:migrar
 npm run dev
@@ -160,6 +260,8 @@ npm run dev
 - `git pull` trae los cambios que se hicieron en el repositorio.
 - `npm ci` instala exactamente las dependencias de `package-lock.json`. Hazlo cuando `git pull` haya traído cambios; si
   no hubo cambios, también es seguro, solo tarda más.
+- `npm run env:completar` agrega a tu `.env` las variables nuevas de `.env.example`, si las hay. Si no falta ninguna, no
+  cambia nada.
 - `docker compose up -d` enciende PostgreSQL. Si ya estaba encendido, no pasa nada.
 - `npm run db:migrar` aplica las migraciones nuevas a la base de desarrollo. Si no hay ninguna pendiente, lo dice y no
   cambia nada.
@@ -194,20 +296,23 @@ Las pruebas E2E levantan la API y la web en otros puertos (3100 y 5180), así qu
 
 ## Comandos útiles
 
-| Comando                                | Qué hace                                                                                  |
-| -------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `npm run dev`                          | Enciende la API (puerto 3000) y la web (puerto 5173).                                     |
-| `npm run db:preparar`                  | Crea las bases que falten, aplica las migraciones y la semilla. Seguro de repetir.        |
-| `npm run db:migrar`                    | Aplica a la base de desarrollo las migraciones pendientes.                                |
-| `npm run db:migrar:pruebas`            | Aplica las migraciones pendientes a la base de pruebas.                                   |
-| `npm run db:semilla`                   | Carga los datos de ejemplo (hoy no carga ninguno).                                        |
-| `npm run db:migracion`                 | Crea una migración nueva a partir de un cambio del esquema. Pide un nombre.               |
-| `npm run lint`                         | Revisa el código con ESLint.                                                              |
-| `npm run typecheck`                    | Revisa los tipos de TypeScript.                                                           |
-| `npm run format:check`                 | Revisa el formato con Prettier. `npm run format` lo corrige.                              |
-| `npm run build`                        | Compila contratos, API y web.                                                             |
-| `npm run verificar:sin-secretos`       | Comprueba que el repositorio no versiona `.env` ni claves.                                |
-| `npm run verificar:pruebas-protegidas` | Comprueba que las pruebas protegidas solo cambiaron en sus propios commits.               |
+| Comando                                | Qué hace                                                                                                 |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                          | Enciende la API (puerto 3000) y la web (puerto 5173).                                                    |
+| `npm run db:preparar`                  | Crea el rol y las bases que falten, aplica las migraciones y la semilla. Seguro de repetir.              |
+| `npm run db:crear`                     | Crea solo el rol `aquagestion_app` y las bases que falten. Lo usa `db:preparar`.                         |
+| `npm run db:migrar`                    | Aplica a la base de desarrollo las migraciones pendientes.                                               |
+| `npm run db:migrar:pruebas`            | Aplica las migraciones pendientes a la base de pruebas.                                                  |
+| `npm run db:semilla`                   | Crea las academias de ejemplo y el superadmin de desarrollo, si no existen. Repetirla no duplica nada.   |
+| `npm run db:migracion`                 | Crea una migración nueva a partir de un cambio del esquema. Pide un nombre.                              |
+| `npm run env:completar`                | Agrega a `.env` las variables de `.env.example` que falten. No cambia las que ya tienes.                 |
+| `npm run plataforma:superadmin`        | Crea el superadmin de la plataforma o le restablece la clave (usa `SUPERADMIN_*`; ver arriba).           |
+| `npm run lint`                         | Revisa el código con ESLint.                                                                             |
+| `npm run typecheck`                    | Revisa los tipos de TypeScript.                                                                          |
+| `npm run format:check`                 | Revisa el formato con Prettier. `npm run format` lo corrige.                                             |
+| `npm run build`                        | Compila contratos, API y web.                                                                            |
+| `npm run verificar:sin-secretos`       | Comprueba que el repositorio no versiona `.env` ni claves.                                               |
+| `npm run verificar:pruebas-protegidas` | Comprueba que las pruebas protegidas solo cambiaron en sus propios commits.                              |
 
 ## Si Git rechaza un commit
 
@@ -242,8 +347,12 @@ Solución: usa otro puerto, por ejemplo el 5433:
 
 1. Abre `.env` con `notepad .env`.
 2. Cambia `POSTGRES_PUERTO=5432` por `POSTGRES_PUERTO=5433`.
-3. En `DATABASE_URL` y en `DATABASE_URL_PRUEBAS`, cambia `:5432/` por `:5433/`.
+3. En `DATABASE_URL`, en `DATABASE_URL_PRUEBAS` y en `DATABASE_URL_APP`, cambia `:5432/` por `:5433/`.
 4. Guarda el archivo, ejecuta `docker compose up -d` y luego `npm run db:preparar`.
+
+Si cambias el puerto de Docker, cámbialo también en `DATABASE_URL_APP`. Si no lo haces, `npm run db:crear` (y
+`npm run db:preparar`, que lo usa) termina con error antes de tocar nada y dice que `DATABASE_URL_APP` debe apuntar al
+mismo servidor, puerto y base que `DATABASE_URL`.
 
 ### El puerto 5173 o el 3000 está ocupado
 
@@ -282,12 +391,82 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 Luego cierra PowerShell, ábrela otra vez y repite el comando que falló.
 
+### `env:completar` dice que tu `.env` no está en UTF-8
+
+Síntoma: `npm run env:completar` responde que tu `.env` no está guardado como UTF-8 y que parece UTF-16. No cambia nada.
+Pasa cuando PowerShell 5.1 guarda el archivo con `>` o con `Out-File` sin `-Encoding`.
+
+Solución, una de estas dos:
+
+- En VS Code, abre `.env`, haz clic en la codificación que aparece abajo a la derecha, elige **Guardar con
+  codificación** y luego **UTF-8**.
+- En PowerShell, dentro de la carpeta del proyecto:
+
+```powershell
+Set-Content -Path .env -Encoding UTF8 -Value (Get-Content -Path .env)
+```
+
+Después vuelve a ejecutar `npm run env:completar`. Con o sin BOM, el archivo se lee igual.
+
+### `env:completar` avisa de "una línea que parece definir" una variable
+
+Síntoma: el comando termina con 0 y dice que la variable `NOMBRE` tiene en tu `.env` una línea que parece definirla pero
+nadie la lee.
+
+Esa línea no la lee nadie (ni la API ni los scripts): por ejemplo, `NOMBRE:valor` sin un espacio después de los dos
+puntos, o una línea que quedó dentro de un valor entre comillas que no se cerró. El comando ya agregó la variable al
+final desde `.env.example`. Revisa la línea, deja una sola definición como `NOMBRE=valor` y borra la otra.
+
+### `env:completar` dice que agregar cambiaría cómo se lee tu `.env`
+
+Síntoma: el comando dice que no modificó el `.env` porque agregar las variables que faltan cambiaría cómo se lee alguna
+variable. No escribió nada.
+
+Causa: la última línea tiene una comilla (`"`, `'` o `` ` ``) sin cerrar. Ciérrala o quítala y vuelve a ejecutar
+`npm run env:completar`.
+
+### Una variable aparece dos veces en el `.env`
+
+Vale la **última** definición, tanto para la API como para los scripts. Deja una sola.
+
+### "Falta el paquete dotenv"
+
+Síntoma: un comando que lee el `.env` dice `Falta el paquete dotenv, con el que se lee el .env`.
+
+Solución: ejecuta `npm ci` y vuelve a intentarlo. Hazlo antes de los comandos `db:*` y de `env:completar`.
+
 ### El mensaje nombra una variable de `.env`
 
-Ejemplos: `Falta la variable DATABASE_URL.` o un aviso de que el nombre de la base de pruebas debe terminar en `_pruebas`.
+Ejemplos: `Falta la variable DATABASE_URL.`, `Falta la variable DATABASE_URL_APP.` o un aviso de que el nombre de la base
+de pruebas debe terminar en `_pruebas`.
 
-Solución: abre `.env` con `notepad .env`, compara sus líneas con `.env.example` y corrige la que falte o esté mal escrita.
-Si no sabes qué valor poner, pide ayuda. No vuelvas a copiar `.env.example` encima: borrarías tus cambios.
+Solución: ejecuta `npm run env:completar`, que agrega las variables que falten desde `.env.example`. Si la variable ya
+está y el mensaje sigue, abre `.env` con `notepad .env`, compara sus líneas con `.env.example` y corrige la que esté mal
+escrita. Si no sabes qué valor poner, pide ayuda. No vuelvas a copiar `.env.example` encima: borrarías tus cambios.
+
+### "Falta el rol aquagestion_app"
+
+Síntoma: `npm run db:preparar` o `npm run db:migrar` dicen `Falta el rol aquagestion_app: ejecuta npm run db:crear (o
+npm run db:preparar).`
+
+Solución: asegúrate de que Docker Desktop está encendido y de que `docker compose ps` muestra `(healthy)`, y ejecuta
+`npm run db:preparar`. Si `db:crear` dice que el usuario de `DATABASE_URL` no puede crear roles, revisa que `DATABASE_URL`
+sea el usuario de Docker (`aquagestion`) y pide ayuda si sigue igual.
+
+### "El rol aquagestion_app no es seguro"
+
+Síntoma: `npm run db:crear` dice que el rol ya existe pero no es seguro y enumera lo que le sobra (por ejemplo,
+`SUPERUSER` o `BYPASSRLS`). Si intentas entrar a la plataforma, la página muestra un error del servidor, y la ventana de
+`npm run dev` dice que el rol de `DATABASE_URL_APP` no es seguro. Mientras siga así, la API no atiende datos: es lo
+esperado.
+
+Solución: en tu PC, lo más simple es empezar de cero con la sección "Borrar la base de desarrollo y empezar de cero". El
+rol se vuelve a crear con los atributos correctos, pero se borran los datos de desarrollo. Si quieres conservarlos, pide
+ayuda antes de cambiar el rol a mano: el mensaje de `db:crear` dice qué quitar.
+
+Ten en cuenta que `db:crear` no cambia la contraseña de un rol que ya existe. Si cambiaste la de `DATABASE_URL_APP`
+después de crear el rol, la API no podrá entrar a la base; la forma más simple de corregirlo en tu PC también es empezar
+de cero.
 
 ### Playwright no encuentra el navegador
 
@@ -312,4 +491,4 @@ npm run db:preparar
 ```
 
 `docker compose down` sin `-v` apaga y quita el contenedor, pero conserva los datos. Con `-v` también se borra el volumen
-donde están guardados, por eso se pierde todo.
+donde están guardados, por eso se pierde todo. `npm run db:preparar` vuelve a crear el rol `aquagestion_app` y la semilla.

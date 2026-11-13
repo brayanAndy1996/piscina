@@ -2,7 +2,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { analizarUrlPostgres, cargarEnv, esNombreValido, leerUrlsBases } from '../lib/entorno.mjs';
+import {
+  analizarUrlPostgres,
+  cargarEnv,
+  esNombreValido,
+  leerUrlApp,
+  leerUrlsBases,
+  urlAppSobre,
+  USUARIO_APP,
+} from '../lib/entorno.mjs';
 
 describe('esNombreValido', () => {
   it.each(['aquagestion', 'aquagestion_pruebas', '_x', 'base1'])('acepta %s', (nombre) => {
@@ -87,5 +95,52 @@ describe('cargarEnv', () => {
     } finally {
       fs.rmSync(carpeta, { recursive: true, force: true });
     }
+  });
+});
+
+describe('leerUrlApp y urlAppSobre (spec 001)', () => {
+  it('el rol de la API se llama aquagestion_app', () => {
+    expect(USUARIO_APP).toBe('aquagestion_app');
+  });
+
+  it('leerUrlApp descompone DATABASE_URL_APP', () => {
+    const app = leerUrlApp({ DATABASE_URL_APP: 'postgresql://aquagestion_app:clave%2Fx@127.0.0.1:5433/aquagestion' });
+    expect(app).toEqual({
+      host: '127.0.0.1',
+      puerto: 5433,
+      usuario: 'aquagestion_app',
+      clave: 'clave/x',
+      base: 'aquagestion',
+    });
+  });
+
+  it.each([
+    [undefined, /Falta la variable DATABASE_URL_APP/],
+    ['', /Falta la variable DATABASE_URL_APP/],
+    ['mysql://u:SecretoXYZ@h/b', /DATABASE_URL_APP/],
+  ])('leerUrlApp rechaza %j nombrando la variable y sin mostrar su valor', (valor, patron) => {
+    let mensaje = '';
+    try {
+      leerUrlApp({ DATABASE_URL_APP: valor });
+    } catch (error) {
+      mensaje = String(error.message);
+    }
+    expect(mensaje).toMatch(patron);
+    expect(mensaje).not.toContain('SecretoXYZ');
+  });
+
+  it('urlAppSobre toma el usuario y la contraseña de la app, y el servidor, la base y los parámetros de la otra URL', () => {
+    const resultado = urlAppSobre(
+      'postgresql://aquagestion:clave-dueno@db.local:6543/aquagestion_pruebas?schema=public',
+      'postgresql://aquagestion_app:clave%40app@127.0.0.1:5432/aquagestion',
+    );
+    const url = new URL(resultado);
+    expect(url.username).toBe('aquagestion_app');
+    expect(decodeURIComponent(url.password)).toBe('clave@app');
+    expect(url.hostname).toBe('db.local');
+    expect(url.port).toBe('6543');
+    expect(url.pathname).toBe('/aquagestion_pruebas');
+    expect(url.search).toBe('?schema=public');
+    expect(resultado).not.toContain('clave-dueno');
   });
 });

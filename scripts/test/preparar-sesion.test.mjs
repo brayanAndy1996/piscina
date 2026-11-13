@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  cargarEvaluacionRolApp,
   cargarUtilidadesEntorno,
   COMANDO_REINTENTO,
   describirFallo,
@@ -18,6 +19,7 @@ import {
   ocultarClaves,
   resumirSalida,
   sentenciaCrearRol,
+  sentenciaCrearRolApp,
   sentenciaExisteRol,
 } from '../../.claude/hooks/preparar-sesion.mjs';
 
@@ -34,6 +36,8 @@ const esWindows = process.platform === 'win32';
 // Las funciones puras del hook usan scripts/lib/entorno.mjs, que el hook carga solo en la nube.
 beforeAll(async () => {
   await cargarUtilidadesEntorno();
+  // Las sentencias que crean roles envían un verificador SCRAM-SHA-256 calculado con scripts/lib/rol-app.mjs (criterio 104).
+  await cargarEvaluacionRolApp();
 });
 
 describe('esSesionEnLaNube', () => {
@@ -74,19 +78,23 @@ describe('ocultarClaves y describirFallo (criterio 46)', () => {
 });
 
 describe('sentenciaCrearRol (casos límite: contraseña con comillas o caracteres especiales)', () => {
-  it('crea el rol con LOGIN y CREATEDB y sin superusuario', () => {
+  it('crea el rol con LOGIN y CREATEDB y sin superusuario, con la contraseña como verificador SCRAM-SHA-256', () => {
     const sql = sentenciaCrearRol('aquagestion', 'aquagestion');
-    expect(sql).toContain('CREATE ROLE "aquagestion" LOGIN CREATEDB NOSUPERUSER PASSWORD \'aquagestion\';');
+    expect(sql).toMatch(
+      /CREATE ROLE "aquagestion" LOGIN CREATEDB NOSUPERUSER PASSWORD 'SCRAM-SHA-256\$4096:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+';/,
+    );
     expect(sql).not.toMatch(/(?<!NO)SUPERUSER/);
   });
 
-  it('duplica las comillas simples y deja intactas las barras y los signos de dólar', () => {
+  it('nunca envía la contraseña: con comillas, barras y signos de dólar solo viaja el verificador (criterio 104)', () => {
     const sql = sentenciaCrearRol('usuario_1', 'a\'b\\c$$d"e;--');
-    expect(sql).toContain("PASSWORD 'a''b\\c$$d\"e;--';");
+    expect(sql).toContain("PASSWORD 'SCRAM-SHA-256$4096:");
+    expect(sql).not.toContain("a'b");
+    expect(sql).not.toContain("a''b");
     expect(sql.startsWith('SET standard_conforming_strings = on;')).toBe(true);
     // Una contraseña con una comilla simple no puede cerrar el literal antes de tiempo.
     const hostil = sentenciaCrearRol('usuario_1', "'; DROP ROLE postgres; --");
-    expect(hostil).toContain("PASSWORD '''; DROP ROLE postgres; --';");
+    expect(hostil).not.toContain('DROP ROLE');
   });
 
   it.each(['Aqua', '1aqua', 'aqua-gestion', 'aqua gestion', 'aqua"x', "aqua'x", '', 'ñandú'])(
@@ -103,6 +111,35 @@ describe('sentenciaCrearRol (casos límite: contraseña con comillas o caractere
 
   it('la consulta de existencia usa el nombre validado', () => {
     expect(sentenciaExisteRol('aquagestion')).toBe("SELECT 1 FROM pg_roles WHERE rolname = 'aquagestion';\n");
+  });
+});
+
+describe('sentenciaCrearRolApp (spec 001, criterios 1 y 8)', () => {
+  it('crea el rol de la API con todos los atributos negativos y la contraseña como verificador SCRAM-SHA-256', () => {
+    const sql = sentenciaCrearRolApp('aquagestion_app', 'clave-app');
+    expect(sql).toMatch(
+      /CREATE ROLE "aquagestion_app" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD 'SCRAM-SHA-256\$4096:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+';/,
+    );
+    expect(sql).not.toContain('clave-app');
+    expect(sql.startsWith('SET standard_conforming_strings = on;')).toBe(true);
+    expect(sql).not.toMatch(/(?<!NO)(SUPERUSER|BYPASSRLS|CREATEDB|CREATEROLE|REPLICATION)/);
+  });
+
+  it('nunca envía la contraseña: con comillas, barras y signos de dólar solo viaja el verificador (criterio 104)', () => {
+    const sql = sentenciaCrearRolApp('aquagestion_app', 'a\'b\\c$$d"e;--');
+    expect(sql).toContain("PASSWORD 'SCRAM-SHA-256$4096:");
+    expect(sql).not.toContain("a'b");
+    expect(sql).not.toContain("a''b");
+    const hostil = sentenciaCrearRolApp('aquagestion_app', "'; DROP ROLE postgres; --");
+    expect(hostil).not.toContain('DROP ROLE');
+  });
+
+  it.each(['Aqua', '1aqua', 'aqua-app', 'aqua app', 'aqua"x', '', 'ñandú'])('rechaza el usuario %j', (usuario) => {
+    expect(() => sentenciaCrearRolApp(usuario, 'x')).toThrow(/minúsculas, dígitos y guiones bajos/);
+  });
+
+  it('rechaza una contraseña con caracteres nulos sin mostrarla', () => {
+    expect(() => sentenciaCrearRolApp('aquagestion_app', 'a\0b')).toThrow(/nulos/);
   });
 });
 

@@ -5,8 +5,10 @@ import type { Request, Response } from 'express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule, type OpcionesApp } from './app.module';
+import { instalarLectorDeCuerpos } from './comun/http/cuerpos';
 import { ERROR_NO_ENCONTRADO } from './comun/filtros/filtro-errores';
 import type { Entorno } from './infraestructura/entorno';
+import { instalarProteccionDePrefijos } from './modulos/academias';
 
 /** Prefijo de toda la API: la web ocupa `/` y la API `/api` en el mismo dominio (D-25). */
 export const PREFIJO_API = 'api';
@@ -22,6 +24,11 @@ export async function configurarApp<T extends INestApplication>(app: T): Promise
   express.use(helmet());
   express.disable('x-powered-by');
   express.disable('etag');
+  // Antes de `init()`: así se ejecutan antes que el lector del cuerpo y que las rutas de Nest (sesión y `no-store`).
+  instalarProteccionDePrefijos(express, PREFIJO_API);
+  // Después de los de los prefijos: sin sesión, 401 antes de mirar el cuerpo; el tipo de contenido se rechaza antes de
+  // leerlo y el lector JSON es el único (criterios 74 y 75).
+  instalarLectorDeCuerpos(express, PREFIJO_API);
   express.enableShutdownHooks();
   await express.init();
   // Nest solo atiende lo que está bajo el prefijo `/api`: lo demás (por ejemplo `GET /salud`) lo contesta aquí,

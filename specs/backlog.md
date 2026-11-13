@@ -10,8 +10,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 
 | N.º | Historia | Ruta crítica | Estado |
 | --- | --- | --- | --- |
-| 000 | Esqueleto | No | 🟨 |
-| 001 | Academias y aislamiento | Sí | ⬜ |
+| 000 | Esqueleto | No | ✅ |
+| 001 | Academias y aislamiento | Sí | ✅ |
 | 002 | Autenticación y roles por academia | Sí | ⬜ |
 | 003 | Configuración de la academia | No | ⬜ |
 | 004 | Planes y clases con aforo | En parte | ⬜ |
@@ -33,12 +33,14 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   integración continua: falla si un commit que no es de pruebas protegidas modifica un archivo marcado como tal.
   Guía para levantar el sistema en Windows (`docs/guia-local-windows.md`). Sin tablas de negocio (D-17).
 - **001 · Academias y aislamiento.** Tabla de academias con nombre corto (D-27), `academia_id` y RLS, cliente de
-  Prisma que fija la academia en cada transacción, Superadmin que crea y suspende academias y su primer
-  administrador (D-23, D-29). Tablas transversales: auditoría y configuración por academia.
+  Prisma que fija la academia en cada transacción, Superadmin que crea, suspende y reactiva academias
+  (D-23, D-29). Tablas transversales: auditoría y configuración por academia. El primer administrador de cada academia
+  no es de 001: lo crea 002 (DR-1).
 - **002 · Autenticación y roles.** Inicio de sesión por academia (`/a/{academia}/ingresar`), roles Admin,
   Secretaria, Entrenador y Alumno, DNI único por academia (D-28), contraseña inicial igual al DNI con cambio
   obligatorio, bloqueo por intentos, restablecimiento por la secretaria, matriz de permisos (RN-02, RN-03, HU-05,
-  RNF-03, RNF-04).
+  RNF-03, RNF-04). Incluye el primer administrador de cada academia, con sus usuarios y su inicio de sesión (DR-1; la
+  001 no lo crea).
 - **003 · Configuración.** Tolerancia de tardanza (D-11), días "por vencer", días de prioridad al renovar (D-06),
   intentos de inicio de sesión, identidad de la academia (D-22).
 - **004 · Planes y clases.** Planes (HU-19, RN-07) y clases por nivel, día, hora y entrenador, con aforo de 20 a 50
@@ -46,6 +48,11 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **005 · Inscripción pública.** Formulario con datos, ficha médica, apoderado y consentimientos (HU-01, RN-20,
   D-07), elección de días y horario con cupo (HU-02), foto opcional (D-20, D-24), código y enlace de seguimiento
   (D-05), cálculo del cobro proporcional (HU-34, RN-25, D-03).
+  - Nota de 001 (ataque ronda 17, O2): `GET /api/a/{nombreCorto}` es pública y no tiene límite de peticiones. Cada
+    petición abre una transacción corta (`resolverAcademia`), y con el pool de 10 conexiones una avalancha anónima puede
+    demorar o hacer fallar las peticiones de todas las academias. Se decide con el hosting (D-21: proxy, CDN o límites
+    del proveedor, y `trust proxy` para que `req.ip` sea la del cliente) y con esta historia, que es la que pone la ruta
+    en uso: límite por IP en la ruta pública (como el del inicio de sesión), caché corta de la respuesta, o las dos.
 - **006 · Caja.** Apertura, movimientos, egresos, cierre con esperado por método y diferencia, reapertura por el
   administrador, PDF del cierre (HU-25 a HU-27, RN-17).
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de

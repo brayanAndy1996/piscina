@@ -1,8 +1,10 @@
 import { BadRequestException, ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
-import { errorApiSchema } from '@aquagestion/contratos';
+import { detallesValidacionSchema, errorApiSchema } from '@aquagestion/contratos';
 import type { PinoLogger } from 'nestjs-pino';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { ErrorNegocio } from '../errores';
 import { FiltroErrores } from './filtro-errores';
 
 function ejecutar(excepcion: unknown) {
@@ -80,5 +82,66 @@ describe('FiltroErrores', () => {
     expect(errorApiSchema.parse(cuerpo).codigo).toBe('ERROR_INTERNO');
     expect(JSON.stringify(cuerpo)).not.toContain('detalle interno');
     expect(registro.error).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('FiltroErrores con ErrorNegocio y errores de validación (spec 001, criterio 66)', () => {
+  it('responde un ErrorNegocio 4xx con su estado, código, mensaje y detalles', () => {
+    const { estado, cuerpo, registro } = ejecutar(
+      new ErrorNegocio(409, 'NOMBRE_CORTO_EN_USO', 'Ese nombre corto ya está en uso.', { campo: 'nombreCorto' }),
+    );
+    expect(estado).toBe(409);
+    expect(errorApiSchema.parse(cuerpo)).toEqual({
+      codigo: 'NOMBRE_CORTO_EN_USO',
+      mensaje: 'Ese nombre corto ya está en uso.',
+      detalles: { campo: 'nombreCorto' },
+    });
+    expect(registro.error).not.toHaveBeenCalled();
+  });
+
+  it('un ErrorNegocio sin detalles no incluye la propiedad detalles', () => {
+    const { cuerpo } = ejecutar(new ErrorNegocio(404, 'ACADEMIA_NO_ENCONTRADA', 'La academia no existe.'));
+    expect(cuerpo).toEqual({ codigo: 'ACADEMIA_NO_ENCONTRADA', mensaje: 'La academia no existe.' });
+    expect(Object.keys(cuerpo as object)).not.toContain('detalles');
+  });
+
+  it.each([423, 403, 401, 400])('conserva el estado %i de un ErrorNegocio', (codigoHttp) => {
+    expect(ejecutar(new ErrorNegocio(codigoHttp, 'CUALQUIER_CODIGO', 'Mensaje.')).estado).toBe(codigoHttp);
+  });
+
+  it('un ErrorNegocio 5xx se responde como ERROR_INTERNO, sin su mensaje ni detalles, y se registra', () => {
+    const { estado, cuerpo, registro } = ejecutar(
+      new ErrorNegocio(500, 'ERROR_INTERNO', 'El rol postgresql://u:clave@h/b no es seguro.', { url: 'secreta' }),
+    );
+    expect(estado).toBe(500);
+    expect(errorApiSchema.parse(cuerpo)).toEqual({
+      codigo: 'ERROR_INTERNO',
+      mensaje: 'Ocurrió un error inesperado. Intenta de nuevo más tarde.',
+    });
+    expect(JSON.stringify(cuerpo)).not.toContain('clave');
+    expect(JSON.stringify(cuerpo)).not.toContain('secreta');
+    expect(registro.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('un ZodError responde 400 SOLICITUD_INVALIDA con detalles { errores: [{ campo, mensaje }] }', () => {
+    const esquema = z.strictObject({ nombre: z.string().min(3), datos: z.object({ edad: z.number() }) });
+    const resultado = esquema.safeParse({ nombre: 'a', datos: { edad: 'x' }, extra: 1 });
+    const { estado, cuerpo, registro } = ejecutar(resultado.error);
+
+    expect(estado).toBe(400);
+    const error = errorApiSchema.parse(cuerpo);
+    expect(error.codigo).toBe('SOLICITUD_INVALIDA');
+    const detalles = detallesValidacionSchema.parse(error.detalles);
+    const campos = detalles.errores.map((e) => e.campo);
+    expect(campos).toEqual(expect.arrayContaining(['nombre', 'datos.edad']));
+    // Un campo desconocido en un objeto estricto se reporta con la ruta del objeto que lo contiene ("" = cuerpo).
+    expect(campos).toContain('');
+    expect(registro.error).not.toHaveBeenCalled();
+  });
+
+  it('los mensajes de validación no repiten el valor recibido', () => {
+    const resultado = z.object({ clave: z.string().max(3) }).safeParse({ clave: 'valor-muy-secreto-1234' });
+    const { cuerpo } = ejecutar(resultado.error);
+    expect(JSON.stringify(cuerpo)).not.toContain('valor-muy-secreto');
   });
 });

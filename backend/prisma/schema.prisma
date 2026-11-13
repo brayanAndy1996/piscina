@@ -1,5 +1,10 @@
-// Esquema de AquaGestión. La historia 000 no crea tablas (D-17, spec 000): solo el generador y la conexión.
-// Las tablas y columnas del negocio van en español y en snake_case (@@map y @map).
+// Esquema de AquaGestión. Las tablas y columnas del negocio van en español y en snake_case (@@map y @map).
+//
+// Seguridad por academia (spec 001, D-23): toda tabla del negocio lleva `academia_id` (uuid, NOT NULL, llave foránea
+// a academias(id) sin borrado en cascada, UNIQUE (academia_id, id)), tiene RLS activada y forzada, y políticas que
+// comparan `academia_id` con app_academia_actual(). Prisma no conoce las políticas, los CHECK ni las funciones:
+// van siempre a mano en el SQL de la migración (no se pierden con `migrate dev`, pero tampoco se generan).
+// Las tablas de la plataforma (academias, superadmins, auditoria_plataforma) no llevan `academia_id`.
 
 generator client {
   provider     = "prisma-client"
@@ -9,4 +14,105 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum EstadoAcademia {
+  ACTIVA
+  SUSPENDIDA
+
+  @@map("estado_academia")
+}
+
+enum TipoActor {
+  USUARIO
+  SUPERADMIN
+  SISTEMA
+
+  @@map("tipo_actor")
+}
+
+/// Una academia de natación (D-23). Nombre corto único: va en la dirección de sus páginas públicas (D-27).
+model Academia {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre           String
+  nombreCorto      String         @unique @map("nombre_corto")
+  estado           EstadoAcademia @default(ACTIVA)
+  motivoSuspension String?        @map("motivo_suspension")
+  suspendidaEn     DateTime?      @map("suspendida_en") @db.Timestamptz(3)
+  creadaEn         DateTime       @default(now()) @map("creada_en") @db.Timestamptz(3)
+  actualizadaEn    DateTime       @default(now()) @map("actualizada_en") @db.Timestamptz(3)
+
+  auditoria       Auditoria[]
+  configuraciones Configuracion[]
+
+  @@map("academias")
+}
+
+/// El dueño de AquaGestión (D-29). No pertenece a ninguna academia.
+model Superadmin {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  correo           String    @unique
+  nombre           String
+  claveHash        String    @map("clave_hash")
+  versionToken     Int       @default(0) @map("version_token")
+  intentosFallidos Int       @default(0) @map("intentos_fallidos")
+  bloqueadoHasta   DateTime? @map("bloqueado_hasta") @db.Timestamptz(3)
+  ultimoAcceso     DateTime? @map("ultimo_acceso") @db.Timestamptz(3)
+  creadoEn         DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn    DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  @@map("superadmins")
+}
+
+/// Bitácora de una academia: quién, cuándo y qué (RN-22, RNF-06). Solo se agrega: nunca se modifica ni se borra.
+model Auditoria {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId   String    @map("academia_id") @db.Uuid
+  fechaHora    DateTime  @map("fecha_hora") @db.Timestamptz(3)
+  actorTipo    TipoActor @map("actor_tipo")
+  actorId      String?   @map("actor_id") @db.Uuid
+  accion       String
+  entidad      String
+  entidadId    String?   @map("entidad_id")
+  datosAntes   Json?     @map("datos_antes")
+  datosDespues Json?     @map("datos_despues")
+  motivo       String?
+  ip           String?   @db.Inet
+
+  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@index([academiaId, fechaHora(sort: Desc)])
+  @@map("auditoria")
+}
+
+/// Bitácora de la plataforma (acciones del Superadmin y del sistema que no pertenecen a una academia).
+model AuditoriaPlataforma {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fechaHora    DateTime  @map("fecha_hora") @db.Timestamptz(3)
+  actorTipo    TipoActor @map("actor_tipo")
+  actorId      String?   @map("actor_id") @db.Uuid
+  accion       String
+  entidad      String
+  entidadId    String?   @map("entidad_id")
+  datosAntes   Json?     @map("datos_antes")
+  datosDespues Json?     @map("datos_despues")
+  motivo       String?
+  ip           String?   @db.Inet
+
+  @@index([fechaHora(sort: Desc)])
+  @@map("auditoria_plataforma")
+}
+
+/// Configuración clave/valor de cada academia (D-07). Sin claves en 001; las define 003.
+model Configuracion {
+  academiaId    String   @map("academia_id") @db.Uuid
+  clave         String
+  valor         Json
+  actualizadoEn DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([academiaId, clave])
+  @@map("configuraciones")
 }

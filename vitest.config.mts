@@ -41,7 +41,7 @@ export default defineConfig({
           ...comun,
           name: 'scripts',
           include: ['test/**/*.test.mjs'],
-          exclude: ['test/integracion/**'],
+          exclude: ['test/integracion/**', 'test/integracion-aislada/**'],
           // Algunas pruebas crean repositorios git temporales y ejecutan git muchas veces (más lento en Windows).
           testTimeout: 60_000,
         },
@@ -53,7 +53,22 @@ export default defineConfig({
           name: 'scripts-integracion',
           include: ['test/integracion/**/*.test.mjs'],
           fileParallelism: false,
+          sequence: { groupOrder: 1 },
           testTimeout: 60_000,
+        },
+      },
+      {
+        // Pruebas que modifican el rol compartido `aquagestion_app` (spec 001, criterio 103): una API de pruebas que arrancara
+        // mientras el rol tiene valores por defecto propios seria rechazada. Corren en serie y despues de todos los demas
+        // proyectos (`sequence.groupOrder` 2; las pruebas de integracion, que usan el servidor de PostgreSQL, tienen 1), sin dejar de formar parte de `npm test`.
+        root: 'scripts',
+        test: {
+          ...comun,
+          name: 'scripts-aislado',
+          include: ['test/integracion-aislada/**/*.test.mjs'],
+          fileParallelism: false,
+          testTimeout: 60_000,
+          sequence: { groupOrder: 2 },
         },
       },
       {
@@ -83,10 +98,27 @@ export default defineConfig({
           ...comun,
           name: 'backend-integracion',
           include: ['test/integracion/**/*.test.ts'],
+          sequence: { groupOrder: 1 },
           // Valida DATABASE_URL_PRUEBAS (criterio 19) y migra la base de pruebas antes de cualquier prueba.
-          globalSetup: ['./test/utilidades/global-setup.ts'],
+          globalSetup: ['./test/utilidades/global-setup-compartido.ts'],
           // Una sola base de datos: los archivos de prueba no corren en paralelo.
           fileParallelism: false,
+          testTimeout: 30_000,
+        },
+      },
+      {
+        // Pruebas que cambian valores compartidos con otras conexiones (spec 001, criterio 107: ALTER DATABASE, ALTER ROLE ALL y
+        // ALTER SYSTEM). Corren en serie y despues de todos los proyectos que usan PostgreSQL (`sequence.groupOrder` 3: las de
+        // integracion tienen 1 y las que modifican el rol de la app, 2), sin dejar de formar parte de `npm test`.
+        root: 'backend',
+        plugins: [swcNest()],
+        test: {
+          ...comun,
+          name: 'backend-aislado',
+          include: ['test/integracion-aislada/**/*.test.ts'],
+          globalSetup: ['./test/utilidades/global-setup-compartido.ts'],
+          fileParallelism: false,
+          sequence: { groupOrder: 3 },
           testTimeout: 30_000,
         },
       },

@@ -13,7 +13,7 @@ describe('rutas inexistentes y métodos no definidos', () => {
     app = await crearAppDePruebas();
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it.each([
@@ -37,7 +37,7 @@ describe('cabeceras de seguridad y CORS cerrado', () => {
     app = await crearAppDePruebas();
   });
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it.each([
