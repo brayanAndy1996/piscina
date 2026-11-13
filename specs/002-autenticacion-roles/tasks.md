@@ -237,7 +237,7 @@ orquestador decidió T4 (DT-4) y T5 (DT-5). No hay criterios nuevos ni pruebas p
       en una historia propia (DT-4), y volver a medir los tiempos del criterio 53 en el hosting junto a la revisión de
       DT-1 (T17.19). No bloquea T18 ni T19 _(Hecha el 13/11/2026 por el documentador: notas en `specs/backlog.md`, en la 002 y en la 007.)_
 
-- [ ] T18 · revisor · Comparar con la spec y las convenciones (`CLAUDE.md` y "Reglas para las historias siguientes" de
+- [x] T18 · revisor · Comparar con la spec y las convenciones (`CLAUDE.md` y "Reglas para las historias siguientes" de
       `docs/arquitectura.md`); confirmar con `git diff` que ningún commit de implementación tocó pruebas protegidas.
       _(Ataque ronda 3:)_ el commit de pruebas `b6b2d77` trae también `usuarios.service.ts`; es el caso registrado en la
       nota de proceso de `spec.md` ("Decisiones"), no una violación _(Pendiente: el historial tiene commits de revisión (`d059e7b`, y `04ba56e` en curso); se marca cuando el revisor cierre la revisión y confirme con `git diff` lo de las pruebas protegidas.)_
