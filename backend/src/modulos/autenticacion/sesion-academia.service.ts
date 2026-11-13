@@ -239,7 +239,7 @@ export class SesionAcademiaService {
     }
     const correcta = await verificarClave(fila.clave_hash, datos.claveActual);
     if (!correcta) {
-      await this.contarFallo(usuario.academiaId, usuario.id, ip, 'Cambio de contraseña');
+      await this.contarFalloDelActor(sesion, ip);
       throw claveActualIncorrecta();
     }
     // Solo con la actual correcta se mira la nueva (criterio 58): antes, el DNI se podía probar sin contar intentos.
@@ -405,39 +405,78 @@ export class SesionAcademiaService {
 
   /**
    * Cuenta un intento fallido bajo el bloqueo de la fila y devuelve el resultado ya confirmado. Dos intentos simultáneos no
-   * pierden incrementos: el segundo espera a que el primero termine y cuenta sobre el valor nuevo.
+   * pierden incrementos: el segundo espera a que el primero termine y cuenta sobre el valor nuevo. Es el conteo del ingreso: no
+   * comprueba a ningún actor (quien intenta ingresar todavía no tiene sesión).
    */
   private contarFalloEnBase(academiaId: string, id: string): Promise<ResultadoFallo> {
-    return this.baseDatos.conAcademia(academiaId, async (tx: TransaccionAcademia): Promise<ResultadoFallo> => {
-      const ahora = this.reloj.ahora();
-      const filas = await tx.cliente.$queryRaw<Pick<FilaIngreso, 'intentos_fallidos' | 'bloqueado_hasta'>[]>`
-        SELECT intentos_fallidos, bloqueado_hasta
-          FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid FOR UPDATE`;
-      const actual = filas[0];
-      // Sin fila (id inexistente) el `UPDATE` también se envía, con valores neutros y sin afectar ninguna fila: la secuencia de
-      // sentencias es la misma con o sin cuenta (criterio 53).
-      const evaluacion = evaluarIntentoFallido(
-        actual
-          ? { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: fechaDeBaseONula(actual.bloqueado_hasta) }
-          : { intentosFallidos: 0, bloqueadoHasta: null },
-        ahora,
-        REGLAS_BLOQUEO_USUARIO,
-      );
-      if (evaluacion.tipo === 'YA_BLOQUEADA') return { tipo: 'BLOQUEADA' };
-      await tx.cliente.$executeRaw`
-        UPDATE usuarios
-           SET intentos_fallidos = ${evaluacion.estado.intentosFallidos},
-               bloqueado_hasta = ${evaluacion.estado.bloqueadoHasta}::timestamptz,
-               actualizado_en = ${ahora}::timestamptz
-         WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid`;
-      if (!actual) return { tipo: 'DESAPARECIDO' };
-      return evaluacion.bloquea ? { tipo: 'BLOQUEADA' } : { tipo: 'FALLO' };
-    });
+    return this.baseDatos.conAcademia(academiaId, (tx) => this.contarFalloEnTransaccion(tx, id));
   }
 
-  /** Cuenta el fallo y, si lo bloquea (o ya estaba bloqueada), responde 423. Si no, vuelve para que quien llama responda el suyo. */
+  /**
+   * Las dos sentencias del conteo (leer la fila con `FOR UPDATE` y escribir el contador), dentro de la transacción que recibe. Las
+   * comparten el ingreso y el cambio de contraseña: la secuencia del ingreso no cambia (criterio 53).
+   */
+  private async contarFalloEnTransaccion(tx: TransaccionAcademia, id: string): Promise<ResultadoFallo> {
+    const ahora = this.reloj.ahora();
+    const filas = await tx.cliente.$queryRaw<Pick<FilaIngreso, 'intentos_fallidos' | 'bloqueado_hasta'>[]>`
+      SELECT intentos_fallidos, bloqueado_hasta
+        FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid FOR UPDATE`;
+    const actual = filas[0];
+    // Sin fila (id inexistente) el `UPDATE` también se envía, con valores neutros y sin afectar ninguna fila: la secuencia de
+    // sentencias es la misma con o sin cuenta (criterio 53).
+    const evaluacion = evaluarIntentoFallido(
+      actual
+        ? { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: fechaDeBaseONula(actual.bloqueado_hasta) }
+        : { intentosFallidos: 0, bloqueadoHasta: null },
+      ahora,
+      REGLAS_BLOQUEO_USUARIO,
+    );
+    if (evaluacion.tipo === 'YA_BLOQUEADA') return { tipo: 'BLOQUEADA' };
+    await tx.cliente.$executeRaw`
+      UPDATE usuarios
+         SET intentos_fallidos = ${evaluacion.estado.intentosFallidos},
+             bloqueado_hasta = ${evaluacion.estado.bloqueadoHasta}::timestamptz,
+             actualizado_en = ${ahora}::timestamptz
+       WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid`;
+    if (!actual) return { tipo: 'DESAPARECIDO' };
+    return evaluacion.bloquea ? { tipo: 'BLOQUEADA' } : { tipo: 'FALLO' };
+  }
+
+  /**
+   * Cuenta el fallo de la `claveActual` del cambio de contraseña solo con la sesión todavía vigente (criterio 60): la transacción
+   * primero bloquea la fila del actor y exige que siga vigente (401 `NO_AUTENTICADO` y no se escribe nada, con prioridad sobre 400
+   * y 423) y recién entonces cuenta. Esta ruta resuelve el cambio obligatorio pendiente, por eso `permitirCambioPendiente`;
+   * `exclusivo` porque la misma transacción escribe la fila del actor.
+   */
+  private async contarFalloDelActor(sesion: SesionVerificada, ip: string | null): Promise<void> {
+    const { usuario } = sesion;
+    const resultado = await this.baseDatos.conAcademia(usuario.academiaId, async (tx) => {
+      await bloquearActorVigente(
+        tx,
+        { id: usuario.id, versionToken: sesion.versionToken },
+        { permitirCambioPendiente: true, exclusivo: true, registro: this.registro, ip },
+      );
+      return this.contarFalloEnTransaccion(tx, usuario.id);
+    });
+    // La fila la comprobó `bloquearActorVigente` dentro de la misma transacción: no puede faltar.
+    if (resultado.tipo === 'DESAPARECIDO') throw noAutenticado();
+    this.avisarFallo(resultado, usuario.id, usuario.academiaId, ip, 'Cambio de contraseña');
+  }
+
+  /** Cuenta el fallo del ingreso y, si lo bloquea (o ya estaba bloqueada), responde 423. Si no, vuelve para que quien llama responda el suyo. */
   private async contarFallo(academiaId: string, id: string, ip: string | null, operacion: string): Promise<void> {
     const resultado = await this.contarFalloEnBase(academiaId, id);
+    this.avisarFallo(resultado, id, academiaId, ip, operacion);
+  }
+
+  /** Anota el fallo en el registro técnico y, si la cuenta quedó bloqueada, responde 423. */
+  private avisarFallo(
+    resultado: ResultadoFallo,
+    id: string,
+    academiaId: string,
+    ip: string | null,
+    operacion: string,
+  ): void {
     if (resultado.tipo === 'BLOQUEADA') {
       this.registro.warn({ usuarioId: id, academiaId, ip }, `${operacion} rechazado: cuenta bloqueada`);
       throw cuentaBloqueada();
