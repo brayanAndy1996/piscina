@@ -44,6 +44,19 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
   efectivo('configuraciones', null, 'SELECT'),
   efectivo('configuraciones', null, 'INSERT'),
   efectivo('configuraciones', null, 'UPDATE'),
+  // Historia 002, criterio 2: la lista exacta suma los privilegios de `usuarios` (no se quita nada de lo anterior).
+  efectivo('usuarios', null, 'SELECT'),
+  efectivo('usuarios', null, 'INSERT'),
+  ...[
+    'clave_hash',
+    'debe_cambiar_clave',
+    'estado',
+    'version_token',
+    'intentos_fallidos',
+    'bloqueado_hasta',
+    'ultimo_acceso',
+    'actualizado_en',
+  ].map((c) => efectivo('usuarios', c, 'UPDATE')),
 ];
 
 async function cargarDeLaApi(): Promise<Modulo> {
