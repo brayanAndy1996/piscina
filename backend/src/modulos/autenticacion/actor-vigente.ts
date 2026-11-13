@@ -2,10 +2,25 @@ import type { RolUsuario } from '@aquagestion/contratos';
 import { ErrorNegocio } from '../../comun/errores';
 import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
 import type { TransaccionAcademia } from '../../infraestructura/prisma';
+import type { SesionVerificada } from './tipos';
 
 /** 401 `NO_AUTENTICADO`: el mismo error del middleware de las rutas de academia (criterio 14). */
 export function noAutenticado(): ErrorNegocio {
   return new ErrorNegocio(401, 'NO_AUTENTICADO', 'Debes iniciar sesión para continuar.');
+}
+
+/**
+ * El usuario de la sesión como actor de una escritura: lo que piden los servicios para bloquear su fila, decidir el alcance y
+ * auditar. Sirve para los tipos de actor de cada servicio, que piden solo una parte de estos campos.
+ */
+export function actorDeSesion(sesion: SesionVerificada) {
+  return {
+    tipo: 'USUARIO' as const,
+    id: sesion.usuario.id,
+    academiaId: sesion.usuario.academiaId,
+    rol: sesion.usuario.rol,
+    versionToken: sesion.versionToken,
+  };
 }
 
 /** Quien pide, tal como lo dejó la sesión: su id y la versión de token que llevaba su cookie. */
@@ -31,7 +46,10 @@ export interface OpcionesBloqueoDelActor {
    * se bloquea una sola fila y `objetivo` es la misma fila.
    */
   readonly objetivoId?: string;
-  /** `POST /api/sesion/clave` es lo que resuelve el cambio obligatorio pendiente (criterio 21): ahí no se exige `debe_cambiar_clave = false`. */
+  /**
+   * `POST /api/sesion/clave` es lo que resuelve el cambio obligatorio pendiente (criterio 21): ahí no se exige
+   * `debe_cambiar_clave = false`.
+   */
   readonly permitirCambioPendiente?: boolean;
   /**
    * Con un solo usuario, `FOR SHARE` por omisión (deja que el mismo actor haga varias escrituras a la vez). Con `exclusivo`, `FOR

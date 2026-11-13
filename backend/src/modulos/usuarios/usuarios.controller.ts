@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
 import {
   type BuscarUsuarioPorDni,
   buscarUsuarioPorDniSchema,
@@ -8,17 +8,13 @@ import {
   type RespuestaListaUsuarios,
   type RespuestaUsuario,
 } from '@aquagestion/contratos';
-import { Param } from '@nestjs/common';
 import type { Request } from 'express';
 import { IdDeRuta, ValidarCon } from '../../comun/validacion';
+import { actorDeSesion } from '../autenticacion/actor-vigente';
 import { Permiso } from '../autenticacion/permiso.decorator';
 import type { SesionVerificada, UsuarioAutenticado } from '../autenticacion/tipos';
 import { SesionActual, UsuarioActual } from '../autenticacion/usuario-actual.decorator';
-import { type ActorQueCambiaEstado, UsuariosService } from './usuarios.service';
-
-function actorQueCambiaEstado(sesion: SesionVerificada): ActorQueCambiaEstado {
-  return { id: sesion.usuario.id, academiaId: sesion.usuario.academiaId, versionToken: sesion.versionToken };
-}
+import { UsuariosService } from './usuarios.service';
 
 /**
  * Gestión de las cuentas de una academia (spec 002). La academia sale siempre de la sesión (`@UsuarioActual()`): ninguna ruta la
@@ -46,7 +42,7 @@ export class UsuariosController {
     const creado = await this.servicio.crearPersonal(
       sesion.usuario.academiaId,
       datos,
-      { tipo: 'USUARIO', id: sesion.usuario.id, versionToken: sesion.versionToken },
+      actorDeSesion(sesion),
       solicitud.ip ?? null,
     );
     return { usuario: creado };
@@ -72,7 +68,7 @@ export class UsuariosController {
     @Body(new ValidarCon(cuerpoVacioSchema)) _cuerpo: unknown,
     @Req() solicitud: Request,
   ): Promise<RespuestaUsuario> {
-    return { usuario: await this.servicio.desactivar(actorQueCambiaEstado(sesion), id, solicitud.ip ?? null) };
+    return { usuario: await this.servicio.desactivar(actorDeSesion(sesion), id, solicitud.ip ?? null) };
   }
 
   @Post(':id/reactivar')
@@ -84,7 +80,7 @@ export class UsuariosController {
     @Body(new ValidarCon(cuerpoVacioSchema)) _cuerpo: unknown,
     @Req() solicitud: Request,
   ): Promise<RespuestaUsuario> {
-    return { usuario: await this.servicio.reactivar(actorQueCambiaEstado(sesion), id, solicitud.ip ?? null) };
+    return { usuario: await this.servicio.reactivar(actorDeSesion(sesion), id, solicitud.ip ?? null) };
   }
 
   @Post(':id/restablecer-clave')
@@ -98,7 +94,7 @@ export class UsuariosController {
   ): Promise<RespuestaUsuario> {
     const restablecido = await this.servicio.restablecer(
       sesion.usuario.academiaId,
-      { tipo: 'USUARIO', id: sesion.usuario.id, rol: sesion.usuario.rol, versionToken: sesion.versionToken },
+      actorDeSesion(sesion),
       id,
       solicitud.ip ?? null,
     );

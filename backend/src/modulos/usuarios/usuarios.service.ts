@@ -194,8 +194,9 @@ export class UsuariosService {
 
   /**
    * Desactiva a un miembro del personal activo (DR-6): sube su `version_token` (su sesión deja de valer) y audita
-   * `USUARIO_DESACTIVADO`. Si quien pide ya no está vigente al escribir, 401 (criterio 56). Sobre sí mismo, 409 `OPERACION_SOBRE_SI_MISMO`; sobre uno ya inactivo, 409 `USUARIO_YA_INACTIVO`; sobre
-   * un alumno, uno de otra academia o un id inválido, 404. Con la fila bloqueada, dos desactivaciones simultáneas dan 200 y 409.
+   * `USUARIO_DESACTIVADO`. Si quien pide ya no está vigente al escribir, 401 (criterio 56). Sobre sí mismo, 409
+   * `OPERACION_SOBRE_SI_MISMO`; sobre uno ya inactivo, 409 `USUARIO_YA_INACTIVO`; sobre un alumno, uno de otra academia o
+   * un id inválido, 404. Con la fila bloqueada, dos desactivaciones simultáneas dan 200 y 409.
    */
   desactivar(actor: ActorQueCambiaEstado, id: string, ip: string | null): Promise<UsuarioResumen> {
     return this.cambiarEstado(actor, id, ip, 'INACTIVO');

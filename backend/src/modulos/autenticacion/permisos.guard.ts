@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { puede, type Permiso as PermisoMatriz } from '@aquagestion/contratos';
 import { ErrorNegocio } from '../../comun/errores';
 import { lanzarErrorDeCuerpoGuardado } from '../../comun/http/error-de-cuerpo-diferido';
+import { noAutenticado } from './actor-vigente';
 import { CLAVE_PERMISO, CLAVE_SOLO_SESION } from './permiso.decorator';
 import type { SolicitudDeAcademia } from './tipos';
 
@@ -48,9 +49,7 @@ export class PermisosGuard implements CanActivate {
       if (sesion) throw sinPermiso();
       return true;
     }
-    if (!sesion) {
-      throw new ErrorNegocio(401, 'NO_AUTENTICADO', 'Debes iniciar sesión para continuar.');
-    }
+    if (!sesion) throw noAutenticado();
     if (permiso !== undefined && !puede(sesion.usuario.rol, permiso)) throw sinPermiso();
     lanzarErrorDeCuerpoGuardado(solicitud);
     return true;
