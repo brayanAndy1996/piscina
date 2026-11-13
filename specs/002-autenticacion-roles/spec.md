@@ -16,6 +16,11 @@
 - **Estado:** aprobada por el responsable (13/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
   DR-10 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-3), en "Decisiones". Ningún criterio
   cambió.
+- **Precisiones del orquestador (13/11/2026):** al escribir las pruebas protegidas, el test-writer encontró
+  ambigüedades; el orquestador las resolvió en ocho puntos (PO-1 a PO-8, en "Decisiones"). Se agregaron como notas
+  _(precisión del orquestador (13/11/2026))_ en los criterios 9, 12, 29, 32, 34, 35, 38, 40 y 43 y en el contrato, sin
+  borrar texto ni cambiar la intención de los criterios. La única que cambia el contrato es PO-3: la búsqueda por DNI
+  pasa a `POST /api/usuarios/buscar-por-dni` con el DNI en el cuerpo, y el criterio 43 se amplía (ruta crítica).
 
 ## Objetivo
 
@@ -47,7 +52,9 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
 - **H. Superadmin y administradores (38 a 41):** D-29: el Superadmin entra en una academia solo para sus
   administradores y nunca ve ni toca otros datos internos.
 - **I. Auditoría y registro técnico (42 y 43):** RN-22 y RNF-06; Ley 29733: ni la contraseña ni el DNI escrito al
-  ingresar llegan al registro técnico.
+  ingresar llegan al registro técnico. _(Precisión del orquestador (13/11/2026), PO-3: la ampliación del criterio 43
+  también es crítica: el DNI buscado para restablecer es un dato personal y, en una cuenta nueva o recién
+  restablecida, también su contraseña.)_
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 44 a 52 (esquemas, semilla, web,
 E2E y documentación).
@@ -101,6 +108,11 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
    fallo pone el contador en 0. Dados 10 intentos fallidos simultáneos, cada respuesta es 401 o 423, al menos una es
    423 y la cuenta queda bloqueada. Valores provisionales hasta que 003 los haga configurables (pregunta N3).
    _(crítico)_ (D-07, sección 11.4)
+
+   _Precisión del orquestador (13/11/2026), PO-7:_ "cumplido el plazo" se comprueba por el comportamiento: basta con
+   que el contador vuelva a empezar (la clave correcta entra y deja `intentos_fallidos` en 0; una equivocada lo deja
+   en 1). No se exige limpiar `bloqueado_hasta`: puede quedar con una fecha pasada, que ya no bloquea. Las pruebas no
+   comprueban que valga nulo tras el plazo (sí tras un restablecimiento, criterio 35).
 10. Dado un usuario `INACTIVO`, cuando entra con la clave correcta, entonces responde 403 `USUARIO_INACTIVO` sin
     cookie; con una clave equivocada responde 401 y cuenta el fallo como en el criterio 9. _(crítico)_
 11. Dado un nombre corto que no existe o con formato inválido, entonces responde 404 `ACADEMIA_NO_ENCONTRADA`; dada una
@@ -110,6 +122,10 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     sumando todas las academias, entonces de la 11.ª en adelante responde 429 `DEMASIADAS_SOLICITUDES`, aunque la
     clave sea correcta y sin contar un intento fallido. El límite cuenta antes de leer el cuerpo y antes de buscar la
     academia (como el criterio 75 de 001). _(crítico)_
+
+    _Precisión del orquestador (13/11/2026), PO-6:_ el límite es por instancia de la API, en memoria, como el del
+    Superadmin en 001. Las pruebas lo comprueban con una sola instancia. Con varias instancias, cada una cuenta por su
+    lado; esa limitación queda junto a DT-1 y en "Riesgos aceptados".
 13. Dado un cuerpo que no es JSON, con campos de más, un `usuario` que tras recortar no son exactamente 8 dígitos,
     una clave vacía o de más de 128 caracteres, o caracteres de control, entonces responde 400 `SOLICITUD_INVALIDA`
     sin calcular ningún hash ni contar un intento. _(crítico)_
@@ -183,6 +199,9 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
 29. Dado un `ADMIN` de A, `GET /api/usuarios` responde 200 con `{ usuarios: UsuarioResumen[] }`: el personal de A
     (sin alumnos), ordenado por apellidos y nombres; nunca usuarios de B ni el hash, la versión de token o el contador
     de intentos. _(crítico)_ (sección 8.7)
+
+    _Precisión del orquestador (13/11/2026), PO-4:_ la lista incluye al personal `INACTIVO` (con su `estado`), para
+    poder reactivarlo (criterio 32) y para la pantalla del criterio 49.
 30. Dado un `ADMIN` de A, cuando envía `POST /api/usuarios` con `{ dni, nombres, apellidos, rol }` válidos y `rol`
     `ADMIN`, `SECRETARIA` o `ENTRENADOR`, entonces responde 201 con `{ usuario: UsuarioResumen }`; el usuario queda en
     A, `ACTIVO`, con `clave_hash` argon2id de su DNI y `debe_cambiar_clave = true` (pregunta N1), y se registra
@@ -196,6 +215,9 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
 32. Dado un miembro del personal inactivo, cuando el `ADMIN` envía `POST /api/usuarios/{id}/reactivar`, entonces
     responde 200 con el usuario `ACTIVO` y registra `USUARIO_REACTIVADO`; sobre uno activo, 409 `USUARIO_YA_ACTIVO`.
     Reactivar no cambia la contraseña. _(crítico)_
+
+    _Precisión del orquestador (13/11/2026), PO-5:_ `POST /api/usuarios/{id}/reactivar` sobre un alumno responde 404
+    `NO_ENCONTRADO`, como desactivar (criterio 31): el estado de los alumnos es de la historia 010.
 33. Dado un `{id}` que no es un UUID, que no existe o que es de otra academia, entonces desactivar, reactivar y
     restablecer responden 404 `NO_ENCONTRADO` con el mismo cuerpo, sin cambios ni auditoría. _(crítico)_ (D-23)
 
@@ -205,11 +227,24 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     `{ usuario: UsuarioResumen }` si el DNI es de un usuario de A que quien pide puede restablecer (criterio 36); si
     no existe, es de otra academia, está fuera de su alcance o el DNI no tiene el formato, 404 `NO_ENCONTRADO` con el
     mismo cuerpo. _(crítico)_
+
+    _Precisión del orquestador (13/11/2026), PO-3:_ la búsqueda no lleva el DNI en la dirección. La ruta es
+    `POST /api/usuarios/buscar-por-dni` con el cuerpo `{ dni }` (`buscarUsuarioPorDniSchema`, contrato), con el mismo
+    permiso (`RESTABLECER_CLAVE`) y las mismas respuestas que arriba: 200 con `{ usuario: UsuarioResumen }` o 404
+    `NO_ENCONTRADO` con el mismo cuerpo, también cuando el `dni` es un texto que tras recortar no tiene el formato de 8
+    dígitos. Un cuerpo que no es JSON, con campos de más o con un `dni` que no es texto o pasa de 64 caracteres responde
+    400 `SOLICITUD_INVALIDA`. Es una consulta: no escribe ni audita nada. `GET /api/usuarios/por-dni/{dni}` no existe
+    (con sesión válida responde 404 `NO_ENCONTRADO`, criterio 18). Donde este criterio, el 37 o el contrato dicen
+    `GET /api/usuarios/por-dni/{dni}`, se lee esta ruta.
 35. Dado un usuario de A dentro del alcance de quien pide, cuando se envía `POST /api/usuarios/{id}/restablecer-clave`,
     entonces responde 200 con `{ usuario: UsuarioResumen }`; la clave vuelve a ser su DNI (hash argon2id nuevo),
     `debe_cambiar_clave` queda en `true`, `intentos_fallidos` en 0, `bloqueado_hasta` en nulo (desbloquea) y
     `version_token` sube; se registra `USUARIO_CLAVE_RESTABLECIDA`. Después, el usuario entra con su DNI y se le exige
     el cambio (criterio 21). No reactiva una cuenta inactiva. _(crítico)_ (HU-05, RN-02)
+
+    _Precisión del orquestador (13/11/2026), PO-5:_ restablecer a un usuario `INACTIVO` dentro del alcance responde
+    200, hace todo lo anterior y lo deja `INACTIVO` (sigue sin poder entrar: 403 `USUARIO_INACTIVO`, criterio 10). Vale
+    igual para el Superadmin con un administrador inactivo (criterio 40).
 36. **Alcance** (provisional, pregunta N4): la `SECRETARIA` solo restablece a alumnos (sobre otro rol, 404); el
     `ADMIN` restablece a cualquier usuario de A salvo a sí mismo (409 `OPERACION_SOBRE_SI_MISMO`). _(crítico)_
 37. Dado un `ENTRENADOR` o un `ALUMNO`, cuando pide cualquiera de las rutas de los criterios 29 a 35, entonces responde
@@ -220,6 +255,9 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
 38. Dada una sesión de superadmin, `GET /api/plataforma/academias/{id}/administradores` responde 200 con
     `{ administradores: AdministradorResumen[] }`: solo los usuarios con rol `ADMIN` de esa academia, con los campos del
     esquema estricto; nunca otros roles ni otros campos. _(crítico)_ (D-29; pregunta N5)
+
+    _Precisión del orquestador (13/11/2026), PO-4:_ la lista incluye a los administradores `INACTIVO` (con su
+    `estado`).
 39. Dada una sesión de superadmin y una academia activa, cuando envía
     `POST /api/plataforma/academias/{id}/administradores` con `{ dni, nombres, apellidos }` válidos, entonces responde
     201 con `{ administrador: AdministradorResumen }`; el usuario queda en esa academia con rol `ADMIN`, `ACTIVO`, clave
@@ -230,6 +268,9 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     `POST /api/plataforma/academias/{id}/administradores/{usuarioId}/restablecer-clave`, entonces hace lo del criterio
     35 con actor `SUPERADMIN`. Un `usuarioId` de otro rol, de otra academia, inexistente o que no es un UUID responde
     404 `NO_ENCONTRADO`. _(crítico)_ (pregunta N5)
+
+    _Precisión del orquestador (13/11/2026), PO-5:_ con un administrador `INACTIVO` de esa academia responde 200 con
+    `{ administrador }` en estado `INACTIVO`: restablece y no reactiva (criterio 35).
 41. En las tres rutas de la plataforma: una academia suspendida responde 403 `ACADEMIA_SUSPENDIDA`; un `{id}` que no es
     un UUID o no existe, 404 `ACADEMIA_NO_ENCONTRADA`; sin sesión de superadmin (también con una cookie `aq_sesion` de
     un administrador), 401 `NO_AUTENTICADO`. _(crítico)_
@@ -249,6 +290,27 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     contraseña, entonces el registro técnico (pino) anota el resultado con el id del usuario (si existe), el id de la
     academia y la IP, y nunca contiene, en ningún nivel, la clave, la clave nueva, la clave actual, el token ni el
     `usuario` (DNI) escrito en el formulario. _(crítico)_ (Ley 29733, RNF-05; criterios 46 y 162 de 001)
+
+    **Ampliación (precisión del orquestador (13/11/2026), PO-3).** El DNI que se busca para restablecer es un dato
+    personal y, en una cuenta nueva o recién restablecida, también su contraseña. Por eso la búsqueda va por
+    `POST /api/usuarios/buscar-por-dni` con el DNI en el cuerpo (criterio 34) y el registro técnico nunca lo contiene:
+    - Dadas búsquedas con un DNI de un usuario de A, uno que no existe, uno que solo existe en B, uno que tras recortar
+      no tiene el formato (por ejemplo `1234567`) y uno con espacios en los extremos, hechas por un `ADMIN` y por una
+      `SECRETARIA` de A (200 o 404), sin sesión (401), por un `ENTRENADOR` (403 `SIN_PERMISO`), por un usuario con
+      `debe_cambiar_clave` (403) y con un cuerpo inválido (400), entonces ninguna línea del registro técnico, en
+      ningún nivel (incluidos `debug` y `trace`), contiene el DNI buscado, ni recortado ni tal como se envió: ni la
+      línea de la petición de pino-http, ni los registros del servicio, ni los de errores. Si el servicio registra la
+      búsqueda, lo hace con el id del usuario encontrado, nunca con su DNI.
+    - Dado `GET /api/usuarios/por-dni/{dni}` con sesión válida de un `ADMIN`, entonces responde 404 `NO_ENCONTRADO`
+      (la ruta no existe; criterio 18).
+    - Dada la web (criterio 49), `/panel/restablecer` busca con esa ruta `POST` y no pone el DNI en la dirección de la
+      API ni en la de la página (sin `?dni=`).
+
+    _(crítico; prueba protegida de integración para los dos primeros puntos, con `crearAppDePruebas({ destinoRegistro
+    })` en nivel `trace`; el tercero lo verifica el revisor.)_ La prueba usa DNIs que no aparezcan en otros valores del
+    registro (ocho dígitos seguidos pueden aparecer dentro de un UUID): comprueba antes de la petición que el registro
+    acumulado no los contiene. Fuera de esta ampliación: un cliente que invente una ruta con un DNI en la dirección
+    (la línea de pino-http de esa ruta inexistente sí lo tendría; no es un camino de la aplicación).
 
 ### J. Esquemas, semilla, web y documentación
 
@@ -351,7 +413,8 @@ no-store`. Los cuerpos son JSON y los esquemas, estrictos (un campo de más es 4
 | `POST /api/usuarios` | sí | `GESTIONAR_USUARIOS` | `crearUsuarioSchema` | 201 `{ usuario }` | 400, 401, 403, 409 `DNI_EN_USO` |
 | `POST /api/usuarios/{id}/desactivar` | sí | `GESTIONAR_USUARIOS` | `{}` | 200 `{ usuario }` | 401, 403, 404, 409 `OPERACION_SOBRE_SI_MISMO` / `USUARIO_YA_INACTIVO` |
 | `POST /api/usuarios/{id}/reactivar` | sí | `GESTIONAR_USUARIOS` | `{}` | 200 `{ usuario }` | 401, 403, 404, 409 `USUARIO_YA_ACTIVO` |
-| `GET /api/usuarios/por-dni/{dni}` | sí | `RESTABLECER_CLAVE` | — | 200 `{ usuario }` | 401, 403, 404 |
+| ~~`GET /api/usuarios/por-dni/{dni}`~~ (reemplazada por la fila siguiente; PO-3) | sí | `RESTABLECER_CLAVE` | — | 200 `{ usuario }` | 401, 403, 404 |
+| `POST /api/usuarios/buscar-por-dni` (PO-3) | sí | `RESTABLECER_CLAVE` | `buscarUsuarioPorDniSchema` | 200 `{ usuario }` | 400, 401, 403, 404 |
 | `POST /api/usuarios/{id}/restablecer-clave` | sí | `RESTABLECER_CLAVE` | `{}` | 200 `{ usuario }` | 401, 403, 404, 409 `OPERACION_SOBRE_SI_MISMO` |
 | `GET /api/plataforma/academias/{id}/administradores` | superadmin | — | — | 200 `{ administradores }` | 401, 403, 404 |
 | `POST /api/plataforma/academias/{id}/administradores` | superadmin | — | `crearAdministradorSchema` | 201 `{ administrador }` | 400, 401, 403, 404, 409 `DNI_EN_USO` |
@@ -395,6 +458,9 @@ aplica con un middleware de todo el prefijo, antes del lector del cuerpo (como P
     debeCambiarClave; bloqueado: boolean; ultimoAcceso: ISO 8601 UTC | null }`. `bloqueado` es `bloqueado_hasta >
     ahora` según `RELOJ`.
   - `administradorResumenSchema` (estricto): `usuarioResumenSchema` sin `rol` ni `ultimoAcceso`.
+  - `buscarUsuarioPorDniSchema` (estricto; precisión del orquestador (13/11/2026), PO-3): `{ dni: texto de hasta 64
+    caracteres }`. No exige el formato de `dniSchema`: el servicio recorta y, si no son 8 dígitos, responde 404 como
+    dice el criterio 34.
 - `permisos.ts`: `ROLES_USUARIO`, `ALCANCES`, `PERMISOS` y `MATRIZ_PERMISOS: Record<Permiso, Partial<Record<RolUsuario,
   Alcance>>>`, y `puede(rol, permiso): boolean`.
 
@@ -430,6 +496,10 @@ es "no". El guard de esta historia solo decide si el rol pasa; cada historia apl
 | `GESTIONAR_USUARIOS` | (sección 8.7: "usuarios") | `TODO` | | | |
 | `RESTABLECER_CLAVE` | (HU-05; alcance, pregunta N4) | `TODO` (no a sí mismo) | `ALUMNOS` | | |
 
+_Precisión del orquestador (13/11/2026), PO-2:_ en `MATRIZ_PERMISOS`, la celda de `RESTABLECER_CLAVE` para `ADMIN`
+vale `TODO`; "(no a sí mismo)" es una regla del servicio, no un alcance, y la cubre el criterio 36 (409
+`OPERACION_SOBRE_SI_MISMO`). La prueba del criterio 26 compara `TODO`.
+
 La columna "Cliente" de la sección 2.1 no es un rol con cuenta: su único permiso (autoinscripción) es la ruta pública
 de la historia 005. Cambiar la propia contraseña no es una fila: basta la sesión (`@SoloSesion`, D-14).
 
@@ -441,7 +511,10 @@ interface UsuarioAutenticado { readonly id: string; readonly academiaId: string;
   readonly nombres: string; readonly apellidos: string; readonly debeCambiarClave: boolean }
 function Permiso(permiso: PermisoMatriz): MethodDecorator & ClassDecorator;
 function SoloSesion(): MethodDecorator & ClassDecorator;
-const UsuarioActual: ParameterDecorator; // el UsuarioAutenticado de la petición
+// Precisión del orquestador (13/11/2026), PO-1: antes decía `const UsuarioActual: ParameterDecorator;`. Es una
+// fábrica de decorador creada con `createParamDecorator`, igual que `SuperadminActual` de 001, y se usa como
+// `@UsuarioActual() usuario: UsuarioAutenticado`.
+const UsuarioActual: () => ParameterDecorator; // el UsuarioAutenticado de la petición
 
 // backend/src/modulos/usuarios/index.ts — la historia 007 lo usa para crear la cuenta del alumno (HU-04)
 class UsuariosService {
@@ -527,6 +600,9 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
   `conAcademia` no cambia (criterio 41).
 - **001, DR-1 y D-29:** el primer administrador lo crea esta historia (criterio 39).
 - **001, `crearDatosDeAislamiento` y `limpiarBase`:** no cambian; `limpiarBase` ya vacía toda tabla de `public`.
+- **`scripts/test/integracion/migraciones.test.mjs` (no protegida; precisión del orquestador (13/11/2026), PO-8):**
+  `TABLAS_DESPUES_DE_MIGRAR` suma `usuarios`, como pide su propio comentario ("cada historia con tablas nuevas agrega
+  las suyas aquí"). Lo hace el backend en T6.
 
 ## Riesgos aceptados
 
@@ -540,7 +616,11 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
 - **La sesión abierta sigue valiendo si la cuenta se bloquea:** como en 001; desactivar o restablecer la corta.
 - **Academia reactivada:** sus sesiones no vencidas vuelven a valer (pregunta T2).
 - **Límite por IP en memoria, detrás de un proxy y con el WiFi de la piscina:** todas las peticiones de la misma red
-  cuentan juntas; se revisa con el hosting y `trust proxy` (pregunta T1).
+  cuentan juntas; se revisa con el hosting y `trust proxy` (pregunta T1). _(Precisión del orquestador (13/11/2026),
+  PO-6:)_ el contador vive en la memoria de cada instancia de la API, como el del Superadmin en 001: con varias
+  instancias, el límite efectivo es 10 por instancia, y se pierde al reiniciar. El bloqueo por cuenta (criterio 9)
+  sí vive en la base y no tiene esa limitación. Si el hosting usa varias instancias, se revisa con él (almacén
+  compartido para el contador).
 - **Cerrar sesión cierra todos los dispositivos de la cuenta** (pregunta N8): en la cuenta compartida por la familia
   (RN-29), cerrar sesión en un celular la cierra en los demás.
 - **El Superadmin ve el DNI y el nombre de los administradores** (pregunta N5): es lo mínimo para crearlos y
@@ -600,11 +680,43 @@ propuesta.
 - **DT-1 (pregunta T1). Límite por IP del ingreso.** En la piscina, muchos alumnos pueden entrar desde la misma red
   WiFi (una sola IP pública). **Decidido (la propuesta):** 10 por minuto por IP, como el Superadmin; con sesiones
   largas para el alumno, los ingresos son pocos; se revisa con el hosting y `trust proxy` (criterio 12).
+  _(Precisión del orquestador (13/11/2026), PO-6:)_ el límite es por instancia y en memoria; con varias instancias
+  cada una cuenta por su lado (riesgo aceptado "Límite por IP en memoria").
 - **DT-2 (pregunta T2). Sesiones de una academia reactivada.** DR-4 de 001 dice que las sesiones "dejan de valer" al
   suspender. **Decidido (la propuesta):** mientras está suspendida no pasa ninguna petición (403); al reactivarla, las
   sesiones no vencidas vuelven a valer (cortarlas exigiría tocar `usuarios` desde la plataforma) (criterio 15).
 - **DT-3 (pregunta T3). Una sesión de academia por navegador.** **Decidido (la propuesta):** aceptarlo; entrar a otra
   academia reemplaza la sesión.
+
+### Precisiones del orquestador (13/11/2026)
+
+Al escribir las pruebas protegidas, el test-writer encontró ambigüedades. El orquestador las resolvió sin cambiar la
+intención de los criterios; cada una está también como nota junto al criterio que precisa.
+
+- **PO-1. Firma de `UsuarioActual`.** Es una fábrica de decorador (`@UsuarioActual()`), como `SuperadminActual`; se
+  corrigió la firma del contrato ("Servicios del backend").
+- **PO-2. Celda de `RESTABLECER_CLAVE` del `ADMIN`.** Vale `TODO`; "no a sí mismo" lo cubre el criterio 36 (409)
+  ("Matriz de permisos").
+- **PO-3. El DNI no va en la dirección de la búsqueda.** El DNI es un dato personal y, en una cuenta nueva, también la
+  contraseña inicial. La búsqueda pasa a `POST /api/usuarios/buscar-por-dni` con el DNI en el cuerpo (criterio 34) y
+  el criterio 43 se amplía (ruta crítica) con su prueba protegida. Alternativa descartada: conservar
+  `GET /api/usuarios/por-dni/{dni}` y redactar el segmento en el registro (`/api/usuarios/por-dni/[dni]`). Se
+  descartó porque falla abierta: hay que tapar el DNI en cada lugar que registra la dirección (pino-http, el filtro de
+  errores, el registro de Nest y los que se agreguen después), y aun así quedaría en los registros de acceso del
+  proxy del hosting (D-21) y en las herramientas del navegador. Con `POST`, el DNI no está en la dirección por
+  construcción, y el cuerpo nunca se registra (criterio 43). El costo es ajustar las pruebas ya escritas con `GET`
+  antes del commit de pruebas protegidas.
+- **PO-4. Listas con inactivos.** La del personal (criterio 29) y la de administradores para el Superadmin (criterio
+  38) incluyen a los inactivos.
+- **PO-5. Reactivar un alumno y restablecer a un inactivo.** `reactivar` sobre un alumno responde 404 (criterio 32);
+  restablecer a un usuario o administrador inactivo responde 200 y lo deja inactivo (criterios 35 y 40).
+- **PO-6. Límite por IP por instancia.** En memoria, como en 001; la limitación con varias instancias queda junto a
+  DT-1 y en "Riesgos aceptados" (criterio 12).
+- **PO-7. Fin del bloqueo.** Basta con que el contador se reinicie; `bloqueado_hasta` puede quedar con una fecha
+  pasada (criterio 9).
+- **PO-8. Prueba de migraciones (no protegida).** La implementación suma `usuarios` a `TABLAS_DESPUES_DE_MIGRAR` de
+  `scripts/test/integracion/migraciones.test.mjs`, junto con `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs` (criterio
+  2; tarea T6).
 
 ### Decisiones de diseño (técnicas)
 

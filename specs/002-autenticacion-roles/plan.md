@@ -9,6 +9,10 @@ de 002 y DT-1 a DT-3 en "Decisiones" de `spec.md`), así que el diseño no cambi
 15 minutos; DR-3), las duraciones de sesión (12 h y 30 días; DR-8), el límite por IP compartido (10 por minuto; DT-1),
 el alcance del restablecimiento (DR-4) y las rutas del Superadmin (DR-5) son los de este plan.
 
+**Precisiones del orquestador (13/11/2026):** PO-1 a PO-8 de `spec.md` ("Decisiones"). En este plan cambian la
+búsqueda por DNI (PO-3: `POST /api/usuarios/buscar-por-dni`, secciones 5, 7 y 8), el límite por IP (PO-6, sección 2 y
+"Riesgos") y la tabla de la prueba de migraciones (PO-8, sección 1).
+
 ## Módulos afectados
 
 ```
@@ -63,6 +67,8 @@ piscina/
   LEVEL SECURITY`, tres políticas (`SELECT`, `INSERT`, `UPDATE`) con la forma exacta de la 001 (criterio 132),
   `GRANT SELECT, INSERT` y `GRANT UPDATE (columnas…)` a `aquagestion_app`. Enums `rol_usuario` y `estado_usuario`.
 - `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs` se amplían en el mismo cambio (la prueba que las compara falla si no).
+- _(Precisión del orquestador (13/11/2026), PO-8.)_ En el mismo cambio, `TABLAS_DESPUES_DE_MIGRAR` de
+  `scripts/test/integracion/migraciones.test.mjs` (no protegida) suma `'usuarios'`.
 - No se agregan funciones de PostgreSQL: la academia del ingreso se resuelve con `resolver_academia` (001) y la
   búsqueda por DNI corre ya dentro de `conAcademia`.
 
@@ -71,7 +77,8 @@ piscina/
 Mismo patrón que `SesionPlataformaService` (001), cambiando `comoPlataforma` por `conAcademia(academia.id, …)`:
 
 1. El middleware de `/api/a` cuenta la petición en el límite por IP (clave `inicio-sesion-academia:<ip>`, sin la
-   academia) antes de leer el cuerpo y de resolver la academia (criterio 12).
+   academia) antes de leer el cuerpo y de resolver la academia (criterio 12). _(Precisión del orquestador
+   (13/11/2026), PO-6:)_ el contador es el mismo almacén en memoria del límite del Superadmin (001), por instancia.
 2. `ResolverAcademiaPipe` da la academia activa (404 o 403 si no; criterio 11). El cuerpo se valida (400; criterio 13).
 3. `conAcademia`: `SELECT … FROM usuarios WHERE dni = $1`. Sin fila: verificar contra el hash ficticio y 401.
 4. Si está bloqueado (`estaBloqueado`), 423. Fuera de la transacción, `verificarClave`.
@@ -126,6 +133,13 @@ reemplaza por la lectura de la configuración.
   `puedeRestablecer(actor, objetivo)` del dominio. Restablecer: leer el DNI (transacción 1), `hashearClave(dni)` fuera,
   y en la transacción 2 `UPDATE … WHERE id = $1` con `FOR UPDATE` previo y auditoría.
 - Los ids de la dirección se validan como UUID antes de consultar; uno inválido es 404 (criterio 33).
+- _(Precisión del orquestador (13/11/2026), PO-3.)_ `buscarParaRestablecer` se expone como
+  `POST /api/usuarios/buscar-por-dni` (`@Permiso('RESTABLECER_CLAVE')`, `@HttpCode(200)`), con el cuerpo validado por
+  `buscarUsuarioPorDniSchema`; el servicio recorta y, si no son 8 dígitos, responde 404 sin consultar. Ojo con el
+  orden de las rutas: `buscar-por-dni` es un segmento literal y no debe confundirse con `{id}` (las rutas con `{id}`
+  tienen un segundo segmento y validan UUID).
+- _(PO-4.)_ `listarPersonal` no filtra por estado. _(PO-5.)_ `reactivar` sobre un alumno, 404 (mismo `SELECT … FOR
+  UPDATE` que desactivar, que ya filtra el personal); restablecer no toca `estado`.
 
 ### 6. Superadmin y administradores
 
@@ -141,6 +155,11 @@ mensaje fijo. El cuerpo de la petición nunca se registra; los errores de la bas
 prueba lee el destino del registro (`crearAppDePruebas({ destinoRegistro })`) y busca la clave, el DNI escrito y el
 token (criterio 43).
 
+_(Precisión del orquestador (13/11/2026), PO-3.)_ Con la búsqueda por `POST`, el DNI buscado no aparece en `req.url`
+de pino-http ni en el filtro de errores, sin redactar nada: basta con no registrar el cuerpo (ya es la regla) y con
+que el servicio registre, si lo hace, el id encontrado. No se agrega un serializador de `req.url`. La prueba de la
+ampliación del criterio 43 usa nivel `trace`.
+
 ### 8. Web
 
 - `RutaConSesion` consulta `GET /api/sesion`: 401 → página "Entra por el enlace de tu academia"; 403
@@ -148,6 +167,9 @@ token (criterio 43).
 - El menú de `/panel` se arma con `puede(rol, permiso)` de los contratos (solo muestra; quien decide es la API).
 - Al cerrar sesión se vacía la caché de TanStack Query. Nada se guarda en `localStorage` ni `sessionStorage`.
 - Fechas con las utilidades de `frontend/src/lib/` en America/Lima.
+- _(Precisión del orquestador (13/11/2026), PO-3.)_ `/panel/restablecer` busca con `POST /api/usuarios/buscar-por-dni`
+  (una mutación de TanStack Query o una consulta con `POST`); el DNI no va en la dirección de la página (`?dni=`) ni
+  en la clave de una consulta que se guarde fuera de la memoria.
 
 ## Decisiones
 
@@ -162,6 +184,7 @@ token (criterio 43).
 | Reutilizar `bloqueo.ts` de 001 sin moverlo | Moverlo a `infraestructura/seguridad` | Moverlo rompe las importaciones de pruebas protegidas de 001 |
 | Límite por IP compartido entre academias | Por academia | No multiplica los intentos de un atacante por el número de academias |
 | Valores de bloqueo y sesión como constantes | Leerlos ya de `configuraciones` | Las claves las define 003 (D-07, DR-8 de 001) |
+| Búsqueda por DNI con `POST /api/usuarios/buscar-por-dni` y el DNI en el cuerpo (PO-3) | `GET /api/usuarios/por-dni/{dni}` con el segmento redactado en el registro | La redacción falla abierta (cada lugar que registre la dirección debe taparlo) y no alcanza a los registros del proxy del hosting; con `POST` el DNI no está en la dirección |
 
 ## Migraciones
 
@@ -172,6 +195,8 @@ token (criterio 43).
 ## Riesgos
 
 - **Costo de argon2 por ingreso:** cada intento calcula un hash (decenas de ms); el límite por IP acota el abuso.
+- **Límite por IP en memoria (PO-6):** por instancia; con varias instancias cada una cuenta por su lado y el contador
+  se pierde al reiniciar. Se revisa con el hosting junto a `trust proxy` (DT-1).
 - **Una consulta más por petición** (verificar la sesión): aceptable en el MVP; si pesa, se combina con la de la
   operación, nunca con una caché entre peticiones.
 - **Prueba del criterio 27:** depende de cómo Nest expone las rutas; si `DiscoveryService` no alcanza, se usa la pila
