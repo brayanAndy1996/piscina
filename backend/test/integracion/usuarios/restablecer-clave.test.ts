@@ -115,7 +115,8 @@ describe('restablecimiento de la contraseña', () => {
         await buscar('123456789', admin),
         await buscar('abcdefgh', admin),
         await buscar('1234-5678', admin),
-        await buscar(' 12345678', admin),
+        // Con un espacio inicial se recorta (criterio 34): 99999998 es un DNI con formato que no existe, y también responde 404.
+        await buscar(' 99999998', admin),
         await buscar('x'.repeat(64), admin),
         await buscar('', admin),
         await buscar('   ', admin),

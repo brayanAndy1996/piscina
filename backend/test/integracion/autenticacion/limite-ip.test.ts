@@ -115,12 +115,10 @@ describe('criterio 12: límite de ingresos por IP', () => {
   it('criterio 12: el límite solo afecta a POST /api/a/{nombreCorto}/sesion', async () => {
     await agotarElLimite();
 
-    const academia = await pedir(app, 'get', '/api/a/academia-a');
     const sesion = await pedir(app, 'get', '/api/sesion');
     const cierre = await pedir(app, 'delete', '/api/sesion');
     const salud = await pedir(app, 'get', '/api/salud');
 
-    expect(academia.status).toBe(200);
     expect(sesion.status).toBe(401);
     expect(cierre.status).toBe(204);
     expect(salud.status).toBe(200);

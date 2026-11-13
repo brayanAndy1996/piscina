@@ -157,26 +157,35 @@ const COLUMNAS_USUARIO = `id, academia_id, dni, nombres, apellidos, rol::text AS
 export async function leerUsuario(academiaId: string, id: string): Promise<FilaUsuario | undefined> {
   const { rows } = await ejecutarComo(
     'propietario',
-    `SELECT ${COLUMNAS_USUARIO} FROM usuarios WHERE id = $1::uuid`,
-    [id],
+    `SELECT ${COLUMNAS_USUARIO} FROM usuarios WHERE id = $1::uuid AND academia_id = $2::uuid`,
+    [id, academiaId],
     { academiaId },
   );
   return rows[0] as FilaUsuario | undefined;
 }
 
-/** Todos los usuarios de una academia, ordenados por DNI. */
+/**
+ * Todos los usuarios de una academia, ordenados por DNI. Filtra por `academia_id` de forma explícita: no depende de que la RLS
+ * aplique a la conexión del dueño (en CI y en Docker el dueño puede ser superusuario, y la RLS no aplica a un superusuario).
+ */
 export async function leerUsuarios(academiaId: string): Promise<FilaUsuario[]> {
-  const { rows } = await ejecutarComo('propietario', `SELECT ${COLUMNAS_USUARIO} FROM usuarios ORDER BY dni, id`, [], {
-    academiaId,
-  });
+  const { rows } = await ejecutarComo(
+    'propietario',
+    `SELECT ${COLUMNAS_USUARIO} FROM usuarios WHERE academia_id = $1::uuid ORDER BY dni, id`,
+    [academiaId],
+    { academiaId },
+  );
   return rows as FilaUsuario[];
 }
 
 /** Usuarios de una academia con ese DNI (a lo sumo uno). */
 export async function leerUsuarioPorDni(academiaId: string, dni: string): Promise<FilaUsuario | undefined> {
-  const { rows } = await ejecutarComo('propietario', `SELECT ${COLUMNAS_USUARIO} FROM usuarios WHERE dni = $1`, [dni], {
-    academiaId,
-  });
+  const { rows } = await ejecutarComo(
+    'propietario',
+    `SELECT ${COLUMNAS_USUARIO} FROM usuarios WHERE dni = $1 AND academia_id = $2::uuid`,
+    [dni, academiaId],
+    { academiaId },
+  );
   return rows[0] as FilaUsuario | undefined;
 }
 
@@ -202,8 +211,8 @@ export async function actualizarUsuario(
   });
   await ejecutarComo(
     'propietario',
-    `UPDATE usuarios SET ${asignaciones.join(', ')} WHERE id = $1::uuid`,
-    [id, ...Object.values(cambios)],
+    `UPDATE usuarios SET ${asignaciones.join(', ')} WHERE id = $1::uuid AND academia_id = $${columnas.length + 2}::uuid`,
+    [id, ...Object.values(cambios), academiaId],
     { academiaId },
   );
 }
@@ -468,8 +477,8 @@ export async function crearEscenario(): Promise<Escenario> {
 export async function contarAuditoria(academiaId: string, accion?: string): Promise<number> {
   const { rows } = await ejecutarComo(
     'propietario',
-    'SELECT count(*)::int AS n FROM auditoria WHERE ($1::text IS NULL OR accion = $1)',
-    [accion ?? null],
+    'SELECT count(*)::int AS n FROM auditoria WHERE academia_id = $2::uuid AND ($1::text IS NULL OR accion = $1)',
+    [accion ?? null, academiaId],
     { academiaId },
   );
   return (rows[0] as { n: number }).n;

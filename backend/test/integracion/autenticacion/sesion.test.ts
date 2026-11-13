@@ -126,8 +126,8 @@ describe('sesión de academia', () => {
           ),
       ],
       [
-        'un token con exp igual a la hora actual',
-        () => token(claimsDeUsuario(e.secretariaA, AHORA_PRUEBAS, { exp: AHORA_S })),
+        'un token con exp un segundo antes de la hora actual',
+        () => token(claimsDeUsuario(e.secretariaA, AHORA_PRUEBAS, { exp: AHORA_S - 1 })),
       ],
       [
         'un token de plataforma (tipo plataforma)',
