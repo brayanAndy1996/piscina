@@ -241,7 +241,7 @@ orquestador decidió T4 (DT-4) y T5 (DT-5). No hay criterios nuevos ni pruebas p
       `docs/arquitectura.md`); confirmar con `git diff` que ningún commit de implementación tocó pruebas protegidas.
       _(Ataque ronda 3:)_ el commit de pruebas `b6b2d77` trae también `usuarios.service.ts`; es el caso registrado en la
       nota de proceso de `spec.md` ("Decisiones"), no una violación _(Pendiente: el historial tiene commits de revisión (`d059e7b`, y `04ba56e` en curso); se marca cuando el revisor cierre la revisión y confirme con `git diff` lo de las pruebas protegidas.)_
-- [ ] T19 · tester · Suite completa, lint y verificación de tipos (Linux; la CI también en Windows)
+- [x] T19 · tester · Suite completa, lint y verificación de tipos (Linux; la CI también en Windows)
 - [x] T20 · documentador · Commit final, tareas marcadas, `README.md`, `docs/guia-local-windows.md` (criterio 52) y
       `docs/arquitectura.md` (sesión de academia, matriz de permisos, `@Permiso` y `@SoloSesion` para las historias
       siguientes). _(Ataque ronda 2:)_ si el orquestador acepta T5, también la regla "actor vigente dentro de la
@@ -256,6 +256,6 @@ orquestador decidió T4 (DT-4) y T5 (DT-5). No hay criterios nuevos ni pruebas p
 ## Solo ruta crítica
 
 - [x] Pruebas escritas por test-writer y confirmadas en rojo
-- [ ] Pruebas en verde tras la implementación _(verde en cada ronda, T17.6, T17.16 y T17.25; se marca con la suite
+- [x] Pruebas en verde tras la implementación _(verde en cada ronda, T17.6, T17.16 y T17.25; se marca con la suite
       completa de T19)_
 - [x] Ataque adversarial sin fallas abiertas _(ronda 4, 13/11/2026)_

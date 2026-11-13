@@ -126,7 +126,8 @@ en cada historia nueva. Los números entre paréntesis son criterios de `specs/0
 ### Permisos, sesión y datos personales (002)
 
 - La sesión se exige a toda ruta de `/api` que no sea `/api/salud`, `/api/plataforma/…` ni `/api/a/…`, con un middleware
-  de todo el prefijo que corre antes del lector del cuerpo. La sesión sale solo de la cookie `aq_sesion`, nunca de una
+  de todo el prefijo que corre antes del lector del cuerpo. La excepción es `DELETE /api/sesion`: no exige sesión ni lee
+  el cuerpo y siempre responde 204 (criterios 17 y 54). La sesión sale solo de la cookie `aq_sesion`, nunca de una
   cabecera `Authorization`.
 - Cada manejador de una ruta de academia declara `@Permiso('PERMISO')`, con un permiso de la matriz, o `@SoloSesion()`,
   si basta con tener sesión (por ejemplo, para cambiar la propia contraseña). Una ruta de academia sin ninguno de los dos
