@@ -2,6 +2,7 @@
 //   @Permiso('PERMISO_DE_LA_MATRIZ')  o  @SoloSesion()  en cada manejador de una ruta de academia;
 //   @UsuarioActual() usuario: UsuarioAutenticado  para tomar la academia y el rol de la sesión.
 export { AutenticacionModule } from './autenticacion.module';
+export { esCierreDeSesion } from './dominio/rutas-de-academia';
 export { Permiso, SoloSesion } from './permiso.decorator';
 export { instalarProteccionDeAcademia } from './proteccion-academia';
 export { SesionAcademiaService } from './sesion-academia.service';

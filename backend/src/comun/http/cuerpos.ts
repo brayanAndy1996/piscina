@@ -1,3 +1,4 @@
+import type { IncomingMessage } from 'node:http';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { NextFunction, Request, Response } from 'express';
 import { ErrorNegocio } from '../errores';
@@ -84,12 +85,26 @@ export function traeCuerpo(solicitud: Request): boolean {
  * 2. Codificación del contenido: con cuerpo, `Content-Encoding` solo puede faltar o ser uno de `identity`, `gzip` o
  *    `deflate`; otro valor, una lista o un valor vacío → el mismo 400, sin interpretar el cuerpo. Nunca 415
  *    (criterio 89).
+ *    `noLeerCuerpo` marca las rutas cuyo cuerpo no se lee ni se interpreta (`DELETE /api/sesion`, criterio 54): los tres
+ *    middlewares las dejan pasar sin mirar el cuerpo.
  * 3. Lector JSON (`strict`, 100 KB, `inflate`, UTF-8 estricto: un cuerpo que no es UTF-8 válido da el mismo 400, criterio 105). El límite se aplica a los bytes ya descomprimidos: una "bomba" de
  *    compresión da 413 `CARGA_EXCESIVA`. Un cuerpo `gzip` o `deflate` corrupto da el mismo 400 de la codificación. El lector
  *    `urlencoded` de Nest queda inerte (`type` nunca coincide): nada de formularios. Los nombres `jsonParser` y
  *    `urlencodedParser` hacen que Nest no registre los suyos.
  */
-export function instalarLectorDeCuerpos(app: NestExpressApplication, prefijoApi: string): void {
+export function instalarLectorDeCuerpos(
+  app: NestExpressApplication,
+  prefijoApi: string,
+  noLeerCuerpoEn: (solicitud: Request, rutaBajoElPrefijo: string) => boolean = () => false,
+): void {
+  // Los middlewares montados en `/api` ven la ruta sin el prefijo y el lector JSON (montado en la raíz) la ve completa: aquí se
+  // iguala para que los cuatro decidan lo mismo sobre la misma petición.
+  const noLeerCuerpo = (solicitud: Request): boolean => {
+    const completa = `${solicitud.baseUrl}${solicitud.path}`;
+    const prefijo = `/${prefijoApi}`;
+    const relativa = completa.toLowerCase().startsWith(`${prefijo}/`) ? completa.slice(prefijo.length) : completa;
+    return noLeerCuerpoEn(solicitud, relativa);
+  };
   const filtro = app.get(FiltroErrores, { strict: false });
 
   /**
@@ -111,6 +126,7 @@ export function instalarLectorDeCuerpos(app: NestExpressApplication, prefijoApi:
 
   app.use(`/${prefijoApi}`, (solicitud: Request, respuesta: Response, siguiente: NextFunction) => {
     if (
+      !noLeerCuerpo(solicitud) &&
       METODOS_CON_CUERPO.has(solicitud.method) &&
       traeCuerpo(solicitud) &&
       !esTipoJson(solicitud.headers['content-type'])
@@ -123,6 +139,7 @@ export function instalarLectorDeCuerpos(app: NestExpressApplication, prefijoApi:
 
   app.use(`/${prefijoApi}`, (solicitud: Request, respuesta: Response, siguiente: NextFunction) => {
     if (
+      !noLeerCuerpo(solicitud) &&
       METODOS_CON_CUERPO.has(solicitud.method) &&
       traeCuerpo(solicitud) &&
       !esCodificacionAdmitida(solicitud.headers['content-encoding'])
@@ -136,7 +153,13 @@ export function instalarLectorDeCuerpos(app: NestExpressApplication, prefijoApi:
   // Los tipos de Nest omiten `verify` (lo usa para `rawBody`), pero el lector de Express lo recibe tal cual cuando `rawBody` está
   // apagado: `verify` ve los bytes ya descomprimidos y antes de decodificarlos (criterio 105).
   const opcionesJson = { limit: LIMITE_CUERPO_JSON, strict: true, inflate: true, verify: verificarUtf8 };
-  app.useBodyParser('json', opcionesJson);
+  // `type` es el valor por defecto del lector (`application/json`, que `solicitud.is` resuelve con la misma librería) salvo para las
+  // rutas que no leen el cuerpo (`DELETE /api/sesion`, criterio 54): ahí el lector no lo toca y Node descarta lo que llegue.
+  app.useBodyParser('json', {
+    ...opcionesJson,
+    type: (solicitud: IncomingMessage) =>
+      !noLeerCuerpo(solicitud as Request) && (solicitud as Request).is('application/json') !== false,
+  });
   // Un cuerpo comprimido corrupto es un 400 como el resto de los de este criterio; los demás errores del lector (tamaño,
   // JSON inválido) siguen su camino al filtro global.
   app.use(`/${prefijoApi}`, (error: unknown, solicitud: Request, respuesta: Response, siguiente: NextFunction) => {

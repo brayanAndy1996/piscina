@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { CambiarClave, RespuestaSesionAcademia, RolUsuario } from '@aquagestion/contratos';
 import type { Request } from 'express';
@@ -153,6 +154,8 @@ export class SesionAcademiaService {
     if (!fila) {
       // Mismo trabajo que con un DNI real, para que el tiempo de respuesta no delate si el DNI existe.
       await verificarClave(await obtenerHashFicticio(), clave);
+      // Y las mismas sentencias del conteo, sobre un id que no existe: no cambia ninguna fila (criterio 53).
+      await this.contarFalloEnBase(academia.id, randomUUID());
       this.registro.warn({ academiaId: academia.id, ip }, 'Inicio de sesión rechazado: credenciales inválidas');
       throw credencialesInvalidas();
     }
@@ -409,9 +412,12 @@ export class SesionAcademiaService {
         SELECT intentos_fallidos, bloqueado_hasta
           FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid FOR UPDATE`;
       const actual = filas[0];
-      if (!actual) return { tipo: 'DESAPARECIDO' };
+      // Sin fila (id inexistente) el `UPDATE` también se envía, con valores neutros y sin afectar ninguna fila: la secuencia de
+      // sentencias es la misma con o sin cuenta (criterio 53).
       const evaluacion = evaluarIntentoFallido(
-        { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: fechaDeBaseONula(actual.bloqueado_hasta) },
+        actual
+          ? { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: fechaDeBaseONula(actual.bloqueado_hasta) }
+          : { intentosFallidos: 0, bloqueadoHasta: null },
         ahora,
         REGLAS_BLOQUEO_USUARIO,
       );
@@ -422,6 +428,7 @@ export class SesionAcademiaService {
                bloqueado_hasta = ${evaluacion.estado.bloqueadoHasta}::timestamptz,
                actualizado_en = ${ahora}::timestamptz
          WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid`;
+      if (!actual) return { tipo: 'DESAPARECIDO' };
       return evaluacion.bloquea ? { tipo: 'BLOQUEADA' } : { tipo: 'FALLO' };
     });
   }
