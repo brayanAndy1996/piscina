@@ -8,6 +8,7 @@ import { RELOJ, RelojFijo } from '../../../src/infraestructura/reloj';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase } from '../../utilidades/base-datos';
 import { leerAcademias, leerAuditoriaPlataforma, leerSuperadmin } from '../../utilidades/datos';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 import {
   cookieDePlataforma,
   cookieDeSesion,
@@ -456,7 +457,6 @@ describe('criterio 89: rutas protegidas y otras rutas de /api', () => {
       ['POST /api/salud', 'POST', '/api/salud'],
       ['POST /api/a/delfines', 'POST', '/api/a/delfines'],
       ['PUT /api/salud', 'PUT', '/api/salud'],
-      ['POST /api/no-existe', 'POST', '/api/no-existe'],
     ])(
       'criterio 89: %s con un cuerpo y Content-Encoding zstd responde 400 SOLICITUD_INVALIDA, no 415',
       async (_nombre, metodo, ruta) => {
@@ -475,6 +475,29 @@ describe('criterio 89: rutas protegidas y otras rutas de /api', () => {
         ]);
       },
     );
+
+    // Spec 002, criterio 18: `/api/no-existe` no es una ruta publica. Sin sesion responde 401 antes de leer el cuerpo; con una sesion de
+    // academia valida el error del cuerpo se difiere hasta el permiso y, como la ruta no existe, responde 404 (nunca 415).
+    it('criterio 89: POST /api/no-existe con un cuerpo y Content-Encoding zstd responde 401 sin sesion y 404 con sesion de academia, no 415', async () => {
+      const sinSesion = await enviar(app, {
+        metodo: 'POST',
+        ruta: '/api/no-existe',
+        cabeceras: { 'Content-Encoding': 'zstd' },
+        cuerpo: '{}',
+      });
+      const { cookie: cookieAcademia } = await sesionDeAcademia(undefined, { ahora: AHORA });
+      const conSesion = await enviar(app, {
+        metodo: 'POST',
+        ruta: '/api/no-existe',
+        cabeceras: { 'Content-Encoding': 'zstd', Cookie: cookieAcademia },
+        cuerpo: '{}',
+      });
+
+      expect(sinSesion.status).toBe(401);
+      expect((sinSesion.body as ErrorCuerpo).codigo).toBe('NO_AUTENTICADO');
+      expect(conSesion.status).toBe(404);
+      expect((conSesion.body as ErrorCuerpo).codigo).toBe('NO_ENCONTRADO');
+    });
 
     it('criterio 89: DELETE /api/plataforma/sesion sin cuerpo con Content-Encoding br no se ve afectado (204)', async () => {
       const respuesta = await enviar(app, {

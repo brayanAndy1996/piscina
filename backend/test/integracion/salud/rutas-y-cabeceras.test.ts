@@ -3,17 +3,26 @@ import { errorApiSchema } from '@aquagestion/contratos';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
+import { limpiarBase } from '../../utilidades/base-datos';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 
 const NO_ENCONTRADO = { codigo: 'NO_ENCONTRADO', mensaje: 'No se encontró el recurso solicitado.' };
 
 describe('rutas inexistentes y métodos no definidos', () => {
   let app: NestExpressApplication;
 
+  let cookie: string;
+
   beforeAll(async () => {
     app = await crearAppDePruebas();
+    // Spec 002, criterio 18: toda ruta de `/api` que no sea `/salud`, `/plataforma` ni `/a` exige sesion (sin ella, 401): la ruta
+    // inexistente de la API se prueba con una sesion de academia valida, que es lo que esta prueba de la 001 quiere ver (404).
+    await limpiarBase();
+    ({ cookie } = await sesionDeAcademia());
   });
   afterAll(async () => {
     await app?.close();
+    await limpiarBase();
   });
 
   it.each([
@@ -23,7 +32,8 @@ describe('rutas inexistentes y métodos no definidos', () => {
     { metodo: 'post', ruta: '/api/salud', caso: 'un método no definido' },
     { metodo: 'delete', ruta: '/api/salud', caso: 'otro método no definido' },
   ] as const)('$metodo $ruta responde 404 con ErrorApi ($caso)', async ({ metodo, ruta }) => {
-    const respuesta = await request(app.getHttpServer())[metodo](ruta);
+    const peticion = request(app.getHttpServer())[metodo](ruta);
+    const respuesta = await (ruta === '/api/no-existe' ? peticion.set('Cookie', cookie) : peticion);
 
     expect(respuesta.status).toBe(404);
     expect(errorApiSchema.parse(respuesta.body)).toEqual(NO_ENCONTRADO);
@@ -33,11 +43,16 @@ describe('rutas inexistentes y métodos no definidos', () => {
 describe('cabeceras de seguridad y CORS cerrado', () => {
   let app: NestExpressApplication;
 
+  let cookie: string;
+
   beforeAll(async () => {
     app = await crearAppDePruebas();
+    await limpiarBase();
+    ({ cookie } = await sesionDeAcademia());
   });
   afterAll(async () => {
     await app?.close();
+    await limpiarBase();
   });
 
   it.each([
@@ -45,7 +60,9 @@ describe('cabeceras de seguridad y CORS cerrado', () => {
     ['un 404 de la API', '/api/no-existe'],
     ['un 404 fuera de /api', '/salud'],
   ])('%s trae las cabeceras de helmet, sin X-Powered-By y sin CORS', async (_nombre, ruta) => {
-    const respuesta = await request(app.getHttpServer()).get(ruta).set('Origin', 'https://otro.ejemplo');
+    const peticion = request(app.getHttpServer()).get(ruta).set('Origin', 'https://otro.ejemplo');
+    // El 404 de la API lleva una sesion de academia valida (spec 002, criterio 18); las demas rutas no la necesitan.
+    const respuesta = await (ruta === '/api/no-existe' ? peticion.set('Cookie', cookie) : peticion);
 
     expect(respuesta.headers['x-content-type-options']).toBe('nosniff');
     expect(respuesta.headers['x-frame-options']).toBe('SAMEORIGIN');

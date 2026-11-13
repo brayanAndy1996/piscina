@@ -135,6 +135,17 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       'configuraciones|*|SELECT',
       'configuraciones|*|INSERT',
       'configuraciones|*|UPDATE',
+      // Historia 002, criterio 2: se suman los privilegios de `usuarios` (no se quita nada de lo anterior).
+      'usuarios|*|SELECT',
+      'usuarios|*|INSERT',
+      'usuarios|clave_hash|UPDATE',
+      'usuarios|debe_cambiar_clave|UPDATE',
+      'usuarios|estado|UPDATE',
+      'usuarios|version_token|UPDATE',
+      'usuarios|intentos_fallidos|UPDATE',
+      'usuarios|bloqueado_hasta|UPDATE',
+      'usuarios|ultimo_acceso|UPDATE',
+      'usuarios|actualizado_en|UPDATE',
     ];
     expect([...PRIVILEGIOS_APP].map(clave).sort()).toEqual([...esperada].sort());
   });

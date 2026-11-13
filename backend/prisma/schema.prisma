@@ -31,6 +31,22 @@ enum TipoActor {
   @@map("tipo_actor")
 }
 
+enum RolUsuario {
+  ADMIN
+  SECRETARIA
+  ENTRENADOR
+  ALUMNO
+
+  @@map("rol_usuario")
+}
+
+enum EstadoUsuario {
+  ACTIVO
+  INACTIVO
+
+  @@map("estado_usuario")
+}
+
 /// Una academia de natación (D-23). Nombre corto único: va en la dirección de sus páginas públicas (D-27).
 model Academia {
   id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -44,6 +60,7 @@ model Academia {
 
   auditoria       Auditoria[]
   configuraciones Configuracion[]
+  usuarios        Usuario[]
 
   @@map("academias")
 }
@@ -115,4 +132,32 @@ model Configuracion {
 
   @@id([academiaId, clave])
   @@map("configuraciones")
+}
+
+/// Una cuenta de una academia (D-17, D-28): el personal (administrador, secretaria, entrenador) y los alumnos. El usuario es el
+/// DNI, único dentro de cada academia. La contraseña inicial es el DNI y debe cambiarse en el primer ingreso (RN-02).
+/// El rol de la API no puede cambiar el DNI, el rol, los nombres ni la academia, ni borrar filas (spec 002, criterio 2).
+model Usuario {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId       String        @map("academia_id") @db.Uuid
+  dni              String
+  nombres          String
+  apellidos        String
+  rol              RolUsuario
+  claveHash        String        @map("clave_hash")
+  debeCambiarClave Boolean       @default(true) @map("debe_cambiar_clave")
+  estado           EstadoUsuario @default(ACTIVO)
+  versionToken     Int           @default(0) @map("version_token")
+  intentosFallidos Int           @default(0) @map("intentos_fallidos")
+  bloqueadoHasta   DateTime?     @map("bloqueado_hasta") @db.Timestamptz(3)
+  ultimoAcceso     DateTime?     @map("ultimo_acceso") @db.Timestamptz(3)
+  creadoEn         DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn    DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, dni])
+  @@index([academiaId, rol, apellidos, nombres])
+  @@map("usuarios")
 }

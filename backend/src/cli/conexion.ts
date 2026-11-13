@@ -101,3 +101,31 @@ export function enPlataforma<T>(cliente: PrismaClient, trabajo: (tx: ClienteTran
     return resultado;
   });
 }
+
+/**
+ * Ejecuta `trabajo` en una transacción de una academia (spec 002: la semilla crea usuarios de ejemplo). Igual que `enPlataforma`
+ * y que `BaseDatos`, la primera sentencia fija **los dos** valores de contexto con `pg_catalog.set_config(…, true)`: `app.academia_id`
+ * en `academiaId` y `app.plataforma` vacío (la marca de plataforma no abre nada de una academia), y los mismos parámetros de sesión
+ * (criterios 90, 98, 107, 121, 122, 146 y 147), la marca aleatoria de la transacción y el cierre de cursores. Al terminar comprueba
+ * que la transacción sigue viva y es la misma (criterios 150 y 151). Como en `enPlataforma`, `trabajo` no lanza consultas en
+ * paralelo: las encadena con `await`.
+ */
+export function enAcademia<T>(
+  cliente: PrismaClient,
+  academiaId: string,
+  trabajo: (tx: ClienteTransaccion) => Promise<T>,
+): Promise<T> {
+  return cliente.$transaction(async (tx) => {
+    const marca = randomUUID();
+    await tx.$queryRaw`SELECT pg_catalog.set_config('search_path', 'pg_catalog, public, pg_temp', true), pg_catalog.set_config('standard_conforming_strings', 'on', true), pg_catalog.set_config('app.academia_id', ${academiaId}, true), pg_catalog.set_config('app.plataforma', '', true), pg_catalog.set_config('TimeZone', 'UTC', true), pg_catalog.set_config('DateStyle', 'ISO, MDY', true), pg_catalog.set_config('IntervalStyle', 'postgres', true), pg_catalog.set_config('extra_float_digits', '1', true), pg_catalog.set_config('bytea_output', 'hex', true), pg_catalog.set_config('client_encoding', 'UTF8', true), pg_catalog.set_config('synchronous_commit', 'on', true), pg_catalog.set_config('array_nulls', 'on', true), pg_catalog.set_config('transform_null_equals', 'off', true), pg_catalog.set_config('app.transaccion', ${marca}, true)`;
+    await cerrarCursores(tx);
+    const resultado = await trabajo(tx);
+    for (let turno = 0; turno < TURNOS_DE_CESION; turno += 1) {
+      await new Promise<void>((continuar) => {
+        setImmediate(continuar);
+      });
+    }
+    await comprobarTransaccionViva(tx, marca);
+    return resultado;
+  });
+}

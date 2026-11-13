@@ -4,6 +4,7 @@ import { Controller, Get, Param, type Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { SoloSesion } from '../../../src/modulos/autenticacion';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase } from '../../utilidades/base-datos';
 import { crearDatosDeAislamiento, type DatosDeAislamiento } from '../../utilidades/datos';
@@ -25,6 +26,7 @@ import {
 } from '../../utilidades/ronda13';
 import { intentar, obtenerBaseDatosRonda3, type BaseDatosRonda3 } from '../../utilidades/ronda3';
 import { cargarPuntoAutorizado } from '../../utilidades/ronda4';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 
 // Criterios 161 y 162 (ataque ronda 13, F2 y O1; P-36 y P-42), con errores reales de Prisma y de la base:
 //
@@ -130,21 +132,25 @@ function crearControladorDePrueba(): Type<unknown> {
   @Controller('prueba-r13-registro')
   class ControladorPruebaR13Registro {
     @Get('abortada/:n')
+    @SoloSesion()
     async abortada(@Param('n') n: string): Promise<{ valor: string }> {
       return { valor: await correrAtrapando('comoPlataforma', 'delegado', Number(n)) };
     }
 
     @Get('a/:id/:n')
+    @SoloSesion()
     async a(@Param('id') id: string, @Param('n') n: string): Promise<unknown> {
       return provocarValidacion(id, Number(n));
     }
 
     @Get('b/:id/:n')
+    @SoloSesion()
     async b(@Param('id') id: string, @Param('n') n: string): Promise<unknown> {
       return provocarEscrituraDeIp(id, Number(n));
     }
 
     @Get('c/:id')
+    @SoloSesion()
     async c(@Param('id') id: string): Promise<unknown> {
       return provocarConsultaCruda(id);
     }
@@ -161,8 +167,9 @@ interface RegistroLeido {
 
 /** Hace la peticion y devuelve la respuesta con los registros nuevos que genero. */
 async function pedir(ruta: string): Promise<{ estado: number; cuerpo: unknown; registros: RegistroLeido[] }> {
+  const { cookie } = await sesionDeAcademia(datos.A); // spec 002, criterio 18: toda ruta de `/api` de prueba exige sesion
   const desde = lineas.length;
-  const respuesta = await request(app.getHttpServer()).get(ruta);
+  const respuesta = await request(app.getHttpServer()).get(ruta).set('Cookie', cookie);
   await new Promise((resolver) => setTimeout(resolver, 150));
   const registros = lineas.slice(desde).map((linea) => {
     const registro = JSON.parse(linea) as { level?: number; msg?: string; err?: Record<string, unknown> };

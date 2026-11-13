@@ -57,11 +57,11 @@ export function sinControles<T extends z.ZodString>(esquema: T, mensaje: string 
 /**
  * Texto de una línea para mostrar a las personas (nombres y motivos): se recorta, no admite controles ni sustitutos
  * sueltos, ni control bidireccional ni separadores de línea o de párrafo, y debe tener al menos 3 caracteres visibles
- * además de la longitud pedida. El valor se guarda tal como llega, después del recorte. `sujeto` abre los mensajes
- * ("El nombre", "El motivo").
+ * además de la longitud pedida (`visibles`, por defecto `VISIBLES_MINIMOS`). El valor se guarda tal como llega, después
+ * del recorte. `sujeto` abre los mensajes ("El nombre", "El motivo").
  */
-export function textoVisibleSchema(opciones: { sujeto: string; min: number; max: number }) {
-  const { sujeto, min, max } = opciones;
+export function textoVisibleSchema(opciones: { sujeto: string; min: number; max: number; visibles?: number }) {
+  const { sujeto, min, max, visibles = VISIBLES_MINIMOS } = opciones;
   return sinControles(
     z
       .string()
@@ -73,7 +73,7 @@ export function textoVisibleSchema(opciones: { sujeto: string; min: number; max:
     .refine((valor) => !BIDI_O_SEPARADORES.test(valor), {
       message: `${sujeto} no puede contener caracteres de dirección del texto ni separadores de línea.`,
     })
-    .refine((valor) => contarVisibles(valor) >= VISIBLES_MINIMOS, {
-      message: `${sujeto} debe tener al menos ${VISIBLES_MINIMOS} caracteres visibles.`,
+    .refine((valor) => contarVisibles(valor) >= visibles, {
+      message: `${sujeto} debe tener al menos ${visibles} caracteres visibles.`,
     });
 }

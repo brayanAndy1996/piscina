@@ -9,7 +9,7 @@ import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
 import { useReactivarAcademia, useRedirigirSiNoAutenticado, useSuspenderAcademia } from './hooks';
 import { mensajeDeAccion } from './mensajes';
-import { Alerta, CampoTexto, ESTILO_BOTON, Modal } from './ui';
+import { Alerta, CampoTexto, ESTILO_BOTON, Modal } from '../../componentes/ui';
 
 interface Propiedades {
   academia: AcademiaResumen;

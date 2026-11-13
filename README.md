@@ -24,7 +24,7 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
   Windows y pruebas protegidas.
 - **Pruebas E2E** con Playwright: comprueban que la web abre y muestra "Sistema en línea".
 
-**001 · Academias y aislamiento** está construida y espera la aprobación del responsable para unirse a `main`. Trae:
+**001 · Academias y aislamiento** está unida a `main`. Trae:
 
 - **Academias:** cada academia tiene un nombre y un nombre corto (de 3 a 30 caracteres, en minúsculas, que no se puede
   cambiar; D-27). La plataforma la crea, la lista, la suspende con un motivo obligatorio y la reactiva. Una academia
@@ -43,17 +43,45 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
 - **Ruta pública:** `GET /api/a/{nombreCorto}` devuelve el nombre de una academia activa, sin su id ni su estado. Responde
   404 si no existe y 403 si está suspendida.
 - **Datos de ejemplo:** `npm run db:semilla` (y `npm run db:preparar`) crea, si no existen, las academias `delfines`
-  ("Academia de Natación Los Delfines") y `tiburones` ("Club de Natación Tiburones") y el superadmin de desarrollo.
+  ("Academia de Natación Los Delfines") y `tiburones` ("Club de Natación Tiburones") y el superadmin de desarrollo. Los
+  usuarios de ejemplo de cada academia son de la 002.
 - **Web:** `/plataforma/ingresar` y `/plataforma/academias`, para crear, suspender y reactivar academias y para cerrar
   sesión. `/plataforma` lleva a la lista.
 - **Pruebas E2E de la plataforma:** `e2e/pruebas/plataforma.spec.ts`, con Playwright. El superadmin ingresa, crea,
   suspende y reactiva una academia, y cierra sesión. A 360 px, la plataforma se ve completa, sin desplazamiento
   horizontal.
 
-Todavía no existen los usuarios de las academias ni su inicio de sesión: el primer administrador de cada academia lo crea
-la 002 (DR-1).
+**002 · Autenticación y roles por academia** está construida y espera la suite completa, la revisión y la aprobación del
+responsable para unirse a `main`. Trae:
 
-La siguiente historia es la **002 · Autenticación y roles por academia** (ver [`specs/backlog.md`](specs/backlog.md)).
+- **Ingreso por academia:** `/a/{nombreCorto}/ingresar`, con el DNI y la contraseña. La sesión va en la cookie `aq_sesion`
+  (`HttpOnly`, `SameSite=Strict`): 12 horas para el personal y 30 días para el alumno. "Cerrar sesión" la cierra en todos
+  los dispositivos de esa cuenta.
+- **Contraseñas:** la inicial es el DNI, y se cambia al primer ingreso (y después, desde el panel). Tiene de 8 a 128
+  caracteres, distintos del DNI y de la actual, y se guarda con argon2. Cinco intentos fallidos seguidos bloquean la cuenta
+  15 minutos, y un restablecimiento la desbloquea. El ingreso admite 10 peticiones por minuto desde una misma IP (contador
+  en memoria de cada instancia).
+- **Roles:** administrador, secretaria, entrenador y alumno, con un rol por cuenta (DR-7 de 002). El DNI es único dentro de
+  cada academia (D-28). La matriz de permisos está en `packages/contratos/src/permisos.ts`; la API la aplica con un guard, y
+  una ruta de academia sin permiso declarado responde 403.
+- **Personal:** en `/panel/usuarios`, el administrador lista (también a los inactivos), crea, desactiva, reactiva y
+  restablece. En `/panel/restablecer`, el administrador y la secretaria (esta, solo a alumnos) buscan por DNI y restablecen
+  la contraseña.
+- **Superadmin:** en `/plataforma/academias`, el botón **Administradores** de cada academia muestra sus administradores,
+  crea uno y restablece su contraseña. La pregunta N11 sigue abierta: quien crea o restablece un administrador conoce su
+  clave inicial, que es su DNI.
+- **Auditoría:** crear, desactivar, reactivar y restablecer cuentas, y cambiar la contraseña, quedan en la auditoría de la
+  academia. Los inicios de sesión solo van al registro técnico, sin DNI ni claves. Todavía no hay pantalla para verla.
+- **Datos de ejemplo:** `npm run db:semilla` crea un usuario por rol en `delfines` y un administrador en `tiburones`, con
+  DNIs inventados y la contraseña inicial igual al DNI. Los detalles están en la guía.
+- **Pruebas E2E de la autenticación:** `e2e/pruebas/autenticacion.spec.ts`. El superadmin crea una academia y su
+  administrador; el administrador cambia su contraseña y crea una secretaria, que también debe cambiarla al entrar.
+
+Todavía no trae los permisos de cada módulo (cada historia aplica su alcance), el alta de las cuentas de alumno (historia
+007), la configuración de los intentos y del bloqueo (historia 003), la pantalla de auditoría (Fase 3), la recuperación de
+la contraseña por correo (se pide en recepción) ni el cambio del DNI, del nombre o del rol de una cuenta.
+
+La siguiente historia es la **003 · Configuración de la academia** (ver [`specs/backlog.md`](specs/backlog.md)).
 
 ## Cómo levantarlo en Windows
 
@@ -78,6 +106,9 @@ Si ya tenías el proyecto antes de la historia 001, no vuelvas a copiar `.env.ex
 `npm run env:completar` (agrega las variables nuevas a tu `.env`), y después `npm run db:preparar`. Los pasos completos
 están en la guía, en "Después de traer la historia 001".
 
+Si ya tenías la historia 001 y traes la 002, ejecuta `npm ci` y `npm run db:preparar` (aplica las migraciones nuevas y
+agrega los usuarios de ejemplo). Los pasos están en la guía, en "Después de traer la historia 002".
+
 ## Comandos principales
 
 | Comando                                                                 | Qué hace                                                                                                          |
@@ -92,7 +123,7 @@ están en la guía, en "Después de traer la historia 001".
 | `npm run db:crear`                                                      | Crea solo el rol `aquagestion_app` y las bases que falten (lo usa `db:preparar`).                                 |
 | `npm run db:migrar`, `npm run db:migrar:pruebas`                        | Aplica las migraciones pendientes a la base de desarrollo o a la de pruebas.                                      |
 | `npm run db:migracion`                                                  | Crea una migración nueva a partir de un cambio en el esquema de Prisma.                                           |
-| `npm run db:semilla`                                                    | Crea las academias de ejemplo y el superadmin de desarrollo, si no existen.                                       |
+| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo y los usuarios de ejemplo, si no existen.              |
 | `npm run env:completar`                                                 | Agrega a `.env` las variables de `.env.example` que falten, sin cambiar las que ya tienes.                        |
 | `npm run plataforma:superadmin`                                         | Crea el superadmin de la plataforma o le restablece la clave, con `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE`. |
 | `npm run verificar:pruebas-protegidas`, `npm run verificar:sin-secretos` | Verificaciones del método y de seguridad del repositorio.                                                         |
@@ -105,6 +136,9 @@ están en la guía, en "Después de traer la historia 001".
 - **Dos conexiones a la base:** la API se conecta con `DATABASE_URL_APP`, que es el rol `aquagestion_app` y está sujeto
   a la seguridad por academia. Las migraciones, la semilla y los comandos usan `DATABASE_URL`, que es el dueño de las
   tablas.
+- **Sesión y datos personales:** la sesión de las academias va en la cookie `aq_sesion`, y la API vuelve a leer en cada
+  petición, desde la base, el rol, el estado y el cambio de contraseña pendiente. El DNI se busca con `POST` y nunca va en
+  la dirección ni en el registro técnico (002).
 - **Mismo sistema en dos lugares:** en la nube, las sesiones de Claude usan un PostgreSQL del contenedor, y un hook
   prepara el entorno al empezar. En la PC del responsable, PostgreSQL corre en Docker (D-18, D-26).
 - **Cómo se trabaja:** cada historia tiene su carpeta `specs/NNN-nombre/` (especificación, plan y tareas) y entra al

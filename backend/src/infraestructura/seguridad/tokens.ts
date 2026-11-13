@@ -8,6 +8,8 @@ export interface ClaimsSesion {
   readonly tipo: string;
   /** Versión de token del usuario: subirla en la base invalida todos sus tokens anteriores. */
   readonly ver: number;
+  /** Id de la academia del usuario (solo en los tokens de `tipo: "academia"`, spec 002). La sesión de plataforma no lo lleva. */
+  readonly aca?: string;
   readonly iat: number;
   readonly exp: number;
 }
@@ -23,20 +25,28 @@ function aSegundos(fecha: Date): number {
  * inyectable), nunca la del sistema, para poder probar los bordes de vencimiento.
  */
 export function firmarToken(
-  datos: Pick<ClaimsSesion, 'sub' | 'tipo' | 'ver'>,
+  datos: Pick<ClaimsSesion, 'sub' | 'tipo' | 'ver' | 'aca'>,
   secreto: string,
   ahora: Date,
   duracionSegundos: number,
 ): string {
   const iat = aSegundos(ahora);
-  const claims: ClaimsSesion = { sub: datos.sub, tipo: datos.tipo, ver: datos.ver, iat, exp: iat + duracionSegundos };
+  const claims: ClaimsSesion = {
+    sub: datos.sub,
+    tipo: datos.tipo,
+    ver: datos.ver,
+    ...(datos.aca === undefined ? {} : { aca: datos.aca }),
+    iat,
+    exp: iat + duracionSegundos,
+  };
   return jwt.sign(claims, secreto, { algorithm: ALGORITMO });
 }
 
 /**
  * Verifica la firma (solo HS256: rechaza `none` y cualquier otro algoritmo) y el vencimiento según `ahora`. Devuelve
  * los claims de sesión, o `null` si el token no es válido por cualquier motivo: no distingue el motivo a propósito.
- * Un token sin `sub`, `tipo`, `ver`, `iat` o `exp` con el tipo correcto tampoco es válido.
+ * Un token sin `sub`, `tipo`, `ver`, `iat` o `exp` con el tipo correcto tampoco es válido, ni uno cuyo `aca`, si lo trae, no es
+ * un texto.
  */
 export function verificarToken(token: string, secreto: string, ahora: Date): ClaimsSesion | null {
   let carga: string | jwt.JwtPayload;
@@ -46,7 +56,7 @@ export function verificarToken(token: string, secreto: string, ahora: Date): Cla
     return null;
   }
   if (typeof carga === 'string') return null;
-  const { sub, tipo, ver, iat, exp } = carga as Record<string, unknown>;
+  const { sub, tipo, ver, aca, iat, exp } = carga as Record<string, unknown>;
   if (
     typeof sub !== 'string' ||
     typeof tipo !== 'string' ||
@@ -57,5 +67,7 @@ export function verificarToken(token: string, secreto: string, ahora: Date): Cla
   ) {
     return null;
   }
-  return { sub, tipo, ver, iat, exp };
+  // `aca` es opcional; si viene, debe ser un texto (quien lo usa comprueba además que sea un UUID).
+  if (aca !== undefined && typeof aca !== 'string') return null;
+  return aca === undefined ? { sub, tipo, ver, iat, exp } : { sub, tipo, ver, aca, iat, exp };
 }

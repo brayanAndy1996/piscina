@@ -142,7 +142,8 @@ Hace cuatro cosas, en este orden:
 2. Crea las bases que falten: `aquagestion` (desarrollo) y `aquagestion_pruebas` (pruebas).
 3. Aplica las migraciones a las dos bases.
 4. Ejecuta la semilla. Crea, si no existen, las academias de ejemplo `delfines` ("Academia de Natación Los Delfines") y
-   `tiburones` ("Club de Natación Tiburones") y el superadmin de desarrollo, con los datos `SUPERADMIN_*` de tu `.env`.
+   `tiburones` ("Club de Natación Tiburones"), el superadmin de desarrollo, con los datos `SUPERADMIN_*` de tu `.env`, y
+   los usuarios de ejemplo de cada academia (ver "Entrar como usuario de una academia").
 
 Es seguro repetir este comando: no borra nada.
 
@@ -193,10 +194,29 @@ npm run dev
 
 Después, entra a la plataforma como se explica en la sección siguiente.
 
+## Después de traer la historia 002
+
+Si ya tenías el proyecto con la historia 001, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+npm ci
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- `npm run db:preparar` aplica las migraciones nuevas (la tabla de usuarios) a las dos bases, la de desarrollo y la de
+  pruebas, y ejecuta la semilla. La semilla agrega los usuarios de ejemplo de la sección "Entrar como usuario de una
+  academia". Si ya existen, no los duplica ni les cambia la contraseña. Sin este paso, esos usuarios no existen y el
+  ingreso responde «DNI o contraseña incorrectos».
+- La historia 002 no agrega variables a `.env`, así que `npm run env:completar` no hace falta.
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
-superadmin, que administra las academias. Los usuarios de cada academia llegan con historias posteriores.
+superadmin, que administra las academias y crea a los administradores de cada una (historia 002). Los demás usuarios de
+cada academia entran por su propio enlace: ver "Entrar como usuario de una academia", más abajo.
 
 1. Abre http://localhost:5173/plataforma/ingresar.
 2. Escribe el correo y la clave del superadmin de desarrollo: son `SUPERADMIN_CORREO` y `SUPERADMIN_CLAVE` de tu `.env`.
@@ -217,6 +237,24 @@ superadmin, que administra las academias. Los usuarios de cada academia llegan c
 
 Cada alta, suspensión y reactivación queda registrada en la auditoría de la plataforma. Todavía no hay pantalla para
 verla.
+
+### Crear el administrador de una academia
+
+Cada academia necesita al menos un administrador, y lo crea el superadmin (historia 002):
+
+1. Entra como superadmin (los pasos de arriba) y, en la lista de academias, pulsa **Administradores** en la fila de la
+   academia.
+2. Pulsa **Crear administrador** y escribe el DNI (8 números), los nombres y los apellidos.
+3. Si esa academia ya tiene una cuenta con ese DNI, el formulario lo dice junto al campo del DNI y no crea nada.
+4. El administrador entra en `http://localhost:5173/a/{nombre corto}/ingresar` con su DNI. Su contraseña inicial es su
+   DNI, y tiene que cambiarla al entrar.
+
+En la misma lista, **Restablecer contraseña** devuelve la contraseña del administrador a su DNI, y lo desbloquea si
+estaba bloqueado. La lista muestra también a los administradores inactivos.
+
+Mientras la pregunta N11 de `specs/002-autenticacion-roles/spec.md` siga abierta, quien crea o restablece un
+administrador conoce su contraseña inicial, que es su DNI. Por eso conviene que el administrador la cambie en su primer
+ingreso.
 
 ### Crear o restablecer el superadmin
 
@@ -242,6 +280,48 @@ npm run plataforma:superadmin
   ningún archivo. Cierra la ventana cuando termines.
 - Si olvidas la clave del superadmin, usa este mismo comando.
 - Si te equivocas cinco veces seguidas al entrar, la cuenta queda bloqueada 15 minutos.
+
+## Entrar como usuario de una academia
+
+Cada academia tiene su enlace de ingreso, con su nombre corto en la dirección. Con los usuarios de ejemplo que crea
+`npm run db:semilla`, puedes probarlo así:
+
+1. Abre **http://localhost:5173/a/delfines/ingresar**. Debe aparecer el nombre de la academia, "Academia de Natación Los
+   Delfines".
+2. Escribe tu DNI (8 números) y tu contraseña, y pulsa **Ingresar**.
+3. La primera vez, el sistema te lleva a **Cambiar contraseña**. Escribe la contraseña actual (tu DNI), la nueva y su
+   confirmación, y pulsa **Guardar contraseña nueva**. La nueva debe tener de 8 a 128 caracteres y ser distinta de tu DNI
+   y de la actual; no hacen falta números ni símbolos. Hasta que la cambies, el sistema no te deja ir a otra página, salvo
+   para cerrar sesión.
+4. Llegas a **/panel**, con tu nombre, tu rol y tu academia.
+5. Para salir, pulsa **Cerrar sesión**. La cuenta se cierra en todos los dispositivos donde esté abierta.
+
+Usuarios de ejemplo (los DNI y los nombres son inventados):
+
+| Academia    | Usuario (DNI) | Rol           | Nombre              | Contraseña inicial |
+| ----------- | ------------- | ------------- | ------------------- | ------------------ |
+| `delfines`  | 10000001      | Administrador | Rosa Alvarez Prado  | 10000001           |
+| `delfines`  | 10000002      | Secretaria    | Lucia Benites Rojas | 10000002           |
+| `delfines`  | 10000003      | Entrenador    | Mario Castro Vega   | 10000003           |
+| `delfines`  | 10000004      | Alumno        | Diego Delgado Soto  | 10000004           |
+| `tiburones` | 10000001      | Administrador | Elena Espinoza Luna | 10000001           |
+
+La contraseña inicial de cada uno es su DNI, y debe cambiarla al entrar. El DNI `10000001` aparece en `delfines` y en
+`tiburones`: son dos cuentas distintas, una por academia (D-28).
+
+Lo que ves en `/panel` depende del rol:
+
+- **Administrador:** **Usuarios** (el personal) y **Restablecer contraseña**. En **Usuarios** puedes crear, desactivar,
+  reactivar y restablecer al personal. No puedes desactivar ni restablecer tu propia cuenta.
+- **Secretaria:** **Restablecer contraseña**, solo para alumnos.
+- **Entrenador y alumno:** solo **Cambiar contraseña**. Las demás pantallas llegan con sus historias.
+
+Quién restablece a quién: el administrador, a cualquier usuario de su academia menos a sí mismo; la secretaria, solo a
+alumnos; el superadmin, a los administradores de cada academia. Restablecer deja la contraseña igual al DNI, y la persona
+la cambia al entrar. Si olvidas tu contraseña, pide en recepción que la restablezcan.
+
+Todavía no hay el panel del alumno con su carnet y su asistencia (historia 011), ni la pantalla de auditoría, ni la
+configuración de los intentos y del bloqueo (historia 003).
 
 ## Día a día
 
@@ -303,7 +383,7 @@ Las pruebas E2E levantan la API y la web en otros puertos (3100 y 5180), así qu
 | `npm run db:crear`                     | Crea solo el rol `aquagestion_app` y las bases que falten. Lo usa `db:preparar`.                         |
 | `npm run db:migrar`                    | Aplica a la base de desarrollo las migraciones pendientes.                                               |
 | `npm run db:migrar:pruebas`            | Aplica las migraciones pendientes a la base de pruebas.                                                  |
-| `npm run db:semilla`                   | Crea las academias de ejemplo y el superadmin de desarrollo, si no existen. Repetirla no duplica nada.   |
+| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo y los usuarios de ejemplo, si no existen. Repetirla no duplica nada ni cambia las contraseñas.   |
 | `npm run db:migracion`                 | Crea una migración nueva a partir de un cambio del esquema. Pide un nombre.                              |
 | `npm run env:completar`                | Agrega a `.env` las variables de `.env.example` que falten. No cambia las que ya tienes.                 |
 | `npm run plataforma:superadmin`        | Crea el superadmin de la plataforma o le restablece la clave (usa `SUPERADMIN_*`; ver arriba).           |
@@ -472,6 +552,23 @@ de cero.
 
 Síntoma: `npm run e2e` dice que no existe el ejecutable de Chromium. Solución: ejecuta `npx playwright install chromium` y
 repite `npm run e2e`.
+
+### No puedo entrar a la academia
+
+Según el mensaje que muestre la página de ingreso:
+
+- **«DNI o contraseña incorrectos.»** Revisa el DNI (8 números) y la contraseña. Si nunca la cambiaste, es tu DNI. Si ni
+  los usuarios de ejemplo entran, ejecuta `npm run db:semilla` (es seguro repetirlo): puede faltar la semilla de la 002.
+- **«Hiciste demasiados intentos. Espera un minuto.»** Hay un límite de 10 ingresos por minuto desde una misma red, y todas
+  las personas de esa red cuentan juntas. Espera un minuto.
+- **«La cuenta está bloqueada por varios intentos fallidos…»** Cinco intentos fallidos seguidos bloquean la cuenta 15
+  minutos. Espera, o pide en recepción que restablezcan la contraseña: eso la desbloquea. Si el bloqueado es el único
+  administrador, lo restablece el superadmin, en **Administradores** de la academia.
+- **«Tu cuenta está desactivada. Consulta en recepción.»** Un administrador de la academia la reactiva.
+- **«Academia no disponible por el momento.»** El superadmin suspendió la academia. Sus datos se conservan; se reactiva
+  desde la lista de academias.
+- **«No encontramos esa academia. Revisa el enlace.»** Revisa el nombre corto de la dirección, por ejemplo
+  `/a/delfines/ingresar`.
 
 ### Claude Code muestra un error de un hook al abrir una sesión
 
