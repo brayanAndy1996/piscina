@@ -27,6 +27,13 @@
   Se marcan con notas _(ataque ronda 1)_ los criterios 7, 17, 34 y 36, el contrato, DT-1, "Impacto" y "Riesgos
   aceptados", sin borrar texto. Queda una pregunta de negocio nueva para el responsable (N11, "Preguntas abiertas"),
   que no bloquea.
+- **Ataque ronda 2 (13/11/2026, sobre el commit 16b0e38):** el adversarial encontró una falla de severidad alta (R2-F1:
+  un administrador desactivado se reactiva a sí mismo, o crea administradores, con una petición que ya estaba en
+  curso) y tres observaciones. Se agregan los criterios 55 a 58, de ruta crítica, y el 59, de la web (no crítico, con
+  prueba de componentes), en la sección L, con las decisiones del orquestador AR2-1 a AR2-5 ("Decisiones"). Se marcan
+  con notas _(ataque ronda 2)_ los criterios 14, 16, 22, 23, 24, 30, 31, 32, 35, 39 y 53, los casos límite, el
+  contrato, DT-3, "Riesgos aceptados" y "Preguntas abiertas" (pregunta técnica nueva T5, que no bloquea), sin borrar
+  texto.
 
 ## Objetivo
 
@@ -66,9 +73,14 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   tienen cuenta en una academia, se averigua quién es alumno o personal (dato personal, Ley 29733) y se dirigen los
   intentos contra cuentas reales con la clave inicial igual al DNI. El 54 es sesión: un cierre de sesión que no cierra
   deja la cuenta abierta en un equipo compartido (recepción, celular de la familia).
+- **L. Ataque ronda 2 (55 a 58):** el 55, el 56 y el 57 son permisos y autenticación: una cuenta desactivada que
+  sigue escribiendo (se reactiva o se crea una cuenta de respaldo) es exactamente quien perdió el acceso conservándolo,
+  el caso para el que existe desactivar (DR-6). El 58 es autenticación: un camino que confirma un DNI sin contar un
+  intento ayuda a adivinar la clave inicial (RN-02) y revela un dato personal (Ley 29733).
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 44 a 52 (esquemas, semilla, web,
-E2E y documentación).
+E2E y documentación) y 59 (la web ante un cambio de sesión en otra pestaña; ataque ronda 2: la API sigue decidiendo con
+la sesión de la cookie, así que no hay acceso a datos ajenos, solo una pantalla que confunde de quién son los datos).
 
 ## Criterios de aceptación
 
@@ -154,11 +166,18 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     distinto del `version_token` actual; con un `sub` que no existe; con un `sub` que existe en otra academia que la
     de `aca`; o de un usuario `INACTIVO`. También responde 401 si el token llega en `Authorization: Bearer` en lugar de
     la cookie. _(crítico)_
+
+    _Ataque ronda 2 (R2-F1), 13/11/2026:_ esta comprobación se hace al empezar la petición, con una lectura sin
+    bloqueo; no basta para las escrituras: una petición que ya pasó por ella puede escribir después de que la cuenta se
+    desactive. Las escrituras vuelven a comprobar al actor dentro de su transacción (criterio 56).
 15. Dada una sesión válida de un usuario de A, cuando el Superadmin suspende A, entonces toda ruta de academia
     responde 403 `ACADEMIA_SUSPENDIDA` sin ejecutar nada (DR-4 de 001). Cuando la reactiva, las sesiones aún no
     vencidas vuelven a funcionar (riesgo aceptado; pregunta T2). _(crítico)_
 16. Dada una sesión válida, cuando la cuenta se desactiva (criterio 31) o su contraseña se restablece (criterios 35 y
     40), entonces esa sesión responde 401 en la siguiente petición. _(crítico)_
+
+    _Ataque ronda 2 (R2-F1), 13/11/2026:_ "en la siguiente petición" no alcanzaba a las que ya estaban en curso: una
+    escritura iniciada antes de la desactivación terminaba con éxito. El criterio 56 exige que tampoco esas escriban.
 17. Dada una sesión válida, cuando se envía `DELETE /api/sesion`, entonces responde 204, borra la cookie (`aq_sesion=`
     con `Max-Age=0` y `Path=/api`) e incrementa `version_token`: esa cookie y cualquier otra sesión de la misma cuenta
     dejan de valer (401). Sin sesión válida, o con la academia suspendida, también responde 204 y borra la cookie, sin
@@ -189,13 +208,24 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     guarda el hash argon2id de la nueva (empieza por `$argon2id$`), pone `debe_cambiar_clave` en `false`, incrementa
     `version_token` (la cookie anterior y las demás sesiones de la cuenta dejan de valer) y registra
     `USUARIO_CLAVE_CAMBIADA`. Vale para todos los roles, también el alumno (D-14). _(crítico)_ (HU-05)
+
+    _Ataque ronda 2, 13/11/2026:_ esta escritura también cumple el criterio 56 (actor vigente dentro de la
+    transacción), salvo la exigencia de no tener el cambio obligatorio pendiente, que aquí es justo lo que se resuelve.
 23. Dada una `claveNueva` de menos de 8 o más de 128 caracteres (puntos de código), con caracteres de control, igual
     al DNI del usuario o igual a la clave actual, entonces responde 400 `SOLICITUD_INVALIDA` con
     `detalles.errores[].campo` igual a `claveNueva`, sin cambiar nada. Mínimo provisional: 8 (pregunta N2).
     _(crítico)_ (RNF-04)
+
+    _Ataque ronda 2 (observación 2), 13/11/2026:_ las reglas que dependen de la cuenta ("igual al DNI del usuario" e
+    "igual a la clave actual") se comprueban solo después de verificar la `claveActual`; con una `claveActual`
+    equivocada la respuesta es la del criterio 24, aunque la nueva sea el DNI. Las de forma (longitud y caracteres de
+    control) siguen antes, porque no dependen de la cuenta. Orden completo en el criterio 58.
 24. Dada una `claveActual` equivocada, entonces responde 400 `CLAVE_ACTUAL_INCORRECTA` y cuenta un intento fallido con
     las reglas del criterio 9 (el 5.º responde 423 y bloquea); con la cuenta bloqueada responde 423 sin verificar la
     clave. La sesión sigue valiendo. _(crítico)_
+
+    _Ataque ronda 2 (observación 2), 13/11/2026:_ vale también cuando la `claveNueva` es igual al DNI de la cuenta o a
+    cualquier otro DNI: la misma respuesta y el mismo conteo (criterio 58).
 25. Dados dos cambios simultáneos con la misma `claveActual` correcta y claves nuevas distintas, entonces uno responde
     200 y el otro 400 `CLAVE_ACTUAL_INCORRECTA` o 401, y la clave que queda es la del que respondió 200. _(crítico)_
 
@@ -225,14 +255,25 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     A, `ACTIVO`, con `clave_hash` argon2id de su DNI y `debe_cambiar_clave = true` (pregunta N1), y se registra
     `USUARIO_CREADO`. Con `rol` `ALUMNO` responde 400: las cuentas de alumno las crea el paso de cliente a alumno
     (HU-04, historia 007). _(crítico)_ (RN-02, D-28)
+
+    _Ataque ronda 2 (R2-F1, variante), 13/11/2026:_ un administrador desactivado mientras su `POST /api/usuarios` estaba
+    en curso creaba la cuenta igual (posible administrador de respaldo). La creación cumple el criterio 56: si el actor
+    ya no está vigente al escribir, 401 y no se crea nada.
 31. Dado un `ADMIN` de A y un miembro del personal de A activo que no es él, cuando envía
     `POST /api/usuarios/{id}/desactivar`, entonces responde 200 con el usuario `INACTIVO`, incrementa su
     `version_token` y registra `USUARIO_DESACTIVADO`. Sobre sí mismo responde 409 `OPERACION_SOBRE_SI_MISMO`; sobre uno
     ya inactivo, 409 `USUARIO_YA_INACTIVO`; sobre un alumno, 404 `NO_ENCONTRADO` (su estado lo maneja la historia
     010). Pregunta N6. _(crítico)_
+
+    _Ataque ronda 2 (R2-F1), 13/11/2026:_ desactivar a otro también cumple el criterio 56 (actor vigente dentro de la
+    transacción); dos administradores que se desactivan entre sí a la vez, criterio 57.
 32. Dado un miembro del personal inactivo, cuando el `ADMIN` envía `POST /api/usuarios/{id}/reactivar`, entonces
     responde 200 con el usuario `ACTIVO` y registra `USUARIO_REACTIVADO`; sobre uno activo, 409 `USUARIO_YA_ACTIVO`.
     Reactivar no cambia la contraseña. _(crítico)_
+
+    _Ataque ronda 2 (R2-F1), 13/11/2026:_ el "sobre sí mismo" que el criterio 31 da a desactivar faltaba aquí, y un
+    administrador desactivado se reactivaba con una petición en curso. Reactivar la propia cuenta responde 409
+    `OPERACION_SOBRE_SI_MISMO` (criterio 55), y reactivar a otro cumple el criterio 56.
 
     _Precisión del orquestador (13/11/2026), PO-5:_ `POST /api/usuarios/{id}/reactivar` sobre un alumno responde 404
     `NO_ENCONTRADO`, como desactivar (criterio 31): el estado de los alumnos es de la historia 010.
@@ -268,6 +309,9 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     _Precisión del orquestador (13/11/2026), PO-5:_ restablecer a un usuario `INACTIVO` dentro del alcance responde
     200, hace todo lo anterior y lo deja `INACTIVO` (sigue sin poder entrar: 403 `USUARIO_INACTIVO`, criterio 10). Vale
     igual para el Superadmin con un administrador inactivo (criterio 40).
+
+    _Ataque ronda 2 (R2-F1), 13/11/2026:_ cuando lo pide un usuario de la academia, la transacción que escribe cumple el
+    criterio 56. Las rutas del Superadmin (criterio 40) no cambian (pregunta T5).
 36. **Alcance** (provisional, pregunta N4): la `SECRETARIA` solo restablece a alumnos (sobre otro rol, 404); el
     `ADMIN` restablece a cualquier usuario de A salvo a sí mismo (409 `OPERACION_SOBRE_SI_MISMO`). _(crítico)_
 
@@ -290,6 +334,10 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     igual a su DNI y `debe_cambiar_clave = true`; se registra `USUARIO_CREADO` en la auditoría **de esa academia**, con
     actor `SUPERADMIN` y su id. Si el DNI ya existe en esa academia, con cualquier rol, responde 409 `DNI_EN_USO`. Sirve
     para el primero y para los siguientes. _(crítico)_ (DR-1, D-29)
+
+    _Ataque ronda 2 (observación 3), 13/11/2026:_ ese 409 le dice al Superadmin que el DNI tiene una cuenta en esa
+    academia, con cualquier rol (también alumno). Es lo que pide este criterio; queda como riesgo aceptado ("Riesgos
+    aceptados", "El Superadmin puede saber si un DNI tiene cuenta en una academia").
 40. Dada una sesión de superadmin, cuando envía
     `POST /api/plataforma/academias/{id}/administradores/{usuarioId}/restablecer-clave`, entonces hace lo del criterio
     35 con actor `SUPERADMIN`. Un `usuarioId` de otro rol, de otra academia, inexistente o que no es un UUID responde
@@ -413,6 +461,13 @@ Criterios agregados por las fallas del adversarial en la ronda 1, con las decisi
     diferencia real, cerca del 10 %; en la ronda 1 fue el 65 %). No se agrega una prueba de tiempos a la CI: los
     milisegundos en los equipos compartidos de la CI, también Windows, no son estables, y la forma de a) es la causa
     que se puede comprobar sin cronómetro.
+
+    _Ataque ronda 2, 13/11/2026 (medición sobre 16b0e38):_ se cumplen los umbrales. Con 300 rondas pareadas entre (i)
+    y (iii), la diferencia de medianas fue de 0,43 ms y el 11 % de las muestras de (i) superó el percentil 90 de (iii);
+    en la medición de control, la diferencia fue de 0,25 ms. Queda un residuo de unos 0,2 a 0,4 ms, atribuido al
+    `fdatasync` del `COMMIT` que escribe, que puede crecer en discos lentos (Docker Desktop en Windows, el hosting): se
+    acepta y se vuelve a medir en el hosting real (riesgo aceptado "Commit con escritura frente a commit vacío"; decisión
+    AR2-5; tarea T17.19).
 54. **`DELETE /api/sesion` cierra con cualquier cuerpo.** _(Ataque ronda 1, F2.)_ Dada una sesión válida, cuando se
     envía `DELETE /api/sesion` con cualquiera de estos cuerpos: JSON roto con `Content-Type: application/json`;
     `text/plain`; JSON válido de más de 100 KB; un cuerpo sin `Content-Type`; `Content-Encoding` no admitido (por
@@ -425,6 +480,103 @@ Criterios agregados por las fallas del adversarial en la ronda 1, con las decisi
     ejemplo, `POST /api/sesion/clave` con JSON roto sigue respondiendo 400 y con más de 100 KB, 413.
     _(crítico; prueba protegida de integración.)_
 
+### L. Ataque ronda 2 (13/11/2026)
+
+Criterios agregados por la falla R2-F1 y las observaciones 1 y 2 del adversarial en la ronda 2 (sobre 16b0e38), con las
+decisiones AR2-1 a AR2-3 del orquestador. En esta sección, "actor" es el usuario de la academia dueño de la sesión con
+que se pide, y "actor vigente" es el que, leído en la base, existe en la academia de la sesión (`aca`), está `ACTIVO`,
+tiene `version_token` igual al `ver` del token y `debe_cambiar_clave = false`.
+
+55. **Reactivar la propia cuenta responde 409.** _(Ataque ronda 2, R2-F1, decisión AR2-1 (1).)_ Dado un `ADMIN` de A
+    con sesión válida, cuando envía `POST /api/usuarios/{su propio id}/reactivar`, entonces responde 409
+    `OPERACION_SOBRE_SI_MISMO` (no `USUARIO_YA_ACTIVO`), sin cambiar ninguna fila ni auditar nada. "Sobre sí mismo" se
+    decide antes que "ya activo" o "ya inactivo", igual que en desactivar (criterio 31). _(crítico; prueba protegida de
+    integración.)_
+56. **El actor sigue vigente dentro de la transacción que escribe.** _(Ataque ronda 2, R2-F1, decisión AR2-1 (2).)_
+    Dadas las rutas de academia de esta historia que escriben a pedido de un usuario de la academia,
+    `POST /api/usuarios`, `POST /api/usuarios/{id}/desactivar`, `POST /api/usuarios/{id}/reactivar`,
+    `POST /api/usuarios/{id}/restablecer-clave` y `POST /api/sesion/clave`, entonces:
+    - a) La transacción que escribe, antes de escribir, bloquea la fila del actor con un modo que entra en conflicto con
+      un `UPDATE` de esa fila (`FOR SHARE`, `FOR NO KEY UPDATE` o `FOR UPDATE`; no `FOR KEY SHARE`, que no espera a un
+      `UPDATE` que no cambia la llave) y, con ese bloqueo, exige que el actor esté vigente. En `POST /api/sesion/clave`
+      no se exige `debe_cambiar_clave = false` (es lo que esa ruta resuelve, criterio 21).
+    - b) Si el actor ya no está vigente (se desactivó, cambió su `version_token` por un cierre de sesión, un
+      restablecimiento o un cambio de clave, o quedó con el cambio obligatorio pendiente), la respuesta es 401
+      `NO_AUTENTICADO`, no cambia ninguna fila, no se inserta nada (ni usuario ni auditoría) y el 401 tiene prioridad
+      sobre los 404 y 409 del objetivo que se decidan en esa transacción. Una respuesta que no escribe nada (400 del
+      esquema, 404 de un id que no es UUID, 409 de "sobre sí mismo") puede darse antes de esa comprobación.
+    - c) La comprobación del middleware (criterio 14) se mantiene; esta no la reemplaza.
+
+    **Pruebas de carrera deterministas** (no dependen de tiempos ni de esperas fijas): la prueba abre su propia
+    conexión a PostgreSQL y, en una transacción sin confirmar, cambia la fila del actor X (por ejemplo,
+    `estado = 'INACTIVO'` y `version_token + 1`, como una desactivación), con lo que retiene el bloqueo de esa fila.
+    Con X todavía vigente según lo confirmado, envía la petición de X (que pasa el middleware, porque su lectura no ve
+    lo no confirmado) y espera a que ocurra una de dos cosas: que la conexión de la API quede esperando el bloqueo de la
+    prueba (por ejemplo, un `pid` cuyo `pg_blocking_pids` contiene el de la prueba) o que llegue la respuesta, con un
+    límite de seguridad de algunos segundos que solo evita colgarse. Entonces confirma la transacción y comprueba la
+    respuesta y la base. Casos:
+    - (i) **Reactivación propia** (la reproducción `b3`): X envía `POST /api/usuarios/{X}/reactivar` mientras la prueba
+      lo desactiva. Responde 401 o 409 `OPERACION_SOBRE_SI_MISMO`; X queda `INACTIVO`, con el `version_token` que dejó
+      la prueba, y no hay ningún `USUARIO_REACTIVADO` de X.
+    - (ii) **Crear tras la desactivación** (la reproducción `b5`): X envía `POST /api/usuarios` con un `ADMIN` nuevo
+      mientras la prueba lo desactiva. La petición queda esperando el bloqueo, responde 401, el DNI enviado no existe en
+      ninguna academia y no hay ningún `USUARIO_CREADO` con actor X.
+    - (iii) Lo mismo con X desactivando a otro miembro del personal Z activo, reactivando a un Z inactivo y
+      restableciendo la clave de Z: cada petición queda esperando el bloqueo, responde 401 y Z queda como estaba (estado,
+      `clave_hash`, `version_token`, contador), sin auditoría de X.
+    - (iv) `POST /api/sesion/clave` de X mientras la prueba lo desactiva: 401 y la clave de X no cambia.
+    - (v) Variantes del cambio de la prueba sobre X, al menos con `POST /api/usuarios`: solo `version_token + 1` (como un
+      cierre de sesión en otro dispositivo) y solo `debe_cambiar_clave = true`; las dos responden 401 sin crear nada.
+    - (vi) **Control:** la prueba bloquea la fila de X sin cambiarla (`SELECT … FOR UPDATE`) y la libera con
+      `ROLLBACK`: con `POST /api/usuarios`, la petición queda esperando el bloqueo y, al liberarlo, responde 201. Así la
+      prueba demuestra que la petición pasa de verdad por el bloqueo y que el 401 de los otros casos no es casual.
+
+    _(crítico; prueba protegida de integración.)_
+57. **Dos administradores que se desactivan entre sí a la vez.** _(Ataque ronda 2, R2-F1, consecuencia del criterio
+    56.)_ Dados dos `ADMIN` activos de A, X e Y, cuando X envía `POST /api/usuarios/{Y}/desactivar` e Y envía
+    `POST /api/usuarios/{X}/desactivar` al mismo tiempo, entonces una petición responde 200 y la otra 401
+    `NO_AUTENTICADO`, nunca 500 (tampoco por un interbloqueo de PostgreSQL, `40P01`); al final queda exactamente uno de
+    los dos `ACTIVO` y hay exactamente un `USUARIO_DESACTIVADO` entre los dos. _(crítico; prueba protegida de
+    integración: varias rondas con las dos peticiones lanzadas a la vez; la aserción vale en cualquier orden de llegada,
+    sin depender de tiempos.)_
+58. **El cambio de clave verifica la actual antes de mirar el DNI.** _(Ataque ronda 2, observación 2, decisión AR2-3.)_
+    Dada una sesión válida, `POST /api/sesion/clave` comprueba en este orden: 1) el cuerpo con `cambiarClaveSchema`
+    (400 `SOLICITUD_INVALIDA`, sin contar un intento: longitud y caracteres de control no dependen de la cuenta);
+    2) cuenta bloqueada (423, sin verificar la clave); 3) la `claveActual` (si es equivocada, 400
+    `CLAVE_ACTUAL_INCORRECTA` y cuenta un intento fallido, o 423 si ese fallo bloquea, criterio 24); 4) solo con la
+    `claveActual` correcta, la `claveNueva` igual al DNI de la cuenta o igual a la actual (400 `SOLICITUD_INVALIDA` con
+    `detalles.errores[].campo` igual a `claveNueva`, sin contar un intento ni cambiar nada, criterio 23). Por lo tanto:
+    - a) con una `claveActual` equivocada y una `claveNueva` igual al DNI de la cuenta, responde 400
+      `CLAVE_ACTUAL_INCORRECTA`, con el mismo cuerpo que con una `claveNueva` igual a otro DNI de 8 dígitos o a un texto
+      cualquiera válido, e `intentos_fallidos` sube en 1 en cada caso;
+    - b) con la `claveActual` correcta y la `claveNueva` igual al DNI, 400 `SOLICITUD_INVALIDA` en `claveNueva` e
+      `intentos_fallidos` no cambia;
+    - c) cinco intentos con `claveActual` equivocada y `claveNueva` igual a DNIs distintos bloquean la cuenta como en el
+      criterio 9 (el 5.º responde 423).
+
+    _(crítico; prueba protegida de integración.)_
+59. **La web reacciona a un cambio de sesión en otra pestaña.** _(Ataque ronda 2, observación 1, decisión AR2-2; DT-3.)_
+    Dada una página de academia (`/panel` y sus páginas, `/cambiar-clave`) abierta con la sesión del usuario U de la
+    academia A, cuando en otra pestaña del mismo navegador se entra con otro usuario o a otra academia (la cookie
+    `aq_sesion` pasa a ser la de otra identidad), entonces:
+    - a) al recuperar el foco la ventana (evento `focus`, o `visibilitychange` a visible), la web vuelve a pedir
+      `GET /api/sesion`;
+    - b) antes de enviar cualquier acción que escribe o que manda datos personales a la API desde esas páginas (crear,
+      desactivar, reactivar y restablecer usuarios, buscar por DNI y cambiar la contraseña), vuelve a pedir
+      `GET /api/sesion` y solo envía la acción si `usuario.id` y `academia.nombreCorto` siguen siendo los que la página
+      muestra;
+    - c) si cambió el usuario o la academia, no envía la acción, descarta la caché de TanStack Query (nada de lo pedido
+      con la identidad anterior se sigue mostrando) y lleva a `/panel` con la identidad nueva en la cabecera y un aviso
+      del tipo "Tu sesión cambió: ahora estás como {nombres} en {academia}" (texto orientativo);
+    - d) si ya no hay sesión, la academia está suspendida o la nueva sesión tiene el cambio obligatorio, hace lo de los
+      criterios 47 y 48 (`RutaConSesion`), sin enviar la acción;
+    - e) "Cerrar sesión" no hace esta comprobación: siempre cierra (criterio 17).
+
+    _(Prueba obligatoria de componentes, Vitest y Testing Library con la API simulada: con la sesión de A cargada y la
+    lista de usuarios a la vista, `GET /api/sesion` pasa a devolver un usuario de B; al disparar `focus`, la cabecera
+    muestra B y la lista de A ya no está. Con la sesión cambiada, "Crear" en "Nuevo usuario" no envía
+    `POST /api/usuarios` y lleva a `/panel` con el aviso; con la misma sesión, sí lo envía (control).)_
+
 ## Casos límite
 
 - **DNI con ceros a la izquierda (`01234567`):** es texto, no número; se guarda y se compara tal cual.
@@ -434,6 +586,9 @@ Criterios agregados por las fallas del adversarial en la ronda 1, con las decisi
   Bloquear la de A no afecta a la de B.
 - **Una sola sesión de academia por navegador:** la cookie `aq_sesion` es una; entrar a B reemplaza la sesión de A
   (pregunta T3). La web de `/a/A/…` con una sesión de B muestra los datos de B, porque la academia sale de la sesión.
+  _(Ataque ronda 2, observación 1:)_ una pestaña ya abierta con la sesión de A seguía mostrando la cabecera de A
+  mientras pedía y creaba en B; el criterio 59 hace que la web vuelva a pedir la sesión al recuperar el foco y antes de
+  cada acción, y que muestre la identidad nueva.
 - **Superadmin y usuario de academia en el mismo navegador:** cookies distintas con rutas distintas; ninguna vale en
   las rutas de la otra (criterio 19).
 - **Restablecer a un usuario bloqueado:** lo desbloquea (criterio 35).
@@ -446,6 +601,16 @@ Criterios agregados por las fallas del adversarial en la ronda 1, con las decisi
   bloqueo solo impide nuevos ingresos.
 - **Dos administradores se desactivan entre sí a la vez:** la academia puede quedar sin administrador activo; el
   Superadmin crea otro (criterio 39). Se acepta.
+  _(Ataque ronda 2, R2-F1: ya no.)_ Con el criterio 56, la segunda transacción encuentra a su actor desactivado y
+  responde 401: una desactivación gana y la otra no escribe, así que de esos dos queda uno activo (criterio 57). Con
+  las reglas de esta historia, una academia que tiene un administrador activo ya no se queda sin ninguno (nadie se
+  desactiva a sí mismo y quien desactiva sigue activo); si el único olvida su clave, el Superadmin la restablece
+  (criterio 40).
+- **Un administrador desactivado con peticiones en curso** _(ataque ronda 2, R2-F1)_: las escrituras que ya pasaron el
+  middleware responden 401 sin escribir (criterio 56); no puede reactivarse ni crear una cuenta de respaldo. Las
+  lecturas en curso terminan y devuelven lo que leyeron (riesgo aceptado "Lecturas en curso al desactivar").
+- **Cambio de contraseña con una clave actual equivocada y la nueva igual a un DNI** _(ataque ronda 2, observación
+  2)_: responde `CLAVE_ACTUAL_INCORRECTA` y cuenta el intento, sin revelar si ese DNI es el de la cuenta (criterio 58).
 - **Academia suspendida mientras un usuario cambia su contraseña:** la operación ya iniciada termina (riesgo aceptado
   en 001); la siguiente petición responde 403.
 - **Hora del servidor en otra zona:** el vencimiento del token y del bloqueo se calculan con `RELOJ` sobre instantes;
@@ -498,6 +663,12 @@ no-store`. Los cuerpos son JSON y los esquemas, estrictos (un campo de más es 4
 _Ataque ronda 1 (F2), 13/11/2026:_ en la fila de `DELETE /api/sesion`, "Entrada: —" quiere decir que la ruta no lee
 el cuerpo: cualquier cuerpo, con cualquier `Content-Type`, `Content-Encoding` o tamaño, se ignora y la respuesta es
 siempre 204 (criterio 54). Es la única excepción a las reglas de cuerpos de 001 citadas arriba.
+
+_Ataque ronda 2 (R2-F1), 13/11/2026:_ en la fila de `POST /api/usuarios/{id}/reactivar`, los errores incluyen además
+409 `OPERACION_SOBRE_SI_MISMO` (criterio 55). En las filas de `POST /api/usuarios`, desactivar, reactivar,
+`restablecer-clave` y `POST /api/sesion/clave`, el 401 incluye el caso del criterio 56 (el actor dejó de estar vigente
+mientras la petición estaba en curso), y en ese caso tiene prioridad sobre los 404 y 409 que se decidan en la misma
+transacción. En `POST /api/sesion/clave`, el orden de las comprobaciones es el del criterio 58.
 
 Además, con `debe_cambiar_clave = true`, toda ruta de academia salvo `GET` y `DELETE /api/sesion` y
 `POST /api/sesion/clave` responde 403 `CAMBIO_DE_CLAVE_OBLIGATORIO` (criterio 21). Orden de las comprobaciones en una
@@ -688,6 +859,10 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
 - **`scripts/test/integracion/migraciones.test.mjs` (no protegida; precisión del orquestador (13/11/2026), PO-8):**
   `TABLAS_DESPUES_DE_MIGRAR` suma `usuarios`, como pide su propio comentario ("cada historia con tablas nuevas agrega
   las suyas aquí"). Lo hace el backend en T6.
+- **Historias siguientes (ataque ronda 2, criterio 56):** `UsuariosService.crearEnTransaccion` no cambia de firma: la
+  comprobación del actor la hace la transacción de quien llama (en esta historia, `POST /api/usuarios`). Si el
+  orquestador acepta la propuesta de T5, la regla y la función reutilizable pasan a `docs/arquitectura.md` para 007 y
+  las demás escrituras.
 
 ## Riesgos aceptados
 
@@ -723,10 +898,31 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
   las mismas sentencias, pero solo el de un DNI con cuenta modifica una fila; su `COMMIT` escribe en el registro de
   transacciones (WAL) y puede tardar algo más. Se acepta si la medición de la ronda 2 cumple los umbrales del criterio
   53; si no, el orquestador decide (plan, "Riesgos").
+  _(Ataque ronda 2, 13/11/2026, decisión AR2-5:)_ la ronda 2 los cumplió sobre 16b0e38: con 300 rondas pareadas, la
+  diferencia de medianas entre un DNI con cuenta y uno sin cuenta fue de 0,43 ms y el 11 % de las muestras superó el
+  percentil 90 (umbrales: menos de 2 ms y como mucho el 25 %); la medición de control dio 0,25 ms. Queda un residuo de
+  unos 0,2 a 0,4 ms, que se atribuye al `fdatasync` del `COMMIT` que escribe en el WAL. Se acepta, con dos límites:
+  separarlo del ruido exige cientos de intentos, que el límite por IP (criterio 12) y el bloqueo por cuenta
+  (criterio 9) frenan; y en discos más lentos (Docker Desktop en Windows, el disco del hosting) el residuo puede
+  crecer. Por eso se vuelve a medir en el hosting real cuando se elija (D-21; tarea T17.19) y, si no cumple los
+  umbrales, decide el orquestador entre igualar la escritura y aceptarlo junto con "Saber si un DNI tiene cuenta".
 - **El Superadmin conoce la clave inicial del administrador que crea o restablece** _(ataque ronda 1; provisional
   hasta que el responsable conteste la pregunta N11)_: puede entrar como ese administrador antes que él y ver datos
   internos de la academia, en tensión con D-29. Mientras tanto se acepta (opción (a) de N11): la creación y el
   restablecimiento quedan en la auditoría de la academia con actor `SUPERADMIN` (criterios 39, 40 y 42).
+- **El Superadmin puede saber si un DNI tiene cuenta en una academia** _(ataque ronda 2, observación 3, decisión
+  AR2-4)_: al crear un administrador, el 409 `DNI_EN_USO` responde a un DNI que ya existe en esa academia con cualquier
+  rol, también alumno (criterio 39), y eso dice que esa persona es alumno o personal de la academia, un dato que D-29
+  no le da. Se acepta porque es lo que pide el criterio 39 (sin él, el Superadmin no sabría por qué no se crea la
+  cuenta) y porque probar DNIs deja rastro: cada DNI que no existe crea de verdad un administrador, registrado en la
+  auditoría de la academia con actor `SUPERADMIN` (criterios 39 y 42). Si se quiere cerrar, se revisa junto con N11.
+- **Lecturas en curso al desactivar** _(ataque ronda 2, R2-F1)_: una consulta que ya pasó el middleware cuando la
+  cuenta se desactiva termina y devuelve lo que leyó. Son milisegundos, no cambian nada y la siguiente petición
+  responde 401 (criterio 16); las escrituras sí se cortan (criterio 56).
+- **Cambio de sesión entre la comprobación de la web y la acción** _(ataque ronda 2, observación 1)_: entre el
+  `GET /api/sesion` previo del criterio 59 y la acción, otra pestaña podría cambiar la sesión. La ventana es de
+  milisegundos y la API decide igual con la sesión de la cookie, dentro de su academia y su rol: no se accede a datos
+  ajenos, solo podría crearse algo en la academia de la otra pestaña con los permisos de esa sesión.
 
 ## Decisiones
 
@@ -791,6 +987,8 @@ propuesta.
   sesiones no vencidas vuelven a valer (cortarlas exigiría tocar `usuarios` desde la plataforma) (criterio 15).
 - **DT-3 (pregunta T3). Una sesión de academia por navegador.** **Decidido (la propuesta):** aceptarlo; entrar a otra
   academia reemplaza la sesión.
+  _(Ataque ronda 2, observación 1, 13/11/2026:)_ se mantiene, pero la web debe notar el reemplazo en las pestañas que
+  ya estaban abiertas (criterio 59, decisión AR2-2).
 
 ### Precisiones del orquestador (13/11/2026)
 
@@ -839,6 +1037,46 @@ intención de los criterios; cada una está también como nota junto al criterio
   lee el cuerpo y siempre cierra (criterio 54). Alternativa descartada: dejar el 400 y corregir el criterio 17 (un
   cierre de sesión que falla por algo que la ruta no usa deja la cuenta abierta en un equipo compartido).
 
+### Decisiones del orquestador tras el ataque, ronda 2 (13/11/2026)
+
+El adversarial atacó el commit 16b0e38. Reproducciones: `b3.test.ts` (reactivación propia) y `b5.test.ts` (creación
+tras la desactivación), en el espacio de trabajo del ataque.
+
+- **AR2-1 (R2-F1, alta). Un administrador desactivado se reactiva a sí mismo con una petición en curso.**
+  `UsuariosService.cambiarEstado` solo rechazaba "sobre sí mismo" al desactivar, y el middleware autentica con una
+  lectura sin bloqueo: la petición de reactivar de X pasaba el middleware, esperaba en el `FOR UPDATE` mientras Y lo
+  desactivaba, leía `INACTIVO` y lo reactivaba (3 de 3 intentos: estado final `ACTIVO`, auditoría
+  `USUARIO_DESACTIVADO` por Y y `USUARIO_REACTIVADO` por X). Variante: con `POST /api/usuarios` en curso, X creaba
+  administradores después de su desactivación (posible cuenta de respaldo). **Decidido:** (1) reactivar la propia
+  cuenta responde 409 `OPERACION_SOBRE_SI_MISMO` (criterio 55); (2) toda transacción de escritura iniciada por un
+  usuario de la academia bloquea la fila del actor y exige que siga vigente (`ACTIVO`, la misma `version_token` del
+  token y sin cambio obligatorio pendiente); si no, 401 `NO_AUTENTICADO` sin escribir nada (criterios 56 y 57), con
+  pruebas de carrera deterministas. Alternativas descartadas: solo el 409 de (1) (cierra la reactivación, pero no la
+  cuenta de respaldo ni las demás escrituras en curso); aislamiento `SERIALIZABLE` (obliga a reintentar ante `40001`
+  en todas las escrituras y no expresa la regla); un bloqueo consultivo por usuario (no está atado a la fila: cada
+  escritor de `usuarios` tendría que acordarse de tomarlo); solo comprobar otra vez en el middleware (la ventana entre
+  la comprobación y la escritura sigue abierta).
+- **AR2-2 (observación 1, web, no crítica). Sesión de otra academia en el mismo navegador.** `useSesionAcademia` no
+  volvía a pedir la sesión al recuperar el foco y nada reaccionaba a un cambio de identidad: si en otra pestaña se
+  entraba a la academia B, la pestaña de A seguía mostrando la cabecera de A mientras la lista traía a B y "Nuevo
+  usuario" creaba en B. **Decidido:** la web vuelve a pedir la sesión al recuperar el foco y antes de toda acción que
+  escribe; si cambió el usuario o la academia, descarta la caché y muestra la identidad nueva (o lleva al panel)
+  (criterio 59). Alternativas descartadas: una cookie por academia (descartada ya en "Decisiones de diseño"); volver a
+  pedir la sesión cada pocos segundos (más tráfico y sigue dejando una ventana); avisar entre pestañas con
+  `BroadcastChannel` (no ve un ingreso hecho en otra ventana que no tenga la web cargada; se puede sumar después).
+- **AR2-3 (observación 2). El cambio de clave miraba el DNI antes de verificar la clave actual.**
+  `POST /api/sesion/clave` comparaba `claveNueva` con el DNI antes de verificar `claveActual`: con una sesión abierta
+  ajena (por ejemplo, en el equipo de recepción) se podían probar DNIs candidatos sin contar intentos, y el DNI es el
+  usuario y la clave inicial. **Decidido:** verificar primero `claveActual` (contando el intento si falla) y solo
+  después comparar la nueva con el DNI y con la actual (criterio 58). Alternativa descartada: no rechazar el DNI como
+  clave nueva (contradice DR-2 y el criterio 23).
+- **AR2-4 (observación 3). El 409 `DNI_EN_USO` al Superadmin revela que un DNI tiene cuenta en la academia.** Es lo
+  que pide el criterio 39. **Decidido:** riesgo aceptado ("Riesgos aceptados"), sin cambiar el criterio.
+- **AR2-5 (tiempos del criterio 53).** Se cumplen los umbrales (300 rondas pareadas: 0,43 ms de diferencia de
+  medianas, 11 % sobre el percentil 90; control 0,25 ms). **Decidido:** se acepta el residuo de unos 0,2 a 0,4 ms del
+  `fdatasync` del `COMMIT` que escribe y se vuelve a medir en el hosting real (riesgo aceptado "Commit con escritura
+  frente a commit vacío"; tarea T17.19).
+
 ### Decisiones de diseño (técnicas)
 
 - **Una cookie `aq_sesion` con `Path=/api` y rutas sin nombre corto** (`/api/sesion`, `/api/usuarios`; D-27: la
@@ -861,6 +1099,7 @@ intención de los criterios; cada una está también como nota junto al criterio
 
 _(Ataque ronda 1, 13/11/2026: hay dos preguntas nuevas, N11 para el responsable y T4 para el orquestador, al final de
 esta sección. Ninguna bloquea. El párrafo que sigue habla de las preguntas de la versión aprobada.)_
+_(Ataque ronda 2, 13/11/2026: se suma T5, para el orquestador, que tampoco bloquea.)_
 
 Ninguna. Las 10 preguntas de negocio de la versión en borrador (N1 a N10) las resolvió el responsable el 13/11/2026
 (DR-1 a DR-10 de 002) y las 3 técnicas (T1 a T3), el orquestador ese mismo día (DT-1 a DT-3); su texto y su propuesta
@@ -894,3 +1133,16 @@ están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy
   exige tocar pruebas protegidas de 001 y su criterio) y, si el orquestador quiere que los dos cierres se comporten
   igual, abrir una nota en el backlog para alinear `DELETE /api/plataforma/sesion` en una historia propia. Valor
   provisional: sin cambios en 001.
+
+### Pregunta nueva tras el ataque, ronda 2 (13/11/2026)
+
+- **T5 (técnica, para el orquestador). ¿El "actor vigente dentro de la transacción" es una regla para las historias
+  siguientes?** El criterio 56 la exige en las escrituras de esta historia. Las siguientes (cobros, verificación de
+  pagos, caja, asistencia, la cuenta del alumno en 007 con `crearEnTransaccion`) tienen la misma ventana: una
+  secretaria desactivada con un cobro o una aprobación en curso. Tampoco cubre al Superadmin en las rutas de la
+  plataforma (criterios 39 y 40), cuya sesión verifica 001. **Propuesta:** sí para los usuarios de academia; la
+  implementación de esta historia deja una función reutilizable en `modulos/autenticacion` (plan, sección 10) y el
+  documentador agrega la regla a "Reglas para las historias siguientes" de `docs/arquitectura.md` (tarea T20); el
+  Superadmin queda como está en esta historia (en 001 ningún usuario de la API lo desactiva; la ventana se reduce a
+  cambios de su propia cuenta hechos fuera de la web, que se revisan si alguna historia los agrega). Valor
+  provisional, que no bloquea: la regla rige solo en las rutas del criterio 56.

@@ -83,7 +83,7 @@ protegida nueva), T3b (ajuste de las pruebas ya escritas), T6, T11 y T15.
 
 F1: el tiempo de respuesta revela si un DNI tiene cuenta (criterio 53). F2: `DELETE /api/sesion` con cuerpo responde
 400 y no cierra (criterio 54). Decisiones AR1-1 y AR1-2 de `spec.md`. T18 en adelante esperan a que la ronda 2 no
-encuentre fallas.
+encuentre fallas. _(Ataque ronda 2: la ronda 2 encontró R2-F1; ahora esperan a la ronda 3, T17.17.)_
 
 - [x] T17.1 · especificador · Criterios 53 y 54 (sección K), notas en los criterios 7, 17, 34 y 36, contrato, DT-1,
       "Impacto", "Riesgos aceptados" y preguntas N11 y T4; plan, sección 9 (criterios 53, 54)
@@ -102,22 +102,78 @@ encuentre fallas.
       sin cambiar las reglas de cuerpos de las demás rutas ni `DELETE /api/plataforma/sesion` (criterios 17, 54)
 - [ ] T17.6 · orquestador · `git diff` de los commits de T17.4 y T17.5: ninguno toca pruebas protegidas (de 001 ni de
       002); suite en verde (criterios 1 a 54)
-- [ ] T17.7 · adversarial · Ronda 2, con la spec y el código: volver a medir los tiempos con la reproducción
+- [x] T17.7 · adversarial · Ronda 2, con la spec y el código: volver a medir los tiempos con la reproducción
       `a3.test.ts` y los umbrales del criterio 53 (mediana a menos de 2 ms; como mucho el 25 % sobre el percentil 90);
       buscar otros caminos que delaten un DNI (cambio de clave, usuario inactivo, carreras); `DELETE /api/sesion` con
       variantes de la ruta (barra final, mayúsculas, cadena de consulta) y cuerpos; que las demás rutas sigan
       rechazando cuerpos inválidos. Si encuentra fallas, se repite el ciclo (criterios 53, 54 y toda la ruta crítica)
+      _(Hecha el 13/11/2026 sobre 16b0e38: una falla, R2-F1, y tres observaciones; se siguen en "Ataque ronda 2".)_
 - [ ] T17.8 · responsable · Contestar N11 (el Superadmin conoce la clave inicial del administrador). No bloquea:
       mientras tanto rige la opción (a). Si elige (c), el especificador ajusta los criterios 39 y 40 y se repiten las
       pruebas protegidas de esos criterios (criterios 39, 40)
 - [ ] T17.9 · orquestador · Decidir T4 (cierre de sesión del Superadmin con cuerpo, criterio 74 de 001). No bloquea
+
+### Ataque ronda 2 (13/11/2026, sobre 16b0e38)
+
+R2-F1 (alta): un administrador desactivado se reactiva a sí mismo, o crea administradores, con una petición en curso
+(criterios 55 a 57). Observación 1: la web no nota un cambio de sesión en otra pestaña (criterio 59, no crítico).
+Observación 2: el cambio de clave mira el DNI antes de verificar la actual (criterio 58). Observación 3: el 409
+`DNI_EN_USO` al Superadmin (riesgo aceptado). Tiempos del criterio 53: cumplen (riesgo aceptado ampliado). Decisiones
+AR2-1 a AR2-5 de `spec.md`. _(Ataque ronda 1:)_ "T18 en adelante esperan a que la ronda 2 no encuentre fallas" pasa a
+"a que la ronda 3 no encuentre fallas".
+
+- [x] T17.10 · especificador · Criterios 55 a 59 (sección L), notas en los criterios 14, 16, 22, 23, 24, 30, 31, 32,
+      35, 39 y 53, casos límite, contrato, DT-3, "Impacto", "Riesgos aceptados", decisiones AR2-1 a AR2-5 y pregunta
+      T5; plan, sección 10 (criterios 55 a 59)
+- [ ] T17.11 · test-writer · Pruebas protegidas de integración, en rojo, desde la spec y sin mirar la implementación:
+      - criterio 55: `ADMIN` que reactiva su propia cuenta → 409 `OPERACION_SOBRE_SI_MISMO`, sin cambios ni auditoría;
+      - criterio 56: las carreras deterministas (i) a (vi), con la transacción de la prueba que retiene la fila del
+        actor y la espera con `pg_blocking_pids` y un límite de seguridad (plan, sección 10.1): reactivación propia,
+        crear (con las variantes de solo `version_token + 1` y solo `debe_cambiar_clave = true`), desactivar, reactivar
+        y restablecer a otro, cambio de clave propia y el control con `ROLLBACK` → 201;
+      - criterio 57: varias rondas de dos administradores que se desactivan entre sí a la vez → 200 y 401, nunca 500,
+        uno activo y un solo `USUARIO_DESACTIVADO`;
+      - criterio 58: `claveActual` equivocada con `claveNueva` igual al DNI propio, a otro DNI y a otro texto → mismo
+        400 `CLAVE_ACTUAL_INCORRECTA` y contador +1; `claveActual` correcta con `claveNueva` igual al DNI → 400
+        `SOLICITUD_INVALIDA` en `claveNueva` sin contar; cinco fallos con DNIs distintos → el 5.º 423.
+      Si la espera con `pg_blocking_pids` no ve a la API, avisar al orquestador (plan, "Riesgos") (criterios 55 a 58)
+- [ ] T17.12 · tester · Confirmar que T17.11 falla por la razón esperada: 55, 409 `USUARIO_YA_ACTIVO` en lugar de
+      `OPERACION_SOBRE_SI_MISMO`; 56, en crear, desactivar, reactivar y restablecer la petición no espera el bloqueo y
+      responde 200 o 201 (y en el control (vi), no espera); 58, 400 `SOLICITUD_INVALIDA` sin contar el intento. Pueden
+      pasar ya, y no es un error: 56 (iv) (cambio de clave propia) y, según el orden de llegada, el 57 (si en ninguna
+      ronda las dos peticiones se cruzan). Que ninguna falle por sintaxis, importaciones, la conexión propia de la
+      prueba o el límite de seguridad sin causa. Commit del orquestador: "Pruebas protegidas (002): ataque ronda 2 (en
+      rojo)" (criterios 55 a 58)
+- [ ] T17.13 · backend · R2-F1: función reutilizable que bloquea y comprueba al actor (y al objetivo, en una sola
+      sentencia ordenada por `id`), usada por crear, desactivar, reactivar y restablecer (transacción 2); reactivar sobre
+      sí mismo, 409; la versión del token llega al servicio (plan, sección 10.1), sin tocar las pruebas protegidas
+      (criterios 55 a 57; 14, 16, 30 a 32, 35)
+- [ ] T17.14 · backend · Observación 2: en `cambiarClave`, comparar con el DNI y con la actual después de verificar
+      `claveActual` (plan, sección 10.3), sin tocar las pruebas protegidas (criterios 23, 24, 58)
+- [ ] T17.15 · frontend · Observación 1: sesión al recuperar el foco, comprobación antes de cada mutación, caché vacía y
+      `/panel` con aviso si cambió la identidad (plan, sección 10.4), con su prueba de componentes (no protegida); sin
+      tocar las pruebas de componentes existentes salvo para sumar casos (criterio 59)
+- [ ] T17.16 · orquestador · `git diff` de los commits de T17.13 a T17.15: ninguno toca pruebas protegidas (de 001 ni
+      de 002); suite, lint y tipos en verde (criterios 1 a 59)
+- [ ] T17.17 · adversarial · Ronda 3, con la spec y el código: carreras entre desactivar, restablecer, cerrar sesión o
+      cambiar la clave y las escrituras en curso del mismo actor (también dos pestañas del mismo usuario), interbloqueos
+      con varias filas, el orden de los errores (401 frente a 404 y 409), el cambio de clave con DNIs candidatos, y la
+      web con dos pestañas y dos academias (criterio 59). Si encuentra fallas, se repite el ciclo (criterios 55 a 59 y
+      toda la ruta crítica)
+- [ ] T17.18 · orquestador · Decidir T5 (¿"actor vigente dentro de la transacción" como regla para las historias
+      siguientes?). No bloquea; si se acepta, T20 lo documenta en `docs/arquitectura.md`
+- [ ] T17.19 · adversarial (con el orquestador) · Cuando se elija el hosting (D-21), volver a medir los tiempos del
+      criterio 53 allí (y, si se puede, en Docker Desktop en Windows) con la misma reproducción de 300 rondas pareadas y
+      los umbrales del criterio 53; si no los cumple, el orquestador decide entre igualar la escritura y aceptarlo. No
+      bloquea el cierre de 002: el orquestador la anota en el backlog junto a la revisión de DT-1 (criterio 53)
 
 - [ ] T18 · revisor · Comparar con la spec y las convenciones (`CLAUDE.md` y "Reglas para las historias siguientes" de
       `docs/arquitectura.md`); confirmar con `git diff` que ningún commit de implementación tocó pruebas protegidas
 - [ ] T19 · tester · Suite completa, lint y verificación de tipos (Linux; la CI también en Windows)
 - [ ] T20 · documentador · Commit final, tareas marcadas, `README.md`, `docs/guia-local-windows.md` (criterio 52) y
       `docs/arquitectura.md` (sesión de academia, matriz de permisos, `@Permiso` y `@SoloSesion` para las historias
-      siguientes)
+      siguientes). _(Ataque ronda 2:)_ si el orquestador acepta T5, también la regla "actor vigente dentro de la
+      transacción que escribe" y la función reutilizable de la sección 10.1 del plan
 
 ## Solo ruta crítica
 

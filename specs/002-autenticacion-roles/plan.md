@@ -17,6 +17,11 @@ búsqueda por DNI (PO-3: `POST /api/usuarios/buscar-por-dni`, secciones 5, 7 y 8
 un DNI sin cuenta (sección 2, paso 3) y el cierre de sesión con cuerpo (sección 3); el diseño de los dos está en la
 sección 9. Se suman filas a "Decisiones" y a "Riesgos".
 
+**Ataque ronda 2 (13/11/2026, sobre 16b0e38):** criterios 55 a 59 de `spec.md` (decisiones AR2-1 a AR2-5). Cambian
+desactivar, reactivar, crear y restablecer (sección 5: el actor se bloquea y se comprueba dentro de la transacción que
+escribe), el orden del cambio de clave (sección 4, pasos 1 a 3) y la sesión en la web (sección 8). El diseño está en la
+sección 10. Se suman filas a "Decisiones" y a "Riesgos".
+
 ## Módulos afectados
 
 ```
@@ -130,6 +135,10 @@ reemplaza por la lectura de la configuración.
    `CLAVE_ACTUAL_INCORRECTA` (criterio 25); si no, `UPDATE` (hash, `debe_cambiar_clave = false`, `version_token + 1`,
    contador en 0) y auditoría `USUARIO_CLAVE_CAMBIADA`. Se firma un token nuevo con la versión nueva.
 
+_(Ataque ronda 2, observación 2:)_ la comparación con el DNI del paso 1 pasa después de verificar la `claveActual` del
+paso 3 (criterio 58; sección 10.3). El paso 4 ya cumple el criterio 56 (fila propia con `FOR UPDATE`, `ACTIVO` y la
+misma versión).
+
 ### 5. Usuarios (`UsuariosService`)
 
 - `crearEnTransaccion`: `INSERT … ON CONFLICT (academia_id, dni) DO NOTHING RETURNING`; sin fila, 409 `DNI_EN_USO`;
@@ -148,6 +157,8 @@ reemplaza por la lectura de la configuración.
   tienen un segundo segmento y validan UUID).
 - _(PO-4.)_ `listarPersonal` no filtra por estado. _(PO-5.)_ `reactivar` sobre un alumno, 404 (mismo `SELECT … FOR
   UPDATE` que desactivar, que ya filtra el personal); restablecer no toca `estado`.
+- _(Ataque ronda 2, R2-F1.)_ Crear, desactivar, reactivar y restablecer (transacción 2) bloquean y comprueban al actor
+  dentro de la transacción que escribe, y reactivar sobre sí mismo es 409 (criterios 55 a 57; sección 10.1).
 
 ### 6. Superadmin y administradores
 
@@ -178,6 +189,8 @@ ampliación del criterio 43 usa nivel `trace`.
 - _(Precisión del orquestador (13/11/2026), PO-3.)_ `/panel/restablecer` busca con `POST /api/usuarios/buscar-por-dni`
   (una mutación de TanStack Query o una consulta con `POST`); el DNI no va en la dirección de la página (`?dni=`) ni
   en la clave de una consulta que se guarde fuera de la memoria.
+- _(Ataque ronda 2, observación 1.)_ La sesión se vuelve a pedir al recuperar el foco y antes de cada acción; si la
+  identidad cambió, se vacía la caché y se va a `/panel` (criterio 59; sección 10.4).
 
 ### 9. Ataque ronda 1 (criterios 53 y 54)
 
@@ -226,6 +239,87 @@ Diseño:
 - Las demás rutas siguen con las reglas de 001 (criterios 74, 89 y 105); `DELETE /api/plataforma/sesion` no cambia
   (pregunta T4 de `spec.md`).
 
+### 10. Ataque ronda 2 (criterios 55 a 59)
+
+#### 10.1. Actor vigente dentro de la transacción (R2-F1, criterios 55 a 57)
+
+Hoy: el middleware (`proteccion-academia.ts` → `autenticar`) lee la fila del actor sin bloqueo al empezar la
+petición; `UsuariosService.cambiarEstado` bloquea solo la fila del objetivo y solo rechaza "sobre sí mismo" al
+desactivar; `crearPersonal` no lee al actor; `restablecer` (transacción 2) bloquea solo al objetivo. `cambiarClave`
+(transacción final) ya bloquea la fila propia y compara `estado` y `version_token`.
+
+Diseño:
+
+- **Una función reutilizable** en `modulos/autenticacion` (exportada por su `index.ts`, para 007 y las siguientes si
+  se acepta T5), por ejemplo `bloquearActorVigente(tx, sesion, { objetivoId?, permitirCambioPendiente? })`:
+  - Sin objetivo: `SELECT id, estado, version_token, debe_cambiar_clave FROM usuarios WHERE academia_id = $1 AND
+    id = $2 FOR SHARE`.
+  - Con objetivo distinto del actor: **una sola sentencia** que bloquea las dos filas en un orden fijo, `… WHERE
+    academia_id = $1 AND id IN ($actor, $objetivo) ORDER BY id FOR UPDATE` (el bloqueo se toma tras ordenar, así que
+    todas las transacciones lo toman en el mismo orden). Devuelve las dos filas; la del objetivo se usa para los 404 y
+    409 de siempre.
+  - Comprueba primero al actor: falta, no `ACTIVO`, `version_token` distinto de `sesion.versionToken` o
+    `debe_cambiar_clave` (salvo `permitirCambioPendiente`) → 401 `NO_AUTENTICADO` con el mismo error que el middleware
+    (`noAutenticado()`), y un `warn` del registro técnico con `usuarioId`, `academiaId` e `ip` (nunca el DNI).
+  - Necesita la versión del token: `SesionVerificada.versionToken` ya existe; el controlador pasa la sesión (o un
+    `UsuarioAutenticado` ampliado con `versionToken`, sin exponerlo en las respuestas) al servicio.
+- **Crear (`crearPersonal`):** dentro de su `conAcademia`, primero la función sin objetivo, después
+  `crearEnTransaccion` (no cambia; 007 hará su propia comprobación en su transacción).
+- **Desactivar y reactivar (`cambiarEstado`):** si `id === actor.id`, 409 `OPERACION_SOBRE_SI_MISMO` antes de abrir la
+  transacción (también para reactivar, criterio 55); dentro, la función con objetivo reemplaza al `SELECT … FOR UPDATE`
+  del objetivo; luego 404, 409 y la escritura como hoy.
+- **Restablecer:** la transacción 1 queda como está (solo lee); en la transacción 2, la función con objetivo reemplaza
+  al `SELECT … FOR UPDATE` del objetivo. El Superadmin (criterio 40) no pasa por la función (no es una fila de
+  `usuarios`; pregunta T5).
+- **Cambio de clave:** no cambia la transacción final (ya cumple el criterio 56 con `permitirCambioPendiente`); si se
+  quiere uniformar, puede usar la función sin objetivo con `FOR UPDATE`.
+- **Por qué no `FOR SHARE` en las dos filas o dos sentencias separadas:** con "actor `FOR SHARE`, luego objetivo
+  `FOR UPDATE`", dos administradores que se desactivan entre sí se esperan en cruz y PostgreSQL aborta uno con `40P01`
+  (500), contra el criterio 57. Con un solo `SELECT … ORDER BY id FOR UPDATE` no hay ciclo. Con una sola fila (crear),
+  `FOR SHARE` basta y deja que el mismo actor cree varios a la vez.
+- **Costo:** una lectura con bloqueo más por escritura, sobre una fila ya en caché. Las peticiones de un mismo actor que
+  desactivan o restablecen se ordenan entre sí (milisegundos).
+
+**Pruebas de carrera (criterio 56).** La prueba usa su propio `pg.Client` (rol propietario o el de la app con el
+contexto de la academia, como prefiera el test-writer con las utilidades de 001) para abrir la transacción que retiene
+la fila del actor. Para saber, sin esperas fijas, que la petición llegó al bloqueo, consulta en un bucle corto
+`SELECT pid FROM pg_stat_activity WHERE $pidPrueba = ANY(pg_blocking_pids(pid))` desde otra conexión, y deja de
+consultar en cuanto hay una fila o la petición respondió; un límite de seguridad (por ejemplo, 10 s) solo evita que la
+prueba se cuelgue y, si se alcanza, la prueba falla con un mensaje claro. La petición se envía sin `await` (con
+`supertest` o `fetch` sobre `app.listen(0)`), y se espera después del `COMMIT` o `ROLLBACK`. El caso de control
+(criterio 56 (vi)) demuestra que la espera pasa de verdad. La prueba del criterio 57 lanza las dos peticiones con
+`Promise.all` en varias rondas (por ejemplo, 20, con administradores nuevos en cada una) y comprueba el resultado de
+cada ronda, sin cronómetro.
+
+#### 10.2. Reactivar la propia cuenta (criterio 55)
+
+Cubierto en 10.1: la comparación `id === actor.id` antes de la transacción, para desactivar y reactivar. Un id que no es
+UUID sigue siendo 404 (criterio 33): no puede ser igual al del actor.
+
+#### 10.3. Orden del cambio de clave (observación 2, criterio 58)
+
+En `cambiarClave`, mover `if (datos.claveNueva === fila.dni)` después de `verificarClave(fila.clave_hash,
+datos.claveActual)` y del conteo del fallo, junto a la comparación con la actual. El orden queda: esquema (en el
+controlador) → lectura y versión (401) → bloqueo (423) → `claveActual` (400 `CLAVE_ACTUAL_INCORRECTA` y conteo, o 423)
+→ DNI y actual (400 `SOLICITUD_INVALIDA` en `claveNueva`) → hash y transacción final. El registro técnico no cambia.
+
+#### 10.4. La web ante un cambio de sesión (observación 1, criterio 59)
+
+- `useSesionAcademia`: `refetchOnWindowFocus: true` (TanStack Query escucha `focus` y `visibilitychange`), sin
+  reintentos.
+- Una función o gancho, por ejemplo `useConfirmarSesion()`, que antes de cada mutación de las páginas de academia hace
+  `cliente.fetchQuery({ queryKey: CLAVE_SESION, queryFn: api.obtenerSesion, staleTime: 0 })` y compara `usuario.id` y
+  `usuario.academia.nombreCorto` con los de la identidad que la página muestra (la del contexto de `RutaConSesion`). Si
+  coinciden, sigue con la mutación; si no, no la envía. Los ganchos de `modulos/usuarios/hooks.ts` y `useCambiarClave`
+  la llaman dentro de su `mutationFn`, antes de la llamada a la API, para que ningún botón se la salte.
+- Un componente en `RutaConSesion` recuerda la identidad mostrada; cuando la consulta de la sesión trae otra (por el
+  foco o por la comprobación previa), llama a `cliente.clear()` salvo la sesión nueva (o `clear()` y
+  `setQueryData(CLAVE_SESION, nueva)`), navega a `/panel` y muestra el aviso. 401, academia suspendida y cambio
+  obligatorio siguen el camino de hoy (`useAlPerderSesion` y `RutaConSesion`).
+- `useCerrarSesionAcademia` no llama a la comprobación.
+- Prueba de componentes en `frontend/src/modulos/sesion/` o `usuarios/` (Vitest y Testing Library, con la misma forma de
+  simular la API que `Usuarios.test.tsx`), con los casos del criterio 59.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -242,6 +336,11 @@ Diseño:
 | Con un DNI sin cuenta, la misma transacción de conteo sobre un id aleatorio inexistente (AR1-1, criterio 53) | Retardo fijo, aleatorio o tiempo mínimo de respuesta | Iguala la causa (las mismas sentencias y viajes a la base), no tapa el síntoma; un retardo depende de la carga y la máquina y alarga todos los ingresos |
 | Comprobar F1 por las sentencias SQL, no por milisegundos (AR1-1) | Prueba de tiempos en la CI | Determinista en Linux y Windows; los tiempos los mide el adversarial en la ronda 2 |
 | `DELETE /api/sesion` fuera del lector de cuerpos (AR1-2, criterio 54) | Leer el cuerpo y tolerar errores solo en esa ruta | No leer es más simple y no deja casos (tamaño, compresión, UTF-8) que se olviden |
+| Actor bloqueado y comprobado dentro de la transacción que escribe (AR2-1, criterio 56) | Solo el middleware; `SERIALIZABLE`; bloqueo consultivo por usuario | El middleware deja la ventana abierta; `SERIALIZABLE` obliga a reintentar todas las escrituras; el consultivo no está atado a la fila y cada escritor debe recordarlo |
+| Actor y objetivo bloqueados en una sola sentencia ordenada por `id` (AR2-1, criterio 57) | Actor `FOR SHARE` y luego objetivo `FOR UPDATE` | Las dos sentencias se esperan en cruz cuando dos administradores se desactivan entre sí (`40P01`, 500) |
+| Pruebas de carrera que retienen el bloqueo desde la prueba y esperan con `pg_blocking_pids` (criterio 56) | Muchas peticiones en paralelo con esperas fijas (como `b3` y `b5`) | Deterministas en Linux y Windows; no dependen de la velocidad de la máquina |
+| `claveActual` antes de comparar la nueva con el DNI (AR2-3, criterio 58) | Dejar de rechazar el DNI como clave nueva | Contradice DR-2 y el criterio 23 |
+| Volver a pedir la sesión al recuperar el foco y antes de cada acción (AR2-2, criterio 59) | Consultar cada pocos segundos; `BroadcastChannel` entre pestañas | Más tráfico y sigue dejando ventana; el canal no ve un ingreso desde una ventana sin la web cargada |
 | Búsqueda por DNI con `POST /api/usuarios/buscar-por-dni` y el DNI en el cuerpo (PO-3) | `GET /api/usuarios/por-dni/{dni}` con el segmento redactado en el registro | La redacción falla abierta (cada lugar que registre la dirección debe taparlo) y no alcanza a los registros del proxy del hosting; con `POST` el DNI no está en la dirección |
 
 ## Migraciones
@@ -265,6 +364,16 @@ Diseño:
   la mide con los umbrales del criterio 53. Si no los cumple, opciones para que decida el orquestador: igualar la
   escritura (por ejemplo, un `UPDATE` sin cambios de valor sobre una fila propia, con su costo de bloqueos) o aceptarla
   como riesgo junto con "Saber si un DNI tiene cuenta".
+  _(Ataque ronda 2, AR2-5:)_ medido sobre 16b0e38 con 300 rondas pareadas: 0,43 ms de diferencia de medianas y 11 % de
+  muestras sobre el percentil 90 (control: 0,25 ms); cumple. Residuo de unos 0,2 a 0,4 ms por el `fdatasync` del
+  `COMMIT` que escribe, que puede crecer en Docker Desktop en Windows o en el disco del hosting: se vuelve a medir allí
+  (tarea T17.19).
+- **Pruebas de carrera con `pg_blocking_pids` (ronda 2):** si el pool de la API y la conexión de la prueba no son el
+  mismo servidor (otra base o puerto), la espera no se detecta; el límite de seguridad hace fallar la prueba con un
+  mensaje claro y el test-writer avisa al orquestador. En Windows con Docker, `pg_blocking_pids` funciona igual.
+- **Bloqueo de la fila del actor (ronda 2):** el ingreso (`aceptarIntento`, `FOR UPDATE`) y el cierre de sesión
+  (`UPDATE`) de la misma cuenta esperan a una escritura en curso de ese actor, y viceversa; son milisegundos. Si una
+  historia siguiente bloquea filas de `usuarios` en otro orden, debe respetar el orden por `id` (regla de T5).
 - **Id aleatorio del conteo simulado (F1):** si `randomUUID()` coincidiera con el id de un usuario de esa academia, se
   contaría un fallo en su cuenta. La probabilidad es despreciable (122 bits aleatorios); se acepta.
 - **Espiar `pg` desde la prueba (F1):** si el módulo `pg` que carga la prueba no es la misma instancia que usa el
