@@ -83,7 +83,8 @@ protegida nueva), T3b (ajuste de las pruebas ya escritas), T6, T11 y T15.
 
 F1: el tiempo de respuesta revela si un DNI tiene cuenta (criterio 53). F2: `DELETE /api/sesion` con cuerpo responde
 400 y no cierra (criterio 54). Decisiones AR1-1 y AR1-2 de `spec.md`. T18 en adelante esperan a que la ronda 2 no
-encuentre fallas. _(Ataque ronda 2: la ronda 2 encontró R2-F1; ahora esperan a la ronda 3, T17.17.)_
+encuentre fallas. _(Ataque ronda 2: la ronda 2 encontró R2-F1; ahora esperan a la ronda 3, T17.17.)_ _(Ataque ronda
+3: la ronda 3 encontró F1 y F2; ahora esperan a la ronda 4, T17.26.)_
 
 - [x] T17.1 · especificador · Criterios 53 y 54 (sección K), notas en los criterios 7, 17, 34 y 36, contrato, DT-1,
       "Impacto", "Riesgos aceptados" y preguntas N11 y T4; plan, sección 9 (criterios 53, 54)
@@ -155,11 +156,12 @@ AR2-1 a AR2-5 de `spec.md`. _(Ataque ronda 1:)_ "T18 en adelante esperan a que l
       tocar las pruebas de componentes existentes salvo para sumar casos (criterio 59)
 - [ ] T17.16 · orquestador · `git diff` de los commits de T17.13 a T17.15: ninguno toca pruebas protegidas (de 001 ni
       de 002); suite, lint y tipos en verde (criterios 1 a 59)
-- [ ] T17.17 · adversarial · Ronda 3, con la spec y el código: carreras entre desactivar, restablecer, cerrar sesión o
+- [x] T17.17 · adversarial · Ronda 3, con la spec y el código: carreras entre desactivar, restablecer, cerrar sesión o
       cambiar la clave y las escrituras en curso del mismo actor (también dos pestañas del mismo usuario), interbloqueos
       con varias filas, el orden de los errores (401 frente a 404 y 409), el cambio de clave con DNIs candidatos, y la
       web con dos pestañas y dos academias (criterio 59). Si encuentra fallas, se repite el ciclo (criterios 55 a 59 y
-      toda la ruta crítica)
+      toda la ruta crítica) _(Hecha el 13/11/2026 sobre 54c9da0: las correcciones de la ronda 2 aguantan; dos fallas,
+      F1 y F2, y dos observaciones; se siguen en "Ataque ronda 3".)_
 - [ ] T17.18 · orquestador · Decidir T5 (¿"actor vigente dentro de la transacción" como regla para las historias
       siguientes?). No bloquea; si se acepta, T20 lo documenta en `docs/arquitectura.md`
 - [ ] T17.19 · adversarial (con el orquestador) · Cuando se elija el hosting (D-21), volver a medir los tiempos del
@@ -167,13 +169,61 @@ AR2-1 a AR2-5 de `spec.md`. _(Ataque ronda 1:)_ "T18 en adelante esperan a que l
       los umbrales del criterio 53; si no los cumple, el orquestador decide entre igualar la escritura y aceptarlo. No
       bloquea el cierre de 002: el orquestador la anota en el backlog junto a la revisión de DT-1 (criterio 53)
 
+### Ataque ronda 3 (13/11/2026, sobre 54c9da0)
+
+Las correcciones de la ronda 2 aguantan. F1 (media, ruta crítica): el fallo de la `claveActual` en
+`POST /api/sesion/clave` se cuenta con la sesión ya revocada (criterio 60). F2 (media, web): la web envía la acción si
+la misma persona vuelve con el cambio obligatorio pendiente (criterio 61, no crítico). Observaciones: escrituras en
+curso al suspender la academia (riesgo aceptado) y el Superadmin dentro de la transacción (nota en N11). Decisiones
+AR3-1 a AR3-4 y nota de proceso sobre `b6b2d77` en `spec.md`. T18 en adelante esperan a que la ronda 4 no encuentre
+fallas.
+
+- [x] T17.20 · especificador · Criterios 60 y 61 (sección M), notas en los criterios 24, 56, 58 y 59, casos límite,
+      contrato, "Riesgos aceptados" (riesgo nuevo "Escrituras en curso al suspender la academia"), decisiones AR3-1 a
+      AR3-4, nota de proceso sobre `b6b2d77`, notas en N11 y T5; plan, sección 11 (criterios 60, 61)
+- [ ] T17.21 · test-writer · Prueba protegida de integración del criterio 60, en rojo, desde la spec y sin mirar la
+      implementación, con `conFilaRetenida`: (i) `desactivar` y (ii) `solo-version`, con `COMMIT` y con 0 y 4 fallos
+      previos → la petición esperó el bloqueo, 401 `NO_AUTENTICADO`, contador igual al previo, `bloqueado_hasta` nulo,
+      `clave_hash` igual y sin auditoría nueva (en (i), X `INACTIVO` con la versión que dejó la prueba); (iii) control
+      `bloquear-sin-cambiar` con `ROLLBACK` → 400 y contador 1 con 0 previos, 423 con contador 5 y `bloqueado_hasta`
+      futuro con 4 previos; (iv), opcional, `solo-cambio-pendiente` con `COMMIT` → 400 y contador 1. Un X nuevo por
+      caso. Si la espera con `pg_blocking_pids` no ve a la API, avisar al orquestador (criterio 60)
+- [ ] T17.22 · tester · Confirmar que T17.21 falla por la razón esperada: en (i) y (ii), 400
+      `CLAVE_ACTUAL_INCORRECTA` o 423 en lugar de 401, con el contador + 1 (y, con 4 previos, `bloqueado_hasta`
+      fijado). Pueden pasar ya, y no es un error: (iii) y (iv). Que ninguna falle por sintaxis, importaciones o el límite
+      de seguridad sin causa. Antes del commit, `git diff --cached --stat` debe mostrar solo archivos de prueba (nota de
+      proceso sobre `b6b2d77`, `spec.md`). Commit del orquestador: "Pruebas protegidas (002): ataque ronda 3 (en rojo)"
+      (criterio 60)
+- [ ] T17.23 · backend · F1: separar el conteo en una función que recibe la transacción, sin cambiar el del ingreso, y
+      contar el fallo del cambio de clave en una transacción que antes llama a `bloquearActorVigente(…, {
+      permitirCambioPendiente: true, exclusivo: true })` (plan, sección 11.1), sin tocar las pruebas protegidas; la del
+      criterio 53 debe seguir en verde (criterios 24, 53, 56, 58, 60)
+- [ ] T17.24 · frontend · F2: `useConfirmarSesion` también rechaza, sin enviar la acción, la sesión con el cambio
+      obligatorio pendiente, con la opción `permitirCambioPendiente` en `useCambiarClave` (plan, sección 11.2), con su
+      prueba de componentes (no protegida): "Crear usuario" con la misma identidad y `debeCambiarClave: true` no envía
+      `POST /api/usuarios` y lleva a `/cambiar-clave`; en `/cambiar-clave` el formulario sí envía
+      `POST /api/sesion/clave` (control). Sin tocar las pruebas de componentes existentes salvo para sumar casos
+      (criterios 59, 61)
+- [ ] T17.25 · orquestador · `git diff` de los commits de T17.23 y T17.24: ninguno toca pruebas protegidas (de 001 ni
+      de 002); suite, lint y tipos en verde (criterios 1 a 61)
+- [ ] T17.26 · adversarial · Ronda 4, con la spec y el código: el conteo del fallo del cambio de clave frente a
+      desactivar, restablecer, cerrar sesión y otro cambio de clave en curso (también con 4 fallos previos y fallos
+      simultáneos de la misma sesión, sin `40P01`); que el ingreso siga con la misma secuencia del criterio 53 y los
+      tiempos de la ronda 2; otras escrituras laterales de una sesión revocada; y la web con la misma identidad y el
+      cambio obligatorio en otra pestaña (criterio 61). Si encuentra fallas, se repite el ciclo (criterios 60, 61 y
+      toda la ruta crítica)
+
 - [ ] T18 · revisor · Comparar con la spec y las convenciones (`CLAUDE.md` y "Reglas para las historias siguientes" de
-      `docs/arquitectura.md`); confirmar con `git diff` que ningún commit de implementación tocó pruebas protegidas
+      `docs/arquitectura.md`); confirmar con `git diff` que ningún commit de implementación tocó pruebas protegidas.
+      _(Ataque ronda 3:)_ el commit de pruebas `b6b2d77` trae también `usuarios.service.ts`; es el caso registrado en la
+      nota de proceso de `spec.md` ("Decisiones"), no una violación
 - [ ] T19 · tester · Suite completa, lint y verificación de tipos (Linux; la CI también en Windows)
 - [ ] T20 · documentador · Commit final, tareas marcadas, `README.md`, `docs/guia-local-windows.md` (criterio 52) y
       `docs/arquitectura.md` (sesión de academia, matriz de permisos, `@Permiso` y `@SoloSesion` para las historias
       siguientes). _(Ataque ronda 2:)_ si el orquestador acepta T5, también la regla "actor vigente dentro de la
-      transacción que escribe" y la función reutilizable de la sección 10.1 del plan
+      transacción que escribe" y la función reutilizable de la sección 10.1 del plan. _(Ataque ronda 3:)_ con la
+      precisión de la nota de T5: la regla vale para toda transacción que escribe, también un contador en la propia
+      fila (criterio 60)
 
 ## Solo ruta crítica
 

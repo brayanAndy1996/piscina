@@ -34,6 +34,15 @@
   con notas _(ataque ronda 2)_ los criterios 14, 16, 22, 23, 24, 30, 31, 32, 35, 39 y 53, los casos límite, el
   contrato, DT-3, "Riesgos aceptados" y "Preguntas abiertas" (pregunta técnica nueva T5, que no bloquea), sin borrar
   texto.
+- **Ataque ronda 3 (13/11/2026, sobre el commit 54c9da0):** las correcciones de la ronda 2 aguantan (reactivación
+  propia 5 de 5, creación tras desactivar 3 de 3; 3 × 60 rondas de 16 operaciones cruzadas sin 500 ni `40P01`). El
+  adversarial encontró dos fallas de severidad media: F1 (el fallo de la `claveActual` en `POST /api/sesion/clave` se
+  cuenta aunque la sesión ya se haya revocado) y F2 (la web envía la acción si la misma persona vuelve con el cambio
+  obligatorio pendiente), y dos observaciones. Se agregan el criterio 60, de ruta crítica, y el 61, de la web (no
+  crítico, con prueba de componentes), en la sección M, con las decisiones del orquestador AR3-1 a AR3-4 y una nota de
+  proceso sobre el commit `b6b2d77` ("Decisiones"). Se marcan con notas _(ataque ronda 3)_ los criterios 24, 56, 58 y
+  59, los casos límite, el contrato, "Riesgos aceptados" (riesgo nuevo "Escrituras en curso al suspender la academia")
+  y las preguntas N11 y T5, sin borrar texto. No hay preguntas nuevas.
 
 ## Objetivo
 
@@ -77,10 +86,17 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   sigue escribiendo (se reactiva o se crea una cuenta de respaldo) es exactamente quien perdió el acceso conservándolo,
   el caso para el que existe desactivar (DR-6). El 58 es autenticación: un camino que confirma un DNI sin contar un
   intento ayuda a adivinar la clave inicial (RN-02) y revela un dato personal (Ley 29733).
+- **M. Ataque ronda 3 (60):** autenticación y permisos: una sesión ya revocada (cuenta desactivada, sesión cerrada o
+  clave restablecida) no debe poder escribir en la cuenta; contando fallos con ella se bloquea la cuenta 15 minutos o
+  se deshace parte de un restablecimiento (el contador vuelve a 1), justo lo que el criterio 56 cierra para las demás
+  escrituras.
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 44 a 52 (esquemas, semilla, web,
 E2E y documentación) y 59 (la web ante un cambio de sesión en otra pestaña; ataque ronda 2: la API sigue decidiendo con
 la sesión de la cookie, así que no hay acceso a datos ajenos, solo una pantalla que confunde de quién son los datos).
+_(Ataque ronda 3:)_ también el 61 (la web con la misma identidad y el cambio obligatorio pendiente), por la misma razón:
+la API ya rechaza esa acción con 403 `CAMBIO_DE_CLAVE_OBLIGATORIO` (criterio 21), así que no escribe nada; solo se envía
+una petición que no debía salir y la pantalla no explica por qué.
 
 ## Criterios de aceptación
 
@@ -226,6 +242,10 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
 
     _Ataque ronda 2 (observación 2), 13/11/2026:_ vale también cuando la `claveNueva` es igual al DNI de la cuenta o a
     cualquier otro DNI: la misma respuesta y el mismo conteo (criterio 58).
+
+    _Ataque ronda 3 (F1), 13/11/2026:_ "cuenta un intento fallido" solo si, al contarlo, la sesión sigue vigente: si la
+    cuenta se desactivó o su `version_token` cambió mientras la petición estaba en curso, responde 401 `NO_AUTENTICADO`
+    sin contar (criterio 60).
 25. Dados dos cambios simultáneos con la misma `claveActual` correcta y claves nuevas distintas, entonces uno responde
     200 y el otro 400 `CLAVE_ACTUAL_INCORRECTA` o 401, y la clave que queda es la del que respondió 200. _(crítico)_
 
@@ -532,6 +552,11 @@ tiene `version_token` igual al `ver` del token y `debe_cambiar_clave = false`.
       prueba demuestra que la petición pasa de verdad por el bloqueo y que el 401 de los otros casos no es casual.
 
     _(crítico; prueba protegida de integración.)_
+
+    _Ataque ronda 3 (F1), 13/11/2026:_ en `POST /api/sesion/clave`, la b) no alcanzaba a la transacción que cuenta el
+    fallo de una `claveActual` equivocada: con la sesión ya revocada, contaba el intento (y podía bloquear la cuenta)
+    sin pasar por la comprobación del actor. Esa transacción también escribe y también cumple a) y b); lo precisa el
+    criterio 60.
 57. **Dos administradores que se desactivan entre sí a la vez.** _(Ataque ronda 2, R2-F1, consecuencia del criterio
     56.)_ Dados dos `ADMIN` activos de A, X e Y, cuando X envía `POST /api/usuarios/{Y}/desactivar` e Y envía
     `POST /api/usuarios/{X}/desactivar` al mismo tiempo, entonces una petición responde 200 y la otra 401
@@ -555,6 +580,10 @@ tiene `version_token` igual al `ver` del token y `debe_cambiar_clave = false`.
       criterio 9 (el 5.º responde 423).
 
     _(crítico; prueba protegida de integración.)_
+
+    _Ataque ronda 3 (F1), 13/11/2026:_ en el paso 3, el intento se cuenta en una transacción que antes comprueba que la
+    sesión sigue vigente; si no, 401 `NO_AUTENTICADO` sin contar, con prioridad sobre el 400 y el 423 de ese paso
+    (criterio 60). El orden de los pasos no cambia.
 59. **La web reacciona a un cambio de sesión en otra pestaña.** _(Ataque ronda 2, observación 1, decisión AR2-2; DT-3.)_
     Dada una página de academia (`/panel` y sus páginas, `/cambiar-clave`) abierta con la sesión del usuario U de la
     academia A, cuando en otra pestaña del mismo navegador se entra con otro usuario o a otra academia (la cookie
@@ -576,6 +605,72 @@ tiene `version_token` igual al `ver` del token y `debe_cambiar_clave = false`.
     lista de usuarios a la vista, `GET /api/sesion` pasa a devolver un usuario de B; al disparar `focus`, la cabecera
     muestra B y la lista de A ya no está. Con la sesión cambiada, "Crear" en "Nuevo usuario" no envía
     `POST /api/usuarios` y lleva a `/panel` con el aviso; con la misma sesión, sí lo envía (control).)_
+
+    _Ataque ronda 3 (F2), 13/11/2026:_ la d) se cumplía solo cuando además cambiaba la identidad: con la misma persona y
+    academia, pero con `debeCambiarClave: true` (su clave se restableció y volvió a entrar con el DNI en otra pestaña),
+    la comprobación previa dejaba pasar la acción. El criterio 61 precisa que el cambio obligatorio pendiente también
+    detiene la acción, salvo la de cambiar la propia contraseña.
+
+### M. Ataque ronda 3 (13/11/2026)
+
+Criterios agregados por las fallas F1 y F2 del adversarial en la ronda 3 (sobre 54c9da0), con las decisiones AR3-1 y
+AR3-2 del orquestador. "Actor" y "actor vigente" tienen el sentido de la sección L.
+
+60. **Un fallo de la clave actual solo se cuenta con la sesión todavía vigente.** _(Ataque ronda 3, F1, decisión AR3-1;
+    amplía el criterio 56 b.)_ Dada una sesión válida del usuario X de A, cuando envía `POST /api/sesion/clave` con un
+    cuerpo válido y una `claveActual` equivocada, entonces:
+    - a) La transacción que cuenta el fallo, antes de leer o escribir `intentos_fallidos` y `bloqueado_hasta`, bloquea la
+      fila de X en modo exclusivo (`FOR UPDATE`) y exige que X siga vigente, sin exigir `debe_cambiar_clave = false`
+      (como en el criterio 56 a para esta ruta): la función del criterio 56, `bloquearActorVigente(…, {
+      permitirCambioPendiente: true, exclusivo: true })`.
+    - b) Si X ya no está vigente (se desactivó, o su `version_token` ya no es el `ver` del token por un cierre de
+      sesión, un restablecimiento o un cambio de clave en otra sesión), responde 401 `NO_AUTENTICADO` y no cuenta el
+      intento: `intentos_fallidos`, `bloqueado_hasta` y `actualizado_en` de X quedan como los dejó quien lo cambió, no
+      cambia ninguna otra fila y no se inserta nada (ni auditoría). El 401 tiene prioridad sobre el 400
+      `CLAVE_ACTUAL_INCORRECTA` y sobre el 423 que ese fallo habría dado (el 5.º fallo).
+    - c) Si X sigue vigente, nada cambia: 400 `CLAVE_ACTUAL_INCORRECTA` y contador + 1, o 423 y `bloqueado_hasta = ahora
+      + 15 min` si es el 5.º fallo (criterios 9, 24 y 58). Con `debe_cambiar_clave = true` y lo demás vigente, X sigue
+      vigente para esta ruta y el fallo se cuenta.
+    - d) La comprobación de cuenta bloqueada previa a verificar la clave (paso 2 del criterio 58) no escribe nada y
+      puede responder 423 a una sesión que se revoca en ese mismo instante; ahí no se exige el 401.
+    - e) El conteo de los fallos del ingreso (`POST /api/a/{nombreCorto}/sesion`) no cambia: no hay sesión ni actor, y
+      su secuencia de sentencias sigue siendo la misma en los cuatro casos del criterio 53.
+
+    **Pruebas de carrera deterministas,** con `conFilaRetenida` de `backend/test/utilidades/carreras.ts` (la espera con
+    `pg_blocking_pids` y el límite de seguridad del criterio 56). X es un usuario de A con una clave conocida distinta
+    de su DNI y `debe_cambiar_clave = false`; la petición es `POST /api/sesion/clave` con su cookie, una `claveActual`
+    equivocada y una `claveNueva` válida. Con X todavía vigente según lo confirmado, la prueba retiene la fila de X,
+    envía la petición y espera a que quede esperando el bloqueo; después libera y comprueba la respuesta y la base:
+    - (i) `cambio: 'desactivar'`, `liberar: 'COMMIT'`, con 0 fallos previos y con 4: la petición esperó el bloqueo,
+      responde 401 `NO_AUTENTICADO`; X queda `INACTIVO`, con el `version_token` que dejó la prueba, el mismo
+      `intentos_fallidos` que antes (0 o 4), `bloqueado_hasta` nulo, la misma `clave_hash` y sin auditoría nueva.
+    - (ii) `cambio: 'solo-version'` (como un cierre de sesión en otro dispositivo o un restablecimiento),
+      `liberar: 'COMMIT'`, con 0 y 4 fallos previos: lo mismo que (i), con X `ACTIVO`.
+    - (iii) **Control:** `cambio: 'bloquear-sin-cambiar'`, `liberar: 'ROLLBACK'`, con 0 y 4 fallos previos: la petición
+      esperó el bloqueo y, al liberarlo, con 0 previos responde 400 `CLAVE_ACTUAL_INCORRECTA` y deja el contador en 1;
+      con 4, responde 423 `CUENTA_BLOQUEADA`, deja el contador en 5 y fija `bloqueado_hasta` en el futuro. Así la
+      prueba demuestra que el conteo pasa de verdad por el bloqueo y que el 401 de (i) y (ii) no es casual.
+    - (iv) Opcional, como precisión de la c): `cambio: 'solo-cambio-pendiente'`, `liberar: 'COMMIT'`, con 0 previos:
+      400 `CLAVE_ACTUAL_INCORRECTA` y contador en 1 (X sigue vigente para esta ruta).
+
+    Cada caso con un X nuevo. _(crítico; prueba protegida de integración.)_
+61. **La web no envía una acción con el cambio obligatorio pendiente.** _(Ataque ronda 3, F2, decisión AR3-2; precisa el
+    criterio 59 d.)_ Dada una página de academia abierta con la sesión del usuario U de la academia A, cuando la
+    comprobación previa del criterio 59 b trae la misma identidad (`usuario.id` y `academia.nombreCorto`), pero con
+    `debeCambiarClave: true`, entonces:
+    - a) no envía la acción (crear, desactivar, reactivar y restablecer usuarios, buscar por DNI) y hace lo del
+      criterio 59 d: `RutaConSesion` lleva a `/cambiar-clave` (criterio 47), sin el aviso de "Tu sesión cambió" del
+      59 c;
+    - b) la única excepción es la acción de cambiar la propia contraseña (`POST /api/sesion/clave` desde
+      `/cambiar-clave`): con la misma identidad, se envía aunque el cambio esté pendiente, porque es lo que lo resuelve
+      (criterio 21);
+    - c) si además cambió la identidad, rige el 59 c (la identidad se compara primero), también en `/cambiar-clave`.
+
+    _(Prueba obligatoria de componentes, Vitest y Testing Library con la API simulada, como la reproducción `w1` de la
+    ronda 3: con la sesión de un `ADMIN` U cargada en `/panel/usuarios` y el diálogo "Nuevo usuario" lleno,
+    `GET /api/sesion` pasa a devolver a U con `debeCambiarClave: true`; al pulsar "Crear usuario" no se envía ningún
+    `POST /api/usuarios` y la ruta pasa a `/cambiar-clave`. Control: en `/cambiar-clave`, con la sesión de U con
+    `debeCambiarClave: true`, enviar el formulario sí envía un `POST /api/sesion/clave`.)_
 
 ## Casos límite
 
@@ -609,10 +704,19 @@ tiene `version_token` igual al `ver` del token y `debe_cambiar_clave = false`.
 - **Un administrador desactivado con peticiones en curso** _(ataque ronda 2, R2-F1)_: las escrituras que ya pasaron el
   middleware responden 401 sin escribir (criterio 56); no puede reactivarse ni crear una cuenta de respaldo. Las
   lecturas en curso terminan y devuelven lo que leyeron (riesgo aceptado "Lecturas en curso al desactivar").
+  _(Ataque ronda 3, F1:)_ también un cambio de contraseña en curso con la `claveActual` equivocada: responde 401 y no
+  cuenta el fallo (criterio 60). Lo mismo si la sesión se revoca por un cierre de sesión o un restablecimiento.
+- **Restablecer la clave mientras el usuario intenta cambiarla con una actual equivocada** _(ataque ronda 3, F1)_: el
+  restablecimiento deja el contador en 0 y sube `version_token`; el fallo en curso responde 401 y no lo vuelve a 1
+  (criterio 60).
+- **La misma persona vuelve a entrar con el cambio obligatorio en otra pestaña** _(ataque ronda 3, F2)_: la pestaña ya
+  abierta no envía acciones y lleva a `/cambiar-clave` (criterio 61).
 - **Cambio de contraseña con una clave actual equivocada y la nueva igual a un DNI** _(ataque ronda 2, observación
   2)_: responde `CLAVE_ACTUAL_INCORRECTA` y cuenta el intento, sin revelar si ese DNI es el de la cuenta (criterio 58).
 - **Academia suspendida mientras un usuario cambia su contraseña:** la operación ya iniciada termina (riesgo aceptado
   en 001); la siguiente petición responde 403.
+  _(Ataque ronda 3, observación:)_ vale para cualquier escritura en curso, no solo el cambio de contraseña: el criterio
+  56 comprueba al actor, no a la academia (riesgo aceptado "Escrituras en curso al suspender la academia").
 - **Hora del servidor en otra zona:** el vencimiento del token y del bloqueo se calculan con `RELOJ` sobre instantes;
   la web muestra el último acceso en America/Lima.
 
@@ -669,6 +773,10 @@ _Ataque ronda 2 (R2-F1), 13/11/2026:_ en la fila de `POST /api/usuarios/{id}/rea
 `restablecer-clave` y `POST /api/sesion/clave`, el 401 incluye el caso del criterio 56 (el actor dejó de estar vigente
 mientras la petición estaba en curso), y en ese caso tiene prioridad sobre los 404 y 409 que se decidan en la misma
 transacción. En `POST /api/sesion/clave`, el orden de las comprobaciones es el del criterio 58.
+
+_Ataque ronda 3 (F1), 13/11/2026:_ en la fila de `POST /api/sesion/clave`, el 401 incluye también el caso del criterio
+60 (la sesión dejó de estar vigente mientras se contaba el fallo de una `claveActual` equivocada), con prioridad sobre
+el 400 `CLAVE_ACTUAL_INCORRECTA` y el 423 de ese fallo.
 
 Además, con `debe_cambiar_clave = true`, toda ruta de academia salvo `GET` y `DELETE /api/sesion` y
 `POST /api/sesion/clave` responde 403 `CAMBIO_DE_CLAVE_OBLIGATORIO` (criterio 21). Orden de las comprobaciones en una
@@ -919,6 +1027,17 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
 - **Lecturas en curso al desactivar** _(ataque ronda 2, R2-F1)_: una consulta que ya pasó el middleware cuando la
   cuenta se desactiva termina y devuelve lo que leyó. Son milisegundos, no cambian nada y la siguiente petición
   responde 401 (criterio 16); las escrituras sí se cortan (criterio 56).
+  _(Ataque ronda 3, F1:)_ también el conteo de un fallo de la `claveActual` (criterio 60).
+- **Escrituras en curso al suspender la academia** _(ataque ronda 3, observación; decisión AR3-3)_: `conAcademia` lee
+  `academias.estado` al empezar cada transacción, sin bloqueo. Una escritura cuya transacción ya pasó esa lectura
+  cuando el Superadmin suspende la academia termina y confirma (por ejemplo, crear un usuario o cambiar la propia
+  contraseña). Es la misma ventana que "Lecturas en curso al desactivar", ahora para escrituras y para la academia: son
+  milisegundos, lo escrito es una operación permitida un instante antes y queda en la auditoría, y la siguiente
+  petición responde 403 `ACADEMIA_SUSPENDIDA` (criterio 15). El caso límite "Academia suspendida mientras un usuario
+  cambia su contraseña" ya lo aceptaba para esa operación (riesgo aceptado en 001). Cerrarlo exigiría bloquear la fila
+  de la academia (`FOR SHARE`) en cada transacción de `conAcademia`, que pondría a esperar a toda la academia detrás de
+  cada suspensión y cambia 001; si alguna historia lo necesita (por ejemplo, cobros con la academia suspendida), se
+  revisa con ella.
 - **Cambio de sesión entre la comprobación de la web y la acción** _(ataque ronda 2, observación 1)_: entre el
   `GET /api/sesion` previo del criterio 59 y la acción, otra pestaña podría cambiar la sesión. La ventana es de
   milisegundos y la API decide igual con la sesión de la cookie, dentro de su academia y su rol: no se accede a datos
@@ -1077,6 +1196,49 @@ tras la desactivación), en el espacio de trabajo del ataque.
   `fdatasync` del `COMMIT` que escribe y se vuelve a medir en el hosting real (riesgo aceptado "Commit con escritura
   frente a commit vacío"; tarea T17.19).
 
+### Decisiones del orquestador tras el ataque, ronda 3 (13/11/2026)
+
+El adversarial atacó el commit 54c9da0. Las correcciones de la ronda 2 aguantan: reactivación propia 5 de 5 y creación
+tras desactivar 3 de 3 con 401 y sin escribir, y 3 × 60 rondas de 16 operaciones cruzadas sin 500 ni `40P01`.
+Reproducciones: `c1.test.ts` (F1) y `web/w1.test.tsx` (F2), en el espacio de trabajo del ataque.
+
+- **AR3-1 (F1, media, ruta crítica). El fallo de la `claveActual` se cuenta con la sesión ya revocada.**
+  `SesionAcademiaService.cambiarClave`, con una `claveActual` equivocada, cuenta el fallo con `contarFalloEnBase`
+  (`SELECT … FOR UPDATE` y `UPDATE` de `intentos_fallidos` y `bloqueado_hasta`) sin pasar por `bloquearActorVigente`.
+  Con la sesión revocada en carrera (desactivación o `version_token + 1`), respondía 400 o 423 y escribía: el contador
+  + 1, o un bloqueo de 15 minutos con 4 fallos previos; tras un restablecimiento en carrera, el contador quedaba en 1 en
+  lugar de 0. **Decidido:** el fallo se cuenta dentro de una transacción que antes bloquea y comprueba al actor
+  (`bloquearActorVigente(…, { permitirCambioPendiente: true, exclusivo: true })`); si ya no está vigente, 401
+  `NO_AUTENTICADO` sin contar (criterio 60), con pruebas deterministas con `conFilaRetenida`. Alternativas descartadas:
+  volver a leer al actor sin bloqueo antes de contar (la ventana sigue abierta); no contar los fallos del cambio de
+  clave (contradice el criterio 24 y deja probar claves con una sesión ajena sin límite); poner la comprobación dentro
+  de la función de conteo compartida con el ingreso (el ingreso no tiene actor, y cambiaría la secuencia de sentencias
+  del criterio 53).
+- **AR3-2 (F2, media, web, no crítica). La misma persona con el cambio obligatorio pendiente.** `useConfirmarSesion`
+  solo comparaba la identidad: si U volvía a entrar en otra pestaña con `debeCambiarClave: true`, la acción se enviaba
+  (la API la rechazaba con 403, pero la petición salía). **Decidido:** la comprobación previa también rechaza y no envía
+  cuando la sesión trae el cambio obligatorio pendiente, salvo en la propia acción de cambiar la clave (criterio 61),
+  con prueba de componentes. Alternativa descartada: dejarlo en manos del 403 de la API (contradice el 59 d y la
+  pantalla no explica por qué no se hizo la acción).
+- **AR3-3 (observación). Escrituras en curso al suspender la academia.** `conAcademia` lee `academias.estado` sin
+  bloqueo, así que una escritura en curso termina aunque el Superadmin suspenda la academia en ese instante.
+  **Decidido:** riesgo aceptado ("Escrituras en curso al suspender la academia"), sin criterio nuevo.
+- **AR3-4 (observación). El Superadmin no vuelve a comprobar su sesión dentro de la transacción.** Las rutas de
+  `/api/plataforma/…` (criterios 39 y 40) verifican la sesión del superadmin al empezar (001), pero no la vuelven a
+  comprobar con bloqueo en la transacción que escribe, a diferencia del criterio 56 para los usuarios de la academia.
+  **Decidido:** sin cambios en esta historia (como ya decía la pregunta T5); se anota junto a la pregunta N11 como
+  posible simetría futura.
+
+### Nota de proceso (ataque ronda 2)
+
+El commit `b6b2d77` ("Pruebas protegidas (002), ataque ronda 2: …") incluyó por error, además de las pruebas
+protegidas, `backend/src/modulos/usuarios/usuarios.service.ts`, que es código de producción de la corrección de la
+ronda 2. No se reescribe la historia publicada (`CLAUDE.md`, "Git"). El contenido de ese archivo es correcto y fue
+revisado. Para el revisor (T18) y para la comprobación con `git diff` de las tareas del orquestador: es el caso inverso
+a la regla (un commit de pruebas que trae código, no un commit de implementación que toca pruebas protegidas), queda
+registrado aquí y no se considera una violación. Desde la ronda 3, antes del commit de pruebas protegidas se revisa
+con `git diff --cached --stat` que solo traiga archivos de prueba (tarea T17.22).
+
 ### Decisiones de diseño (técnicas)
 
 - **Una cookie `aq_sesion` con `Path=/api` y rutas sin nombre corto** (`/api/sesion`, `/api/usuarios`; D-27: la
@@ -1100,6 +1262,8 @@ tras la desactivación), en el espacio de trabajo del ataque.
 _(Ataque ronda 1, 13/11/2026: hay dos preguntas nuevas, N11 para el responsable y T4 para el orquestador, al final de
 esta sección. Ninguna bloquea. El párrafo que sigue habla de las preguntas de la versión aprobada.)_
 _(Ataque ronda 2, 13/11/2026: se suma T5, para el orquestador, que tampoco bloquea.)_
+_(Ataque ronda 3, 13/11/2026: no hay preguntas nuevas; se agregan notas en N11 (posible simetría futura para el
+Superadmin, decisión AR3-4) y en T5.)_
 
 Ninguna. Las 10 preguntas de negocio de la versión en borrador (N1 a N10) las resolvió el responsable el 13/11/2026
 (DR-1 a DR-10 de 002) y las 3 técnicas (T1 a T3), el orquestador ese mismo día (DT-1 a DT-3); su texto y su propuesta
@@ -1127,6 +1291,15 @@ están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy
   **Propuesta del orquestador:** (a) ahora y (b) cuando exista el panel de auditoría de la academia (Fase 3). Valor
   provisional, que no bloquea: (a), como riesgo aceptado ("Riesgos aceptados"). Si Bryan elige (c), el especificador
   agrega los criterios y se vuelven a escribir las pruebas protegidas de los criterios 39 y 40.
+
+  _Ataque ronda 3 (observación, decisión AR3-4), 13/11/2026; posible simetría futura, sin cambios en esta historia:_
+  el Superadmin no vuelve a comprobar su sesión dentro de la transacción que crea o restablece un administrador
+  (criterios 39 y 40); la verifica solo al empezar la petición (001). Un superadmin cuya sesión se cierra o cuya clave
+  cambia mientras una de esas peticiones está en curso la termina igual. Hoy la ventana es pequeña (en 001 nadie
+  desactiva al superadmin desde la API) y lo hecho queda en la auditoría de la academia con actor `SUPERADMIN`. Cuando
+  se revise N11, o si una historia agrega cambios a la cuenta del superadmin, conviene darle la misma regla que el
+  criterio 56 da a los usuarios de la academia (bloquear y comprobar su fila de `superadmins` en la transacción que
+  escribe), teniendo en cuenta que esa fila es de la plataforma y la escritura corre en `conAcademia`.
 - **T4 (técnica, para el orquestador). Cierre de sesión del Superadmin con un cuerpo.** El criterio 54 hace que
   `DELETE /api/sesion` ignore el cuerpo, pero el criterio 74 de 001 dice que `DELETE /api/plataforma/sesion` con un
   cuerpo que no es JSON responde 400 sin cerrar. **Propuesta:** dejar 001 como está en esta historia (cambiarlo
@@ -1146,3 +1319,8 @@ están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy
   Superadmin queda como está en esta historia (en 001 ningún usuario de la API lo desactiva; la ventana se reduce a
   cambios de su propia cuenta hechos fuera de la web, que se revisan si alguna historia los agrega). Valor
   provisional, que no bloquea: la regla rige solo en las rutas del criterio 56.
+
+  _Ataque ronda 3, 13/11/2026:_ el criterio 60 suma a esas rutas el conteo del fallo de una `claveActual` equivocada en
+  `POST /api/sesion/clave`: la regla vale para **toda** transacción que escribe a pedido de un usuario de la academia,
+  también las que escriben en su propia fila como efecto secundario (un contador, una marca). Si se acepta T5, el
+  documentador lo dice así en `docs/arquitectura.md`. Sobre el Superadmin, ver la nota de N11 (AR3-4).

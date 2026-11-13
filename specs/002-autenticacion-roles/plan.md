@@ -22,6 +22,12 @@ desactivar, reactivar, crear y restablecer (sección 5: el actor se bloquea y se
 escribe), el orden del cambio de clave (sección 4, pasos 1 a 3) y la sesión en la web (sección 8). El diseño está en la
 sección 10. Se suman filas a "Decisiones" y a "Riesgos".
 
+**Ataque ronda 3 (13/11/2026, sobre 54c9da0):** criterios 60 y 61 de `spec.md` (decisiones AR3-1 a AR3-4). Cambian el
+conteo del fallo de la `claveActual` en el cambio de clave (sección 4, paso 3: dentro de una transacción que comprueba
+al actor) y la comprobación previa de la web (sección 10.4: también el cambio obligatorio pendiente). El diseño está
+en la sección 11. Se suman filas a "Decisiones" y a "Riesgos". Nota de proceso sobre el commit `b6b2d77` en "Decisiones"
+de `spec.md`.
+
 ## Módulos afectados
 
 ```
@@ -138,6 +144,10 @@ reemplaza por la lectura de la configuración.
 _(Ataque ronda 2, observación 2:)_ la comparación con el DNI del paso 1 pasa después de verificar la `claveActual` del
 paso 3 (criterio 58; sección 10.3). El paso 4 ya cumple el criterio 56 (fila propia con `FOR UPDATE`, `ACTIVO` y la
 misma versión).
+
+_(Ataque ronda 3, F1:)_ el "contar el fallo como en el ingreso" del paso 3 no cumplía el criterio 56: el conteo es una
+escritura y no comprobaba al actor. Pasa a una transacción que primero llama a `bloquearActorVigente` (criterio 60;
+sección 11.1).
 
 ### 5. Usuarios (`UsuariosService`)
 
@@ -273,6 +283,8 @@ Diseño:
   `usuarios`; pregunta T5).
 - **Cambio de clave:** no cambia la transacción final (ya cumple el criterio 56 con `permitirCambioPendiente`); si se
   quiere uniformar, puede usar la función sin objetivo con `FOR UPDATE`.
+  _(Ataque ronda 3, F1:)_ faltaba la otra transacción que escribe en esta ruta, la del conteo del fallo de la
+  `claveActual`; sección 11.1.
 - **Por qué no `FOR SHARE` en las dos filas o dos sentencias separadas:** con "actor `FOR SHARE`, luego objetivo
   `FOR UPDATE`", dos administradores que se desactivan entre sí se esperan en cruz y PostgreSQL aborta uno con `40P01`
   (500), contra el criterio 57. Con un solo `SELECT … ORDER BY id FOR UPDATE` no hay ciclo. Con una sola fila (crear),
@@ -320,6 +332,68 @@ controlador) → lectura y versión (401) → bloqueo (423) → `claveActual` (4
 - Prueba de componentes en `frontend/src/modulos/sesion/` o `usuarios/` (Vitest y Testing Library, con la misma forma de
   simular la API que `Usuarios.test.tsx`), con los casos del criterio 59.
 
+_(Ataque ronda 3, F2:)_ comparar solo `usuario.id` y `academia.nombreCorto` no cumplía el 59 d con la misma identidad y
+`debeCambiarClave: true`; `useConfirmarSesion` también mira el cambio pendiente (criterio 61; sección 11.2).
+
+### 11. Ataque ronda 3 (criterios 60 y 61)
+
+#### 11.1. El fallo de la `claveActual` con el actor vigente (F1, criterio 60)
+
+Hoy (`sesion-academia.service.ts`, `cambiarClave`): con la `claveActual` equivocada, `contarFallo(academiaId, id, ip,
+'Cambio de contraseña')` → `contarFalloEnBase`, que abre su propio `conAcademia` con `SELECT intentos_fallidos,
+bloqueado_hasta … FOR UPDATE` y `UPDATE`, sin mirar `estado` ni `version_token`. La lectura previa
+(`leerParaCambio`) comprueba la sesión, pero sin bloqueo y antes de argon2, que tarda decenas de milisegundos.
+
+Diseño:
+
+- Separar el cuerpo de `contarFalloEnBase` en una función que recibe la transacción (por ejemplo,
+  `contarFalloEnTransaccion(tx, id, ahora)`), con exactamente las mismas dos sentencias de hoy. `contarFalloEnBase` (el
+  ingreso, también con el id aleatorio del criterio 53) la sigue llamando sola dentro de su `conAcademia`: la
+  secuencia del ingreso no cambia y la prueba del criterio 53 sigue pasando sin tocarla.
+- El cambio de clave usa una variante, por ejemplo `contarFalloDelActor(sesion, ip)`: dentro de un `conAcademia`,
+  primero `bloquearActorVigente(tx, { id, versionToken: sesion.versionToken }, { permitirCambioPendiente: true,
+  exclusivo: true, registro, ip })` y, si no lanza, `contarFalloEnTransaccion(tx, id, ahora)`. El 401 de
+  `bloquearActorVigente` aborta la transacción (nada se escribe) y sube tal cual hasta el controlador. Con 'FALLO',
+  400 `CLAVE_ACTUAL_INCORRECTA`; con 'BLOQUEADA', 423; 'DESAPARECIDO' ya no puede darse (la fila existe: la comprobó
+  `bloquearActorVigente`), y si se da, 401.
+- `exclusivo: true` (`FOR UPDATE`) porque la misma transacción va a escribir la fila del actor: con `FOR SHARE`, dos
+  fallos simultáneos de la misma sesión se interbloquearían al pasar a `UPDATE` (lo explica el comentario de
+  `OpcionesBloqueoDelActor.exclusivo`). El `SELECT … FOR UPDATE` siguiente queda redundante, pero no espera (la fila ya es
+  de esta transacción) y deja una sola función de conteo.
+- El registro técnico: el rechazo por sesión no vigente lo anota `bloquearActorVigente` (`warn` con `usuarioId`,
+  `academiaId` e `ip`); los mensajes de fallo y bloqueo del cambio de clave no cambian.
+- La comprobación de bloqueo previa (`estaBloqueado` sobre la lectura de `leerParaCambio`) no cambia: no escribe
+  (criterio 60 d).
+- Prueba (test-writer): `conFilaRetenida` ya tiene los cambios `desactivar`, `solo-version`, `solo-cambio-pendiente` y
+  `bloquear-sin-cambiar`; la petición llega al bloqueo después de argon2, así que la espera con `pg_blocking_pids` la ve
+  sin cambios en la utilidad. Para los 4 fallos previos, la prueba los fija en la base (`intentos_fallidos = 4`,
+  `bloqueado_hasta` nulo) antes de retener la fila, como la reproducción `c1`.
+
+#### 11.2. La web con el cambio obligatorio pendiente (F2, criterio 61)
+
+Hoy (`frontend/src/modulos/sesion/hooks.ts`): `useConfirmarSesion` pide la sesión y lanza `SesionCambiadaError` solo si
+`claveDeIdentidad` cambió. `RutaConSesion` ya lleva a `/cambiar-clave` cuando la sesión cacheada trae
+`debeCambiarClave` (la reproducción `w1` termina allí), pero la acción ya salió.
+
+Diseño:
+
+- `useConfirmarSesion(opciones?: { permitirCambioPendiente?: boolean })`: tras comparar la identidad (si cambió,
+  `SesionCambiadaError`, como hoy), si `actual.usuario.debeCambiarClave` y no `permitirCambioPendiente`, lanza un error
+  propio, por ejemplo `CambioDeClavePendienteError`, sin enviar la acción. La sesión ya quedó en la caché por
+  `pedirLaSesion` (`fetchQuery`), así que `RutaConSesion` lleva a `/cambiar-clave`; el error no muestra el aviso de
+  "Tu sesión cambió" (ese es del 59 c).
+- `useCambiarClave` la llama con `{ permitirCambioPendiente: true }`. Los ganchos de `modulos/usuarios/hooks.ts`, sin
+  opciones.
+- Los formularios que muestran errores de la mutación tratan `CambioDeClavePendienteError` como `SesionCambiadaError`:
+  no lo muestran como un error de la acción (la página cambia).
+- Prueba de componentes (no protegida) con los dos casos del criterio 61, en el mismo archivo de las del criterio 59 o
+  junto a él.
+
+#### 11.3. Observaciones sin cambios de código
+
+- Escrituras en curso al suspender la academia (AR3-3): riesgo aceptado en `spec.md`; `conAcademia` no cambia.
+- El Superadmin dentro de la transacción (AR3-4): nota en N11 de `spec.md`; las rutas de la plataforma no cambian.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -341,6 +415,10 @@ controlador) → lectura y versión (401) → bloqueo (423) → `claveActual` (4
 | Pruebas de carrera que retienen el bloqueo desde la prueba y esperan con `pg_blocking_pids` (criterio 56) | Muchas peticiones en paralelo con esperas fijas (como `b3` y `b5`) | Deterministas en Linux y Windows; no dependen de la velocidad de la máquina |
 | `claveActual` antes de comparar la nueva con el DNI (AR2-3, criterio 58) | Dejar de rechazar el DNI como clave nueva | Contradice DR-2 y el criterio 23 |
 | Volver a pedir la sesión al recuperar el foco y antes de cada acción (AR2-2, criterio 59) | Consultar cada pocos segundos; `BroadcastChannel` entre pestañas | Más tráfico y sigue dejando ventana; el canal no ve un ingreso desde una ventana sin la web cargada |
+| El fallo de la `claveActual` se cuenta tras `bloquearActorVigente(…, { exclusivo: true })` en la misma transacción (AR3-1, criterio 60) | Volver a leer al actor sin bloqueo antes de contar; no contar esos fallos | La lectura sin bloqueo deja la ventana abierta; no contar contradice el criterio 24 |
+| Comprobación del actor en una variante del conteo solo para el cambio de clave (AR3-1) | Ponerla dentro de la función de conteo compartida con el ingreso | El ingreso no tiene actor y cambiaría su secuencia de sentencias (criterio 53) |
+| `useConfirmarSesion` también rechaza el cambio obligatorio pendiente, con una opción para el cambio de clave (AR3-2, criterio 61) | Dejarlo al 403 `CAMBIO_DE_CLAVE_OBLIGATORIO` de la API | Contradice el 59 d: la petición sale y la pantalla no explica por qué no se hizo la acción |
+| `conAcademia` sin bloquear la fila de la academia (AR3-3) | `FOR SHARE` sobre `academias` en cada transacción | Toda la academia esperaría detrás de cada suspensión y cambia 001; la ventana es de milisegundos (riesgo aceptado) |
 | Búsqueda por DNI con `POST /api/usuarios/buscar-por-dni` y el DNI en el cuerpo (PO-3) | `GET /api/usuarios/por-dni/{dni}` con el segmento redactado en el registro | La redacción falla abierta (cada lugar que registre la dirección debe taparlo) y no alcanza a los registros del proxy del hosting; con `POST` el DNI no está en la dirección |
 
 ## Migraciones
@@ -384,3 +462,13 @@ controlador) → lectura y versión (401) → bloqueo (423) → `claveActual` (4
   (DT-1).
 - **Actualizar la prueba protegida de privilegios de 001:** debe hacerse en un commit de pruebas protegidas, o el
   verificador de la CI lo rechaza.
+- **Conteo del fallo con el actor bloqueado (ronda 3):** el cambio de clave fallido de una cuenta espera a una escritura
+  en curso sobre esa misma fila (un restablecimiento, una desactivación, un cierre de sesión) y viceversa; son
+  milisegundos, como el riesgo "Bloqueo de la fila del actor". Dos fallos simultáneos de la misma sesión se ordenan
+  (`FOR UPDATE`) y cuentan los dos, como hoy.
+- **Separar el conteo sin cambiar el ingreso (ronda 3):** si al extraer `contarFalloEnTransaccion` cambia el texto de
+  alguna sentencia del ingreso, la prueba del criterio 53 lo detecta (compara las sentencias entre los cuatro casos,
+  no contra un texto fijo, así que lo que importa es que los cuatro caminos sigan usando la misma función).
+- **Commits de pruebas protegidas con código (proceso, ronda 2):** `b6b2d77` trajo por error
+  `usuarios.service.ts`; queda registrado en "Decisiones" de `spec.md` y desde la ronda 3 se revisa el contenido del
+  commit antes de hacerlo (tarea T17.22).
