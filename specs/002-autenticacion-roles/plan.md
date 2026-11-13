@@ -13,6 +13,10 @@ el alcance del restablecimiento (DR-4) y las rutas del Superadmin (DR-5) son los
 búsqueda por DNI (PO-3: `POST /api/usuarios/buscar-por-dni`, secciones 5, 7 y 8), el límite por IP (PO-6, sección 2 y
 "Riesgos") y la tabla de la prueba de migraciones (PO-8, sección 1).
 
+**Ataque ronda 1 (13/11/2026):** criterios 53 y 54 de `spec.md` (decisiones AR1-1 y AR1-2). Cambian el ingreso con
+un DNI sin cuenta (sección 2, paso 3) y el cierre de sesión con cuerpo (sección 3); el diseño de los dos está en la
+sección 9. Se suman filas a "Decisiones" y a "Riesgos".
+
 ## Módulos afectados
 
 ```
@@ -81,6 +85,8 @@ Mismo patrón que `SesionPlataformaService` (001), cambiando `comoPlataforma` po
    (13/11/2026), PO-6:)_ el contador es el mismo almacén en memoria del límite del Superadmin (001), por instancia.
 2. `ResolverAcademiaPipe` da la academia activa (404 o 403 si no; criterio 11). El cuerpo se valida (400; criterio 13).
 3. `conAcademia`: `SELECT … FROM usuarios WHERE dni = $1`. Sin fila: verificar contra el hash ficticio y 401.
+   _(Ataque ronda 1, F1: además, antes del 401, la transacción del conteo del paso 5 sobre un id que no existe;
+   sección 9.1 y criterio 53.)_
 4. Si está bloqueado (`estaBloqueado`), 423. Fuera de la transacción, `verificarClave`.
 5. Clave equivocada: `conAcademia` con `SELECT … FOR UPDATE`, `evaluarIntentoFallido(estado, ahora,
    REGLAS_BLOQUEO_USUARIO)` y `UPDATE` (401 o 423).
@@ -97,6 +103,8 @@ reemplaza por la lectura de la configuración.
 - `proteccion-academia.ts` se instala en `configurarApp` junto con las de 001, antes del lector del cuerpo: para
   `/api/*` que no sea `/api/salud`, `/api/plataforma…` ni `/api/a/…`, fija `Cache-Control: no-store`; si es `DELETE
   /api/sesion`, sigue; si no, llama a `SesionAcademiaService.autenticar(solicitud)` (401/403 con `responderError`).
+  _(Ataque ronda 1, F2: "sigue" no basta: después venía el lector de cuerpos de 001, que respondía 400. `DELETE
+  /api/sesion` no pasa por el lector; sección 9.2 y criterio 54.)_
 - `autenticar` lee solo la cookie `aq_sesion`, verifica el token (`tipo === 'academia'`, `aca` y `sub` UUID) y, en
   `conAcademia(aca, …)`, lee la fila del usuario (`id`, `rol`, `estado`, `version_token`, `debe_cambiar_clave`,
   `nombres`, `apellidos`) y el nombre de la academia. Recuerda el resultado por petición con un `WeakMap` (como la
@@ -171,6 +179,53 @@ ampliación del criterio 43 usa nivel `trace`.
   (una mutación de TanStack Query o una consulta con `POST`); el DNI no va en la dirección de la página (`?dni=`) ni
   en la clave de una consulta que se guarde fuera de la memoria.
 
+### 9. Ataque ronda 1 (criterios 53 y 54)
+
+#### 9.1. El mismo trabajo con un DNI sin cuenta (F1, criterio 53)
+
+Hoy (`sesion-academia.service.ts`, `iniciarSesion`): sin fila, solo `verificarClave` contra el hash ficticio; con
+fila y clave equivocada, `rechazarIntento` → `contarFallo` → `contarFalloEnBase` (`conAcademia` con `SELECT
+intentos_fallidos, bloqueado_hasta … FOR UPDATE` y, si hay fila, `UPDATE`). Además, `contarFalloEnBase` sale antes
+del `UPDATE` cuando el `SELECT` no devuelve fila (`DESAPARECIDO`), así que llamarla con un id inexistente tampoco
+daría la misma secuencia.
+
+Diseño:
+
+- Una sola función del servicio produce las dos sentencias del conteo, para que su texto no pueda divergir: el
+  `SELECT … FOR UPDATE` y el `UPDATE … WHERE academia_id = $1 AND id = $2` se ejecutan **siempre los dos**, también
+  cuando el `SELECT` no devuelve fila. Sin fila, el `UPDATE` lleva valores neutros (por ejemplo los que daría
+  `evaluarIntentoFallido` sobre un estado vacío) y afecta 0 filas; el resultado sigue siendo `DESAPARECIDO`.
+- Con un DNI sin cuenta, tras `verificarClave` contra el hash ficticio, se llama a esa misma función con
+  `randomUUID()` (un id que no existe: la probabilidad de chocar con uno real es despreciable y, aun así, el `UPDATE`
+  escribiría un contador que ya cuenta fallos de esa cuenta; ver "Riesgos") y se ignora el resultado; luego, 401.
+- El caso de carrera `YA_BLOQUEADA` (la cuenta se bloqueó entre la primera lectura y el conteo) puede seguir sin
+  `UPDATE`: responde 423, que ya revela la cuenta (riesgo aceptado "Saber si un DNI tiene cuenta").
+- El orden de los pasos queda igual en los dos caminos: lectura por DNI (transacción 1), argon2 fuera de la
+  transacción, conteo (transacción 2), respuesta. El registro técnico no cambia.
+- Lo que la prueba observa: las sentencias que llegan a `pg`. `@prisma/adapter-pg` usa el `pg` del repositorio; la
+  prueba espía `Client.prototype.query` (o el `query` del cliente que entrega el `Pool`) del mismo módulo que carga la
+  API, y normaliza el texto (de la cadena o de `config.text`). Las comprobaciones de una vez por proceso
+  (`#verificarRol`, el hash ficticio) quedan fuera con una petición de calentamiento.
+
+#### 9.2. `DELETE /api/sesion` no lee el cuerpo (F2, criterio 54)
+
+Hoy, en `comun/http/cuerpos.ts`, los tres middlewares de cuerpos (tipo de contenido, codificación y lector JSON con su
+manejador de errores) atienden todo `/api` con `POST`, `PUT`, `PATCH` o `DELETE`. Para una petición autenticada de una
+academia, el error se guarda y lo lanza el guard después del permiso (`guardarErrorDeCuerpo`); pero
+`DELETE /api/sesion` no pasa por la autenticación del middleware, así que el error se responde al instante (400 o
+413) y el manejador no corre.
+
+Diseño:
+
+- Los middlewares de cuerpos se saltan `DELETE /api/sesion` (comprobación por método y ruta, con la misma
+  normalización de ruta que usa el middleware de academia para reconocerla, para que no difieran). El lector JSON
+  tampoco la lee: `useBodyParser('json', …)` recibe un `type` que devuelve `false` para esa petición, o el salto se
+  hace antes de instalarlo; lo que quede del cuerpo lo descarta Node al terminar la respuesta (o
+  `solicitud.resume()`), sin interpretarlo.
+- El manejador de `DELETE /api/sesion` no declara `@Body()` ni valida nada; `cerrarSesion` no cambia.
+- Las demás rutas siguen con las reglas de 001 (criterios 74, 89 y 105); `DELETE /api/plataforma/sesion` no cambia
+  (pregunta T4 de `spec.md`).
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -184,6 +239,9 @@ ampliación del criterio 43 usa nivel `trace`.
 | Reutilizar `bloqueo.ts` de 001 sin moverlo | Moverlo a `infraestructura/seguridad` | Moverlo rompe las importaciones de pruebas protegidas de 001 |
 | Límite por IP compartido entre academias | Por academia | No multiplica los intentos de un atacante por el número de academias |
 | Valores de bloqueo y sesión como constantes | Leerlos ya de `configuraciones` | Las claves las define 003 (D-07, DR-8 de 001) |
+| Con un DNI sin cuenta, la misma transacción de conteo sobre un id aleatorio inexistente (AR1-1, criterio 53) | Retardo fijo, aleatorio o tiempo mínimo de respuesta | Iguala la causa (las mismas sentencias y viajes a la base), no tapa el síntoma; un retardo depende de la carga y la máquina y alarga todos los ingresos |
+| Comprobar F1 por las sentencias SQL, no por milisegundos (AR1-1) | Prueba de tiempos en la CI | Determinista en Linux y Windows; los tiempos los mide el adversarial en la ronda 2 |
+| `DELETE /api/sesion` fuera del lector de cuerpos (AR1-2, criterio 54) | Leer el cuerpo y tolerar errores solo en esa ruta | No leer es más simple y no deja casos (tamaño, compresión, UTF-8) que se olviden |
 | Búsqueda por DNI con `POST /api/usuarios/buscar-por-dni` y el DNI en el cuerpo (PO-3) | `GET /api/usuarios/por-dni/{dni}` con el segmento redactado en el registro | La redacción falla abierta (cada lugar que registre la dirección debe taparlo) y no alcanza a los registros del proxy del hosting; con `POST` el DNI no está en la dirección |
 
 ## Migraciones
