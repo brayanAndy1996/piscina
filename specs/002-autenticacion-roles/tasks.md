@@ -79,6 +79,39 @@ protegida nueva), T3b (ajuste de las pruebas ya escritas), T6, T11 y T15.
       en el registro técnico. Por cada falla: el especificador agrega el criterio, test-writer la prueba en rojo, se
       corrige y se vuelve a atacar. _(Ronda 1 hecha el 13/11/2026: dos fallas, F1 y F2; se siguen en "Ataque ronda
       1".)_
+### Ataque ronda 1 (13/11/2026)
+
+F1: el tiempo de respuesta revela si un DNI tiene cuenta (criterio 53). F2: `DELETE /api/sesion` con cuerpo responde
+400 y no cierra (criterio 54). Decisiones AR1-1 y AR1-2 de `spec.md`. T18 en adelante esperan a que la ronda 2 no
+encuentre fallas.
+
+- [x] T17.1 · especificador · Criterios 53 y 54 (sección K), notas en los criterios 7, 17, 34 y 36, contrato, DT-1,
+      "Impacto", "Riesgos aceptados" y preguntas N11 y T4; plan, sección 9 (criterios 53, 54)
+- [ ] T17.2 · test-writer · Pruebas protegidas de integración, en rojo, desde la spec y sin mirar la implementación:
+      el criterio 53 (las sentencias SQL que llegan a `pg` en los casos (i) a (iv), con calentamiento y cada caso dos
+      veces; ninguna fila cambiada ni auditoría en (iii) y (iv); contador +1 en (i) y (ii); mismo 401) y el criterio 54
+      (los ocho cuerpos con sesión válida y sin ella; 204, cookie borrada, `Cache-Control: no-store`, `version_token`
+      +1 y 401 después; `POST /api/sesion/clave` con JSON roto sigue en 400 y con más de 100 KB en 413). Si el espía de
+      `pg` no ve sentencias, avisar al orquestador (plan, "Riesgos") (criterios 53, 54)
+- [ ] T17.3 · tester · Confirmar que T17.2 falla por la razón esperada: en el 53, la secuencia de (iii) y (iv) tiene
+      menos sentencias que la de (i) y (ii) (y no por un espía que no ve nada); en el 54, 400 o 413 en lugar de 204.
+      Commit del orquestador: "Pruebas protegidas (002): ataque ronda 1 (en rojo)" (criterios 53, 54)
+- [ ] T17.4 · backend · F1: la transacción del conteo con las dos sentencias siempre, y con un DNI sin cuenta sobre un
+      id aleatorio inexistente (plan, sección 9.1), sin tocar las pruebas protegidas (criterios 7, 53)
+- [ ] T17.5 · backend · F2: `DELETE /api/sesion` fuera de los middlewares y del lector de cuerpos (plan, sección 9.2),
+      sin cambiar las reglas de cuerpos de las demás rutas ni `DELETE /api/plataforma/sesion` (criterios 17, 54)
+- [ ] T17.6 · orquestador · `git diff` de los commits de T17.4 y T17.5: ninguno toca pruebas protegidas (de 001 ni de
+      002); suite en verde (criterios 1 a 54)
+- [ ] T17.7 · adversarial · Ronda 2, con la spec y el código: volver a medir los tiempos con la reproducción
+      `a3.test.ts` y los umbrales del criterio 53 (mediana a menos de 2 ms; como mucho el 25 % sobre el percentil 90);
+      buscar otros caminos que delaten un DNI (cambio de clave, usuario inactivo, carreras); `DELETE /api/sesion` con
+      variantes de la ruta (barra final, mayúsculas, cadena de consulta) y cuerpos; que las demás rutas sigan
+      rechazando cuerpos inválidos. Si encuentra fallas, se repite el ciclo (criterios 53, 54 y toda la ruta crítica)
+- [ ] T17.8 · responsable · Contestar N11 (el Superadmin conoce la clave inicial del administrador). No bloquea:
+      mientras tanto rige la opción (a). Si elige (c), el especificador ajusta los criterios 39 y 40 y se repiten las
+      pruebas protegidas de esos criterios (criterios 39, 40)
+- [ ] T17.9 · orquestador · Decidir T4 (cierre de sesión del Superadmin con cuerpo, criterio 74 de 001). No bloquea
+
 - [ ] T18 · revisor · Comparar con la spec y las convenciones (`CLAUDE.md` y "Reglas para las historias siguientes" de
       `docs/arquitectura.md`); confirmar con `git diff` que ningún commit de implementación tocó pruebas protegidas
 - [ ] T19 · tester · Suite completa, lint y verificación de tipos (Linux; la CI también en Windows)
