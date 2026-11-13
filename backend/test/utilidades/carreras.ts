@@ -77,6 +77,19 @@ export async function escucharAplicacion(app: NestExpressApplication): Promise<C
   };
 }
 
+/**
+ * Sesiones cuya cadena de bloqueos llega al `pid` de la prueba: las bloqueadas directamente por ella y, transitivamente, las que
+ * esperan a una de esas (por ejemplo, el candado de tupla que la segunda petición pide a la primera cuando ambas quieren la misma
+ * fila). `UNION` descarta repetidos y corta cualquier ciclo. Las esperas ajenas al bloqueo de la prueba no entran.
+ */
+const SQL_SESIONES_EN_LA_CADENA = `
+  WITH RECURSIVE cadena(pid) AS (
+    SELECT pid FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))
+    UNION
+    SELECT a.pid FROM pg_stat_activity a JOIN cadena c ON c.pid = ANY(pg_blocking_pids(a.pid))
+  )
+  SELECT count(*)::int AS n FROM cadena`;
+
 const pausa = (ms: number) => new Promise<void>((resolver) => setTimeout(resolver, ms));
 
 /** Espera `promesa` con el límite de seguridad; el temporizador se cancela al terminar. */
@@ -189,8 +202,9 @@ export async function conFilaRetenida<T>(opciones: {
 
 /**
  * Criterio 57 (variante determinista): retiene con `SELECT … FOR UPDATE` las filas de `ids` (en una sola sentencia, en el orden de
- * `id`), envía las peticiones de `enviar` sin esperarlas, espera a que todas queden esperando algún bloqueo o a que alguna
- * responda, revierte y devuelve las respuestas en el orden de `enviar`. Así las dos peticiones se cruzan siempre, sin depender de
+ * `id`), envía las peticiones de `enviar` sin esperarlas, espera a que todas queden esperando el bloqueo de la prueba, directa o
+ * transitivamente (con una sola sentencia `… ORDER BY id FOR UPDATE`, ambas piden primero la misma fila: una espera a la prueba y la
+ * otra a esa primera petición), o a que alguna responda, revierte y devuelve las respuestas en el orden de `enviar`. Así las dos peticiones se cruzan siempre, sin depender de
  * tiempos.
  */
 export async function conFilasRetenidas<T>(opciones: {
@@ -212,10 +226,7 @@ export async function conFilasRetenidas<T>(opciones: {
     const limite = Date.now() + LIMITE_DE_SEGURIDAD_MS;
     let limiteAlcanzado = false;
     while (!peticiones.some((peticion) => peticion.terminada())) {
-      const { rows } = await vigia.query(
-        'SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))',
-        [pidDeLaPrueba],
-      );
+      const { rows } = await vigia.query(SQL_SESIONES_EN_LA_CADENA, [pidDeLaPrueba]);
       if ((rows[0] as { n: number }).n >= peticiones.length) {
         todasEsperaron = true;
         break;
