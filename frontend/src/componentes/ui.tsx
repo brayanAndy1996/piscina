@@ -1,6 +1,6 @@
 import { type ComponentProps, type ReactNode, useEffect, useId, useRef } from 'react';
 
-/** Piezas visuales de la plataforma, con Tailwind simple y objetivos táctiles de al menos 44 px. */
+/** Piezas visuales compartidas, con Tailwind simple y objetivos táctiles de al menos 44 px. */
 
 const BASE_BOTON =
   'inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-base font-medium focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
@@ -55,6 +55,51 @@ export function CampoTexto({ etiqueta, error, ayuda, ...entrada }: PropiedadesCa
       ) : null}
     </div>
   );
+}
+
+interface PropiedadesSelect extends Omit<ComponentProps<'select'>, 'className'> {
+  etiqueta: string;
+  error?: string | undefined;
+  children: ReactNode;
+}
+
+/** Lista desplegable con etiqueta y mensaje de error enlazados, con el mismo aspecto que `CampoTexto`. */
+export function CampoSelect({ etiqueta, error, children, ...seleccion }: PropiedadesSelect) {
+  const id = useId();
+  const idError = `${id}-error`;
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-slate-800">
+        {etiqueta}
+      </label>
+      <select
+        id={id}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? idError : undefined}
+        className="mt-1 block min-h-11 w-full rounded-lg border-0 bg-white px-3 py-2 text-base text-slate-900 ring-1 ring-slate-300 focus:outline-2 focus:outline-sky-700 aria-invalid:ring-red-500"
+        {...seleccion}
+      >
+        {children}
+      </select>
+      {error ? (
+        <p id={idError} role="alert" className="mt-1 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const COLOR_INSIGNIA = {
+  verde: 'bg-emerald-100 text-emerald-900',
+  ambar: 'bg-amber-100 text-amber-900',
+  gris: 'bg-slate-100 text-slate-800',
+  azul: 'bg-sky-100 text-sky-900',
+} as const;
+
+/** Etiqueta pequeña de estado ("Activo", "Bloqueado"…). El texto lleva el significado; el color solo lo refuerza. */
+export function Insignia({ color, children }: { color: keyof typeof COLOR_INSIGNIA; children: ReactNode }) {
+  return <span className={`rounded-full px-2.5 py-0.5 text-sm font-medium ${COLOR_INSIGNIA[color]}`}>{children}</span>;
 }
 
 const ENFOCABLES =

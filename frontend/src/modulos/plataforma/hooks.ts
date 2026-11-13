@@ -9,6 +9,7 @@ export const RUTA_ACADEMIAS = '/plataforma/academias';
 
 const CLAVE_SESION = ['plataforma', 'sesion'] as const;
 const CLAVE_ACADEMIAS = ['plataforma', 'academias'] as const;
+const claveAdministradores = (academiaId: string) => ['plataforma', 'administradores', academiaId] as const;
 
 /** Sesión del superadmin: un 401 es una respuesta esperada (no hay sesión), no hay que reintentar. */
 export function useSesionPlataforma() {
@@ -52,6 +53,31 @@ export function useReactivarAcademia() {
     mutationFn: ({ id, motivo }: { id: string; motivo?: string | undefined }) =>
       api.reactivarAcademia(id, motivo === undefined ? {} : { motivo }),
     onSettled: () => cliente.invalidateQueries({ queryKey: CLAVE_ACADEMIAS }),
+  });
+}
+
+export function useAdministradores(academiaId: string) {
+  return useQuery({
+    queryKey: claveAdministradores(academiaId),
+    queryFn: () => api.listarAdministradores(academiaId),
+    retry: false,
+  });
+}
+
+export function useCrearAdministrador(academiaId: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (datos: Parameters<typeof api.crearAdministrador>[1]) => api.crearAdministrador(academiaId, datos),
+    onSuccess: () => cliente.invalidateQueries({ queryKey: claveAdministradores(academiaId) }),
+  });
+}
+
+export function useRestablecerClaveAdministrador(academiaId: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (usuarioId: string) => api.restablecerClaveAdministrador(academiaId, usuarioId),
+    // También tras un 404: la lista se vuelve a pedir para mostrar el estado real.
+    onSettled: () => cliente.invalidateQueries({ queryKey: claveAdministradores(academiaId) }),
   });
 }
 
