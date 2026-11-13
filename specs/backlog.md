@@ -12,7 +12,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | --- | --- | --- | --- |
 | 000 | Esqueleto | No | ✅ |
 | 001 | Academias y aislamiento | Sí | ✅ |
-| 002 | Autenticación y roles por academia | Sí | ⬜ |
+| 002 | Autenticación y roles por academia | Sí | 🟨 |
 | 003 | Configuración de la academia | No | ⬜ |
 | 004 | Planes y clases con aforo | En parte | ⬜ |
 | 005 | Inscripción pública y seguimiento de la solicitud | Sí | ⬜ |
@@ -41,6 +41,27 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   obligatorio, bloqueo por intentos, restablecimiento por la secretaria, matriz de permisos (RN-02, RN-03, HU-05,
   RNF-03, RNF-04). Incluye el primer administrador de cada academia, con sus usuarios y su inicio de sesión (DR-1; la
   001 no lo crea).
+  - Estado: 🟨 en curso. Se marca ✅ al unirse a `main`; antes quedan la revisión (T18) y la suite completa, con lint y
+    tipos (T19).
+  - Hosting (D-21), cuando se elija: volver a medir los tiempos del criterio 53 en el hosting real y en Docker Desktop en
+    Windows, con 300 rondas pareadas entre un DNI con cuenta y uno sin cuenta, y los umbrales del criterio (diferencia de
+    medianas menor que 2 ms; como mucho el 25 % de las muestras sobre el percentil 90). Si no se cumplen, decide el
+    orquestador entre igualar la escritura y aceptarlo (T17.19; riesgo "Commit con escritura frente a commit vacío").
+  - Hosting (D-21), revisión de DT-1: hoy no hay `trust proxy`, así que detrás de un proxy `req.ip` sería el del proxy y
+    el límite de 10 por minuto contaría a todos juntos. El contador del límite por IP vive en la memoria de cada instancia
+    (PO-6): con varias instancias, el límite efectivo es 10 por instancia. Y las IPv6 se agrupan por `/64` (hoy cuentan
+    por dirección exacta).
+  - DT-4: `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON responde 400 y no cierra (criterio 74 de 001),
+    mientras que `DELETE /api/sesion` cierra con cualquier cuerpo (criterio 54 de 002). Alinearlos cambia pruebas
+    protegidas de la 001: va en una historia propia.
+  - N11 y AR3-4: quien crea o restablece un administrador conoce su clave inicial (su DNI). La decisión es de Bryan; rige
+    mientras tanto la opción (a). El Superadmin tampoco vuelve a comprobar su sesión dentro de la transacción que crea o
+    restablece un administrador. Si una historia le agrega cambios de cuenta, conviene darle la regla del criterio 56
+    (bloquear y comprobar su fila de `superadmins`), teniendo en cuenta que esa fila es de la plataforma y la escritura
+    corre en `conAcademia`.
+  - Regla para las historias siguientes (DT-5): toda escritura a pedido de un usuario de la academia llama a
+    `bloquearActorVigente` dentro de su transacción. Ver "Escrituras de usuarios de la academia" en
+    [`docs/arquitectura.md`](../docs/arquitectura.md).
 - **003 · Configuración.** Tolerancia de tardanza (D-11), días "por vencer", días de prioridad al renovar (D-06),
   intentos de inicio de sesión, identidad de la academia (D-22).
 - **004 · Planes y clases.** Planes (HU-19, RN-07) y clases por nivel, día, hora y entrenador, con aforo de 20 a 50
@@ -58,6 +79,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de
   operación sin duplicados, caja al verificar (D-04), paso de cliente a alumno con usuario (HU-04, HU-07 a HU-09,
   RN-01, RN-04, RN-28), ticket interno (D-09).
+  - Desde 002: la cuenta del alumno se crea con `UsuariosService.crearEnTransaccion`, y cada escritura a pedido de un
+    usuario de la academia llama antes a `bloquearActorVigente` (regla DT-5, en `docs/arquitectura.md`).
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
 - **009 · Asistencia y faltas.** QR y manual, validaciones, una por día, solo mientras dura la clase, puntual o

@@ -18,21 +18,21 @@ protegida nueva), T3b (ajuste de las pruebas ya escritas), T6, T11 y T15.
 
 ## Pruebas protegidas (en rojo)
 
-- [ ] T1 · test-writer · Utilidades `backend/test/utilidades/usuarios.ts` según el contrato; pruebas protegidas de la
+- [x] T1 · test-writer · Utilidades `backend/test/utilidades/usuarios.ts` según el contrato; pruebas protegidas de la
       tabla, el catálogo, los privilegios y RLS de `usuarios`; actualización de la prueba protegida de privilegios de
       001 para sumar los de `usuarios`, sin quitar nada (criterios 1 a 4)
-- [ ] T2 · test-writer · Pruebas protegidas del ingreso, la sesión, el cierre, la protección de las rutas de academia,
+- [x] T2 · test-writer · Pruebas protegidas del ingreso, la sesión, el cierre, la protección de las rutas de academia,
       la separación de cookies, el cambio obligatorio y voluntario de contraseña, y el registro técnico (criterios 5 a
       25 y 43)
-- [ ] T3 · test-writer · Pruebas protegidas de la matriz (unitaria), del guard y del recorrido de rutas, de la gestión
+- [x] T3 · test-writer · Pruebas protegidas de la matriz (unitaria), del guard y del recorrido de rutas, de la gestión
       del personal, del restablecimiento, de las rutas del Superadmin y de la auditoría (criterios 26 a 42)
-- [ ] T3a · test-writer · _(Precisión del orquestador (13/11/2026), PO-3; prueba protegida adicional.)_ Prueba de
+- [x] T3a · test-writer · _(Precisión del orquestador (13/11/2026), PO-3; prueba protegida adicional.)_ Prueba de
       integración de la ampliación del criterio 43: búsquedas con `POST /api/usuarios/buscar-por-dni` (DNI de A,
       inexistente, solo de B, con formato inválido, con espacios; por `ADMIN`, `SECRETARIA`, sin sesión, por
       `ENTRENADOR`, con cambio obligatorio y con cuerpo inválido) con el registro en nivel `trace` sin el DNI buscado;
       `GET /api/usuarios/por-dni/{dni}` con sesión de `ADMIN` responde 404. Usar DNIs que no estén ya en el registro
       acumulado (pueden aparecer dentro de un UUID) (criterios 34 y 43)
-- [ ] T3b · test-writer · _(Precisiones del orquestador (13/11/2026).)_ Ajustar las pruebas protegidas ya escritas, en
+- [x] T3b · test-writer · _(Precisiones del orquestador (13/11/2026).)_ Ajustar las pruebas protegidas ya escritas, en
       el mismo commit de pruebas protegidas y antes de T4: la búsqueda por DNI pasa a `POST /api/usuarios/buscar-por-dni`
       con `{ dni }` en el cuerpo (PO-3; hoy usan `GET /api/usuarios/por-dni/…`, entre otras, `restablecer-clave.test.ts`,
       `sesion.test.ts`, `cambio-obligatorio.test.ts` y `permisos-rutas.test.ts`; en el recorrido del criterio 27, la
@@ -41,35 +41,35 @@ protegida nueva), T3b (ajuste de las pruebas ya escritas), T6, T11 y T15.
       inactivo 200 sin reactivarlo, también por el Superadmin (PO-5); el límite por IP probado con una sola instancia
       (PO-6); tras el plazo de bloqueo, comprobar el contador y no que `bloqueado_hasta` sea nulo (PO-7) (criterios 9,
       12, 26, 27, 29, 32, 34, 35, 38, 40)
-- [ ] T4 · tester · Confirmar que T1 a T3b fallan por falta de la funcionalidad (tabla, rutas o módulos inexistentes) y
+- [x] T4 · tester · Confirmar que T1 a T3b fallan por falta de la funcionalidad (tabla, rutas o módulos inexistentes) y
       no por sintaxis, importaciones o configuración. Commit del orquestador: "Pruebas protegidas (002): autenticación,
       roles y usuarios por academia (en rojo)"
 
 ## Implementación
 
-- [ ] T5 · backend · Contratos `sesion.ts`, `usuarios.ts` y `permisos.ts` con sus pruebas unitarias (criterios 26, 44)
-- [ ] T6 · backend · Esquema de Prisma y migración `usuarios`; `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs`; y
+- [x] T5 · backend · Contratos `sesion.ts`, `usuarios.ts` y `permisos.ts` con sus pruebas unitarias (criterios 26, 44)
+- [x] T6 · backend · Esquema de Prisma y migración `usuarios`; `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs`; y
       _(precisión del orquestador (13/11/2026), PO-8)_ sumar `'usuarios'` a `TABLAS_DESPUES_DE_MIGRAR` de
       `scripts/test/integracion/migraciones.test.mjs` (no protegida), en el mismo cambio (criterios 1 a 4)
-- [ ] T7 · backend · Seguridad compartida: claim `aca` en los tokens, cookie `aq_sesion`, duración por rol y
+- [x] T7 · backend · Seguridad compartida: claim `aca` en los tokens, cookie `aq_sesion`, duración por rol y
       `REGLAS_BLOQUEO_USUARIO` (criterios 5, 6, 9)
-- [ ] T8 · backend · `SesionAcademiaService` y su controlador: ingreso, `GET` y `DELETE /api/sesion`, límite por IP en
+- [x] T8 · backend · `SesionAcademiaService` y su controlador: ingreso, `GET` y `DELETE /api/sesion`, límite por IP en
       el middleware de `/api/a`, registro técnico (criterios 5 a 13, 17, 43)
-- [ ] T9 · backend · Middleware de las rutas de academia, verificación de la sesión, cambio obligatorio, `PermisosGuard`
+- [x] T9 · backend · Middleware de las rutas de academia, verificación de la sesión, cambio obligatorio, `PermisosGuard`
       y decoradores (criterios 14 a 16, 18 a 21, 27, 28)
-- [ ] T10 · backend · Cambio de contraseña (criterios 22 a 25)
-- [ ] T11 · backend · `UsuariosService` y su controlador: listar, crear, desactivar, reactivar, buscar por DNI y
+- [x] T10 · backend · Cambio de contraseña (criterios 22 a 25)
+- [x] T11 · backend · `UsuariosService` y su controlador: listar, crear, desactivar, reactivar, buscar por DNI y
       restablecer, con auditoría (criterios 29 a 37, 42). _(Precisión del orquestador (13/11/2026):)_ la búsqueda es
       `POST /api/usuarios/buscar-por-dni` con `buscarUsuarioPorDniSchema` en los contratos, sin el DNI en ningún
       registro (PO-3, ampliación del criterio 43); listas con inactivos (PO-4); `reactivar` sobre alumno 404 y
       restablecer sin tocar `estado` (PO-5); `@UsuarioActual()` como fábrica (PO-1)
-- [ ] T12 · backend · Rutas del Superadmin para los administradores de cada academia (criterios 38 a 41)
-- [ ] T13 · backend · Semilla con usuarios de ejemplo (criterio 45)
-- [ ] T14 · frontend · `/a/:nombreCorto/ingresar`, `/cambiar-clave`, `RutaConSesion` y `/panel` (criterios 46 a 48)
-- [ ] T15 · frontend · `/panel/usuarios`, `/panel/restablecer` y diálogo de administradores de la plataforma
+- [x] T12 · backend · Rutas del Superadmin para los administradores de cada academia (criterios 38 a 41)
+- [x] T13 · backend · Semilla con usuarios de ejemplo (criterio 45)
+- [x] T14 · frontend · `/a/:nombreCorto/ingresar`, `/cambiar-clave`, `RutaConSesion` y `/panel` (criterios 46 a 48)
+- [x] T15 · frontend · `/panel/usuarios`, `/panel/restablecer` y diálogo de administradores de la plataforma
       (criterios 49, 50). _(Precisión del orquestador (13/11/2026), PO-3:)_ `/panel/restablecer` busca con
       `POST /api/usuarios/buscar-por-dni`, sin el DNI en la dirección de la API ni de la página (criterio 43)
-- [ ] T16 · test-writer · Prueba E2E del flujo Superadmin → administrador → secretaria (criterio 51)
+- [x] T16 · test-writer · Prueba E2E del flujo Superadmin → administrador → secretaria (criterio 51)
 
 ## Ataque y cierre
 
@@ -233,16 +233,16 @@ orquestador decidió T4 (DT-4) y T5 (DT-5). No hay criterios nuevos ni pruebas p
 - [x] T17.27 · especificador · Ronda 4 sin fallas en `spec.md` (estado, "Ataque ronda 4 y decisiones del orquestador"
       con AR4-1, AR4-2, DT-4 y DT-5, nota en el criterio 10, casos límite, "Impacto", "Riesgos aceptados" y "Preguntas
       abiertas"); plan, sección 12, "Decisiones" y "Riesgos"; estas tareas
-- [ ] T17.28 · orquestador · Notas en `specs/backlog.md`: alinear `DELETE /api/plataforma/sesion` con el criterio 54
+- [x] T17.28 · orquestador · Notas en `specs/backlog.md`: alinear `DELETE /api/plataforma/sesion` con el criterio 54
       en una historia propia (DT-4), y volver a medir los tiempos del criterio 53 en el hosting junto a la revisión de
-      DT-1 (T17.19). No bloquea T18 ni T19
+      DT-1 (T17.19). No bloquea T18 ni T19 _(Hecha el 13/11/2026 por el documentador: notas en `specs/backlog.md`, en la 002 y en la 007.)_
 
 - [ ] T18 · revisor · Comparar con la spec y las convenciones (`CLAUDE.md` y "Reglas para las historias siguientes" de
       `docs/arquitectura.md`); confirmar con `git diff` que ningún commit de implementación tocó pruebas protegidas.
       _(Ataque ronda 3:)_ el commit de pruebas `b6b2d77` trae también `usuarios.service.ts`; es el caso registrado en la
-      nota de proceso de `spec.md` ("Decisiones"), no una violación
+      nota de proceso de `spec.md` ("Decisiones"), no una violación _(Pendiente: el historial tiene commits de revisión (`d059e7b`, y `04ba56e` en curso); se marca cuando el revisor cierre la revisión y confirme con `git diff` lo de las pruebas protegidas.)_
 - [ ] T19 · tester · Suite completa, lint y verificación de tipos (Linux; la CI también en Windows)
-- [ ] T20 · documentador · Commit final, tareas marcadas, `README.md`, `docs/guia-local-windows.md` (criterio 52) y
+- [x] T20 · documentador · Commit final, tareas marcadas, `README.md`, `docs/guia-local-windows.md` (criterio 52) y
       `docs/arquitectura.md` (sesión de academia, matriz de permisos, `@Permiso` y `@SoloSesion` para las historias
       siguientes). _(Ataque ronda 2:)_ si el orquestador acepta T5, también la regla "actor vigente dentro de la
       transacción que escribe" y la función reutilizable de la sección 10.1 del plan. _(Ataque ronda 3:)_ con la
@@ -251,7 +251,7 @@ orquestador decidió T4 (DT-4) y T5 (DT-5). No hay criterios nuevos ni pruebas p
       que toda escritura a pedido de un usuario de academia llama a `bloquearActorVigente`
       (`backend/src/modulos/autenticacion/actor-vigente.ts`) dentro de su transacción, con el orden por `id` cuando
       bloquea dos filas de `usuarios` y el modo exclusivo cuando escribe la fila del actor (plan, secciones 10.1, 11.1 y
-      12). Marcar también T1 a T16 si el historial lo confirma
+      12). Marcar también T1 a T16 si el historial lo confirma _(Hecha el 13/11/2026: la documentación está lista; el commit lo hace el orquestador tras la limpieza de backend y frontend.)_
 
 ## Solo ruta crítica
 

@@ -22,8 +22,9 @@ Navegador (PC de recepción / celular)
 ## Aislamiento entre academias
 
 - Toda tabla del negocio lleva `academia_id`.
-- La API toma la academia de la sesión del usuario, o del nombre corto de la dirección en las páginas públicas
-  (`/a/{academia}/…`, D-27).
+- La API toma la academia de la sesión del usuario (el id de la academia va en el token, en la claim `aca`), o del
+  nombre corto de la dirección en el ingreso y en las páginas públicas (`/api/a/{academia}/…`; en la web,
+  `/a/{academia}/…`; D-27). Ninguna ruta de academia toma la academia de la dirección.
 - Cada consulta corre dentro de una transacción que fija la academia (`set_config`), y PostgreSQL la vuelve a
   comprobar con seguridad a nivel de fila (RLS). Un error en una consulta no puede mostrar datos de otra academia.
 - El DNI es único dentro de cada academia (D-28). El Superadmin administra las academias, pero no ve sus datos
@@ -54,11 +55,27 @@ Lo que construye la historia 001 (migraciones en `backend/prisma/migrations/` y 
   la respuesta solo lleva el nombre corto y el nombre, sin id ni estado. Una academia suspendida responde 403.
 - **Sesión del superadmin.** Entra con la cookie `aq_plataforma` (`HttpOnly`, `SameSite=Strict`, `Path=/api/plataforma`,
   8 horas). Cambiar su clave sube `version_token`, y las sesiones abiertas dejan de valer.
+- **Sesión de las academias (002).** Entra con la cookie `aq_sesion` (`HttpOnly`, `SameSite=Strict`, `Path=/api`, y
+  `Secure` con `NODE_ENV=production`): 12 horas para el personal y 30 días para el alumno. Es una por navegador; entrar a
+  otra academia la reemplaza (DT-3 de 002). La API de la plataforma no la lee. En cada petición, la sesión se comprueba
+  contra la base: el usuario existe en la academia, está `ACTIVO` y su `version_token` es el del token. El rol y el
+  cambio de contraseña pendiente salen de esa fila, no del token.
 - **Auditoría.** Las altas, suspensiones y reactivaciones de academias, y el alta y el restablecimiento del superadmin,
   quedan en `auditoria_plataforma`. Los cambios dentro de una academia van a `auditoria`. Los inicios de sesión solo van
   al registro técnico (DR-7).
-- **Lo que no hace la 001:** los usuarios de las academias y su inicio de sesión, y el primer administrador de cada
-  academia (lo crea la 002, DR-1); la configuración con sus claves y valores por defecto (la define la 003, DR-8).
+- **Lo que no hace la 001:** los usuarios de las academias, su inicio de sesión y el primer administrador de cada
+  academia (lo hace la 002, DR-1 de 002); la configuración con sus claves y valores por defecto (la define la 003, DR-8
+  de 001).
+- **Lo que construye la historia 002** (migración `usuarios` y los módulos `autenticacion/` y `usuarios/`):
+  - **Tabla `usuarios` con RLS.** Cada cuenta pertenece a una academia (`academia_id`), y el DNI es único dentro de ella
+    (D-28). Un rol por cuenta (DR-7 de 002). Subir `version_token` cierra todas sus sesiones.
+  - **Ingreso y sesión.** `POST /api/a/{nombreCorto}/sesion` emite la cookie `aq_sesion`; `GET` y `DELETE /api/sesion` la
+    leen y la cierran; `POST /api/sesion/clave` cambia la contraseña. El ingreso admite 10 peticiones por minuto y por IP,
+    y la cuenta se bloquea 15 minutos tras 5 fallos seguidos.
+  - **Permisos.** La matriz compartida y los decoradores: ver "Permisos, sesión y datos personales (002)" más abajo.
+  - **Gestión de cuentas.** `UsuariosService` en `/api/usuarios`: listar, crear, desactivar, reactivar, buscar por DNI y
+    restablecer, cada operación en su transacción y con su auditoría. El superadmin gestiona los administradores de cada
+    academia en `/api/plataforma/academias/{id}/administradores`; lo que hace queda en la auditoría de esa academia.
 
 ## Fechas y horas de negocio (America/Lima)
 
@@ -75,8 +92,56 @@ Lo que construye la historia 001 (migraciones en `backend/prisma/migrations/` y 
 
 ## Reglas para las historias siguientes
 
-Estas reglas salen de las rondas del ataque adversarial de la 001. El revisor y el adversarial las comprueban en cada
-historia nueva. Los números entre paréntesis son criterios de `specs/001-academias-aislamiento/spec.md`.
+Estas reglas salen de las rondas del ataque adversarial de la 001 y de la 002. El revisor y el adversarial las comprueban
+en cada historia nueva. Los números entre paréntesis son criterios de `specs/001-academias-aislamiento/spec.md`; los de la
+002 se citan como «criterio N de 002».
+
+### Escrituras de usuarios de la academia (002, DT-5)
+
+- Toda transacción que escribe a pedido de un usuario de la academia llama a `bloquearActorVigente`
+  (`backend/src/modulos/autenticacion/actor-vigente.ts`) dentro de su `conAcademia`, como primera sentencia: antes de leer
+  o escribir otra cosa. Alcanza a los cobros, la verificación de pagos, la caja, la asistencia, `crearEnTransaccion` de la
+  007 y también a las escrituras que solo tocan la propia fila de quien pide, como un contador o una marca (criterios 56,
+  57 y 60 de 002).
+- Recibe `{ id, versionToken }` de la sesión de la petición (`SesionVerificada.versionToken`, que entrega
+  `@SesionActual()`; `actorDeSesion(sesion)`, del mismo archivo, arma ese actor), y las opciones `registro` e `ip` para el
+  registro técnico, que nunca lleva el DNI. Si la función
+  lanza el 401 `NO_AUTENTICADO`, la transacción aborta y no se escribe nada. Ese 401 tiene prioridad sobre cualquier 404 o
+  409 que la misma transacción fuera a devolver.
+- Con dos filas de `usuarios` (quien pide y la persona a la que afecta, por ejemplo al desactivar o restablecer), se pasa
+  `objetivoId`: una sola sentencia bloquea las dos filas con `ORDER BY id FOR UPDATE`, y todas las transacciones las toman
+  en ese orden. No se bloquean por separado: dos administradores que se desactivan entre sí se esperarían en cruz y
+  PostgreSQL abortaría uno con `40P01` (criterio 57 de 002).
+- Con `exclusivo: true` la fila de quien pide se bloquea con `FOR UPDATE`, cuando la misma transacción va a escribir esa
+  fila (por ejemplo, el contador de un fallo de la clave). Sin `exclusivo`, la fila se bloquea con `FOR SHARE`, que deja
+  hacer varias escrituras a la vez al mismo usuario; con `FOR SHARE` seguido de un `UPDATE`, dos peticiones de la misma
+  sesión se interbloquearían.
+- `permitirCambioPendiente: true` solo en `POST /api/sesion/clave`, que es la ruta que resuelve el cambio obligatorio. En
+  cualquier otra ruta, la función exige `debe_cambiar_clave = false`.
+- El Superadmin no pasa por esta función (no es una fila de `usuarios`). Sus rutas de plataforma verifican la sesión solo
+  al empezar la petición, sin revalidarla dentro de la transacción (AR3-4 de 002), y lo que hacen en una academia se audita
+  en la de la academia. Además, conoce la clave inicial de los administradores que crea o restablece (pregunta N11 de 002:
+  valor provisional (a), riesgo aceptado, pendiente de Bryan). Si una historia agrega cambios a su cuenta, esto se revisa.
+
+### Permisos, sesión y datos personales (002)
+
+- La sesión se exige a toda ruta de `/api` que no sea `/api/salud`, `/api/plataforma/…` ni `/api/a/…`, con un middleware
+  de todo el prefijo que corre antes del lector del cuerpo. La sesión sale solo de la cookie `aq_sesion`, nunca de una
+  cabecera `Authorization`.
+- Cada manejador de una ruta de academia declara `@Permiso('PERMISO')`, con un permiso de la matriz, o `@SoloSesion()`,
+  si basta con tener sesión (por ejemplo, para cambiar la propia contraseña). Una ruta de academia sin ninguno de los dos
+  responde 403 `SIN_PERMISO` a todos los roles (falla cerrada). `@Permiso` con un permiso que no existe en la matriz falla
+  al arrancar la aplicación.
+- Quien pide se toma con `@UsuarioActual()` (el `UsuarioAutenticado`: id, academia, rol, nombres, apellidos y
+  `debeCambiarClave`). Si el servicio necesita también la versión del token, `@SesionActual()` entrega la
+  `SesionVerificada`. El rol y el cambio obligatorio salen de la base en cada petición, no del token.
+- La matriz de permisos está en `packages/contratos/src/permisos.ts` (`MATRIZ_PERMISOS` y `puede(rol, permiso)`) y la
+  comparten la API y la web. El guard decide solo si el rol pasa; el alcance de cada celda (`SUS_ALUMNOS`, `PROPIO`…) lo
+  aplica el servicio de la historia. Una celda vacía significa «no».
+- Un DNI u otro dato personal se busca con `POST` y el dato en el cuerpo, validado con su esquema zod, y nunca en la
+  dirección: una dirección queda en los registros de acceso del proxy del hosting y en el historial del navegador.
+  Ejemplo: `POST /api/usuarios/buscar-por-dni` con `{ dni }` (criterios 34 y 43 de 002). La búsqueda no escribe ni audita
+  nada.
 
 ### Transacciones
 
@@ -85,8 +150,8 @@ historia nueva. Los números entre paréntesis son criterios de `specs/001-acade
 - No se pasan funciones `async` a `process.nextTick`, `setImmediate`, `setTimeout`, `setInterval` ni `queueMicrotask`.
   Lo que sea diferido va después de confirmar (criterio 164).
 - Dentro de una transacción de la API, las consultas que se lanzan a la vez (`Promise.all`) se ejecutan de una en una, y
-  cada una recibe su propio resultado o su propio error (criterio 153). En los comandos y en la semilla (`enPlataforma`)
-  no se lanzan consultas en paralelo: se encadenan con `await`.
+  cada una recibe su propio resultado o su propio error (criterio 153). En los comandos y en la semilla (`enPlataforma` y
+  `enAcademia`) no se lanzan consultas en paralelo: se encadenan con `await`.
 - Un error de la base que se atrapa dentro de la transacción la deja abortada, y la operación falla (criterio 149). Un
   P2025 atrapado por una consulta no la aborta, y una escritura de un modelo que falla no deja nada escrito, aunque tenga
   relaciones anidadas (criterio 158).
@@ -121,6 +186,8 @@ historia nueva. Los números entre paréntesis son criterios de `specs/001-acade
 - Un error nunca lleva el contenido de un archivo, ni un binario, ni una copia de él, ni un `Proxy` de un binario: se
   guarda la clave del archivo en `AlmacenArchivos` (D-19). La `cause` de un error es un valor, nunca una función
   (criterios 167 y 168).
+- El registro técnico de las cuentas y de la sesión nunca lleva el DNI, la clave, la clave nueva, la actual, el token ni el
+  cuerpo de la petición, en ningún nivel (criterio 43 de 002). Tampoco lo lleva la línea de la petición de `pino-http`.
 
 ### Datos, fechas y cachés
 
@@ -145,7 +212,7 @@ piscina/
 │   ├── prisma/
 │   │   ├── schema.prisma
 │   │   ├── migrations/           Incluyen las políticas RLS por academia
-│   │   └── seed.ts               Datos inventados: 2 academias de ejemplo
+│   │   └── seed.ts               Datos inventados: 2 academias de ejemplo y sus usuarios
 │   ├── src/
 │   │   ├── main.ts · app.module.ts
 │   │   ├── comun/                Guards de rol, decorador de academia, filtros de error, dinero y fechas en Lima
