@@ -259,6 +259,9 @@ describe('criterio 42: si la inserción de auditoría falla, la operación compl
       `CREATE OR REPLACE FUNCTION public.prueba_002_falla_auditoria() RETURNS trigger LANGUAGE plpgsql AS
          $$ BEGIN RAISE EXCEPTION 'falla de auditoría provocada por la prueba'; END $$`,
     );
+    // La API rechaza un rol con EXECUTE sobre funciones de `public` concedido a PUBLIC (criterio 130 de la 001): se revoca para que
+    // el 500 venga de la auditoría y no de la comprobación del rol.
+    await ejecutarComo('propietario', 'REVOKE EXECUTE ON FUNCTION public.prueba_002_falla_auditoria() FROM PUBLIC');
     await ejecutarComo(
       'propietario',
       `CREATE TRIGGER prueba_002_falla BEFORE INSERT ON auditoria

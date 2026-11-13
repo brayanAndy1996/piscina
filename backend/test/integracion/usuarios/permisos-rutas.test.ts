@@ -288,7 +288,7 @@ describe('criterio 27: ninguna ruta de academia de la aplicación está sin decl
     }
     // Precisión del orquestador (13/11/2026), PO-3: la búsqueda no lleva el DNI en la dirección; la ruta con el DNI no existe.
     expect(
-      rutas.filter((ruta) => ruta.includes('por-dni')),
+      rutas.filter((ruta) => ruta.includes('/por-dni/')),
       'la ruta GET /api/usuarios/por-dni/{dni} no debe existir',
     ).toEqual([]);
   });

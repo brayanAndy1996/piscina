@@ -374,7 +374,8 @@ describe('administradores de cada academia desde la plataforma', () => {
       async (_nombre, llamar) => {
         const antes = await instantaneaDeUsuarios(e.A.id);
 
-        const respuesta = await llamar(e.A.id, undefined);
+        // Cadena vacía: sin cookie. (`undefined` activaría el valor por defecto de los ayudantes: la sesión del superadmin.)
+        const respuesta = await llamar(e.A.id, '');
 
         expect(respuesta.status).toBe(401);
         expect((respuesta.body as ErrorCuerpo).codigo).toBe('NO_AUTENTICADO');

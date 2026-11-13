@@ -4,6 +4,7 @@ import { Controller, Get, Param, type Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { SoloSesion } from '../../../src/modulos/autenticacion';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase } from '../../utilidades/base-datos';
 import { crearDatosDeAislamiento, type DatosDeAislamiento } from '../../utilidades/datos';
@@ -29,6 +30,7 @@ import {
   VALOR,
 } from '../../utilidades/ronda13';
 import { esperarCondicion, obtenerBaseDatosRonda3, type BaseDatosRonda3 } from '../../utilidades/ronda3';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 
 // Criterio 160 (ataque ronda 13, F1 (b); amplia los criterios 149, 154 y 156; precisa la quinta vineta del 153 y P-38): una operacion
 // enviada sin `await` (dentro de una funcion `async` lanzada sin esperarla, o con `.catch`) que rechaza con un error que no es de la base
@@ -145,6 +147,7 @@ function crearControladorDePrueba(): Type<unknown> {
   @Controller('prueba-r13')
   class ControladorPruebaR13 {
     @Get('plataforma/:n')
+    @SoloSesion()
     async plataforma(@Param('n') n: string): Promise<{ valor: string }> {
       const numero = Number(n);
       const { guardar } = crearGuardador();
@@ -325,7 +328,9 @@ describe('criterio 160, caso 4: por la API', () => {
     const escenario = escenarioDe('comoPlataforma');
     const n = siguienteNumero();
 
-    const respuesta = await request(app.getHttpServer()).get(`/api/prueba-r13/plataforma/${n}`);
+    const { cookie } = await sesionDeAcademia(datos.A);
+
+    const respuesta = await request(app.getHttpServer()).get(`/api/prueba-r13/plataforma/${n}`).set('Cookie', cookie);
 
     expect(respuesta.status, JSON.stringify(respuesta.body)).toBe(500);
     expect(errorApiSchema.parse(respuesta.body).codigo).toBe('ERROR_INTERNO');
@@ -337,9 +342,10 @@ describe('criterio 160, caso 4: por la API', () => {
 
   it('criterio 160: el registro tecnico dice que una operacion rechazo despues de que trabajo termino y la nombra, sin argumentos ni el mensaje de Prisma', async () => {
     const n = siguienteNumero();
+    const { cookie } = await sesionDeAcademia(datos.A);
     const desde = lineas.length;
 
-    await request(app.getHttpServer()).get(`/api/prueba-r13/plataforma/${n}`);
+    await request(app.getHttpServer()).get(`/api/prueba-r13/plataforma/${n}`).set('Cookie', cookie);
     await new Promise((resolver) => setTimeout(resolver, 150));
 
     const nuevas = lineas

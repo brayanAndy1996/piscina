@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { crearAcademiaDePrueba, type AcademiaDePrueba } from '../../utilidades/academias';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { ejecutarComo, limpiarBase } from '../../utilidades/base-datos';
+import { cargarFuncionalidad } from '../../utilidades/ronda3';
 import { cargarPrisma, crearDestinoDeRegistro, esperarHasta, obtenerBaseDatos } from '../../utilidades/modulos';
 
 // Criterio 102 (ataque ronda 3, O3; complementa los criterios 2, 80 y 81): la comprobacion del rol calcula los privilegios
@@ -21,17 +22,32 @@ import { cargarPrisma, crearDestinoDeRegistro, esperarHasta, obtenerBaseDatos } 
 
 const APP = 'aquagestion_app';
 
-/** Los privilegios del criterio 2, para devolver las tablas a su estado (el dueno es quien concede y revoca). */
-const RESTAURAR = [
-  `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${APP}`,
-  'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC',
-  `GRANT SELECT, INSERT ON academias TO ${APP}`,
-  `GRANT UPDATE (estado, motivo_suspension, suspendida_en, actualizada_en) ON academias TO ${APP}`,
-  `GRANT SELECT ON superadmins TO ${APP}`,
-  `GRANT UPDATE (intentos_fallidos, bloqueado_hasta, ultimo_acceso, version_token, actualizado_en) ON superadmins TO ${APP}`,
-  `GRANT SELECT, INSERT ON auditoria, auditoria_plataforma TO ${APP}`,
-  `GRANT SELECT, INSERT, UPDATE ON configuraciones TO ${APP}`,
-];
+/**
+ * Las sentencias que devuelven las tablas al estado permitido: se derivan de la lista `PRIVILEGIOS_APP` (la del criterio 2 mas
+ * lo que suma cada historia), para que esta prueba no se desincronice cuando una historia agregue tablas (el dueno es quien
+ * concede y revoca). `privilegios-app.test.ts` compara esa lista con la escrita de forma independiente.
+ */
+async function sentenciasDeRestauracion(): Promise<string[]> {
+  const { PRIVILEGIOS_APP } = await cargarFuncionalidad<{
+    PRIVILEGIOS_APP: readonly { tabla: string; columna: string | null; privilegio: string }[];
+  }>('infraestructura/prisma/privilegios-app.ts', ['PRIVILEGIOS_APP']);
+  const grupos = new Map<string, string>();
+  for (const { tabla, columna, privilegio } of PRIVILEGIOS_APP) {
+    const clave = JSON.stringify([tabla, privilegio, columna === null]);
+    grupos.set(clave, grupos.get(clave) === undefined ? (columna ?? '') : `${grupos.get(clave)}, ${columna ?? ''}`);
+  }
+  const sentencias = [...grupos.entries()].map(([clave, columnas]) => {
+    const [tabla, privilegio, tablaEntera] = JSON.parse(clave) as [string, string, boolean];
+    return tablaEntera
+      ? `GRANT ${privilegio} ON ${tabla} TO ${APP}`
+      : `GRANT ${privilegio} (${columnas}) ON ${tabla} TO ${APP}`;
+  });
+  return [
+    `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${APP}`,
+    'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC',
+    ...sentencias,
+  ];
+}
 
 const LIMPIAR_OBJETOS = [
   'DROP VIEW IF EXISTS vista_ronda3',
@@ -41,7 +57,8 @@ const LIMPIAR_OBJETOS = [
 ];
 
 async function restaurar(): Promise<void> {
-  for (const sentencia of [...LIMPIAR_OBJETOS, ...RESTAURAR]) await ejecutarComo('propietario', sentencia);
+  for (const sentencia of [...LIMPIAR_OBJETOS, ...(await sentenciasDeRestauracion())])
+    await ejecutarComo('propietario', sentencia);
 }
 
 interface Caso {
