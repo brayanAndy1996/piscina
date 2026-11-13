@@ -13,7 +13,9 @@
   academia, y lo hace esta historia).
 - **Ruta crítica:** sí, casi toda: autenticación, permisos y aislamiento entre academias (lista de `CLAUDE.md`). No
   son críticos: los mensajes y pantallas de la web, la semilla y la documentación.
-- **Estado:** borrador (13/11/2026)
+- **Estado:** aprobada por el responsable (13/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
+  DR-10 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-3), en "Decisiones". Ningún criterio
+  cambió.
 
 ## Objetivo
 
@@ -546,6 +548,64 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
 
 ## Decisiones
 
+**Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" en esta sección y como "DR-n de
+002" fuera de ella; las de la 001 se citan "DR-n de 001". Los criterios, el contrato y las demás secciones se
+escribieron antes de la aprobación y no cambian: donde dicen "pregunta Nn" se refieren a DR-n de 002 y donde dicen
+"pregunta Tn", a DT-n; donde dicen "DR-1" o "DR-4" sin más (sección H, criterios 39 y 46), se refieren a la 001. Los
+valores que los criterios llaman "provisionales" (criterios 5, 9, 23 y 36) quedan aprobados para el MVP; los de bloqueo
+(DR-3) siguen siendo constantes hasta que 003 los haga configurables (D-07).
+
+### Decisiones del responsable (13/11/2026)
+
+Bryan aprobó la especificación y aceptó la propuesta de cada pregunta de negocio ("de acuerdo con todas, apruebo la
+002"). Se conserva el texto de cada pregunta y su propuesta, que es lo decidido.
+
+- **DR-1 (pregunta N1). ¿El personal también empieza con la contraseña igual a su DNI y debe cambiarla al entrar?**
+  RN-02 lo dice del alumno. **Decidido (la propuesta):** sí, para todos los roles: quien crea la cuenta nunca conoce
+  la contraseña final (criterios 30 y 39).
+- **DR-2 (pregunta N2). ¿Qué reglas tiene la nueva contraseña?** **Decidido (la propuesta):** de 8 a 128 caracteres,
+  distinta del DNI y de la actual; sin exigir números ni símbolos (la usa toda la familia) (criterio 23).
+- **DR-3 (pregunta N3). ¿Cuántos intentos fallidos bloquean la cuenta y por cuánto tiempo?** **Decidido (la
+  propuesta):** 5 intentos y 15 minutos, como el Superadmin (DR-3 de 001); el restablecimiento desbloquea; 003 los hace
+  configurables (criterio 9).
+- **DR-4 (pregunta N4). ¿Quién puede restablecer la contraseña de quién?** HU-05 solo dice que la secretaria
+  restablece la del alumno. **Decidido (la propuesta):** la secretaria, solo a alumnos; el administrador, a cualquier
+  usuario de su academia menos a sí mismo (criterio 36).
+- **DR-5 (pregunta N5). ¿Qué más hace el Superadmin con los administradores?** D-29 y DR-1 de 001 dicen que crea el
+  primero. **Decidido (la propuesta):** puede crear más administradores, ver la lista de administradores de cada
+  academia (DNI, nombre, estado y si está bloqueado) y restablecer la contraseña de uno; así, si el único
+  administrador olvida su contraseña, la academia no queda sin acceso. No ve ni toca a nadie más (criterios 38 a 40).
+- **DR-6 (pregunta N6). ¿El administrador puede desactivar y reactivar al personal?** El modelo tiene `estado` en
+  `USUARIO`, pero ninguna HU lo pide. **Decidido (la propuesta):** sí, para que una secretaria o un entrenador que deja
+  la academia pierda el acceso al instante; sin borrar la cuenta; no a sí mismo; los alumnos no (su estado es de la
+  historia 010) (criterios 31 y 32).
+- **DR-7 (pregunta N7). ¿Una cuenta tiene un solo rol?** Con el DNI único por academia (D-28), una persona tiene una
+  sola cuenta en cada academia. **Decidido (la propuesta):** sí, un rol por cuenta en el MVP; una secretaria no puede
+  ser además alumna de la misma academia con la misma cuenta.
+- **DR-8 (pregunta N8). ¿Cuánto dura la sesión y qué cierra "Cerrar sesión"?** **Decidido (la propuesta):** 12 horas
+  para el personal (una jornada de 08:00 a 20:00) y 30 días para el alumno (muestra su carnet desde el celular sin
+  entrar cada día); "Cerrar sesión" cierra la cuenta en todos los dispositivos, también el celular del hijo o del
+  padre que la comparten (criterios 5 y 17).
+- **DR-9 (pregunta N9). ¿Qué se guarda en la auditoría?** **Decidido (la propuesta):** la creación, desactivación y
+  reactivación de cuentas, los restablecimientos y los cambios de la propia contraseña; los inicios de sesión solo en
+  el registro técnico, como en 001 (DR-7 de 001) (criterio 42).
+- **DR-10 (pregunta N10). ¿Solo se aceptan DNI de 8 dígitos?** HU-01 lo exige al alumno. **Decidido (la propuesta):**
+  sí, también para el personal; el carné de extranjería u otros documentos quedan para después del MVP.
+
+### Decisiones técnicas del orquestador (13/11/2026)
+
+El orquestador aprobó las tres propuestas técnicas tal como estaban. Se conserva el texto de cada pregunta y su
+propuesta.
+
+- **DT-1 (pregunta T1). Límite por IP del ingreso.** En la piscina, muchos alumnos pueden entrar desde la misma red
+  WiFi (una sola IP pública). **Decidido (la propuesta):** 10 por minuto por IP, como el Superadmin; con sesiones
+  largas para el alumno, los ingresos son pocos; se revisa con el hosting y `trust proxy` (criterio 12).
+- **DT-2 (pregunta T2). Sesiones de una academia reactivada.** DR-4 de 001 dice que las sesiones "dejan de valer" al
+  suspender. **Decidido (la propuesta):** mientras está suspendida no pasa ninguna petición (403); al reactivarla, las
+  sesiones no vencidas vuelven a valer (cortarlas exigiría tocar `usuarios` desde la plataforma) (criterio 15).
+- **DT-3 (pregunta T3). Una sesión de academia por navegador.** **Decidido (la propuesta):** aceptarlo; entrar a otra
+  academia reemplaza la sesión.
+
 ### Decisiones de diseño (técnicas)
 
 - **Una cookie `aq_sesion` con `Path=/api` y rutas sin nombre corto** (`/api/sesion`, `/api/usuarios`; D-27: la
@@ -566,47 +626,7 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
 
 ## Preguntas abiertas
 
-### De negocio (las decide Bryan)
-
-- **N1. ¿El personal también empieza con la contraseña igual a su DNI y debe cambiarla al entrar?** RN-02 lo dice del
-  alumno. **Propuesta:** sí, para todos los roles: quien crea la cuenta nunca conoce la contraseña final. **Valor
-  provisional:** la propuesta (criterios 30 y 39).
-- **N2. ¿Qué reglas tiene la nueva contraseña?** **Propuesta:** de 8 a 128 caracteres, distinta del DNI y de la
-  actual; sin exigir números ni símbolos (la usa toda la familia). **Valor provisional:** la propuesta (criterio 23).
-- **N3. ¿Cuántos intentos fallidos bloquean la cuenta y por cuánto tiempo?** **Propuesta:** 5 intentos y 15 minutos,
-  como el Superadmin (DR-3); el restablecimiento desbloquea; 003 los hace configurables. **Valor provisional:** la
-  propuesta (criterio 9).
-- **N4. ¿Quién puede restablecer la contraseña de quién?** HU-05 solo dice que la secretaria restablece la del alumno.
-  **Propuesta:** la secretaria, solo a alumnos; el administrador, a cualquier usuario de su academia menos a sí mismo.
-  **Valor provisional:** la propuesta (criterio 36).
-- **N5. ¿Qué más hace el Superadmin con los administradores?** D-29 y DR-1 dicen que crea el primero. **Propuesta:**
-  puede crear más administradores, ver la lista de administradores de cada academia (DNI, nombre, estado y si está
-  bloqueado) y restablecer la contraseña de uno; así, si el único administrador olvida su contraseña, la academia no
-  queda sin acceso. No ve ni toca a nadie más. **Valor provisional:** la propuesta (criterios 38 a 40).
-- **N6. ¿El administrador puede desactivar y reactivar al personal?** El modelo tiene `estado` en `USUARIO`, pero
-  ninguna HU lo pide. **Propuesta:** sí, para que una secretaria o un entrenador que deja la academia pierda el acceso
-  al instante; sin borrar la cuenta; no a sí mismo; los alumnos no (su estado es de la historia 010). **Valor
-  provisional:** la propuesta (criterios 31 y 32).
-- **N7. ¿Una cuenta tiene un solo rol?** Con el DNI único por academia (D-28), una persona tiene una sola cuenta en
-  cada academia. **Propuesta:** sí, un rol por cuenta en el MVP; una secretaria no puede ser además alumna de la misma
-  academia con la misma cuenta. **Valor provisional:** la propuesta.
-- **N8. ¿Cuánto dura la sesión y qué cierra "Cerrar sesión"?** **Propuesta:** 12 horas para el personal (una jornada de
-  08:00 a 20:00) y 30 días para el alumno (muestra su carnet desde el celular sin entrar cada día); "Cerrar sesión"
-  cierra la cuenta en todos los dispositivos, también el celular del hijo o del padre que la comparten. **Valor
-  provisional:** la propuesta (criterios 5 y 17).
-- **N9. ¿Qué se guarda en la auditoría?** **Propuesta:** la creación, desactivación y reactivación de cuentas, los
-  restablecimientos y los cambios de la propia contraseña; los inicios de sesión solo en el registro técnico, como en
-  001 (DR-7). **Valor provisional:** la propuesta (criterio 42).
-- **N10. ¿Solo se aceptan DNI de 8 dígitos?** HU-01 lo exige al alumno. **Propuesta:** sí, también para el personal;
-  el carné de extranjería u otros documentos quedan para después del MVP. **Valor provisional:** la propuesta.
-
-### Técnicas (las decide el orquestador)
-
-- **T1. Límite por IP del ingreso.** En la piscina, muchos alumnos pueden entrar desde la misma red WiFi (una sola IP
-  pública). **Propuesta:** 10 por minuto por IP, como el Superadmin; con sesiones largas para el alumno, los ingresos
-  son pocos; se revisa con el hosting y `trust proxy`. **Valor provisional:** la propuesta (criterio 12).
-- **T2. Sesiones de una academia reactivada.** DR-4 dice que las sesiones "dejan de valer" al suspender. **Propuesta:**
-  mientras está suspendida no pasa ninguna petición (403); al reactivarla, las sesiones no vencidas vuelven a valer
-  (cortarlas exigiría tocar `usuarios` desde la plataforma). **Valor provisional:** la propuesta (criterio 15).
-- **T3. Una sesión de academia por navegador.** **Propuesta:** aceptarlo; entrar a otra academia reemplaza la sesión.
-  **Valor provisional:** la propuesta.
+Ninguna. Las 10 preguntas de negocio de la versión en borrador (N1 a N10) las resolvió el responsable el 13/11/2026
+(DR-1 a DR-10 de 002) y las 3 técnicas (T1 a T3), el orquestador ese mismo día (DT-1 a DT-3); su texto y su propuesta
+están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy` y el límite por IP detrás de un proxy
+(DT-1; riesgo aceptado "Límite por IP en memoria").

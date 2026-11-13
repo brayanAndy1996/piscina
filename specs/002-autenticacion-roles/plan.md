@@ -4,6 +4,11 @@ Referencias: [`spec.md`](spec.md), [`docs/arquitectura.md`](../../docs/arquitect
 historias siguientes") y la spec [`001-academias-aislamiento`](../001-academias-aislamiento/spec.md). Lo que no es
 orientativo es el contrato de `spec.md`.
 
+**Estado:** aprobado junto con la spec el 13/11/2026. Las preguntas quedaron resueltas con su propuesta (DR-1 a DR-10
+de 002 y DT-1 a DT-3 en "Decisiones" de `spec.md`), así que el diseño no cambia: los valores de bloqueo (5 intentos,
+15 minutos; DR-3), las duraciones de sesión (12 h y 30 días; DR-8), el límite por IP compartido (10 por minuto; DT-1),
+el alcance del restablecimiento (DR-4) y las rutas del Superadmin (DR-5) son los de este plan.
+
 ## Módulos afectados
 
 ```

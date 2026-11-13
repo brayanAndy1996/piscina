@@ -4,6 +4,15 @@ Cada tarea indica su rol y los criterios de aceptación de [`spec.md`](spec.md) 
 las pruebas protegidas se escriben y se confirman en rojo antes de implementar (T1 a T4), y el ataque adversarial corre
 después de la implementación (T17). No se empieza T1 sin la aprobación del responsable.
 
+Especificación aprobada por el responsable el 13/11/2026, con las propuestas de todas las preguntas de negocio (DR-1 a
+DR-10 de 002); el orquestador aprobó las técnicas (DT-1 a DT-3). Están en "Decisiones" de `spec.md`; ningún criterio
+cambió. Se puede empezar por T1.
+
+## Aprobación
+
+- [x] T0 · responsable y orquestador · Aprobar la especificación y resolver las preguntas abiertas N1 a N10 (Bryan) y
+      T1 a T3 (orquestador), 13/11/2026 (todos los criterios)
+
 ## Pruebas protegidas (en rojo)
 
 - [ ] T1 · test-writer · Utilidades `backend/test/utilidades/usuarios.ts` según el contrato; pruebas protegidas de la
