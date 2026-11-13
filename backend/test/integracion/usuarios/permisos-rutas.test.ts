@@ -71,11 +71,8 @@ function crearControladoresDePrueba(autenticacion: ModuloAutenticacion): Type<un
   decorarMetodo(PorMetodo, 'gestionarUsuarios', get('gestionar-usuarios'), Permiso('GESTIONAR_USUARIOS'));
   decorarMetodo(PorMetodo, 'restablecerClave', get('restablecer-clave'), Permiso('RESTABLECER_CLAVE'));
   decorarMetodo(PorMetodo, 'quien', get('quien'), SoloSesion());
-  // El contrato escribe `UsuarioActual: ParameterDecorator`, pero se usa como `@UsuarioActual()` (como `SuperadminActual`, creado con
-  // `createParamDecorator`): se acepta cualquiera de las dos formas.
-  const decoradorDeParametro =
-    UsuarioActual.length >= 3 ? UsuarioActual : (UsuarioActual as unknown as () => ParameterDecorator)();
-  decoradorDeParametro(PorMetodo.prototype, 'quien', 0);
+  // `UsuarioActual` es una fábrica de decorador (`@UsuarioActual()`, como `SuperadminActual`; precisión del orquestador PO-1).
+  UsuarioActual()(PorMetodo.prototype, 'quien', 0);
   Controller('prueba-002')(PorMetodo);
 
   class SoloSesionPorClase {
@@ -285,10 +282,15 @@ describe('criterio 27: ninguna ruta de academia de la aplicación está sin decl
       'POST /api/usuarios/:id/desactivar',
       'POST /api/usuarios/:id/reactivar',
       'POST /api/usuarios/:id/restablecer-clave',
-      'GET /api/usuarios/por-dni/:dni',
+      'POST /api/usuarios/buscar-por-dni',
     ]) {
       expect(rutas, `falta la ruta ${esperada}`).toContain(esperada);
     }
+    // Precisión del orquestador (13/11/2026), PO-3: la búsqueda no lleva el DNI en la dirección; la ruta con el DNI no existe.
+    expect(
+      rutas.filter((ruta) => ruta.includes('por-dni')),
+      'la ruta GET /api/usuarios/por-dni/{dni} no debe existir',
+    ).toEqual([]);
   });
 
   it('criterio 27: ninguna ruta de academia responde 403 SIN_PERMISO a los cuatro roles: toda ruta declara un permiso de la matriz o @SoloSesion', async () => {
@@ -384,9 +386,9 @@ const RUTAS_DE_LA_HISTORIA: readonly RutaDeLaHistoria[] = [
     exito: 200,
   },
   {
-    nombre: 'GET /api/usuarios/por-dni/{dni}',
-    metodo: 'get',
-    peticion: (e) => ({ ruta: `/api/usuarios/por-dni/${e.alumnoA.dni}` }),
+    nombre: 'POST /api/usuarios/buscar-por-dni',
+    metodo: 'post',
+    peticion: (e) => ({ ruta: '/api/usuarios/buscar-por-dni', cuerpo: { dni: e.alumnoA.dni } }),
     roles: ['ADMIN', 'SECRETARIA'],
     exito: 200,
   },
@@ -470,6 +472,10 @@ describe('criterios 28 y 37: cada ruta de la historia con cada uno de los cuatro
         await pedir(app, 'post', '/api/usuarios', { cookie }).set('Content-Type', 'application/json').send('{"dni": '),
         await pedir(app, 'post', `/api/usuarios/${e.alumnoA.id}/desactivar`, { cookie, cuerpo: { extra: 1 } }),
         await pedir(app, 'post', `/api/usuarios/${e.alumnoA.id}/restablecer-clave`, { cookie, cuerpo: { extra: 1 } }),
+        await pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie, cuerpo: { extra: 1 } }),
+        await pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie })
+          .set('Content-Type', 'application/json')
+          .send('{"dni": '),
       ];
 
       for (const respuesta of respuestas) {

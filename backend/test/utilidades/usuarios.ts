@@ -353,7 +353,8 @@ export async function cargarFuncionalidad002<T>(rutaDesdeSrc: string, exportacio
 export interface ModuloAutenticacion {
   Permiso: (permiso: string) => MethodDecorator & ClassDecorator;
   SoloSesion: () => MethodDecorator & ClassDecorator;
-  UsuarioActual: ParameterDecorator;
+  /** Fábrica de decorador de parámetro: `@UsuarioActual() usuario` (precisión del orquestador PO-1). */
+  UsuarioActual: () => ParameterDecorator;
 }
 
 /** `backend/src/modulos/autenticacion/index.ts` (contrato: `Permiso`, `SoloSesion` y `UsuarioActual`). */

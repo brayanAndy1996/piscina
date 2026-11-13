@@ -432,6 +432,9 @@ describe('sesión de academia', () => {
       ['POST', `/api/usuarios/${ID}/reactivar`],
       ['POST', `/api/usuarios/${ID}/restablecer-clave`],
       ['POST', '/api/usuarios/abc/restablecer-clave'],
+      ['POST', '/api/usuarios/buscar-por-dni'],
+      ['POST', '/api/usuarios/buscar-por-dni/'],
+      ['GET', '/api/usuarios/buscar-por-dni'],
       ['GET', '/api/usuarios/por-dni/12345678'],
       ['GET', '/api/usuarios/por-dni/no-es-un-dni'],
       ['GET', '/api/no-existe'],
@@ -602,7 +605,9 @@ describe('sesión de academia', () => {
     it('criterio 20: con sesión de A, pedir con ids de usuarios de B responde 404 y no cambia nada en B', async () => {
       const cookie = cookieDe(e.adminA);
       // Control: con la misma sesión, el id de un usuario de A sí se encuentra.
-      expect((await pedir(app, 'get', `/api/usuarios/por-dni/${e.alumnoA.dni}`, { cookie })).status).toBe(200);
+      expect(
+        (await pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie, cuerpo: { dni: e.alumnoA.dni } })).status,
+      ).toBe(200);
       const antesB = await instantaneaDeUsuarios(e.B.id);
 
       const respuestas = [
@@ -611,8 +616,8 @@ describe('sesión de academia', () => {
         await pedir(app, 'post', `/api/usuarios/${e.secretariaB.id}/reactivar`, { cookie, cuerpo: {} }),
         await pedir(app, 'post', `/api/usuarios/${e.secretariaB.id}/restablecer-clave`, { cookie, cuerpo: {} }),
         await pedir(app, 'post', `/api/usuarios/${e.alumnoB.id}/restablecer-clave`, { cookie, cuerpo: {} }),
-        await pedir(app, 'get', `/api/usuarios/por-dni/${e.secretariaB.dni}`, { cookie }),
-        await pedir(app, 'get', `/api/usuarios/por-dni/${e.alumnoB.dni}`, { cookie }),
+        await pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie, cuerpo: { dni: e.secretariaB.dni } }),
+        await pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie, cuerpo: { dni: e.alumnoB.dni } }),
       ];
 
       for (const respuesta of respuestas) {

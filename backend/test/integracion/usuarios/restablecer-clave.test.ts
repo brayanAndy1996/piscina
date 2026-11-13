@@ -53,10 +53,11 @@ describe('restablecimiento de la contraseña', () => {
 
   const restablecer = (id: string, cookie: string | undefined) =>
     pedir(app, 'post', `/api/usuarios/${id}/restablecer-clave`, { cookie, cuerpo: {} });
-  const buscar = (dni: string, cookie: string | undefined) =>
-    pedir(app, 'get', `/api/usuarios/por-dni/${encodeURIComponent(dni)}`, { cookie });
+  // Precisión del orquestador (13/11/2026), PO-3: el DNI va en el cuerpo, nunca en la dirección.
+  const buscar = (dni: unknown, cookie: string | undefined) =>
+    pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie, cuerpo: { dni } });
 
-  describe('criterio 34: GET /api/usuarios/por-dni/{dni}', () => {
+  describe('criterio 34: POST /api/usuarios/buscar-por-dni con { dni }', () => {
     it('criterio 34: el administrador encuentra a cualquier usuario de su academia por DNI (200 con { usuario })', async () => {
       for (const objetivo of [e.secretariaA, e.entrenadorA, e.alumnoA]) {
         const respuesta = await buscar(objetivo.dni, admin);
@@ -115,6 +116,9 @@ describe('restablecimiento de la contraseña', () => {
         await buscar('abcdefgh', admin),
         await buscar('1234-5678', admin),
         await buscar(' 12345678', admin),
+        await buscar('x'.repeat(64), admin),
+        await buscar('', admin),
+        await buscar('   ', admin),
         await buscar(e.entrenadorA.dni, secretaria),
       ];
 
@@ -123,6 +127,63 @@ describe('restablecimiento de la contraseña', () => {
         expect((respuesta.body as ErrorCuerpo).codigo).toBe('NO_ENCONTRADO');
         expect(respuesta.body).toEqual(respuestas[0]?.body);
       }
+    });
+
+    it('criterio 34: el DNI se recorta: con espacios en los extremos se encuentra igual (200)', async () => {
+      const respuesta = await buscar(`  ${e.alumnoA.dni} \t`, secretaria);
+
+      expect(respuesta.status).toBe(200);
+      expect((cuerpoDe(respuesta) as { usuario: UsuarioResumenCuerpo }).usuario.id).toBe(e.alumnoA.id);
+    });
+
+    it('criterio 34: es una consulta: no escribe ni audita nada', async () => {
+      const antes = await instantaneaDeUsuarios(e.A.id);
+      const antesB = await instantaneaDeUsuarios(e.B.id);
+
+      await buscar(e.alumnoA.dni, secretaria);
+      await buscar(e.entrenadorA.dni, admin);
+      await buscar(e.alumnoB.dni, admin);
+
+      expect(await instantaneaDeUsuarios(e.A.id)).toBe(antes);
+      expect(await instantaneaDeUsuarios(e.B.id)).toBe(antesB);
+      expect(await contarAuditoria(e.A.id)).toBe(0);
+      expect(await contarAuditoria(e.B.id)).toBe(0);
+    });
+
+    it('criterio 34: un cuerpo inválido responde 400 SOLICITUD_INVALIDA: sin cuerpo, no JSON, campos de más, dni que no es texto o de más de 64 caracteres', async () => {
+      expect((await buscar(e.alumnoA.dni, admin)).status, 'control: un cuerpo válido sí se atiende').toBe(200);
+      const respuestas = [
+        await pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie: admin, cuerpo: {} }),
+        await pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie: admin })
+          .set('Content-Type', 'application/json')
+          .send('{"dni": '),
+        await pedir(app, 'post', '/api/usuarios/buscar-por-dni', {
+          cookie: admin,
+          cuerpo: { dni: e.alumnoA.dni, rol: 'ADMIN' },
+        }),
+        await pedir(app, 'post', '/api/usuarios/buscar-por-dni', {
+          cookie: admin,
+          cuerpo: { dni: e.alumnoA.dni, academiaId: e.B.id },
+        }),
+        await buscar(Number(e.alumnoA.dni), admin),
+        await buscar(null, admin),
+        await buscar([e.alumnoA.dni], admin),
+        await buscar({ dni: e.alumnoA.dni }, admin),
+        await buscar('1'.repeat(65), admin),
+      ];
+
+      for (const respuesta of respuestas) {
+        expect(respuesta.status, JSON.stringify(respuesta.body)).toBe(400);
+        expect((respuesta.body as ErrorCuerpo).codigo).toBe('SOLICITUD_INVALIDA');
+        expect(respuesta.headers['cache-control']).toBe('no-store');
+      }
+    });
+
+    it('criterio 34: el DNI no es una ruta: GET /api/usuarios/por-dni/{dni} no existe (404 NO_ENCONTRADO con sesión)', async () => {
+      const respuesta = await pedir(app, 'get', `/api/usuarios/por-dni/${e.alumnoA.dni}`, { cookie: admin });
+
+      expect(respuesta.status).toBe(404);
+      expect((respuesta.body as ErrorCuerpo).codigo).toBe('NO_ENCONTRADO');
     });
 
     it('criterio 34: un DNI que existe en A y en B devuelve el de la academia de quien pide', async () => {

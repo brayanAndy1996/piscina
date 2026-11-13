@@ -77,7 +77,7 @@ describe('criterio 21: cambio de contraseña obligatorio', () => {
       await pedir(app, 'post', `/api/usuarios/${e.secretariaA.id}/desactivar`, { cookie, cuerpo: {} }),
       await pedir(app, 'post', `/api/usuarios/${e.secretariaA.id}/reactivar`, { cookie, cuerpo: {} }),
       await pedir(app, 'post', `/api/usuarios/${e.alumnoA.id}/restablecer-clave`, { cookie, cuerpo: {} }),
-      await pedir(app, 'get', `/api/usuarios/por-dni/${e.alumnoA.dni}`, { cookie }),
+      await pedir(app, 'post', '/api/usuarios/buscar-por-dni', { cookie, cuerpo: { dni: e.alumnoA.dni } }),
       await pedir(app, 'post', `/api/usuarios/${randomUUID()}/desactivar`, { cookie, cuerpo: {} }),
     ];
 
