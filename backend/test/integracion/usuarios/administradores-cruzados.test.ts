@@ -88,12 +88,16 @@ describe('criterio 57: dos administradores que se desactivan entre sí a la vez'
       const x = await nuevoAdmin();
       const y = await nuevoAdmin();
 
-      const { resultados } = await conFilasRetenidas({
+      const { resultados, todasEsperaron } = await conFilasRetenidas({
         academiaId: e.A.id,
         ids: [x.id, y.id],
         enviar: [desactivar(x, y), desactivar(y, x)],
       });
 
+      expect(
+        todasEsperaron,
+        `cruce forzado ${ronda}: las dos peticiones debían quedar esperando el bloqueo de la prueba`,
+      ).toBe(true);
       const [deX, deY] = resultados as [RespuestaHttp, RespuestaHttp];
       await comprobarRonda(`cruce forzado ${ronda}`, x, y, deX, deY);
     }

@@ -8,6 +8,7 @@ import { BaseDatos, type TransaccionAcademia } from '../../infraestructura/prism
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { hashearClave } from '../../infraestructura/seguridad';
 import { AuditoriaService } from '../auditoria';
+import { bloquearActorVigente } from '../autenticacion/actor-vigente';
 import { estaBloqueado } from '../academias/dominio/bloqueo';
 import {
   type ActorDeRestablecimiento,
@@ -19,6 +20,23 @@ import {
 export interface ActorAuditoria {
   readonly tipo: 'USUARIO' | 'SUPERADMIN' | 'SISTEMA';
   readonly id: string | null;
+}
+
+/** Quien crea un usuario: un usuario de la academia (con la versión de token de su sesión) o el Superadmin. */
+export type ActorDeCreacion =
+  | { readonly tipo: 'USUARIO'; readonly id: string; readonly versionToken: number }
+  | { readonly tipo: 'SUPERADMIN'; readonly id: string };
+
+/** Quien restablece una contraseña: un usuario con su rol y la versión de token de su sesión, o el Superadmin. */
+export type ActorQueRestablece =
+  | { readonly tipo: 'USUARIO'; readonly id: string; readonly rol: RolUsuario; readonly versionToken: number }
+  | { readonly tipo: 'SUPERADMIN'; readonly id: string };
+
+/** Quien desactiva o reactiva: el usuario de la sesión, con la versión de token con la que se autenticó. */
+export interface ActorQueCambiaEstado {
+  readonly id: string;
+  readonly academiaId: string;
+  readonly versionToken: number;
 }
 
 interface FilaUsuario {
@@ -50,6 +68,10 @@ function ordenarPorNombre<T extends { apellidos: string; nombres: string; id: st
 
 function noEncontrado(): ErrorNegocio {
   return new ErrorNegocio(404, 'NO_ENCONTRADO', 'No se encontró el recurso solicitado.');
+}
+
+function sobreSiMismo(): ErrorNegocio {
+  return new ErrorNegocio(409, 'OPERACION_SOBRE_SI_MISMO', 'No puedes hacer esta operación sobre tu propia cuenta.');
 }
 
 function dniEnUso(): ErrorNegocio {
@@ -118,17 +140,24 @@ export class UsuariosService {
     return resumen;
   }
 
-  /** `POST /api/usuarios`: crea un miembro del personal de la academia indicada, con la contraseña inicial igual a su DNI (RN-02). */
+  /**
+   * `POST /api/usuarios`: crea un miembro del personal de la academia indicada, con la contraseña inicial igual a su DNI (RN-02). Si
+   * quien crea es un usuario de la academia, su fila se bloquea y debe seguir vigente en la misma transacción (criterio 56): si no,
+   * 401 sin crear nada.
+   */
   async crearPersonal(
     academiaId: string,
     datos: CrearUsuario,
-    actor: ActorAuditoria,
+    actor: ActorDeCreacion,
     ip: string | null,
   ): Promise<UsuarioResumen> {
     const claveHash = await hashearClave(datos.dni);
-    return this.baseDatos.conAcademia(academiaId, (tx) =>
-      this.crearEnTransaccion(tx, { ...datos, claveHash }, actor, ip),
-    );
+    return this.baseDatos.conAcademia(academiaId, async (tx) => {
+      if (actor.tipo === 'USUARIO') {
+        await bloquearActorVigente(tx, actor, { registro: this.registro, ip });
+      }
+      return this.crearEnTransaccion(tx, { ...datos, claveHash }, { tipo: actor.tipo, id: actor.id }, ip);
+    });
   }
 
   /** El personal de la academia (administradores, secretarias y entrenadores; también los inactivos), por apellidos y nombres. */
@@ -165,15 +194,18 @@ export class UsuariosService {
 
   /**
    * Desactiva a un miembro del personal activo (DR-6): sube su `version_token` (su sesión deja de valer) y audita
-   * `USUARIO_DESACTIVADO`. Sobre sí mismo, 409 `OPERACION_SOBRE_SI_MISMO`; sobre uno ya inactivo, 409 `USUARIO_YA_INACTIVO`; sobre
+   * `USUARIO_DESACTIVADO`. Si quien pide ya no está vigente al escribir, 401 (criterio 56). Sobre sí mismo, 409 `OPERACION_SOBRE_SI_MISMO`; sobre uno ya inactivo, 409 `USUARIO_YA_INACTIVO`; sobre
    * un alumno, uno de otra academia o un id inválido, 404. Con la fila bloqueada, dos desactivaciones simultáneas dan 200 y 409.
    */
-  desactivar(actor: { id: string; academiaId: string }, id: string, ip: string | null): Promise<UsuarioResumen> {
+  desactivar(actor: ActorQueCambiaEstado, id: string, ip: string | null): Promise<UsuarioResumen> {
     return this.cambiarEstado(actor, id, ip, 'INACTIVO');
   }
 
-  /** Reactiva a un miembro del personal inactivo (DR-6). No cambia la contraseña ni sube la versión de token. */
-  reactivar(actor: { id: string; academiaId: string }, id: string, ip: string | null): Promise<UsuarioResumen> {
+  /**
+   * Reactiva a un miembro del personal inactivo (DR-6). No cambia la contraseña ni sube la versión de token. Sobre sí mismo, 409
+   * `OPERACION_SOBRE_SI_MISMO`, antes de "ya activo" (criterio 55).
+   */
+  reactivar(actor: ActorQueCambiaEstado, id: string, ip: string | null): Promise<UsuarioResumen> {
     return this.cambiarEstado(actor, id, ip, 'ACTIVO');
   }
 
@@ -206,22 +238,21 @@ export class UsuariosService {
   /**
    * Restablece la contraseña (HU-05, criterios 35, 36 y 40): la clave vuelve a ser el DNI, debe cambiarla al entrar, el contador de
    * fallos queda en 0, se desbloquea y sube la versión de token (las sesiones abiertas dejan de valer). No cambia el estado: un
-   * usuario inactivo sigue inactivo (PO-5). Audita `USUARIO_CLAVE_RESTABLECIDA` sin datos de la clave.
+   * usuario inactivo sigue inactivo (PO-5). Audita `USUARIO_CLAVE_RESTABLECIDA` sin datos de la clave. Si quien pide es un usuario
+   * y ya no está vigente, 401 antes que cualquier 404 o 409 (criterio 56).
    */
   async restablecer(
     academiaId: string,
-    actor: ActorDeRestablecimiento,
+    actor: ActorQueRestablece,
     id: string,
     ip: string | null,
   ): Promise<UsuarioResumen> {
     // Transacción 1: quién es y si el actor puede tocarlo. El DNI no se puede cambiar con el rol de la API, así que sigue valiendo
-    // en la transacción 2.
+    // en la transacción 2. Un usuario que pide debe seguir vigente aquí también: un id que no existe responde 401, no 404, si quien
+    // pide ya dejó de valer (criterio 56).
     const objetivo = await this.baseDatos.conAcademia(academiaId, async (tx) => {
       if (!PATRON_UUID.test(id)) throw noEncontrado();
-      const filas = await tx.cliente.$queryRaw<Pick<FilaUsuario, 'id' | 'dni' | 'rol'>[]>`
-        SELECT id::text AS id, dni, rol::text AS rol
-          FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid`;
-      const fila = filas[0];
+      const fila = await this.leerObjetivoDeRestablecimiento(tx, actor, id, ip);
       if (!fila) throw noEncontrado();
       this.exigirAlcance(actor, fila);
       return fila;
@@ -230,10 +261,7 @@ export class UsuariosService {
 
     const ahora = this.reloj.ahora();
     const fila = await this.baseDatos.conAcademia(academiaId, async (tx) => {
-      const bloqueadas = await tx.cliente.$queryRaw<Pick<FilaUsuario, 'id' | 'rol'>[]>`
-        SELECT id::text AS id, rol::text AS rol
-          FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${objetivo.id}::uuid FOR UPDATE`;
-      const actual = bloqueadas[0];
+      const actual = await this.bloquearObjetivoDeRestablecimiento(tx, actor, objetivo.id, ip);
       if (!actual) throw noEncontrado();
       this.exigirAlcance(actor, actual);
       const filas = await tx.cliente.$queryRaw<FilaUsuario[]>`
@@ -262,35 +290,71 @@ export class UsuariosService {
     return this.aResumen(fila, ahora);
   }
 
+  /** Transacción 1 de restablecer: solo lee al objetivo (con el actor bloqueado y vigente si es un usuario; el Superadmin no tiene fila). */
+  private async leerObjetivoDeRestablecimiento(
+    tx: TransaccionAcademia,
+    actor: ActorQueRestablece,
+    id: string,
+    ip: string | null,
+  ): Promise<Pick<FilaUsuario, 'id' | 'dni' | 'rol'> | undefined> {
+    if (actor.tipo === 'USUARIO') {
+      const { objetivo } = await bloquearActorVigente(tx, actor, { objetivoId: id, registro: this.registro, ip });
+      return objetivo;
+    }
+    const filas = await tx.cliente.$queryRaw<Pick<FilaUsuario, 'id' | 'dni' | 'rol'>[]>`
+      SELECT id::text AS id, dni, rol::text AS rol
+        FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid`;
+    return filas[0];
+  }
+
+  /** Transacción 2 de restablecer: bloquea al objetivo (y al actor, si es un usuario, en la misma sentencia ordenada por `id`). */
+  private async bloquearObjetivoDeRestablecimiento(
+    tx: TransaccionAcademia,
+    actor: ActorQueRestablece,
+    id: string,
+    ip: string | null,
+  ): Promise<Pick<FilaUsuario, 'id' | 'rol'> | undefined> {
+    if (actor.tipo === 'USUARIO') {
+      const { objetivo } = await bloquearActorVigente(tx, actor, { objetivoId: id, registro: this.registro, ip });
+      return objetivo;
+    }
+    const filas = await tx.cliente.$queryRaw<Pick<FilaUsuario, 'id' | 'rol'>[]>`
+      SELECT id::text AS id, rol::text AS rol
+        FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid FOR UPDATE`;
+    return filas[0];
+  }
+
   private exigirAlcance(actor: ActorDeRestablecimiento, objetivo: { id: string; rol: RolUsuario }): void {
     const alcance = evaluarAlcanceDeRestablecimiento(actor, objetivo);
     if (alcance === 'FUERA_DE_ALCANCE') throw noEncontrado();
     if (alcance === 'SOBRE_SI_MISMO') {
-      throw new ErrorNegocio(409, 'OPERACION_SOBRE_SI_MISMO', 'No puedes hacer esta operación sobre tu propia cuenta.');
+      throw sobreSiMismo();
     }
   }
 
-  /** Desactivar o reactivar a un miembro del personal, con la fila bloqueada (`FOR UPDATE`) y la auditoría en la misma transacción. */
+  /**
+   * Desactivar o reactivar a un miembro del personal, con las filas del actor y del objetivo bloqueadas en una sola sentencia
+   * ordenada por `id` y la auditoría en la misma transacción. Orden de las respuestas: id que no es UUID (404), sobre sí mismo
+   * (409), actor ya no vigente (401), objetivo inexistente o no es del personal (404), ya en ese estado (409).
+   */
   private cambiarEstado(
-    actor: { id: string; academiaId: string },
+    actor: ActorQueCambiaEstado,
     id: string,
     ip: string | null,
     nuevo: 'ACTIVO' | 'INACTIVO',
   ): Promise<UsuarioResumen> {
     const accion = nuevo === 'INACTIVO' ? 'USUARIO_DESACTIVADO' : 'USUARIO_REACTIVADO';
+    if (!PATRON_UUID.test(id)) return Promise.reject(noEncontrado());
+    // Sobre sí mismo se decide antes que "ya activo" o "ya inactivo", al desactivar y al reactivar (criterios 31 y 55).
+    if (id.toLowerCase() === actor.id.toLowerCase()) return Promise.reject(sobreSiMismo());
     return this.baseDatos.conAcademia(actor.academiaId, async (tx) => {
-      if (!PATRON_UUID.test(id)) throw noEncontrado();
-      const actuales = await tx.cliente.$queryRaw<
-        (Pick<FilaUsuario, 'id' | 'rol' | 'estado'> & { version_token: number })[]
-      >`
-        SELECT id::text AS id, rol::text AS rol, estado::text AS estado, version_token
-          FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid FOR UPDATE`;
-      const actual = actuales[0];
+      const { objetivo: actual } = await bloquearActorVigente(tx, actor, {
+        objetivoId: id,
+        registro: this.registro,
+        ip,
+      });
       // Los alumnos no se gestionan aquí (su estado es de la historia 010): para este recurso no existen.
       if (!actual || !ROLES_DEL_PERSONAL.includes(actual.rol)) throw noEncontrado();
-      if (nuevo === 'INACTIVO' && actual.id === actor.id) {
-        throw new ErrorNegocio(409, 'OPERACION_SOBRE_SI_MISMO', 'No puedes desactivar tu propia cuenta.');
-      }
       if (actual.estado === nuevo) {
         throw nuevo === 'INACTIVO'
           ? new ErrorNegocio(409, 'USUARIO_YA_INACTIVO', 'El usuario ya está inactivo.')

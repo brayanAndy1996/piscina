@@ -201,7 +201,7 @@ export async function conFilasRetenidas<T>(opciones: {
   const retenedor = await conectar();
   const vigia = await conectar();
   try {
-    await abrirTransaccion(retenedor, opciones.academiaId);
+    const pidDeLaPrueba = await abrirTransaccion(retenedor, opciones.academiaId);
     await retenedor.query(
       'SELECT id FROM usuarios WHERE academia_id = $1::uuid AND id = ANY($2::uuid[]) ORDER BY id FOR UPDATE',
       [opciones.academiaId, opciones.ids],
@@ -213,7 +213,8 @@ export async function conFilasRetenidas<T>(opciones: {
     let limiteAlcanzado = false;
     while (!peticiones.some((peticion) => peticion.terminada())) {
       const { rows } = await vigia.query(
-        'SELECT count(*)::int AS n FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid)) > 0',
+        'SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))',
+        [pidDeLaPrueba],
       );
       if ((rows[0] as { n: number }).n >= peticiones.length) {
         todasEsperaron = true;

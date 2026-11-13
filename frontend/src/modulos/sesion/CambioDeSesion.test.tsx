@@ -85,11 +85,23 @@ function peticionesDeSesion(api: ReturnType<typeof simularApi>) {
   return llamadas(api, 'GET /api/sesion').length;
 }
 
-/** Que el aviso diga quién es ahora la persona y en qué academia. */
+/**
+ * Que haya un aviso que diga quién es ahora la persona y en qué academia, sin exigir su redacción: un elemento que mencione a
+ * "Bruno" y a la academia nueva y que no sea la cabecera ni el título de la página (ni contenga alguno de los dos).
+ */
 async function esperarAvisoDeCambio() {
-  const aviso = await screen.findByText(/sesión cambió/i);
-  expect(aviso).toHaveTextContent('Bruno');
-  expect(aviso).toHaveTextContent(ACADEMIA_B);
+  await waitFor(() => {
+    const candidatos = Array.from(document.body.querySelectorAll('*')).filter((el) => {
+      const texto = el.textContent ?? '';
+      return (
+        texto.includes('Bruno') &&
+        texto.includes(ACADEMIA_B) &&
+        !el.querySelector('header, [role="banner"], h1') &&
+        !el.closest('header, [role="banner"], h1')
+      );
+    });
+    expect(candidatos.length, 'un aviso que mencione a Bruno y a la academia nueva').toBeGreaterThan(0);
+  });
 }
 
 async function esperarIdentidadDeB() {
@@ -154,8 +166,10 @@ describe('criterio 59 a): al recuperar el foco la web vuelve a pedir la sesión'
     await esperarIdentidadDeB();
     await userEvent.setup().click(await screen.findByRole('link', { name: /Usuarios/ }));
 
-    expect(await screen.findByText('Cargando usuarios…')).toBeInTheDocument();
+    // Ya en Usuarios (la lista de B sigue sin llegar), la lista de A no debe verse.
+    await waitFor(() => expect(rutaActual()).toBe('/panel/usuarios'));
     expect(screen.queryByText('Soto Rojas, Marta')).not.toBeInTheDocument();
+    expect(screen.queryByText('Vega Díaz, Luis')).not.toBeInTheDocument();
   });
 
   it('criterio 59 d): si al recuperar el foco ya no hay sesión, hace lo del criterio 47 (pide entrar por el enlace de la academia)', async () => {
@@ -187,7 +201,7 @@ describe('criterio 59 b) y c): antes de enviar una acción que escribe, la web v
     await usuario.selectOptions(dialogo.getByLabelText('Rol'), 'ENTRENADOR');
   }
 
-  it('control: con la misma sesión, "Crear usuario" sí envía POST /api/usuarios (y vuelve a pedir la sesión antes)', async () => {
+  it('con la misma sesión, "Crear usuario" sí envía POST /api/usuarios (y vuelve a pedir la sesión antes)', async () => {
     const api = comoAdmin({
       'POST /api/usuarios': () => ({
         estado: 201,

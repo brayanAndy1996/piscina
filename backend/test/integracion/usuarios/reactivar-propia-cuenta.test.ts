@@ -81,7 +81,7 @@ describe('criterio 55: reactivar la propia cuenta', () => {
     expect((respuesta.body as ErrorCuerpo).codigo).toBe('OPERACION_SOBRE_SI_MISMO');
   });
 
-  it('criterio 55 (control): sobre sí mismo desactivar y reactivar responden lo mismo (409 OPERACION_SOBRE_SI_MISMO)', async () => {
+  it('criterio 55: sobre sí mismo desactivar y reactivar responden lo mismo (409 OPERACION_SOBRE_SI_MISMO)', async () => {
     const desactivar = await accion(e.adminA.id, 'desactivar');
     const reactivar = await accion(e.adminA.id, 'reactivar');
 
