@@ -4,6 +4,7 @@ import { ErrorNegocio } from '../errores';
 import { FiltroErrores } from '../filtros/filtro-errores';
 import { responderError } from '../filtros/responder-error';
 import { MENSAJE_SOLICITUD_INVALIDA } from '../validacion';
+import { guardarErrorDeCuerpo } from './error-de-cuerpo-diferido';
 
 const METODOS_CON_CUERPO = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -91,16 +92,21 @@ export function traeCuerpo(solicitud: Request): boolean {
 export function instalarLectorDeCuerpos(app: NestExpressApplication, prefijoApi: string): void {
   const filtro = app.get(FiltroErrores, { strict: false });
 
-  /** Responde el 400 `SOLICITUD_INVALIDA` con `detalles.errores = [{ campo: '', mensaje }]` y `Cache-Control: no-store`. */
+  /**
+   * Responde el 400 `SOLICITUD_INVALIDA` con `detalles.errores = [{ campo: '', mensaje }]` y `Cache-Control: no-store`. En una
+   * petición ya autenticada de una academia, el error se guarda y lo lanza el guard de permisos después de comprobar el permiso
+   * (spec 002): la petición sigue su camino con el cuerpo vacío.
+   */
   const rechazar = (mensaje: string, solicitud: Request, respuesta: Response, siguiente: NextFunction): void => {
+    const error = new ErrorNegocio(400, 'SOLICITUD_INVALIDA', MENSAJE_SOLICITUD_INVALIDA, {
+      errores: [{ campo: '', mensaje }],
+    });
+    if (guardarErrorDeCuerpo(solicitud, error)) {
+      siguiente();
+      return;
+    }
     respuesta.setHeader('Cache-Control', 'no-store');
-    responderError(
-      filtro,
-      new ErrorNegocio(400, 'SOLICITUD_INVALIDA', MENSAJE_SOLICITUD_INVALIDA, { errores: [{ campo: '', mensaje }] }),
-      solicitud,
-      respuesta,
-      siguiente,
-    );
+    responderError(filtro, error, solicitud, respuesta, siguiente);
   };
 
   app.use(`/${prefijoApi}`, (solicitud: Request, respuesta: Response, siguiente: NextFunction) => {
@@ -140,6 +146,11 @@ export function instalarLectorDeCuerpos(app: NestExpressApplication, prefijoApi:
     }
     if (esErrorDeUtf8(error)) {
       rechazar(MENSAJE_UTF8_INVALIDO, solicitud, respuesta, siguiente);
+      return;
+    }
+    // El JSON roto y el cuerpo demasiado grande de una petición autenticada de una academia esperan al permiso.
+    if (guardarErrorDeCuerpo(solicitud, error)) {
+      siguiente();
       return;
     }
     siguiente(error);

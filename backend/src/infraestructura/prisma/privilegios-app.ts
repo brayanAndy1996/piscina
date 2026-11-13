@@ -34,6 +34,16 @@ export const PRIVILEGIOS_APP: readonly PrivilegioApp[] = Object.freeze(
     { tabla: 'configuraciones', columna: null, privilegio: 'SELECT' },
     { tabla: 'configuraciones', columna: null, privilegio: 'INSERT' },
     { tabla: 'configuraciones', columna: null, privilegio: 'UPDATE' },
+    { tabla: 'usuarios', columna: null, privilegio: 'SELECT' },
+    { tabla: 'usuarios', columna: null, privilegio: 'INSERT' },
+    { tabla: 'usuarios', columna: 'clave_hash', privilegio: 'UPDATE' },
+    { tabla: 'usuarios', columna: 'debe_cambiar_clave', privilegio: 'UPDATE' },
+    { tabla: 'usuarios', columna: 'estado', privilegio: 'UPDATE' },
+    { tabla: 'usuarios', columna: 'version_token', privilegio: 'UPDATE' },
+    { tabla: 'usuarios', columna: 'intentos_fallidos', privilegio: 'UPDATE' },
+    { tabla: 'usuarios', columna: 'bloqueado_hasta', privilegio: 'UPDATE' },
+    { tabla: 'usuarios', columna: 'ultimo_acceso', privilegio: 'UPDATE' },
+    { tabla: 'usuarios', columna: 'actualizado_en', privilegio: 'UPDATE' },
   ].map((privilegio) => Object.freeze(privilegio)),
 );
 

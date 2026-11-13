@@ -9,7 +9,9 @@ import { crearOpcionesRegistro } from './infraestructura/registro';
 import { RelojModule } from './infraestructura/reloj';
 import { AcademiasModule } from './modulos/academias';
 import { AuditoriaModule } from './modulos/auditoria';
+import { AutenticacionModule } from './modulos/autenticacion';
 import { SaludModule } from './modulos/salud/salud.module';
+import { UsuariosModule } from './modulos/usuarios';
 
 export interface OpcionesApp {
   /** Nivel de los registros (por defecto `silent` en pruebas e `info` en el resto). */
@@ -37,6 +39,8 @@ export class AppModule {
         PrismaModule,
         AuditoriaModule,
         AcademiasModule,
+        AutenticacionModule,
+        UsuariosModule,
         SaludModule,
       ],
       // El filtro también es un proveedor normal: el middleware de `/api/plataforma` lo reutiliza para sus respuestas.
