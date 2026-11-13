@@ -12,7 +12,7 @@ export const UsuarioActual = createParamDecorator((_dato: unknown, contexto: Exe
   return sesionDe(contexto).usuario;
 });
 
-/** Parámetro de uso interno de este módulo: la sesión completa (con la academia y la versión de token). */
+/** Parámetro de un manejador de una ruta de academia: la sesión completa (con la academia y la versión de token). */
 export const SesionActual = createParamDecorator((_dato: unknown, contexto: ExecutionContext): SesionVerificada => {
   return sesionDe(contexto);
 });

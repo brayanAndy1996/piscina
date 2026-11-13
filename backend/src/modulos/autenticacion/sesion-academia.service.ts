@@ -24,13 +24,10 @@ import {
 } from '../../infraestructura/seguridad';
 import { AuditoriaService } from '../auditoria';
 import { estaBloqueado, evaluarIntentoFallido } from '../academias/dominio/bloqueo';
+import { bloquearActorVigente, noAutenticado } from './actor-vigente';
 import { duracionSesionSegundos } from './dominio/duracion-sesion';
 import { REGLAS_BLOQUEO_USUARIO } from './dominio/reglas-bloqueo';
 import { type SesionVerificada, TIPO_TOKEN_ACADEMIA } from './tipos';
-
-function noAutenticado(): ErrorNegocio {
-  return new ErrorNegocio(401, 'NO_AUTENTICADO', 'Debes iniciar sesión para continuar.');
-}
 
 function credencialesInvalidas(): ErrorNegocio {
   return new ErrorNegocio(401, 'CREDENCIALES_INVALIDAS', 'El DNI o la contraseña no son correctos.');
@@ -240,13 +237,13 @@ export class SesionAcademiaService {
       );
       throw cuentaBloqueada();
     }
-    if (datos.claveNueva === fila.dni) throw claveNuevaInvalida('La contraseña nueva no puede ser igual a tu DNI.');
-
     const correcta = await verificarClave(fila.clave_hash, datos.claveActual);
     if (!correcta) {
       await this.contarFallo(usuario.academiaId, usuario.id, ip, 'Cambio de contraseña');
       throw claveActualIncorrecta();
     }
+    // Solo con la actual correcta se mira la nueva (criterio 58): antes, el DNI se podía probar sin contar intentos.
+    if (datos.claveNueva === fila.dni) throw claveNuevaInvalida('La contraseña nueva no puede ser igual a tu DNI.');
     // La actual ya se verificó contra el hash: la nueva es igual a ella si y solo si los textos son iguales.
     if (datos.claveNueva === datos.claveActual) {
       throw claveNuevaInvalida('La contraseña nueva debe ser distinta de la actual.');
@@ -255,15 +252,20 @@ export class SesionAcademiaService {
 
     const ahora = this.reloj.ahora();
     const resultado = await this.baseDatos.conAcademia(usuario.academiaId, async (tx) => {
+      // Fila propia bloqueada y vigente (criterio 56): si dejó de serlo, 401 y no se escribe nada. Esta ruta es la que resuelve el
+      // cambio obligatorio pendiente, así que no se exige `debe_cambiar_clave = false`.
+      await bloquearActorVigente(
+        tx,
+        { id: usuario.id, versionToken: sesion.versionToken },
+        { permitirCambioPendiente: true, exclusivo: true, registro: this.registro, ip },
+      );
       const actuales = await tx.cliente.$queryRaw<
-        Pick<FilaCambio, 'clave_hash' | 'version_token' | 'estado' | 'intentos_fallidos' | 'bloqueado_hasta'>[]
+        Pick<FilaCambio, 'clave_hash' | 'intentos_fallidos' | 'bloqueado_hasta'>[]
       >`
-        SELECT clave_hash, version_token, estado::text AS estado, intentos_fallidos, bloqueado_hasta
-          FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${usuario.id}::uuid FOR UPDATE`;
+        SELECT clave_hash, intentos_fallidos, bloqueado_hasta
+          FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${usuario.id}::uuid`;
       const actual = actuales[0];
-      if (!actual || actual.estado !== 'ACTIVO' || Number(actual.version_token) !== sesion.versionToken) {
-        return { tipo: 'SESION_PERDIDA' as const };
-      }
+      if (!actual) return { tipo: 'SESION_PERDIDA' as const };
       // Otro cambio ganó la carrera (criterio 25): la contraseña actual ya no es la que se verificó.
       if (actual.clave_hash !== fila.clave_hash) return { tipo: 'CLAVE_CAMBIADA' as const };
       if (

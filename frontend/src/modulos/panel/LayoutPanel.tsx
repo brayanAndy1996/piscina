@@ -9,7 +9,16 @@ import { useCerrarSesionAcademia } from '../sesion/hooks';
  * Marco de las páginas con sesión: el nombre de la academia y "Cerrar sesión" siempre a la mano. Cerrar sesión cierra la cuenta
  * en todos los dispositivos (DR-8) y lleva al ingreso de la misma academia.
  */
-export function LayoutPanel({ children }: { children: ReactNode }) {
+export function LayoutPanel({
+  children,
+  aviso = null,
+  alCerrarAviso,
+}: {
+  children: ReactNode;
+  /** Un aviso para quien usa la página, por ejemplo que la sesión cambió en otra pestaña. */
+  aviso?: string | null;
+  alCerrarAviso?: () => void;
+}) {
   const usuario = useUsuario();
   const navegar = useNavigate();
   const cerrar = useCerrarSesionAcademia();
@@ -34,6 +43,19 @@ export function LayoutPanel({ children }: { children: ReactNode }) {
         </div>
       </header>
       <div className="mx-auto max-w-4xl px-4 pt-4">
+        {aviso ? (
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200"
+          >
+            <p className="min-w-0 break-words">{aviso}</p>
+            {alCerrarAviso ? (
+              <button type="button" onClick={alCerrarAviso} className={ESTILO_BOTON.secundario}>
+                Entendido
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {cerrar.isError ? <Alerta>No se pudo cerrar la sesión. {mensajeGeneral(cerrar.error)}</Alerta> : null}
       </div>
       <main className="mx-auto max-w-4xl px-4 py-6">{children}</main>
