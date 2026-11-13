@@ -125,7 +125,7 @@ criterio 167).
       ningún módulo use Prisma fuera de `BaseDatos`, que ninguna clave o secreto real quede en el repositorio (y que
       ningún secreto de prueba válido en producción esté escrito en él, criterio 91),
       scripts compatibles con Windows
-- [ ] T23 · tester · Suite completa (`npm test`), `lint`, `typecheck`, `format:check`, `build` y, si hay navegador,
+- [x] T23 · tester · Suite completa (`npm test`), `lint`, `typecheck`, `format:check`, `build` y, si hay navegador,
       `npm run e2e`
 
 _(12/11/2026: el ciclo adversarial terminó con la ronda 19 sin fallas (T182). Las siguientes son T22, T23 y T24, en
@@ -970,5 +970,5 @@ Son pasos que hace el responsable del producto, fuera de la sesión de Claude:
 ## Solo ruta crítica
 
 - [x] Pruebas escritas por test-writer y confirmadas en rojo
-- [ ] Pruebas en verde tras la implementación
+- [x] Pruebas en verde tras la implementación
 - [x] Ataque adversarial sin fallas abiertas _(ronda 19, 12/11/2026, sobre `03fad3c`: sin fallas confirmadas)_
