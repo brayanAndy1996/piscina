@@ -196,8 +196,8 @@ Diseño:
   cuando el `SELECT` no devuelve fila. Sin fila, el `UPDATE` lleva valores neutros (por ejemplo los que daría
   `evaluarIntentoFallido` sobre un estado vacío) y afecta 0 filas; el resultado sigue siendo `DESAPARECIDO`.
 - Con un DNI sin cuenta, tras `verificarClave` contra el hash ficticio, se llama a esa misma función con
-  `randomUUID()` (un id que no existe: la probabilidad de chocar con uno real es despreciable y, aun así, el `UPDATE`
-  escribiría un contador que ya cuenta fallos de esa cuenta; ver "Riesgos") y se ignora el resultado; luego, 401.
+  `randomUUID()` (un id que no existe; la probabilidad de chocar con uno real es despreciable, ver "Riesgos") y se
+  ignora el resultado; luego, 401.
 - El caso de carrera `YA_BLOQUEADA` (la cuenta se bloqueó entre la primera lectura y el conteo) puede seguir sin
   `UPDATE`: responde 423, que ya revela la cuenta (riesgo aceptado "Saber si un DNI tiene cuenta").
 - El orden de los pasos queda igual en los dos caminos: lectura por DNI (transacción 1), argon2 fuera de la
@@ -259,5 +259,19 @@ Diseño:
   operación, nunca con una caché entre peticiones.
 - **Prueba del criterio 27:** depende de cómo Nest expone las rutas; si `DiscoveryService` no alcanza, se usa la pila
   del router de Express. El revisor confirma que cubre los controladores de todos los módulos.
+- **Commit con escritura frente a commit vacío (F1, ronda 1):** con el criterio 53, el `UPDATE` del DNI sin cuenta
+  afecta 0 filas, no asigna un id de transacción ni escribe en el WAL, y su `COMMIT` no espera al disco; el del DNI con
+  cuenta sí. Puede quedar una diferencia pequeña (de décimas de milisegundo a unos pocos, según el disco). La ronda 2
+  la mide con los umbrales del criterio 53. Si no los cumple, opciones para que decida el orquestador: igualar la
+  escritura (por ejemplo, un `UPDATE` sin cambios de valor sobre una fila propia, con su costo de bloqueos) o aceptarla
+  como riesgo junto con "Saber si un DNI tiene cuenta".
+- **Id aleatorio del conteo simulado (F1):** si `randomUUID()` coincidiera con el id de un usuario de esa academia, se
+  contaría un fallo en su cuenta. La probabilidad es despreciable (122 bits aleatorios); se acepta.
+- **Espiar `pg` desde la prueba (F1):** si el módulo `pg` que carga la prueba no es la misma instancia que usa el
+  adaptador (por ejemplo, dos copias en `node_modules`), el espía no ve nada. La prueba debe fallar en ese caso (exigir
+  que el calentamiento registre sentencias), y el test-writer lo informa al orquestador en lugar de cambiar el
+  criterio.
+- **Límite por IP con IPv6 (observación de la ronda 1):** por dirección exacta; agrupar por `/64` con el hosting
+  (DT-1).
 - **Actualizar la prueba protegida de privilegios de 001:** debe hacerse en un commit de pruebas protegidas, o el
   verificador de la CI lo rechaza.

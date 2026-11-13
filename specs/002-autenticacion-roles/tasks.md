@@ -77,7 +77,8 @@ protegida nueva), T3b (ajuste de las pruebas ya escritas), T6, T11 y T15.
       aislamiento entre academias por id, DNI, token (`aca`, `sub`) y cookies; permisos por rol y rutas sin
       declaración; bloqueo y límite bajo concurrencia; cambio obligatorio; versión de token; academia suspendida; datos
       en el registro técnico. Por cada falla: el especificador agrega el criterio, test-writer la prueba en rojo, se
-      corrige y se vuelve a atacar
+      corrige y se vuelve a atacar. _(Ronda 1 hecha el 13/11/2026: dos fallas, F1 y F2; se siguen en "Ataque ronda
+      1".)_
 - [ ] T18 · revisor · Comparar con la spec y las convenciones (`CLAUDE.md` y "Reglas para las historias siguientes" de
       `docs/arquitectura.md`); confirmar con `git diff` que ningún commit de implementación tocó pruebas protegidas
 - [ ] T19 · tester · Suite completa, lint y verificación de tipos (Linux; la CI también en Windows)

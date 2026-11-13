@@ -21,6 +21,12 @@
   _(precisión del orquestador (13/11/2026))_ en los criterios 9, 12, 29, 32, 34, 35, 38, 40 y 43 y en el contrato, sin
   borrar texto ni cambiar la intención de los criterios. La única que cambia el contrato es PO-3: la búsqueda por DNI
   pasa a `POST /api/usuarios/buscar-por-dni` con el DNI en el cuerpo, y el criterio 43 se amplía (ruta crítica).
+- **Ataque ronda 1 (13/11/2026):** el adversarial encontró dos fallas de severidad media. Se agregan los criterios 53
+  (F1: el tiempo de respuesta revela si un DNI tiene cuenta) y 54 (F2: `DELETE /api/sesion` con cuerpo no cierra la
+  sesión), los dos de ruta crítica, en la sección K, con las decisiones del orquestador AR1-1 y AR1-2 ("Decisiones").
+  Se marcan con notas _(ataque ronda 1)_ los criterios 7, 17, 34 y 36, el contrato, DT-1, "Impacto" y "Riesgos
+  aceptados", sin borrar texto. Queda una pregunta de negocio nueva para el responsable (N11, "Preguntas abiertas"),
+  que no bloquea.
 
 ## Objetivo
 
@@ -55,6 +61,11 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   ingresar llegan al registro técnico. _(Precisión del orquestador (13/11/2026), PO-3: la ampliación del criterio 43
   también es crítica: el DNI buscado para restablecer es un dato personal y, en una cuenta nueva o recién
   restablecida, también su contraseña.)_
+
+- **K. Ataque ronda 1 (53 y 54):** el 53 es autenticación y aislamiento: si el tiempo de respuesta delata qué DNIs
+  tienen cuenta en una academia, se averigua quién es alumno o personal (dato personal, Ley 29733) y se dirigen los
+  intentos contra cuentas reales con la clave inicial igual al DNI. El 54 es sesión: un cierre de sesión que no cierra
+  deja la cuenta abierta en un equipo compartido (recepción, celular de la familia).
 
 No son críticos, pero llevan _(prueba obligatoria)_ o la verificación indicada: 44 a 52 (esquemas, semilla, web,
 E2E y documentación).
@@ -99,6 +110,10 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
 7. Dada una clave equivocada, un DNI que no existe en A o un DNI que existe solo en B, cuando se intenta entrar por
    A, entonces responde 401 `CREDENCIALES_INVALIDAS` con el mismo cuerpo en los tres casos y sin `Set-Cookie`. Con un
    DNI inexistente se verifica igual una clave contra el hash ficticio de 001 (mismo trabajo). _(crítico)_
+
+   _Ataque ronda 1 (F1), 13/11/2026:_ "mismo trabajo" no se cumplía: con un DNI que existe se hacía además la
+   transacción que cuenta el fallo, y el tiempo lo delataba. "Mismo trabajo" incluye el trabajo en la base de datos, y
+   lo precisa el criterio 53.
 8. Dado el mismo DNI en A y en B con claves distintas, cuando entra por A con la clave de B, entonces responde 401;
    con la de A, la sesión lleva `aca` igual al id de A y `GET /api/sesion` devuelve la academia A. _(crítico)_ (D-28)
 9. **Bloqueo.** Dado un usuario, cuando acumula fallos seguidos, entonces los 4 primeros responden 401 y el 5.º
@@ -148,6 +163,9 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     con `Max-Age=0` y `Path=/api`) e incrementa `version_token`: esa cookie y cualquier otra sesión de la misma cuenta
     dejan de valer (401). Sin sesión válida, o con la academia suspendida, también responde 204 y borra la cookie, sin
     cambiar nada más (pregunta N8). _(crítico)_
+
+    _Ataque ronda 1 (F2), 13/11/2026:_ con un cuerpo (JSON roto, `text/plain`) respondía 400 y la sesión seguía
+    valiendo. "Siempre 204" vale con cualquier cuerpo: `DELETE /api/sesion` no lee el cuerpo (criterio 54).
 18. Dada cualquier ruta de academia distinta de `DELETE /api/sesion`, incluidas las que no existen y las que llevan
     barra final, cuando se pide sin sesión válida, entonces responde 401 `NO_AUTENTICADO` sin ejecutar nada y antes de
     leer el cuerpo; con sesión válida, una ruta inexistente responde 404 `NO_ENCONTRADO`. Toda respuesta de una ruta de
@@ -236,6 +254,11 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     400 `SOLICITUD_INVALIDA`. Es una consulta: no escribe ni audita nada. `GET /api/usuarios/por-dni/{dni}` no existe
     (con sesión válida responde 404 `NO_ENCONTRADO`, criterio 18). Donde este criterio, el 37 o el contrato dicen
     `GET /api/usuarios/por-dni/{dni}`, se lee esta ruta.
+
+    _Observación del ataque ronda 1 (13/11/2026), sin criterio nuevo:_ un `ADMIN` que busca su propio DNI recibe 200
+    con su `UsuarioResumen`, y `POST /api/usuarios/{id}/restablecer-clave` sobre sí mismo responde 409
+    `OPERACION_SOBRE_SI_MISMO`. Es el comportamiento esperado: para la búsqueda, el propio administrador está dentro de
+    su alcance (el criterio 36 no lo excluye con un 404) y el 409 del criterio 36 es la respuesta para "a sí mismo".
 35. Dado un usuario de A dentro del alcance de quien pide, cuando se envía `POST /api/usuarios/{id}/restablecer-clave`,
     entonces responde 200 con `{ usuario: UsuarioResumen }`; la clave vuelve a ser su DNI (hash argon2id nuevo),
     `debe_cambiar_clave` queda en `true`, `intentos_fallidos` en 0, `bloqueado_hasta` en nulo (desbloquea) y
@@ -247,6 +270,9 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     igual para el Superadmin con un administrador inactivo (criterio 40).
 36. **Alcance** (provisional, pregunta N4): la `SECRETARIA` solo restablece a alumnos (sobre otro rol, 404); el
     `ADMIN` restablece a cualquier usuario de A salvo a sí mismo (409 `OPERACION_SOBRE_SI_MISMO`). _(crítico)_
+
+    _Observación del ataque ronda 1 (13/11/2026):_ "a sí mismo" se responde con el 409 al restablecer, no con un 404 en
+    la búsqueda (nota del criterio 34).
 37. Dado un `ENTRENADOR` o un `ALUMNO`, cuando pide cualquiera de las rutas de los criterios 29 a 35, entonces responde
     403 `SIN_PERMISO` (criterio 28). _(crítico)_
 
@@ -350,6 +376,55 @@ toda ruta bajo `/api/` salvo `/api/salud`, `/api/plataforma/…` y `/api/a/…` 
     semilla (`http://localhost:5173/a/delfines/ingresar`) y que la primera vez se pide cambiar la contraseña.
     _(verificación manual del responsable; lo escribe el documentador)_
 
+### K. Ataque ronda 1 (13/11/2026)
+
+Criterios agregados por las fallas del adversarial en la ronda 1, con las decisiones AR1-1 y AR1-2 del orquestador.
+
+53. **El mismo trabajo en la base con un DNI que no tiene cuenta.** _(Ataque ronda 1, F1.)_ Dados estos intentos de
+    ingreso por `POST /api/a/{nombreCorto de A}/sesion` con una clave equivocada:
+    - (i) el DNI de un usuario `ACTIVO` de A, sin bloquear y con menos de 4 fallos (el intento no lo bloquea);
+    - (ii) el DNI de un usuario `INACTIVO` de A, en las mismas condiciones;
+    - (iii) un DNI que no existe en ninguna academia;
+    - (iv) un DNI que existe solo en B;
+
+    entonces:
+    - a) **Misma forma en la base.** La secuencia de sentencias SQL que la API envía a PostgreSQL durante la petición
+      es la misma en los cuatro casos: el mismo número de transacciones y, en orden, el mismo texto de cada sentencia,
+      normalizado (espacios seguidos colapsados en uno y sin los valores de los parámetros), incluidos `BEGIN`,
+      `COMMIT` o `ROLLBACK`, la lectura del usuario por DNI, el `SELECT … FOR UPDATE` y el `UPDATE` con los que se
+      cuenta el fallo. Con un DNI sin cuenta, las sentencias de la transacción del conteo se ejecutan sobre un id que
+      no existe y no tocan ninguna fila.
+    - b) **Nada visible ni auditable.** En (iii) y (iv) no cambia ninguna fila de ninguna tabla (tampoco
+      `actualizado_en`, `intentos_fallidos` ni `bloqueado_hasta` de ningún usuario de A ni de B) ni se inserta nada en
+      `auditoria` ni en otra tabla.
+    - c) En (i) y (ii), `intentos_fallidos` sube en 1, como en los criterios 9 y 10.
+    - d) Los cuatro responden lo del criterio 7: 401 `CREDENCIALES_INVALIDAS`, el mismo cuerpo y sin `Set-Cookie`.
+
+    _(crítico; prueba protegida de integración para a) a d).)_ La prueba observa las sentencias que llegan al
+    controlador de PostgreSQL (`pg`) que usa la API, por ejemplo espiando el `query` de su cliente, entre el envío de
+    la petición y su respuesta, sin depender de los métodos internos del servicio. Hace antes una petición de
+    calentamiento, para que no cuenten las comprobaciones que se hacen una sola vez por proceso (la del rol de 001 y
+    el hash ficticio), y repite cada caso dos veces. Las peticiones van una tras otra, sin otras en paralelo en esa
+    aplicación. El límite por IP (criterio 12) se vacía entre casos como en las demás pruebas.
+
+    **Tiempos (verificación del adversarial en la ronda 2, no prueba de la CI):** con 60 rondas alternadas por HTTP
+    entre (i), (iii) y (iv) (como la reproducción `a3.test.ts` de la ronda 1), la diferencia entre las medianas de (i)
+    y (iii) es menor que 2 ms y, como mucho, el 25 % de las muestras de (i) supera el percentil 90 de (iii) (sin
+    diferencia real, cerca del 10 %; en la ronda 1 fue el 65 %). No se agrega una prueba de tiempos a la CI: los
+    milisegundos en los equipos compartidos de la CI, también Windows, no son estables, y la forma de a) es la causa
+    que se puede comprobar sin cronómetro.
+54. **`DELETE /api/sesion` cierra con cualquier cuerpo.** _(Ataque ronda 1, F2.)_ Dada una sesión válida, cuando se
+    envía `DELETE /api/sesion` con cualquiera de estos cuerpos: JSON roto con `Content-Type: application/json`;
+    `text/plain`; JSON válido de más de 100 KB; un cuerpo sin `Content-Type`; `Content-Encoding` no admitido (por
+    ejemplo `br`); `gzip` corrupto; bytes que no son UTF-8 válido; y JSON válido (`{}` y `{"x":1}`), entonces responde
+    204 sin cuerpo, con `Cache-Control: no-store` y la cookie borrada como en el criterio 17 (`aq_sesion=` con
+    `Max-Age=0` y `Path=/api`), sube `version_token` en 1, y después esa cookie y otra sesión de la misma cuenta
+    responden 401 en `GET /api/sesion`. Sin sesión válida (sin cookie o con un token alterado), con esos mismos
+    cuerpos, responde 204 y borra la cookie sin cambiar nada en la base. El cuerpo no se lee ni se interpreta: nunca
+    400 ni 413 en esta ruta. Las demás rutas conservan las reglas de cuerpos de 001 (criterios 74, 89 y 105): por
+    ejemplo, `POST /api/sesion/clave` con JSON roto sigue respondiendo 400 y con más de 100 KB, 413.
+    _(crítico; prueba protegida de integración.)_
+
 ## Casos límite
 
 - **DNI con ceros a la izquierda (`01234567`):** es texto, no número; se guarda y se compara tal cual.
@@ -419,6 +494,10 @@ no-store`. Los cuerpos son JSON y los esquemas, estrictos (un campo de más es 4
 | `GET /api/plataforma/academias/{id}/administradores` | superadmin | — | — | 200 `{ administradores }` | 401, 403, 404 |
 | `POST /api/plataforma/academias/{id}/administradores` | superadmin | — | `crearAdministradorSchema` | 201 `{ administrador }` | 400, 401, 403, 404, 409 `DNI_EN_USO` |
 | `POST /api/plataforma/academias/{id}/administradores/{usuarioId}/restablecer-clave` | superadmin | — | `{}` | 200 `{ administrador }` | 401, 403, 404 |
+
+_Ataque ronda 1 (F2), 13/11/2026:_ en la fila de `DELETE /api/sesion`, "Entrada: —" quiere decir que la ruta no lee
+el cuerpo: cualquier cuerpo, con cualquier `Content-Type`, `Content-Encoding` o tamaño, se ignora y la respuesta es
+siempre 204 (criterio 54). Es la única excepción a las reglas de cuerpos de 001 citadas arriba.
 
 Además, con `debe_cambiar_clave = true`, toda ruta de academia salvo `GET` y `DELETE /api/sesion` y
 `POST /api/sesion/clave` responde 403 `CAMBIO_DE_CLAVE_OBLIGATORIO` (criterio 21). Orden de las comprobaciones en una
@@ -600,6 +679,12 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
   `conAcademia` no cambia (criterio 41).
 - **001, DR-1 y D-29:** el primer administrador lo crea esta historia (criterio 39).
 - **001, `crearDatosDeAislamiento` y `limpiarBase`:** no cambian; `limpiarBase` ya vacía toda tabla de `public`.
+- **001, criterios 74, 89 y 105 (reglas de cuerpos; ataque ronda 1, F2):** `DELETE /api/sesion` queda fuera del
+  lector de cuerpos (criterio 54). Las demás rutas, también las de 001, conservan esas reglas; las pruebas protegidas
+  de 001 no cambian (ninguna envía un cuerpo a `DELETE /api/sesion`, que 001 no tenía). **Diferencia con 001:** el
+  criterio 74 de 001 dice expresamente que `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON responde 400
+  sin cambiar `version_token`; esa ruta no cambia en esta historia, así que los dos cierres de sesión se comportan
+  distinto ante un cuerpo inválido. Pregunta técnica T4 para el orquestador ("Preguntas abiertas").
 - **`scripts/test/integracion/migraciones.test.mjs` (no protegida; precisión del orquestador (13/11/2026), PO-8):**
   `TABLAS_DESPUES_DE_MIGRAR` suma `usuarios`, como pide su propio comentario ("cada historia con tablas nuevas agrega
   las suyas aquí"). Lo hace el backend en T6.
@@ -625,6 +710,23 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
   (RN-29), cerrar sesión en un celular la cierra en los demás.
 - **El Superadmin ve el DNI y el nombre de los administradores** (pregunta N5): es lo mínimo para crearlos y
   restablecerlos; no ve otros usuarios ni otros datos.
+- **Límite por IP con IPv6** _(observación del ataque ronda 1, 13/11/2026)_: el límite del criterio 12 cuenta por
+  dirección exacta. Con IPv6, un atacante con un bloque `/64` (lo normal en una conexión doméstica) tiene muchísimas
+  direcciones y el límite no lo frena; lo siguen frenando el bloqueo por cuenta (criterio 9), que vive en la base, y
+  el costo de argon2. Agrupar las IPv6 por `/64` se decide al revisar DT-1 con el hosting (D-21), junto con
+  `trust proxy`.
+- **Ingresar mientras otro dispositivo cierra la sesión** _(observación del ataque ronda 1, 13/11/2026)_: si la misma
+  cuenta cierra sesión en otro dispositivo (sube `version_token`) entre la verificación de la clave y la emisión de la
+  sesión, el ingreso responde 401 sin contar un intento fallido (la comprobación de "clave o versión cambiaron" del
+  plan, sección 2, paso 6). Es raro, no da acceso a nadie y basta con volver a intentar.
+- **Commit con escritura frente a commit vacío** _(ataque ronda 1, F1)_: con el criterio 53, los dos caminos envían
+  las mismas sentencias, pero solo el de un DNI con cuenta modifica una fila; su `COMMIT` escribe en el registro de
+  transacciones (WAL) y puede tardar algo más. Se acepta si la medición de la ronda 2 cumple los umbrales del criterio
+  53; si no, el orquestador decide (plan, "Riesgos").
+- **El Superadmin conoce la clave inicial del administrador que crea o restablece** _(ataque ronda 1; provisional
+  hasta que el responsable conteste la pregunta N11)_: puede entrar como ese administrador antes que él y ver datos
+  internos de la academia, en tensión con D-29. Mientras tanto se acepta (opción (a) de N11): la creación y el
+  restablecimiento quedan en la auditoría de la academia con actor `SUPERADMIN` (criterios 39, 40 y 42).
 
 ## Decisiones
 
@@ -682,6 +784,8 @@ propuesta.
   largas para el alumno, los ingresos son pocos; se revisa con el hosting y `trust proxy` (criterio 12).
   _(Precisión del orquestador (13/11/2026), PO-6:)_ el límite es por instancia y en memoria; con varias instancias
   cada una cuenta por su lado (riesgo aceptado "Límite por IP en memoria").
+  _(Observación del ataque ronda 1, 13/11/2026:)_ hoy cuenta por dirección IP exacta, también con IPv6; agrupar las
+  IPv6 por `/64` se decide en esta misma revisión con el hosting (riesgo aceptado "Límite por IP con IPv6").
 - **DT-2 (pregunta T2). Sesiones de una academia reactivada.** DR-4 de 001 dice que las sesiones "dejan de valer" al
   suspender. **Decidido (la propuesta):** mientras está suspendida no pasa ninguna petición (403); al reactivarla, las
   sesiones no vencidas vuelven a valer (cortarlas exigiría tocar `usuarios` desde la plataforma) (criterio 15).
@@ -718,6 +822,23 @@ intención de los criterios; cada una está también como nota junto al criterio
   `scripts/test/integracion/migraciones.test.mjs`, junto con `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs` (criterio
   2; tarea T6).
 
+### Decisiones del orquestador tras el ataque, ronda 1 (13/11/2026)
+
+- **AR1-1 (F1, media). El DNI sin cuenta hace el mismo trabajo en la base.** El adversarial midió por HTTP, con clave
+  equivocada, una mediana de 26,6 ms con un DNI que existe y de 20,3 ms con uno que no; el 65 % de las muestras del
+  existente superaban el percentil 90 del inexistente. La causa: tras argon2, solo el DNI que existe abre la
+  transacción del conteo (`SELECT … FOR UPDATE`, `UPDATE`, `COMMIT`). **Decidido:** con un DNI sin cuenta se ejecuta
+  una transacción de la misma forma y con las mismas sentencias, sobre un id que no existe, sin escribir nada visible
+  ni auditable (criterio 53). La prueba compara las sentencias que llegan a PostgreSQL, no los milisegundos; los
+  tiempos los mide el adversarial en la ronda 2. Alternativas descartadas: un retardo fijo o aleatorio (no iguala la
+  distribución y alarga todos los ingresos); responder después de un tiempo mínimo fijo (depende de la carga y de la
+  máquina, y el camino lento sigue asomando por encima); una prueba de tiempos en la CI (frágil en equipos
+  compartidos).
+- **AR1-2 (F2, media). `DELETE /api/sesion` ignora el cuerpo.** El lector de cuerpos de 001 respondía 400 antes de
+  llegar al manejador, y la sesión seguía valiendo, contra el "siempre 204" del criterio 17. **Decidido:** esa ruta no
+  lee el cuerpo y siempre cierra (criterio 54). Alternativa descartada: dejar el 400 y corregir el criterio 17 (un
+  cierre de sesión que falla por algo que la ruta no usa deja la cuenta abierta en un equipo compartido).
+
 ### Decisiones de diseño (técnicas)
 
 - **Una cookie `aq_sesion` con `Path=/api` y rutas sin nombre corto** (`/api/sesion`, `/api/usuarios`; D-27: la
@@ -738,7 +859,38 @@ intención de los criterios; cada una está también como nota junto al criterio
 
 ## Preguntas abiertas
 
+_(Ataque ronda 1, 13/11/2026: hay dos preguntas nuevas, N11 para el responsable y T4 para el orquestador, al final de
+esta sección. Ninguna bloquea. El párrafo que sigue habla de las preguntas de la versión aprobada.)_
+
 Ninguna. Las 10 preguntas de negocio de la versión en borrador (N1 a N10) las resolvió el responsable el 13/11/2026
 (DR-1 a DR-10 de 002) y las 3 técnicas (T1 a T3), el orquestador ese mismo día (DT-1 a DT-3); su texto y su propuesta
 están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy` y el límite por IP detrás de un proxy
 (DT-1; riesgo aceptado "Límite por IP en memoria").
+
+### Preguntas nuevas tras el ataque, ronda 1 (13/11/2026)
+
+- **N11 (negocio, para Bryan). El Superadmin conoce la clave inicial de los administradores que crea o restablece.**
+  Al crear un administrador (DR-1 de 001, criterio 39) o restablecer su contraseña (DR-5 de 002, criterio 40), la
+  clave queda igual al DNI, que el Superadmin acaba de escribir o ve en la lista (criterio 38). Puede entrar por
+  `/a/{nombreCorto}/ingresar` como ese administrador antes que él, cambiarle la contraseña y ver los datos internos de
+  la academia. Eso choca con D-29 ("el Superadmin administra las academias pero no ve sus datos internos"). El
+  adversarial lo comprobó en la ronda 1 (`a5.test.ts`). Opciones:
+  - (a) **Aceptarlo como riesgo explícito.** La creación y el restablecimiento quedan en la auditoría de la academia
+    con actor `SUPERADMIN` y su id (criterios 39, 40 y 42); un ingreso posterior del Superadmin como ese
+    administrador no se distingue del ingreso del administrador. Sin cambios en esta historia.
+  - (b) **Mitigarlo con visibilidad.** Cuando el Superadmin crea o restablece un administrador, la cuenta queda
+    marcada y la academia lo ve, por ejemplo un aviso a los demás administradores en su panel. Exige una columna o un
+    estado nuevo y una pantalla; mejor cuando exista el panel de auditoría de la academia.
+  - (c) **Clave temporal aleatoria.** Lo que crea o restablece el Superadmin no empieza con el DNI, sino con una clave
+    aleatoria que se muestra una sola vez para entregarla al administrador. Se aparta de D-07 y RN-02 para ese caso;
+    el Superadmin la ve igual al entregarla, pero ya no la puede deducir después. Cambia los criterios 39 y 40.
+
+  **Propuesta del orquestador:** (a) ahora y (b) cuando exista el panel de auditoría de la academia (Fase 3). Valor
+  provisional, que no bloquea: (a), como riesgo aceptado ("Riesgos aceptados"). Si Bryan elige (c), el especificador
+  agrega los criterios y se vuelven a escribir las pruebas protegidas de los criterios 39 y 40.
+- **T4 (técnica, para el orquestador). Cierre de sesión del Superadmin con un cuerpo.** El criterio 54 hace que
+  `DELETE /api/sesion` ignore el cuerpo, pero el criterio 74 de 001 dice que `DELETE /api/plataforma/sesion` con un
+  cuerpo que no es JSON responde 400 sin cerrar. **Propuesta:** dejar 001 como está en esta historia (cambiarlo
+  exige tocar pruebas protegidas de 001 y su criterio) y, si el orquestador quiere que los dos cierres se comporten
+  igual, abrir una nota en el backlog para alinear `DELETE /api/plataforma/sesion` en una historia propia. Valor
+  provisional: sin cambios en 001.
