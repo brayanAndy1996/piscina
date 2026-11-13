@@ -59,18 +59,38 @@ export class SesionCambiadaError extends Error {
 }
 
 /**
- * Criterio 59 b): antes de una acción que escribe o manda datos personales, vuelve a pedir la sesión. Si sigue siendo la misma
- * persona y academia, deja seguir; si no, lanza `SesionCambiadaError` (y `RutaConSesion` lleva a `/panel` con la identidad
- * nueva); si ya no vale (401, academia suspendida), lanza ese error y `RutaConSesion` muestra la página que corresponde. Solo
- * se usa dentro de `RutaConSesion`. "Cerrar sesión" no la llama: siempre cierra.
+ * La sesión sigue siendo de la misma persona, pero ahora debe cambiar su contraseña (por ejemplo, otra persona la restableció):
+ * la acción no se envió. `RutaConSesion` lleva a `/cambiar-clave`; no es el aviso de "Tu sesión cambió".
  */
-export function useConfirmarSesion(): () => Promise<void> {
+export class CambioDeClavePendienteError extends Error {
+  constructor() {
+    super('Debes cambiar tu contraseña antes de seguir. No se envió la acción.');
+    this.name = 'CambioDeClavePendienteError';
+  }
+}
+
+export interface OpcionesConfirmarSesion {
+  /** Solo para la propia acción de cambiar la contraseña desde `/cambiar-clave`. */
+  permitirCambioPendiente?: boolean;
+}
+
+/**
+ * Criterio 59 b) y 61: antes de una acción que escribe o manda datos personales, vuelve a pedir la sesión. Si sigue siendo la
+ * misma persona y academia, deja seguir; si no, lanza `SesionCambiadaError` (y `RutaConSesion` lleva a `/panel` con la identidad
+ * nueva); si es la misma persona pero ahora debe cambiar su contraseña, lanza `CambioDeClavePendienteError` (y `RutaConSesion`
+ * lleva a `/cambiar-clave`), salvo con `permitirCambioPendiente`; si ya no vale (401, academia suspendida), lanza ese error y
+ * `RutaConSesion` muestra la página que corresponde. Solo se usa dentro de `RutaConSesion`. "Cerrar sesión" no la llama:
+ * siempre cierra.
+ */
+export function useConfirmarSesion(opciones: OpcionesConfirmarSesion = {}): () => Promise<void> {
   const cliente = useQueryClient();
   const mostrada = useUsuario();
+  const { permitirCambioPendiente = false } = opciones;
   return useCallback(async () => {
     const actual = await pedirLaSesion(cliente);
     if (claveDeIdentidad(actual.usuario) !== claveDeIdentidad(mostrada)) throw new SesionCambiadaError();
-  }, [cliente, mostrada]);
+    if (actual.usuario.debeCambiarClave && !permitirCambioPendiente) throw new CambioDeClavePendienteError();
+  }, [cliente, mostrada, permitirCambioPendiente]);
 }
 
 export function useAcademiaPublica(nombreCorto: string) {
@@ -109,7 +129,7 @@ export function useCerrarSesionAcademia() {
 
 export function useCambiarClave() {
   const cliente = useQueryClient();
-  const confirmarSesion = useConfirmarSesion();
+  const confirmarSesion = useConfirmarSesion({ permitirCambioPendiente: true });
   return useMutation({
     mutationFn: async (datos: Parameters<typeof api.cambiarClave>[0]) => {
       await confirmarSesion();
