@@ -8,7 +8,7 @@ import type { z } from 'zod';
 import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, CampoTexto, ESTILO_BOTON } from '../../componentes/ui';
 import { mensajeGeneral } from '../../lib/errores';
-import { MENSAJE_ACADEMIA_SUSPENDIDA, useAcademiaPublica, useIniciarSesionAcademia } from './hooks';
+import { MENSAJE_ACADEMIA_SUSPENDIDA, RUTA_CAMBIAR_CLAVE, useAcademiaPublica, useIniciarSesionAcademia } from './hooks';
 import { mensajeDeIngresoAcademia } from './mensajes';
 
 type CamposIngreso = z.input<typeof iniciarSesionAcademiaSchema>;
@@ -46,7 +46,7 @@ export function PaginaIngresarAcademia() {
   const enviar = handleSubmit((datos) => {
     ingresar.mutate(datos, {
       onSuccess: ({ usuario }) =>
-        void navegar(usuario.debeCambiarClave ? '/cambiar-clave' : '/panel', { replace: true }),
+        void navegar(usuario.debeCambiarClave ? RUTA_CAMBIAR_CLAVE : '/panel', { replace: true }),
     });
   });
 

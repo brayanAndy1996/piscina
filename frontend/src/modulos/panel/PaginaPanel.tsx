@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { ESTILO_BOTON } from '../../componentes/ui';
 import { useUsuario } from '../sesion/contexto';
 import { ETIQUETA_ROL } from '../sesion/etiquetas';
+import { RUTA_CAMBIAR_CLAVE } from '../sesion/hooks';
 
 interface Opcion {
   permiso: Permiso;
@@ -45,7 +46,7 @@ export function PaginaPanel() {
           <dd className="break-words">{usuario.academia.nombre}</dd>
         </dl>
         <div className="mt-4">
-          <Link to="/cambiar-clave" className={ESTILO_BOTON.secundario}>
+          <Link to={RUTA_CAMBIAR_CLAVE} className={ESTILO_BOTON.secundario}>
             Cambiar contraseña
           </Link>
         </div>

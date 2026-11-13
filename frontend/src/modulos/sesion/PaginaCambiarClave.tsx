@@ -7,7 +7,8 @@ import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, CampoTexto, ESTILO_BOTON } from '../../componentes/ui';
 import { erroresPorCampo, mensajeGeneral } from '../../lib/errores';
 import { useUsuario } from './contexto';
-import { useAlPerderSesion, useCambiarClave } from './hooks';
+import { esErrorDeCambioDeSesion, useAlPerderSesion, useCambiarClave } from './hooks';
+import { MENSAJE_BLOQUEO } from './mensajes';
 
 // La confirmación solo existe en la pantalla: a la API viaja `{ claveActual, claveNueva }`.
 const formularioSchema = cambiarClaveSchema
@@ -26,9 +27,6 @@ const formularioSchema = cambiarClaveSchema
   });
 
 type Campos = z.input<typeof formularioSchema>;
-
-const MENSAJE_BLOQUEO =
-  'La cuenta está bloqueada por varios intentos fallidos. Intenta de nuevo en 15 minutos o pide en recepción que la restablezcan.';
 
 /**
  * `/cambiar-clave`: cambio de la contraseña propia (HU-05, D-14: también el alumno y el apoderado). Con el cambio obligatorio
@@ -66,6 +64,7 @@ export function PaginaCambiarClave() {
   const errorGeneral =
     cambiar.isError &&
     !esErrorDeApi(cambiar.error, 401) &&
+    !esErrorDeCambioDeSesion(cambiar.error) &&
     !esErrorDeApi(cambiar.error, 423) &&
     !esErrorDeApi(cambiar.error, 400, 'CLAVE_ACTUAL_INCORRECTA') &&
     erroresPorCampo(cambiar.error).length === 0;

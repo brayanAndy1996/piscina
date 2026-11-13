@@ -6,10 +6,15 @@ import { ESTILO_BOTON } from '../../componentes/ui';
 import { mensajeGeneral } from '../../lib/errores';
 import { LayoutPanel } from '../panel/LayoutPanel';
 import { ContextoUsuario } from './contexto';
-import { CLAVE_SESION, claveDeIdentidad, useSesionAcademia, useVolverAPedirLaSesionAlRecuperarElFoco } from './hooks';
+import {
+  CLAVE_SESION,
+  claveDeIdentidad,
+  RUTA_CAMBIAR_CLAVE,
+  useSesionAcademia,
+  useVolverAPedirLaSesionAlRecuperarElFoco,
+} from './hooks';
 import { MensajeDePagina } from './MensajeDePagina';
 
-export const RUTA_CAMBIAR_CLAVE = '/cambiar-clave';
 const RUTA_INICIO = '/panel';
 
 function Cargando() {

@@ -8,6 +8,8 @@ import { useUsuario } from './contexto';
 export const CLAVE_SESION = ['sesion'] as const;
 const CLAVE_ACADEMIA_PUBLICA = 'academia-publica';
 
+export const RUTA_CAMBIAR_CLAVE = '/cambiar-clave';
+
 /** Lo que muestra la web de una academia suspendida (DR-4 de 001). */
 export const MENSAJE_ACADEMIA_SUSPENDIDA = 'Academia no disponible por el momento.';
 
@@ -67,6 +69,14 @@ export class CambioDeClavePendienteError extends Error {
     super('Debes cambiar tu contraseña antes de seguir. No se envió la acción.');
     this.name = 'CambioDeClavePendienteError';
   }
+}
+
+/**
+ * La acción no se envió porque la sesión cambió (otra persona o academia, o cambio de contraseña pendiente). `RutaConSesion`
+ * ya lleva a la página que corresponde: los formularios no muestran ningún mensaje de error por esto.
+ */
+export function esErrorDeCambioDeSesion(error: unknown): boolean {
+  return error instanceof SesionCambiadaError || error instanceof CambioDeClavePendienteError;
 }
 
 export interface OpcionesConfirmarSesion {

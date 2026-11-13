@@ -2,12 +2,13 @@ import { esErrorDeApi } from '../../api/cliente';
 import { mensajeGeneral } from '../../lib/errores';
 import { MENSAJE_ACADEMIA_SUSPENDIDA } from './hooks';
 
+export const MENSAJE_BLOQUEO =
+  'La cuenta está bloqueada por varios intentos fallidos. Intenta de nuevo en 15 minutos o pide en recepción que la restablezcan.';
+
 /** Mensaje del ingreso de una academia según la respuesta de la API (criterio 46; textos orientativos). */
 export function mensajeDeIngresoAcademia(error: unknown): string {
   if (esErrorDeApi(error, 401)) return 'DNI o contraseña incorrectos.';
-  if (esErrorDeApi(error, 423)) {
-    return 'La cuenta está bloqueada por varios intentos fallidos. Intenta de nuevo en 15 minutos o pide en recepción que la restablezcan.';
-  }
+  if (esErrorDeApi(error, 423)) return MENSAJE_BLOQUEO;
   if (esErrorDeApi(error, 429)) return 'Hiciste demasiados intentos. Espera un minuto.';
   if (esErrorDeApi(error, 403, 'USUARIO_INACTIVO')) {
     return 'Tu cuenta está desactivada. Consulta en recepción.';

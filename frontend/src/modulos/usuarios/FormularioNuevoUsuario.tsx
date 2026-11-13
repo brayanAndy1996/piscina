@@ -6,7 +6,7 @@ import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, CampoSelect, CampoTexto, ESTILO_BOTON, Modal } from '../../componentes/ui';
 import { erroresPorCampo, mensajeGeneral } from '../../lib/errores';
 import { ETIQUETA_ROL } from '../sesion/etiquetas';
-import { useAlPerderSesion } from '../sesion/hooks';
+import { esErrorDeCambioDeSesion, useAlPerderSesion } from '../sesion/hooks';
 import { useCrearUsuario } from './hooks';
 import { MENSAJE_DNI_EN_USO } from './mensajes';
 
@@ -42,6 +42,7 @@ export function FormularioNuevoUsuario({ alCerrar }: { alCerrar: () => void }) {
   const errorGeneral =
     crear.isError &&
     !esErrorDeApi(crear.error, 401) &&
+    !esErrorDeCambioDeSesion(crear.error) &&
     !esErrorDeApi(crear.error, 409, 'DNI_EN_USO') &&
     erroresPorCampo(crear.error).length === 0;
 

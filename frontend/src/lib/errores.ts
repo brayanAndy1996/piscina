@@ -2,7 +2,6 @@ import { detallesValidacionSchema } from '@aquagestion/contratos';
 import { ErrorDeApi, esErrorDeApi } from '../api/cliente';
 
 export const MENSAJE_SIN_SERVIDOR = 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
-export const MENSAJE_ERROR_GENERAL = 'Ocurrió un error inesperado. Inténtalo de nuevo.';
 
 /** Error de red o del servidor sin un caso propio. */
 export function mensajeGeneral(error: unknown): string {

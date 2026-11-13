@@ -11,6 +11,7 @@ import type { z } from 'zod';
 import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, CampoTexto, ESTILO_BOTON, Insignia, Modal } from '../../componentes/ui';
 import { erroresPorCampo } from '../../lib/errores';
+import { MENSAJE_DNI_EN_USO } from '../usuarios/mensajes';
 import {
   useAdministradores,
   useCrearAdministrador,
@@ -25,8 +26,6 @@ interface Propiedades {
 }
 
 type Vista = { tipo: 'lista' } | { tipo: 'crear' } | { tipo: 'restablecer'; administrador: AdministradorResumen };
-
-const MENSAJE_DNI_EN_USO = 'Ya existe una cuenta con ese DNI en esta academia.';
 
 /**
  * "Administradores" de una academia (DR-1, DR-5 y D-29): lista, crea y restablece la contraseña de sus administradores. Es lo

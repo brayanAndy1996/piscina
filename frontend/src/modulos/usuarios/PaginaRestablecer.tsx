@@ -7,7 +7,7 @@ import { Alerta, CampoTexto, ESTILO_BOTON, Insignia } from '../../componentes/ui
 import { mensajeGeneral } from '../../lib/errores';
 import { useUsuario } from '../sesion/contexto';
 import { ETIQUETA_ROL } from '../sesion/etiquetas';
-import { useAlPerderSesion } from '../sesion/hooks';
+import { esErrorDeCambioDeSesion, useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
 import { DialogoAccionUsuario, nombreCompleto } from './DialogoAccionUsuario';
 import { useBuscarUsuarioPorDni } from './hooks';
@@ -44,7 +44,8 @@ function ContenidoRestablecer() {
 
   const encontrado = buscar.isSuccess ? buscar.data : null;
   const noEncontrado = esErrorDeApi(buscar.error, 404);
-  const errorGeneral = buscar.isError && !noEncontrado && !esErrorDeApi(buscar.error, 401);
+  const errorGeneral =
+    buscar.isError && !noEncontrado && !esErrorDeApi(buscar.error, 401) && !esErrorDeCambioDeSesion(buscar.error);
 
   return (
     <div className="space-y-4">

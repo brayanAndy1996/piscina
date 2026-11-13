@@ -1,6 +1,6 @@
 import type { UsuarioResumen } from '@aquagestion/contratos';
 import { Alerta, ESTILO_BOTON, Modal } from '../../componentes/ui';
-import { useAlPerderSesion } from '../sesion/hooks';
+import { esErrorDeCambioDeSesion, useAlPerderSesion } from '../sesion/hooks';
 import { useDesactivarUsuario, useReactivarUsuario, useRestablecerClaveUsuario } from './hooks';
 import { mensajeDeAccionUsuario } from './mensajes';
 
@@ -64,7 +64,7 @@ export function DialogoAccionUsuario({ accion, usuario, alCerrar, alExito }: Pro
           </>
         ) : null}
       </div>
-      {mutacion.isError ? (
+      {mutacion.isError && !esErrorDeCambioDeSesion(mutacion.error) ? (
         <div className="mt-4">
           <Alerta>{mensajeDeAccionUsuario(mutacion.error)}</Alerta>
         </div>
