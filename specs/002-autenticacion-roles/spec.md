@@ -15,7 +15,8 @@
   son críticos: los mensajes y pantallas de la web, la semilla y la documentación.
 - **Estado:** aprobada por el responsable (13/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
   DR-10 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-3), en "Decisiones". Ningún criterio
-  cambió.
+  cambió. _(17/11/2026: el responsable decidió N11 con la opción (a) (DR-11, en "Decisiones"); no quedan preguntas
+  abiertas y la historia se une a `main`.)_
 - **Precisiones del orquestador (13/11/2026):** al escribir las pruebas protegidas, el test-writer encontró
   ambigüedades; el orquestador las resolvió en ocho puntos (PO-1 a PO-8, en "Decisiones"). Se agregaron como notas
   _(precisión del orquestador (13/11/2026))_ en los criterios 9, 12, 29, 32, 34, 35, 38, 40 y 43 y en el contrato, sin
@@ -53,6 +54,12 @@
   orquestador sobre T4 y T5 (DT-4 y DT-5, en "Decisiones"), con notas _(ataque ronda 4)_ en el criterio 10, los casos
   límite, "Impacto", "Riesgos aceptados" y "Preguntas abiertas", sin borrar texto. Solo queda abierta N11 (Bryan), con
   el valor provisional (a). Siguen la revisión (T18), la suite completa (T19) y la documentación (T20).
+- **Decisión del responsable (17/11/2026):** Bryan decidió N11 con la opción (a): se acepta como riesgo explícito que
+  el Superadmin conoce la clave inicial (el DNI) de los administradores que crea o restablece y podría entrar como
+  ellos; la creación y el restablecimiento quedan en la auditoría de la academia con actor `SUPERADMIN`. La opción (b)
+  (aviso a los demás administradores cuando exista el panel de auditoría de la academia) queda como mejora futura, no
+  decidida. Se registra como DR-11 ("Decisiones"), con notas en "Riesgos aceptados" y en N11, sin borrar texto. No
+  cambia ningún criterio ni prueba protegida. No quedan preguntas abiertas.
 
 ## Objetivo
 
@@ -1053,12 +1060,18 @@ Una migración `<marca>_usuarios`. Ajusta la entidad `USUARIO` de la sección 9.
   hasta que el responsable conteste la pregunta N11)_: puede entrar como ese administrador antes que él y ver datos
   internos de la academia, en tensión con D-29. Mientras tanto se acepta (opción (a) de N11): la creación y el
   restablecimiento quedan en la auditoría de la academia con actor `SUPERADMIN` (criterios 39, 40 y 42).
+  _Decidido por el responsable (17/11/2026, DR-11):_ ya no es provisional. Bryan eligió la opción (a) de N11: se acepta
+  como riesgo explícito que el Superadmin conoce la clave inicial (el DNI) de los administradores que crea o restablece
+  y podría entrar como ellos; queda registrado en la auditoría de la academia con actor `SUPERADMIN`. La opción (b)
+  (aviso a los demás administradores cuando exista el panel de auditoría de la academia) queda como mejora futura, no
+  decidida.
 - **El Superadmin puede saber si un DNI tiene cuenta en una academia** _(ataque ronda 2, observación 3, decisión
   AR2-4)_: al crear un administrador, el 409 `DNI_EN_USO` responde a un DNI que ya existe en esa academia con cualquier
   rol, también alumno (criterio 39), y eso dice que esa persona es alumno o personal de la academia, un dato que D-29
   no le da. Se acepta porque es lo que pide el criterio 39 (sin él, el Superadmin no sabría por qué no se crea la
   cuenta) y porque probar DNIs deja rastro: cada DNI que no existe crea de verdad un administrador, registrado en la
   auditoría de la academia con actor `SUPERADMIN` (criterios 39 y 42). Si se quiere cerrar, se revisa junto con N11.
+  _(17/11/2026: N11 quedó decidida con la opción (a), DR-11; si se retoma, es junto con la mejora futura (b).)_
 - **Lecturas en curso al desactivar** _(ataque ronda 2, R2-F1)_: una consulta que ya pasó el middleware cuando la
   cuenta se desactiva termina y devuelve lo que leyó. Son milisegundos, no cambian nada y la siguiente petición
   responde 401 (criterio 16); las escrituras sí se cortan (criterio 56).
@@ -1306,6 +1319,18 @@ Decisiones sobre las preguntas técnicas pendientes:
   documentador la lleva a "Reglas para las historias siguientes" de `docs/arquitectura.md` (tarea T20). El Superadmin
   queda como está (nota de N11, AR3-4).
 
+### Decisión del responsable (17/11/2026)
+
+- **DR-11 (pregunta N11). El Superadmin conoce la clave inicial de los administradores que crea o restablece.**
+  **Decidido por el responsable (17/11/2026): opción (a).** Se acepta como riesgo explícito ("Riesgos aceptados") que
+  el Superadmin conoce la clave inicial (el DNI) de los administradores que crea o restablece y podría entrar como
+  ellos, en tensión con D-29. Queda registrado en la auditoría de la academia con actor `SUPERADMIN` y su id (criterios
+  39, 40 y 42). Sin cambios en los criterios, el contrato, el código ni las pruebas protegidas. La opción (b) (marcar
+  la cuenta y avisar a los demás administradores cuando exista el panel de auditoría de la academia, Fase 3) queda
+  como mejora futura, **no decidida**: si se quiere, se especifica en la historia que traiga ese panel. La opción (c)
+  (clave temporal aleatoria) no se eligió. La nota de AR3-4 sobre la simetría futura del Superadmin (en N11) sigue
+  igual.
+
 ### Nota de proceso (ataque ronda 2)
 
 El commit `b6b2d77` ("Pruebas protegidas (002), ataque ronda 2: …") incluyó por error, además de las pruebas
@@ -1343,6 +1368,8 @@ _(Ataque ronda 3, 13/11/2026: no hay preguntas nuevas; se agregan notas en N11 (
 Superadmin, decisión AR3-4) y en T5.)_
 _(Ataque ronda 4, 13/11/2026: no hay preguntas nuevas. El orquestador decidió T4 (DT-4) y T5 (DT-5) con su propuesta.
 Solo queda abierta N11, para Bryan, que no bloquea: mientras tanto rige la opción (a).)_
+_(Decisión del responsable, 17/11/2026: Bryan decidió N11 con la opción (a) (DR-11, "Decisiones"). No quedan
+preguntas abiertas en esta historia.)_
 
 Ninguna. Las 10 preguntas de negocio de la versión en borrador (N1 a N10) las resolvió el responsable el 13/11/2026
 (DR-1 a DR-10 de 002) y las 3 técnicas (T1 a T3), el orquestador ese mismo día (DT-1 a DT-3); su texto y su propuesta
@@ -1372,6 +1399,10 @@ están en "Decisiones". Queda para el hosting (D-21), sin bloquear: `trust proxy
   agrega los criterios y se vuelven a escribir las pruebas protegidas de los criterios 39 y 40.
 
   _Ataque ronda 4, 13/11/2026:_ sigue pendiente de Bryan, con el valor provisional (a). No bloquea el cierre de 002.
+
+  _Decidido por el responsable (17/11/2026):_ **decidida (DR-11, "Decisiones"):** opción (a), aceptada como riesgo
+  explícito; queda registrado en la auditoría de la academia con actor `SUPERADMIN`. El "valor provisional" de arriba
+  pasa a ser la decisión. La opción (b) queda como mejora futura, no decidida; la (c) no se eligió.
 
   _Ataque ronda 3 (observación, decisión AR3-4), 13/11/2026; posible simetría futura, sin cambios en esta historia:_
   el Superadmin no vuelve a comprobar su sesión dentro de la transacción que crea o restablece un administrador

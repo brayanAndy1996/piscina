@@ -12,7 +12,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | --- | --- | --- | --- |
 | 000 | Esqueleto | No | ✅ |
 | 001 | Academias y aislamiento | Sí | ✅ |
-| 002 | Autenticación y roles por academia | Sí | 🟨 |
+| 002 | Autenticación y roles por academia | Sí | ✅ |
 | 003 | Configuración de la academia | No | ⬜ |
 | 004 | Planes y clases con aforo | En parte | ⬜ |
 | 005 | Inscripción pública y seguimiento de la solicitud | Sí | ⬜ |
@@ -41,8 +41,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   obligatorio, bloqueo por intentos, restablecimiento por la secretaria, matriz de permisos (RN-02, RN-03, HU-05,
   RNF-03, RNF-04). Incluye el primer administrador de cada academia, con sus usuarios y su inicio de sesión (DR-1; la
   001 no lo crea).
-  - Estado: 🟨 en curso. Se marca ✅ al unirse a `main`; antes quedan la revisión (T18) y la suite completa, con lint y
-    tipos (T19).
+  - Estado: ✅ unida a `main` (17/11/2026), con la revisión (T18) y la suite completa, con lint y tipos (T19), hechas.
   - Hosting (D-21), cuando se elija: volver a medir los tiempos del criterio 53 en el hosting real y en Docker Desktop en
     Windows, con 300 rondas pareadas entre un DNI con cuenta y uno sin cuenta, y los umbrales del criterio (diferencia de
     medianas menor que 2 ms; como mucho el 25 % de las muestras sobre el percentil 90). Si no se cumplen, decide el
@@ -54,8 +53,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - DT-4: `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON responde 400 y no cierra (criterio 74 de 001),
     mientras que `DELETE /api/sesion` cierra con cualquier cuerpo (criterio 54 de 002). Alinearlos cambia pruebas
     protegidas de la 001: va en una historia propia.
-  - N11 y AR3-4: quien crea o restablece un administrador conoce su clave inicial (su DNI). La decisión es de Bryan; rige
-    mientras tanto la opción (a). El Superadmin tampoco vuelve a comprobar su sesión dentro de la transacción que crea o
+  - N11 y AR3-4: quien crea o restablece un administrador conoce su clave inicial (su DNI). Decidido (a) por Bryan el
+    17/11/2026 (DR-11 de 002): riesgo explícito, registrado en la auditoría de la academia con actor `SUPERADMIN`; la
+    opción (b), avisar a los demás administradores cuando exista el panel de auditoría (Fase 3), queda como mejora
+    futura, no decidida. El Superadmin tampoco vuelve a comprobar su sesión dentro de la transacción que crea o
     restablece un administrador. Si una historia le agrega cambios de cuenta, conviene darle la regla del criterio 56
     (bloquear y comprobar su fila de `superadmins`), teniendo en cuenta que esa fila es de la plataforma y la escritura
     corre en `conAcademia`.

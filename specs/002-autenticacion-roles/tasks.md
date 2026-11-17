@@ -110,10 +110,12 @@ pueden empezar.)_
       variantes de la ruta (barra final, mayúsculas, cadena de consulta) y cuerpos; que las demás rutas sigan
       rechazando cuerpos inválidos. Si encuentra fallas, se repite el ciclo (criterios 53, 54 y toda la ruta crítica)
       _(Hecha el 13/11/2026 sobre 16b0e38: una falla, R2-F1, y tres observaciones; se siguen en "Ataque ronda 2".)_
-- [ ] T17.8 · responsable · Contestar N11 (el Superadmin conoce la clave inicial del administrador). No bloquea:
+- [x] T17.8 · responsable · Contestar N11 (el Superadmin conoce la clave inicial del administrador). No bloquea:
       mientras tanto rige la opción (a). Si elige (c), el especificador ajusta los criterios 39 y 40 y se repiten las
       pruebas protegidas de esos criterios (criterios 39, 40) _(Ataque ronda 4: sigue pendiente de Bryan, con el valor
-      provisional (a); no bloquea el cierre.)_
+      provisional (a); no bloquea el cierre.)_ _(Hecha el 17/11/2026: Bryan eligió la opción (a), riesgo explícito
+      registrado en la auditoría de la academia con actor `SUPERADMIN` (DR-11 de `spec.md`); la (b) queda como mejora
+      futura, no decidida. Sin cambios en criterios ni pruebas protegidas.)_
 - [x] T17.9 · orquestador · Decidir T4 (cierre de sesión del Superadmin con cuerpo, criterio 74 de 001). No bloquea
       _(Ataque ronda 4: decidida, DT-4: no se toca la 001; la nota en el backlog es T17.28.)_
 
@@ -226,7 +228,8 @@ aislamiento entre academias; 19 variantes de ruta y método por rol; sesión y v
 en nivel `trace`, sin DNI ni claves; la web. Dos observaciones quedan como riesgos aceptados (AR4-1, "Bloqueo
 provocado por terceros" ampliado; AR4-2, dentro de "Ingresar mientras otro dispositivo cierra la sesión") y el
 orquestador decidió T4 (DT-4) y T5 (DT-5). No hay criterios nuevos ni pruebas protegidas nuevas. Solo queda abierta N11
-(Bryan, T17.8), con el valor provisional (a), sin bloquear.
+(Bryan, T17.8), con el valor provisional (a), sin bloquear. _(17/11/2026: Bryan decidió N11 con la opción (a), DR-11;
+no quedan preguntas abiertas.)_
 
 **Siguen:** la revisión (T18), la suite completa con lint y tipos (T19) y la documentación con el commit final (T20).
 
