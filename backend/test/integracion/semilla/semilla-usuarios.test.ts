@@ -7,6 +7,8 @@ import { leerAcademias } from '../../utilidades/datos';
 // Historia 002, criterio 45: la semilla crea un usuario por rol en `delfines` y un administrador en `tiburones` con el mismo DNI que
 // el de `delfines` (D-28), con DNIs inventados, clave igual al DNI y cambio obligatorio; repetirla no duplica ni restablece claves, y
 // la salida no muestra claves (la clave inicial es el DNI).
+// Actualizada por el criterio 30 de la historia 004: `delfines` suma un segundo ENTRENADOR (DNI 10000005, inventado) para tener dos clases
+// en el mismo bloque con entrenadores distintos; son 5 usuarios en `delfines` y 6 en total (dos ENTRENADOR: 10000003 y 10000005).
 
 const TIMEOUT = 120_000;
 
@@ -37,14 +39,20 @@ describe('npm run db:semilla: usuarios de ejemplo (criterio 45)', () => {
   beforeEach(limpiarBase);
 
   it(
-    'crea un usuario por rol en delfines y un administrador en tiburones con el mismo DNI que el de delfines',
+    'crea un usuario por rol (con dos entrenadores) en delfines y un administrador en tiburones con el mismo DNI que el de delfines',
     async () => {
       const resultado = ejecutarComando('db:semilla', {});
 
       expect(resultado.estado, resultado.salida).toBe(0);
       const delfines = await usuariosDe('delfines');
       const tiburones = await usuariosDe('tiburones');
-      expect(delfines.map((u) => u.rol).sort()).toEqual(['ADMIN', 'ALUMNO', 'ENTRENADOR', 'SECRETARIA']);
+      expect(delfines.map((u) => u.rol).sort()).toEqual(['ADMIN', 'ALUMNO', 'ENTRENADOR', 'ENTRENADOR', 'SECRETARIA']);
+      expect(
+        delfines
+          .filter((u) => u.rol === 'ENTRENADOR')
+          .map((u) => u.dni)
+          .sort(),
+      ).toEqual(['10000003', '10000005']);
       expect(tiburones.map((u) => u.rol)).toEqual(['ADMIN']);
       for (const usuario of [...delfines, ...tiburones]) {
         expect(usuario.dni).toMatch(/^[0-9]{8}$/);
@@ -55,7 +63,7 @@ describe('npm run db:semilla: usuarios de ejemplo (criterio 45)', () => {
       const adminDelfines = delfines.find((u) => u.rol === 'ADMIN');
       expect(tiburones[0]?.dni, 'la misma persona en dos academias es dos cuentas (D-28)').toBe(adminDelfines?.dni);
       expect(tiburones[0]?.id).not.toBe(adminDelfines?.id);
-      expect(new Set(delfines.map((u) => u.dni)).size).toBe(4);
+      expect(new Set(delfines.map((u) => u.dni)).size).toBe(5);
     },
     TIMEOUT,
   );
@@ -67,7 +75,7 @@ describe('npm run db:semilla: usuarios de ejemplo (criterio 45)', () => {
 
       expect(resultado.estado, resultado.salida).toBe(0);
       const usuarios = [...(await usuariosDe('delfines')), ...(await usuariosDe('tiburones'))];
-      expect(usuarios).toHaveLength(5);
+      expect(usuarios).toHaveLength(6);
       for (const usuario of usuarios) {
         expect(usuario.clave_hash.startsWith('$argon2id$')).toBe(true);
         expect(await verify(usuario.clave_hash, usuario.dni)).toBe(true);
@@ -100,7 +108,7 @@ describe('npm run db:semilla: usuarios de ejemplo (criterio 45)', () => {
       expect(repetida.salida).toContain('El usuario de ejemplo ya existía: delfines, ADMIN');
       expect(repetida.salida).not.toContain('Usuario de ejemplo creado');
       const despues = await usuariosDe('delfines');
-      expect(despues).toHaveLength(4);
+      expect(despues).toHaveLength(5);
       expect(despues.find((u) => u.rol === 'ADMIN')).toMatchObject({
         id: admin?.id,
         clave_hash: 'hash-cambiado-por-el-usuario',
