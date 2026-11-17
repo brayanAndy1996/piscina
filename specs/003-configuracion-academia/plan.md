@@ -130,6 +130,32 @@ la academia y luego espera una fila de `usuarios`, así que no hay ciclo; el con
   defensa. Alternativa descartada: `useForm({ values: base })` sin más, que reemplaza también lo que el administrador ya
   escribió, o `key={JSON.stringify(base)}` en el formulario, que vuelve a montarlo y borra las ediciones sin avisar.
 - `LayoutPanel`: muestra el nombre y el teléfono de `useMiAcademia`; si falla, no muestra nada más.
+- **Ataque ronda 2 (criterios 28 a 31).** Los ganchos están en `frontend/src/modulos/configuracion/hooks.ts` y las
+  pruebas de componentes en `frontend/src/modulos/configuracion/Configuracion.test.tsx`.
+  - **Cabecera (28).** `useMiAcademia` recibe la identidad de la sesión y la pone en la clave:
+    `['mi-academia', usuario.academia.nombreCorto, usuario.id]`; además, `LayoutPanel` usa `data` solo si
+    `data.nombreCorto === usuario.academia.nombreCorto` (defensa por si una respuesta vieja quedara con la clave
+    nueva). Si no, `usuario.academia.nombre` y sin teléfono, también con la consulta desactivada por el cambio de
+    contraseña pendiente. La invalidación tras guardar pasa a `{ queryKey: ['mi-academia'] }` (prefijo), que sigue
+    alcanzando la clave con identidad. Alternativa descartada: confiar en la limpieza de `RutaConSesion`, que ocurre
+    después del primer render de `LayoutPanel`, o en `placeholderData`, que no evita mostrar la caché vieja.
+  - **`GET` viejo tras guardar (29).** En `useActualizarConfiguracion`: `onMutate` hace
+    `cliente.cancelQueries({ queryKey: ['configuracion'] })`; en `onSuccess`, antes de `alGuardar` y `setQueryData`,
+    otra vez `cancelQueries` (cancela el `GET` que empezó mientras el `PATCH` estaba en curso). `cancelQueries` con
+    `revert` por defecto deja la caché como estaba, y la respuesta cancelada no se escribe. Si la cancelación no
+    alcanzara algún caso (por ejemplo, un `queryFn` que no pasa la `signal` a `fetch`), se suma la defensa por tiempo:
+    guardar el instante en que llegó la respuesta del `PATCH` y que el formulario ignore una `base` con
+    `dataUpdatedAt` posterior que provenga de una petición iniciada antes (comparando con el `fetchStatus` o con un
+    contador de guardados). Alternativa descartada: `refetchOnReconnect: false` sin más, porque no cubre la
+    invalidación ni otro disparador.
+  - **Error en segundo plano (30).** La página decide qué mostrar con "¿ya se mostró el formulario?" (hay `data`) y no
+    con `isError`: con `data`, sigue el formulario y, si `isError`, un `Alerta` encima con el texto del criterio 30 b;
+    sin `data` y con `isError`, el mensaje con "Reintentar" de hoy. El aviso desaparece con un `GET` correcto
+    (`isError` vuelve a falso) o al guardar con éxito.
+  - **Desactivar mientras se guarda (31).** Envolver los campos y los botones "Usar el valor por defecto" en un
+    `<fieldset disabled={actualizar.isPending}>`. No usar la opción `disabled` de `register` de React Hook Form, que
+    deja el valor del campo en `undefined` y cambiaría lo que se envía y la comparación con la base de llenado.
+  - **Doble envío (O7):** sin cambio; lo cubre la idempotencia de la API (criterio 9).
 - Menú y ruta con `puede(rol, 'CONFIGURAR_ACADEMIA')` y `RequierePermiso`.
 - `modulos/sesion/mensajes.ts`: el 423 de la academia muestra el `mensaje` de la respuesta (con los minutos que faltan)
   más "Si no puedes esperar, pide en recepción que la restablezcan"; sin el número fijo (criterio 19). El de la
@@ -152,6 +178,10 @@ UPDATE` para poder repetirse (criterio 25). `tiburones` queda sin filas.
 | `leerConfiguracion` sin Nest (D6) | Servicio inyectado en `SesionAcademiaService` | Evita la dependencia circular entre módulos |
 | `GET /api/mi-academia` (D7) | Agregar el teléfono a `GET /api/a/{nombreCorto}` o a la sesión | Pruebas protegidas y esquemas estrictos de 001 y 002 |
 | Base de llenado propia del formulario y petición fresca al montar (criterio 27, ronda 1) | `useForm({ values })` o volver a montar el formulario con `key` | No borra lo que el administrador escribió ni envía campos que no tocó |
+| Clave de `mi-academia` con la identidad de la sesión y comprobación del `nombreCorto` (criterio 28, ronda 2) | Confiar en la limpieza de `RutaConSesion` o en `placeholderData` | `LayoutPanel` se muestra antes de la limpieza y la caché de otra sesión llega a la cabecera |
+| Cancelar los `GET` de la configuración al empezar y al terminar el `PATCH` (criterio 29, ronda 2) | `refetchOnReconnect: false` | No cubre la invalidación ni otros disparadores |
+| Formulario a la vista con aviso si falla un `GET` en segundo plano (criterio 30, ronda 2) | Reemplazar el formulario por el error con "Reintentar" | Borra las ediciones |
+| `<fieldset disabled>` mientras se guarda (criterio 31, ronda 2) | Opción `disabled` de `register` | React Hook Form deja el valor en `undefined` y cambia lo que se envía |
 | Permiso `CONFIGURAR_ACADEMIA` (DT-1) | Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` | Es otra función; la matriz debe decir lo que permite |
 
 ## Migraciones
@@ -171,5 +201,12 @@ Ninguna (spec, "Cambios al modelo de datos").
 - **Formulario con datos viejos (ataque ronda 1, F1):** si el formulario compara con una base distinta de la que usó
   para llenarse, envía como cambios valores que el administrador no tocó y puede deshacer el bloqueo que otro endureció.
   Lo cubren el diseño de la base de llenado (sección 7) y las pruebas de componentes del criterio 27.
+- **Cabecera con datos de otra academia (ataque ronda 2, F2):** si la clave de `mi-academia` no lleva la identidad de
+  la sesión, la caché de la sesión anterior llega a la cabecera antes de que `RutaConSesion` la limpie. Lo cubren el
+  diseño de la sección 7 y las pruebas de componentes del criterio 28. Otras consultas de la web con clave fija y
+  datos de la academia pueden tener el mismo problema; el revisor lo comprueba en las que muestra el `LayoutPanel`.
+- **Respuestas cruzadas en el formulario (ataque ronda 2, O4 a O6):** un `GET` viejo que responde después del
+  `PATCH`, un `GET` que falla con ediciones a la vista o lo escrito durante el guardado. Lo cubren los criterios 29 a
+  31 y sus pruebas de componentes.
 - **Pruebas protegidas de 002 que dependen del texto del 423:** no deberían existir (002 compara códigos); si alguna lo
   hiciera, el tester lo reporta en el rojo y decide el orquestador.

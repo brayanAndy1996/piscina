@@ -69,7 +69,7 @@ protegida.
 - [x] T11.1 · adversarial · Ronda 1 sobre 0768735 (F1, O1 a O3)
 - [x] T11.2 · especificador · Criterio 27 (amplía el 23), precisión del caso límite del teléfono y riesgos aceptados
       en `spec.md`; base de llenado en `plan.md` (criterio 27)
-- [ ] T11.3 · frontend · Corregir `FormularioConfiguracion` con la base de llenado (y la petición fresca al montar,
+- [x] T11.3 · frontend · Corregir `FormularioConfiguracion` con la base de llenado (y la petición fresca al montar,
       `plan.md` sección 7) y sumar a `PaginaConfiguracion.test.tsx` las pruebas de componentes que reproducen el
       escenario de la ronda 1 (`w1.test.tsx` del adversarial) y comprueban los puntos a a e, con el cuerpo exacto del
       `PATCH` (criterio 27)

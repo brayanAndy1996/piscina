@@ -17,6 +17,10 @@
   que explicita lo que ya exigían las pruebas protegidas, sin cambiar su intención.
 - **Ataque:** ronda 1 sobre 0768735 con una falla en la web (F1, criterio 27, no crítico, prueba de componentes) y tres
   observaciones (O1 a O3), en la sección G de los criterios. Pendiente: corregir F1 y la ronda 2.
+- **Ataque, ronda 2** (sobre 78be4a6, con la corrección de F1): el criterio 27 quedó verificado. Una falla nueva en la
+  web (F2, media, cabecera del panel con datos de otra academia tras cambiar de sesión: criterio 28, amplía el 24) y
+  cuatro observaciones (O4 a O7); el orquestador decidió convertir O4 a O6 en los criterios 29 a 31 del formulario y
+  dejar O7 como observación. Todo en la sección H de los criterios. Pendiente: corregir 28 a 31 y la ronda 3.
 
 ## Objetivo
 
@@ -43,6 +47,12 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
 No son críticos, pero llevan _(prueba obligatoria)_: 1 a 3, 6 a 10, 12, 18 a 21 (API, dominio y registro técnico) y 22 a
 24 (web, con pruebas de componentes). Los 25 y 26 (semilla y documentación) los verifica el revisor. El 27 (web,
 ataque ronda 1) tampoco es crítico y lleva prueba obligatoria de componentes.
+
+Los criterios 28 a 31 (web, ataque ronda 2) no son críticos y llevan prueba obligatoria de componentes. El 28 toca el
+aislamiento entre academias, pero solo en la pantalla: la API no entrega nada de otra academia (criterios 4 y 20), lo
+que se ve es lo que la sesión anterior dejó en la caché del mismo navegador, y son el nombre y el teléfono de la
+academia, que se publicarán desde la 005 (DR-4). Clasificación propuesta por el especificador (pregunta T4); si el
+orquestador lo marca crítico, su prueba de componentes la escribe test-writer como protegida.
 
 ## Criterios de aceptación
 
@@ -259,6 +269,84 @@ criterio ni piden código.
 - **O3. Minutos del primer 423.** El 423 que bloquea la cuenta (el N-ésimo fallo) dice los `minutosBloqueo`
   configurados completos, porque faltan exactamente esos minutos; es lo que pide el criterio 19 y no cambia.
 
+### H. Ataque adversarial, ronda 2 (sobre 78be4a6)
+
+La ronda 2 verificó la corrección del criterio 27 (los puntos a a e se cumplen con el escenario de la ronda 1) y
+encontró una falla (F2, media, en la web) y cuatro observaciones. F2 se corrige con el criterio 28, que amplía el 24.
+El orquestador decidió que O4, O5 y O6 se corrigen como criterios nuevos del formulario (29 a 31, no críticos, web) y
+que O7 queda como observación. Reproducciones del adversarial, fuera del repositorio:
+`/tmp/claude-0/-home-user-piscina/341c84a9-d07f-5f07-a262-1ffd096a60b3/scratchpad/ataque/r003web2/x1.test.tsx` (F2) y
+`/tmp/claude-0/-home-user-piscina/341c84a9-d07f-5f07-a262-1ffd096a60b3/scratchpad/ataque/r003web2/x2.test.tsx` (O4 a
+O7, pruebas T2 a T5).
+
+28. **La cabecera nunca muestra datos de otra academia** _(ataque ronda 2, F2; amplía el criterio 24)_. Falla
+    encontrada: `useMiAcademia` (`frontend/src/modulos/configuracion/hooks.ts`) usa la clave fija `['mi-academia']`.
+    Cuando en el mismo navegador la sesión pasa de un usuario de A a uno de B (por ejemplo, se ingresó en B en otra
+    pestaña y la página vuelve a pedir la sesión al recibir el foco), `LayoutPanel` se monta con la respuesta de A en
+    la caché antes de que `RutaConSesion` limpie las consultas. Si `GET /api/mi-academia` de B tarda o falla, o si B
+    tiene el cambio de contraseña pendiente (la consulta queda desactivada, pero la caché sigue ahí), la cabecera
+    muestra el nombre y el teléfono de A mientras el cuerpo de la página es de B. Entonces:
+    - a) La cabecera usa una respuesta de `GET /api/mi-academia` solo si es de la academia de la sesión vigente: la
+      clave de la consulta incluye la identidad de la sesión (al menos `usuario.academia.nombreCorto`; conviene también
+      el id del usuario), o la respuesta se usa solo si su `nombreCorto` es igual al `usuario.academia.nombreCorto` de
+      la sesión. Vale cualquiera de las dos, o las dos juntas.
+    - b) Mientras la respuesta de la academia de la sesión no llega, si falla o si la consulta está desactivada (cambio
+      de contraseña pendiente), la cabecera muestra el `usuario.academia.nombre` de la sesión y ningún teléfono.
+    - c) Cuando llega la respuesta de B, la cabecera muestra el nombre y el teléfono de B (como el criterio 24).
+    - d) En ningún render posterior al cambio de sesión aparece en la cabecera el nombre ni el teléfono de A.
+
+    _(prueba obligatoria, de componentes; no crítico, pregunta T4. Las pruebas reproducen `x1.test.tsx`: sesión de A
+    con teléfono en la cabecera; la sesión pasa a B y se dispara el foco; con B con el cambio de contraseña pendiente,
+    con `mi-academia` de B que no responde y con `mi-academia` de B que responde 500, la cabecera (`banner`) no contiene
+    el nombre ni el teléfono de A, ni justo después de cambiar la ruta ni pasados unos instantes, y contiene el nombre
+    de B; y con `mi-academia` de B que responde, muestra el teléfono de B)_
+29. **Un `GET` viejo no deshace lo guardado** _(ataque ronda 2, O4; decisión del orquestador; amplía el criterio 27 e)_.
+    Hallazgo: si una petición de `GET /api/configuracion` se pide antes de que llegue la respuesta del `PATCH` (antes de
+    enviarlo o mientras está en curso, por ejemplo por una reconexión) y responde después, su respuesta lleva los
+    valores de antes de guardar, reemplaza los de la caché y el formulario vuelve a mostrarlos como si fueran los
+    vigentes. Entonces, dada una respuesta de `GET` pedida antes de que llegue la respuesta del `PATCH`:
+    - a) no cambia la caché ni la base de llenado, y los campos siguen con los valores de la respuesta del `PATCH`;
+    - b) no muestra el aviso de "Otro administrador cambió la configuración…" (criterio 27 d) y el aviso de éxito sigue;
+    - c) si después el administrador edita solo otro campo, el `PATCH` siguiente lleva solo ese campo.
+
+    Vale cancelar las consultas de la configuración en curso al empezar el guardado y otra vez antes de poner la
+    respuesta del `PATCH` en la caché, o descartar toda respuesta de `GET` pedida antes de que llegara la del `PATCH`.
+    Un `GET` pedido después de la respuesta del `PATCH` sigue la regla del criterio 27. _(prueba obligatoria, de
+    componentes: la prueba T2 de `x2.test.tsx`, con el `PATCH` y el `GET` demorados a mano; comprueba que tras
+    responder el `GET` viejo el campo de intentos sigue en 3 y que el segundo `PATCH` es exactamente
+    `{ "telefono": "01 555 0000" }`)_
+30. **Un error del `GET` en segundo plano no borra las ediciones** _(ataque ronda 2, O5; decisión del orquestador;
+    amplía el criterio 23)_. Hallazgo: con el formulario a la vista y campos editados, si una nueva petición de
+    `GET /api/configuracion` (reconexión, foco o invalidación) responde con error, la página reemplaza el formulario
+    por el mensaje de error con "Reintentar" y, al reintentar, las ediciones se pierden. Entonces, dado el formulario ya
+    mostrado, cuando un `GET` en segundo plano falla:
+    - a) el formulario sigue a la vista, con los textos que el administrador escribió, la misma base de llenado y Guardar
+      en el mismo estado;
+    - b) la página muestra un aviso de error que no tapa el formulario (texto provisional: "No pudimos comprobar si la
+      configuración cambió. Tus cambios siguen aquí y puedes guardarlos.");
+    - c) el aviso desaparece cuando un `GET` posterior responde bien (que sigue la regla del criterio 27) o cuando se
+      guarda con éxito.
+
+    El error del `GET` hecho al entrar, cuando todavía no hay formulario, sigue mostrando el mensaje con "Reintentar".
+    _(prueba obligatoria, de componentes: la prueba T3 de `x2.test.tsx`; tras el error, el teléfono y los minutos
+    escritos siguen en sus campos y el aviso está a la vista)_
+31. **Mientras se guarda, no se puede editar** _(ataque ronda 2, O6; decisión del orquestador; amplía el criterio 23)_.
+    Hallazgo: con un `PATCH` en curso, los campos siguen activos; lo que el administrador escribe en ese tiempo se
+    pierde en silencio, porque al responder el formulario se llena con la respuesta (criterio 27 e). Entonces, mientras
+    hay un `PATCH` en curso, los seis campos y los botones "Usar el valor por defecto" quedan desactivados (`disabled`)
+    y Guardar muestra "Guardando…". Al responder, vuelven a quedar activos: con éxito, llenos con la respuesta (criterio
+    27 e); con error, con los textos que se enviaron y los errores junto a cada campo (criterio 23). _(prueba
+    obligatoria, de componentes: la prueba T4 de `x2.test.tsx`; con el `PATCH` demorado, el teléfono y un botón "Usar el
+    valor por defecto" están desactivados, y tras un error del `PATCH` los campos vuelven a estar activos con lo que se
+    escribió)_
+
+**Observaciones de la ronda 2** _(no son fallas)_:
+
+- **O7. Doble envío en el mismo instante.** Varios clics o envíos del formulario en el mismo ciclo de eventos (antes de
+  que React desactive Guardar) mandan varios `PATCH` iguales; en la reproducción, 3. No es falla: la API es
+  idempotente (criterio 9), así que el primero escribe y audita y los demás responden 200 sin escribir ni auditar.
+  Riesgo aceptado (abajo).
+
 ## Casos límite
 
 - **Academias creadas antes de esta historia:** no tienen filas; valen los valores por defecto, sin migración de datos.
@@ -280,6 +368,11 @@ criterio ni piden código.
   "antes" el valor por defecto que se estaba usando.
 - **Academia suspendida mientras el administrador guarda:** la escritura en curso termina (riesgo aceptado de 002,
   "Escrituras en curso al suspender la academia"); la siguiente petición responde 403.
+- **Otra sesión en el mismo navegador** _(ataque ronda 2, F2)_: si la sesión pasa a un usuario de otra academia, la
+  cabecera muestra el nombre de la nueva sesión y ningún teléfono hasta tener el de su academia (criterio 28).
+- **El formulario con peticiones cruzadas** _(ataque ronda 2, O4 a O6)_: un `GET` que responde después del `PATCH`
+  pero se pidió antes no deshace lo guardado (criterio 29); un `GET` que falla no borra las ediciones (criterio 30); no
+  se escribe mientras se guarda (criterio 31).
 - **Hora del servidor en otra zona:** esta historia solo guarda instantes (`actualizado_en`, `bloqueado_hasta`); los días
   "por vencer" y de prioridad se cuentan en America/Lima en la 010.
 
@@ -407,6 +500,8 @@ las claves de la tabla de claves. No se agregan privilegios (no hace falta `DELE
   (criterio 19). Las pruebas de 002 no miran ese texto (la de la web de la plataforma sí, y no cambia).
 - **002, "Fuera de alcance: configurar los intentos y el tiempo de bloqueo: 003":** se cumple aquí.
 - **Web de 002:** el menú del panel suma "Configuración"; `LayoutPanel` muestra el teléfono.
+- **Web de 002, cambio de sesión en el mismo navegador** _(ataque ronda 2)_: `RutaConSesion` sigue limpiando las
+  consultas al cambiar la sesión; el criterio 28 no depende de esa limpieza, porque `LayoutPanel` puede mostrarse antes.
 - **`docs/arquitectura.md`:** "Lo que no hace la 001… la configuración con sus claves (la define la 003)" se actualiza
   (criterio 26).
 
@@ -427,6 +522,9 @@ las claves de la tabla de claves. No se agregan privilegios (no hace falta `DELE
   validado siempre es un entero dentro del rango.
 - **"Los cambios en campos distintos no se pisan"** (riesgo de arriba) dependía de que la web enviara solo lo que el
   administrador editó; la ronda 1 mostró que no siempre era así (F1). Lo asegura el criterio 27.
+- **Varios `PATCH` iguales por un doble envío en el mismo instante** _(ataque ronda 2, O7)_: la web puede mandar más de
+  uno antes de desactivar Guardar; la API los trata como uno solo (criterio 9: una sola escritura y una sola
+  `CONFIGURACION_ACTUALIZADA`).
 
 ## Decisiones
 
@@ -519,3 +617,12 @@ Propuestas del especificador, aprobadas con la spec (17/11/2026).
 
 Ninguna. Las preguntas N1 a N7 y T1 a T3 quedaron decididas el 17/11/2026 (DR-1 a DR-7 y DT-1 a DT-3, en
 "Decisiones").
+
+Pregunta técnica nueva de la ronda 2, para el orquestador:
+
+- **T4. ¿El criterio 28 es de ruta crítica?** Toca el aislamiento entre academias, que está en la lista de
+  `CLAUDE.md`, pero solo en la pantalla: la API no entrega datos de otra academia, lo que se ve viene de la caché que
+  dejó la sesión anterior en el mismo navegador y son el nombre y el teléfono de la academia, que serán públicos desde
+  la 005 (DR-4). **Propuesta:** no crítico, con prueba obligatoria de componentes que escribe el frontend, como el
+  criterio 27. Si el orquestador lo marca crítico, test-writer escribe esa prueba como protegida (en rojo) antes de la
+  corrección. Valor provisional: no crítico; no bloquea la corrección.
