@@ -35,27 +35,41 @@ implementa. No se empieza T1 sin la aprobación del responsable (dada el 17/11/2
       inexistentes) y no por sintaxis, importaciones o configuración; y que las pruebas protegidas de 001, 002 y 003
       que no se tocaron siguen pasando. Antes del commit, `git diff --cached --stat` solo con archivos de prueba. Commit
       del orquestador: "Pruebas protegidas (004): planes y clases, aislamiento, permisos y aforo (en rojo)"
+- [ ] T4a · test-writer · Actualizar la prueba protegida de la semilla de 002 (criterio 45,
+      `backend/test/integracion/semilla/semilla-usuarios.test.ts`) para el segundo entrenador del criterio 30: 5
+      usuarios en `delfines`, 6 en total, dos `ENTRENADOR` (`10000003` y `10000005`), sin quitar nada de lo que
+      comprueba. Commit propio "Pruebas protegidas (004): …", antes de la parte pendiente de T10 (AT-5 de 004)
 
 ## Implementación
 
-- [ ] T5 · backend · Contratos `horario.ts`, `dinero.ts`, `planes.ts` y `clases.ts` con pruebas unitarias de sus
+_T5 a T9: hechas en el commit be7170a (backend). T10: hecha salvo el segundo entrenador. Ajustes técnicos de la
+implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
+
+- [x] T5 · backend · Contratos `horario.ts`, `dinero.ts`, `planes.ts` y `clases.ts` con pruebas unitarias de sus
       bordes (bloques, fechas reales, montos, arreglos sin repetidos, reglas cruzadas del `POST`) (criterios 8 a 10,
-      17, 18)
-- [ ] T6 · backend · `schema.prisma`, migración `<marca>_planes_clases` (tipo, tablas, `CHECK`, índices, RLS,
+      17, 18) _(campo de los errores de los arreglos con índice: AT-4)_
+- [x] T6 · backend · `schema.prisma`, migración `<marca>_planes_clases` (tipo, tablas, `CHECK`, índices, RLS,
       políticas, privilegios), `PRIVILEGIOS_APP`, `scripts/lib/rol-app.mjs` y `TABLAS_DESPUES_DE_MIGRAR` en el mismo
-      cambio; `date-fns` y `@date-fns/tz` en el backend (criterios 1 a 4)
-- [ ] T7 · backend · `comun/fechas/lima.ts` (`hoyEnLima`) y `comun/dinero` con pruebas unitarias (bordes de Lima, otra
+      cambio; `date-fns` y `@date-fns/tz` en el backend (criterios 1 a 4) _(también en
+      `scripts/lib/dependencias-backend.mjs`, criterio 127 de 001: AT-3)_
+- [x] T7 · backend · `comun/fechas/lima.ts` (`hoyEnLima`) y `comun/dinero` con pruebas unitarias (bordes de Lima, otra
       zona del proceso, montos sin `number`); dominio de planes (`normalizarPlan`, reglas cruzadas, cambios pedidos,
       `estadoDelPlan`) con pruebas unitarias (criterios 10, 12, 14)
-- [ ] T8 · backend · `PlanesModule`: `GET`, `POST` y `PATCH /api/planes`, con `bloquearActorVigente`, `FOR UPDATE` del
+- [x] T8 · backend · `PlanesModule`: `GET`, `POST` y `PATCH /api/planes`, con `bloquearActorVigente`, `FOR UPDATE` del
       plan, nombre único con `ON CONFLICT`, auditoría y 409 sin 500 en las carreras; pruebas de integración no
       protegidas de creación, validación, nombre único simultáneo, edición, idempotencia, auditorías encadenadas,
-      activar y desactivar, `DELETE` sin ruta y orden de la lista (criterios 8, 9, 11 a 13, 15)
-- [ ] T9 · backend · `ClasesModule` y `cupo.ts` (`bloquearClasesParaCupo`): `GET`, `POST` y `PATCH /api/clases`, con
+      activar y desactivar, `DELETE` sin ruta y orden de la lista (criterios 8, 9, 11 a 13, 15) _(id del `PATCH`
+      validado en el servicio: AT-2)_
+- [x] T9 · backend · `ClasesModule` y `cupo.ts` (`bloquearClasesParaCupo`): `GET`, `POST` y `PATCH /api/clases`, con
       entrenador válido, choques del bloque por índices parciales, reactivación, auditoría y 409 sin 500 en las
       carreras; pruebas de integración no protegidas de creación, bloques, entrenador (cuatro casos), choques y
-      creaciones simultáneas, edición, lista y entrenador desactivado (criterios 16, 17, 19 a 21, 24, 25)
-- [ ] T10 · backend · Semilla: segundo entrenador, planes y clases de `delfines`, repetible (criterio 30)
+      creaciones simultáneas, edición, lista y entrenador desactivado (criterios 16, 17, 19 a 21, 24, 25) _(entrenador
+      bloqueado junto con el actor al crear o reasignar, con su prueba no protegida
+      `backend/test/integracion/planes-clases/clases-interbloqueo.test.ts`: AT-1; id del `PATCH` en el servicio: AT-2)_
+- [ ] T10 · backend · Semilla: segundo entrenador, planes y clases de `delfines`, repetible (criterio 30) _(planes y
+      clases hechos en be7170a; falta el segundo entrenador (DNI `10000005`) y las dos clases del mismo bloque con
+      entrenadores distintos, que esperan al commit "Pruebas protegidas (004)" con la actualización de la prueba
+      protegida del criterio 45 de 002: AT-5)_
 - [ ] T11 · frontend · `/panel/planes` y `/panel/clases` (grilla semanal), opciones del inicio, formularios con la base
       de llenado, `fieldset` desactivado al guardar y claves con la identidad de la sesión; `lib/dinero.ts`; pruebas de
       componentes (criterios 26 a 29)

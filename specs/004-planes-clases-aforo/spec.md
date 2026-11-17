@@ -18,7 +18,8 @@
   DT-5; el backlog la marca "En parte".)_
 - **Estado:** aprobada por el responsable (17/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
   DR-8 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-5), en "Decisiones". Ningún criterio
-  cambió. No quedan preguntas abiertas.
+  cambió. No quedan preguntas abiertas. Ajustes técnicos de la implementación del backend (AT-1 a AT-5, sin cambios de
+  negocio) en "Decisiones".
 
 ## Objetivo
 
@@ -273,7 +274,8 @@ siguiente (RN-09). Los días de la semana van de 1 (lunes) a 7 (domingo), como e
 - **Entrenador que cambia de rol:** no ocurre; el rol de una cuenta no se cambia (criterio 2 de 002).
 - **Hora del servidor en otra zona:** las horas de las clases son horas locales de Lima sin zona (`time`); el estado
   del plan se calcula con la fecha de Lima (criterio 14). La 009 compone la fecha de Lima y la hora de la clase.
-- **Ids en mayúsculas:** un UUID en mayúsculas en la dirección se trata igual que en minúsculas (`IdDeRuta`).
+- **Ids en mayúsculas:** un UUID en mayúsculas en la dirección se trata igual que en minúsculas. _(Implementación,
+  AT-2: lo normaliza el servicio, no `IdDeRuta`.)_
 
 ## Reglas de negocio aplicables
 
@@ -318,6 +320,16 @@ academia o que no es UUID). Orden de los errores de negocio, después del 400 de
 planes, 404 → 400 de las reglas que cruzan campos con lo guardado (criterio 12) → `NOMBRE_PLAN_EN_USO`; en clases, 404
 → `ENTRENADOR_NO_VALIDO` → `CLASE_DUPLICADA` → `ENTRENADOR_OCUPADO`. En `POST /api/planes`, las reglas que cruzan
 campos van en el esquema (llegan todos los campos).
+
+_(Implementación, AT-2.)_ El `{id}` de los dos `PATCH` no pasa por `IdDeRuta`: lo valida el servicio después de
+`bloquearActorVigente`, así que el orden queda 401 de sesión → 403 → 400 del cuerpo → 401 del criterio 7 → 404, y un
+id que no es UUID responde exactamente el mismo 404 que uno que no existe o que es de otra academia.
+
+_(Implementación, AT-4.)_ En los 400 de los arreglos (`diasPermitidos`, `franjasPermitidas`, `nivelesAplicables`),
+`detalles.errores[].campo` es el campo con el índice cuando el error es de un elemento (`diasPermitidos.2`,
+`franjasPermitidas.0`, `nivelesAplicables.0`: valor fuera de rango, texto que no es un bloque, nivel desconocido o tipo
+incorrecto) y el nombre de la lista cuando es de la lista entera (vacía, con repetidos, o con menos días que
+`vecesPorSemana`).
 
 ### Esquemas compartidos
 
@@ -415,7 +427,15 @@ Una migración `<marca>_planes_clases`. Ajusta las entidades `PLAN` y `CLASE` de
 - **001, criterio 10:** no cambia (las tablas nuevas tienen `academia_id`). Criterio 12: la llave compuesta hacia
   `usuarios` lo cumple.
 - **002, criterio 26 (matriz):** no cambia (DT-2: se reutiliza `CONFIGURAR_PLANES_HORARIOS_AFORO`).
-- **002, desactivar usuarios:** no cambia (pregunta N6).
+- **002, desactivar usuarios:** no cambia (pregunta N6). Su bloqueo de las dos filas de `usuarios` ordenadas por id
+  obligó a que `POST` y `PATCH` de clases bloqueen al entrenador junto con el actor (AT-1).
+- **002, criterio 45 (prueba protegida de la semilla, `backend/test/integracion/semilla/semilla-usuarios.test.ts`):** el
+  segundo entrenador del criterio 30 (DNI `10000005`, inventado) cambia lo que comprueba: 5 usuarios en `delfines`, 6
+  en total y dos `ENTRENADOR` (`10000003` y `10000005`). La actualiza el test-writer en un commit "Pruebas protegidas
+  (004): …", solo para sumar el segundo entrenador, sin quitar nada de lo que comprueba; el entrenador no entra a la
+  semilla antes de ese commit (AT-5).
+- **001, criterio 127 (dependencias permitidas del backend):** `date-fns` y `@date-fns/tz` se suman a
+  `DEPENDENCIAS_BACKEND_PERMITIDAS` de `scripts/lib/dependencias-backend.mjs` (AT-3). Ya eran parte del stack (D-25).
 - **002, "Fuera de alcance: datos propios del entrenador (… asignación a clases): 004 y 012":** la asignación se cumple
   aquí; el resto sigue en 012.
 - **003:** ninguno.
@@ -547,7 +567,44 @@ Propuestas del especificador, aprobadas con la spec (17/11/2026).
   una columna actualizada por una tarea programada (puede quedar vieja entre ejecuciones).
 - **D11. Lectura sin bloqueo del entrenador al asignarlo.** Se comprueba su rol y su estado con un `SELECT` simple; si
   lo desactivan a la vez, queda como en el criterio 25. Alternativa descartada: bloquear su fila de `usuarios` después
-  de la clase (rompería el orden de bloqueos de las reglas para las historias siguientes).
+  de la clase (rompería el orden de bloqueos de las reglas para las historias siguientes). _(Modificada por AT-1: solo
+  queda la lectura sin bloqueo al reactivar una clase con el mismo entrenador; al crear o reasignar, el entrenador se
+  bloquea junto con el actor.)_
+
+### Ajustes técnicos de la implementación (backend, commit be7170a)
+
+Desviaciones del plan encontradas al implementar, registradas por el orquestador (17/11/2026). Ninguna cambia una regla
+de negocio ni el resultado que ve el usuario en los criterios; se citan como "AT-n de 004".
+
+- **AT-1. El entrenador se bloquea junto con el actor al crear o reasignar una clase** (modifica D11). Con la lectura
+  sin bloqueo de D11 había un interbloqueo real: el mismo administrador crea o reasigna una clase con el entrenador E
+  mientras desactiva a E. La desactivación de 002 bloquea las filas de `usuarios` del actor y de E con una sola
+  sentencia ordenada por id (`FOR UPDATE`); la clase dejaba al actor bloqueado (`FOR SHARE`) y después la llave foránea
+  pedía `FOR KEY SHARE` sobre E. Según el orden de los ids, las dos transacciones se esperaban en cruz y una terminaba
+  con `40P01` y un 500. **Solución:** `POST /api/clases` y `PATCH /api/clases/{id}` con `entrenadorId` llaman a
+  `bloquearActorVigente` con `objetivoId` igual al entrenador, que bloquea las dos filas en la misma sentencia
+  (`ORDER BY id FOR UPDATE`, como la desactivación), siempre antes de cualquier fila de `clases`. El rol y el estado del
+  entrenador se comprueban sobre esa fila bloqueada. Consecuencias: `bloquearActorVigente` sigue siendo la primera
+  sentencia (criterio 7) y `bloquearClasesParaCupo` sigue justo después (criterio 22); en esas dos rutas el actor queda
+  bloqueado con `FOR UPDATE` y no con `FOR SHARE`, así que dos escrituras de clases del mismo administrador con
+  entrenador se ordenan entre sí. La lectura sin bloqueo de D11 solo se mantiene al reactivar una clase
+  (`activo: true`) con el mismo entrenador, que no cambia `entrenador_id` y por eso no toma `FOR KEY SHARE`. La regla
+  "nunca se bloquea una clase y después una fila de `usuarios`" de las reglas para las historias siguientes no cambia.
+  Prueba de integración no protegida: `backend/test/integracion/planes-clases/clases-interbloqueo.test.ts`.
+- **AT-2. El id de los `PATCH` lo valida el servicio, no `IdDeRuta`.** En `PATCH /api/planes/{id}` y
+  `PATCH /api/clases/{id}`, el servicio comprueba que el id sea un UUID (y lo pasa a minúsculas) después de
+  `bloquearActorVigente`. Así el 404 de un id que no es UUID es idéntico al de uno que no existe o es de otra academia
+  (criterio 6) y llega después del 400 del cuerpo y del 401 (contrato). Alternativa descartada: `IdDeRuta`, que
+  responde 400 o 404 antes de validar el cuerpo y de comprobar al actor.
+- **AT-3. Dependencias.** `date-fns` `^4.4.0` y `@date-fns/tz` `^1.5.0` en `backend/package.json`, y las dos en
+  `scripts/lib/dependencias-backend.mjs` (criterio 127 de 001).
+- **AT-4. Campo de los errores de los arreglos.** Un error de un elemento lleva el campo con su índice
+  (`diasPermitidos.2`, `franjasPermitidas.0`, `nivelesAplicables.0`); uno de la lista entera (vacía, repetidos, menos
+  días que `vecesPorSemana`), el nombre de la lista (criterio 9; contrato).
+- **AT-5. Segundo entrenador de la semilla (criterio 30).** Cambia lo que comprueba la prueba protegida del criterio 45
+  de 002 (5 usuarios en `delfines`, 6 en total, dos entrenadores). La actualización va en un commit "Pruebas protegidas
+  (004): …" del test-writer, y la parte de T10 que agrega el entrenador y las dos clases del mismo bloque con
+  entrenadores distintos queda pendiente hasta ese commit ("Impacto en especificaciones anteriores").
 
 ## Preguntas abiertas
 

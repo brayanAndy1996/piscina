@@ -10,6 +10,10 @@ orquestador las de T1 a T5 (DT-1 a DT-5 de 004); el diseño no cambia. Los lími
 bloque de N3 y los campos inmutables de N4 quedan como están en este plan. Si algún día se revisan, cambian los
 esquemas, un índice único y los privilegios de `clases` (con otra migración); el resto del diseño no.
 
+**Ajustes de la implementación (backend, commit be7170a):** AT-1 a AT-5 de la spec ("Decisiones"), ya reflejados en
+las secciones de abajo. El más importante es AT-1: al crear o reasignar una clase, el entrenador se bloquea junto con el
+actor (modifica D11; secciones 6 y "Riesgos").
+
 ## Módulos afectados
 
 ```
@@ -21,7 +25,7 @@ piscina/
 │   ├── clases.ts (+ .test.ts)           nuevo: esquemas de clases y respuestas
 │   └── index.ts                         + exportaciones
 ├── backend/
-│   ├── package.json                     + date-fns y @date-fns/tz (D-25)
+│   ├── package.json                     + date-fns ^4.4.0 y @date-fns/tz ^1.5.0 (D-25; AT-3)
 │   ├── prisma/schema.prisma             + NivelNatacion, Plan, Clase
 │   ├── prisma/migrations/<marca>_planes_clases/   tablas, CHECK, índices, RLS y privilegios
 │   ├── prisma/seed.ts                   + segundo entrenador, planes y clases de delfines (criterio 30)
@@ -38,9 +42,10 @@ piscina/
 │   │   ├── clases.service.ts · clases.controller.ts · clases.module.ts · index.ts
 │   └── test/
 │       ├── utilidades/planes-clases.ts  crear planes, clases y entrenadores; escribir filas como dueño (test-writer)
-│       └── integracion/planes/ · integracion/clases/   pruebas protegidas y no protegidas
+│       └── integracion/planes-clases/   pruebas protegidas y no protegidas (una carpeta para las dos)
 ├── scripts/
 │   ├── lib/rol-app.mjs                  + privilegios de planes y clases (misma lista que PRIVILEGIOS_APP)
+│   ├── lib/dependencias-backend.mjs     + date-fns y @date-fns/tz (criterio 127 de 001; AT-3)
 │   └── test/integracion/migraciones.test.mjs   + planes y clases en TABLAS_DESPUES_DE_MIGRAR (no protegida)
 ├── frontend/src/
 │   ├── modulos/planes/api.ts · hooks.ts · PaginaPlanes.tsx · FormularioPlan.tsx · Planes.test.tsx
@@ -65,7 +70,9 @@ piscina/
   de las reglas cruzadas (`diasPermitidos.length >= vecesPorSemana`, fin ≥ inicio comparando los textos
   `AAAA-MM-DD`) pone el error en `diasPermitidos` o `vigenciaFin`. `actualizarPlanSchema` estricto con todo opcional y
   un `refine` "al menos un campo"; las reglas cruzadas del `PATCH` las aplica el dominio con lo guardado (sección 3).
-  Límites exportados (`LIMITES_PLAN`) para la web.
+  Límites exportados (`LIMITES_PLAN`) para la web. Campo de los errores de los arreglos (AT-4): el de un elemento lleva
+  el índice (`diasPermitidos.2`, `franjasPermitidas.0`, `nivelesAplicables.0`); los de la lista entera (vacía,
+  repetidos, menos días que `vecesPorSemana`) van al nombre de la lista.
 - `clases.ts`: `AFORO_MINIMO = 20`, `AFORO_MAXIMO = 50`; `crearClaseSchema` y `actualizarClaseSchema` estrictos;
   `entrenadorId: z.uuid()`.
 
@@ -119,6 +126,9 @@ no) y `TABLAS_DESPUES_DE_MIGRAR`.
 Cada una en un `conAcademia(academia de la sesión, …)`:
 
 1. `bloquearActorVigente(tx, { id, versionToken }, { registro, ip })` (`FOR SHARE`), primera sentencia (criterio 7).
+   En el `PATCH`, recién después se valida el `{id}` (UUID, en minúsculas; si no, 404): el controlador no usa
+   `IdDeRuta` (AT-2), para que el 404 de un id que no es UUID sea idéntico al de uno inexistente o de otra academia y
+   llegue después del 400 del cuerpo y del 401.
 2. **`POST`:** `INSERT … ON CONFLICT DO NOTHING RETURNING …` (el índice de `lower(nombre)` decide el 409, también con dos
    creaciones simultáneas, criterio 11); sin fila → 409 `NOMBRE_PLAN_EN_USO`. El nombre se guarda tal como llega,
    recortado; la unicidad compara `lower(nombre)`.
@@ -148,9 +158,12 @@ Con `ids` sin repetidos, en minúsculas, solo UUID válidos; con la lista vacía
 
 **`POST /api/clases`:**
 
-1. `bloquearActorVigente` (`FOR SHARE`).
-2. Entrenador: `SELECT rol, estado FROM usuarios WHERE academia_id = … AND id = …` sin bloqueo (D11); si no es un
-   `ENTRENADOR` `ACTIVO`, 409 `ENTRENADOR_NO_VALIDO`.
+1. `bloquearActorVigente(tx, actor, { objetivoId: entrenadorId, … })` (AT-1, modifica D11): una sola sentencia
+   bloquea las filas de `usuarios` del actor y del entrenador, `ORDER BY id FOR UPDATE` (el mismo orden que la
+   desactivación de 002), antes de cualquier fila de `clases`. Un entrenador de otra academia o inexistente no devuelve
+   fila.
+2. Entrenador: sobre la fila bloqueada del paso 1; si no existe o no es un `ENTRENADOR` `ACTIVO`, 409
+   `ENTRENADOR_NO_VALIDO`.
 3. `INSERT INTO clases … ON CONFLICT DO NOTHING RETURNING …`. Sin fila: una consulta mira qué choca (primero una clase
    activa del mismo nivel en el bloque → `CLASE_DUPLICADA`; si no, una del mismo entrenador → `ENTRENADOR_OCUPADO`).
    `ON CONFLICT DO NOTHING` sin destino espera a la transacción que tiene la fila en conflicto, así que la consulta
@@ -159,10 +172,13 @@ Con `ids` sin repetidos, en minúsculas, solo UUID válidos; con la lista vacía
 
 **`PATCH /api/clases/{id}`:**
 
-1. `bloquearActorVigente` (`FOR SHARE`).
+1. `bloquearActorVigente`: con `entrenadorId` en el cuerpo, con `objetivoId` (actor y entrenador en una sentencia,
+   `FOR UPDATE`, como el paso 1 del `POST`; AT-1); sin él, solo el actor (`FOR SHARE`). Después, el `{id}` se valida en
+   el servicio (no UUID → 404; AT-2).
 2. `bloquearClasesParaCupo(tx, [id])`, siempre (criterio 22); sin fila → 404.
-3. Si viene `entrenadorId` distinto, o `activo: true` sobre una clase inactiva: comprobar el entrenador (paso 2 del
-   `POST`) con el entrenador que quedará.
+3. Si viene `entrenadorId` distinto: comprobar la fila bloqueada del entrenador del paso 1. Si es `activo: true` sobre
+   una clase inactiva con el mismo entrenador: `SELECT rol, estado` sin bloqueo (D11, el único caso que queda; la clase
+   no cambia `entrenador_id` y no toma `FOR KEY SHARE`).
 4. `cambiosPedidosClase`; sin cambios → devolver sin escribir.
 5. `UPDATE clases SET … WHERE academia_id = … AND id = …`. Un cambio de entrenador o una reactivación puede chocar con
    los índices parciales (`23505`): la transacción aborta y se responde 409 con el código del índice que chocó
@@ -171,10 +187,14 @@ Con `ids` sin repetidos, en minúsculas, solo UUID válidos; con la lista vacía
    posible es con otra clase que entra al mismo bloque, que el índice resuelve.
 6. Auditoría `CLASE_ACTUALIZADA`.
 
-**Orden de bloqueos:** `usuarios` (actor, `FOR SHARE`) → `clases` (`FOR UPDATE`, ordenadas por id). Las llaves foráneas
-toman `FOR KEY SHARE` sobre la fila del entrenador al insertar o cambiar `entrenador_id`; desactivar un usuario (002)
-toma `FOR UPDATE` sobre las filas de `usuarios` del actor y del objetivo, nunca sobre `clases`, así que no hay ciclo. El
-adversarial lo comprueba (riesgos).
+**Orden de bloqueos:** `usuarios` (actor, y el entrenador si se asigna, en una sentencia ordenada por id) → `clases`
+(`FOR UPDATE`, ordenadas por id). _(Corregido por AT-1.)_ El plan original decía que no había ciclo porque desactivar un
+usuario (002) nunca toca `clases`; no era así. La llave foránea toma `FOR KEY SHARE` sobre la fila del entrenador al
+insertar o cambiar `entrenador_id`, y la desactivación toma `FOR UPDATE` sobre el actor y el objetivo ordenados por id.
+Con el actor bloqueado primero (`FOR SHARE`) y el entrenador después (por la llave), el mismo administrador que crea
+una clase con E y desactiva a E a la vez producía `40P01` y un 500. Al bloquear las dos filas juntas y en el orden de
+la desactivación, las dos transacciones se ordenan. Prueba no protegida:
+`backend/test/integracion/planes-clases/clases-interbloqueo.test.ts`.
 
 No hay efectos secundarios fuera de la transacción.
 
@@ -200,7 +220,9 @@ No hay efectos secundarios fuera de la transacción.
 En `delfines`, con `enAcademia`: un segundo entrenador inventado (DNI `10000005`, como los de 002, con
 `ON CONFLICT (academia_id, dni) DO NOTHING`); los dos planes (`ON CONFLICT DO NOTHING` sobre el índice del nombre); y
 clases de ejemplo de los tres niveles, dos en el mismo bloque con entrenadores distintos (`ON CONFLICT DO NOTHING` sobre
-los índices parciales). Repetirla no duplica ni pisa cambios (criterio 30).
+los índices parciales). Repetirla no duplica ni pisa cambios (criterio 30). El segundo entrenador cambia lo que
+comprueba la prueba protegida del criterio 45 de 002 (5 usuarios en `delfines`, 6 en total, dos entrenadores): se
+agrega después del commit "Pruebas protegidas (004)" que la actualiza (AT-5).
 
 ## Decisiones
 
@@ -216,7 +238,8 @@ los índices parciales). Repetirla no duplica ni pisa cambios (criterio 30).
 | Sin `DELETE` (D8) | Borrado lógico con columna aparte | `activo` ya es el borrado lógico |
 | Auditar todo cambio (D9) | Solo precio y aforo | Mismo costo, auditoría completa |
 | Estado del plan calculado al leer (D10) | Columna por tarea programada | Nunca queda viejo |
-| Entrenador leído sin bloqueo (D11) | Bloquear su fila | Orden de bloqueos para las historias siguientes |
+| Entrenador bloqueado junto con el actor al crear o reasignar (AT-1, modifica D11) | Leerlo sin bloqueo (D11 original); bloquearlo después de la clase | Sin bloqueo, la llave foránea lo toma después del actor y choca con la desactivación de 002 (`40P01`); después de la clase rompería el orden de bloqueos. Sin bloqueo solo al reactivar con el mismo entrenador |
+| `{id}` de los `PATCH` validado en el servicio (AT-2) | `IdDeRuta` | El 404 de un id que no es UUID igual al de uno inexistente, después del 400 del cuerpo y del 401 |
 | `bloquearClasesParaCupo` sin Nest | Método de `ClasesService` | Las historias 005 a 020 la usan sin depender del módulo (como `leerConfiguracion`) |
 | Reutilizar `GET /api/usuarios` para elegir entrenador (DT-4) | Ruta nueva | El administrador ya tiene el permiso |
 | Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` (DT-2) | Permiso nuevo de lectura | La matriz dice lo que permite; DR-7 |
@@ -230,9 +253,15 @@ los índices parciales). Repetirla no duplica ni pisa cambios (criterio 30).
 ## Riesgos
 
 - **Interbloqueos con las llaves foráneas:** el `INSERT` o el cambio de entrenador de una clase toma `FOR KEY SHARE`
-  sobre la fila del entrenador; desactivarlo en 002 toma `FOR UPDATE` sobre esa fila. No hay ciclo con el orden actual
-  (sección 6), pero el adversarial debe probar a la vez: crear una clase con el entrenador E, desactivar a E y
-  desactivar al administrador que crea.
+  sobre la fila del entrenador; desactivarlo en 002 toma `FOR UPDATE` sobre esa fila y la del actor. _(Ocurrió, AT-1.)_
+  Con la lectura sin bloqueo de D11 sí había ciclo (el mismo administrador creando una clase con E y desactivando a E:
+  `40P01` y 500); se resolvió bloqueando al entrenador con el actor (sección 6). El adversarial debe seguir probando a
+  la vez: crear o reasignar una clase con E, desactivar a E, desactivar al administrador que crea y reactivar una clase
+  con el mismo entrenador (el único caso que lo lee sin bloqueo).
+- **Actor con `FOR UPDATE` en las escrituras de clases con entrenador (AT-1):** dos de esas escrituras del mismo
+  administrador se ordenan en vez de ir en paralelo. Es aceptable por el volumen (configuración del administrador).
+- **Segundo entrenador de la semilla (AT-5):** rompe la prueba protegida del criterio 45 de 002 hasta que el
+  test-writer la actualice en un commit "Pruebas protegidas (004)"; la parte de T10 que lo agrega espera ese commit.
 - **`23505` dentro de la transacción:** un error de la base la deja abortada (criterio 149 de 001); el 409 se decide
   después del `ROLLBACK`, por el nombre de la restricción. Hay que comprobar que nunca se responde 500 en las carreras
   de los criterios 11 y 20 f.
