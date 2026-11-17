@@ -13,7 +13,8 @@
   "En parte".)_
 - **Estado:** aprobada por el responsable (17/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
   DR-7 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-3), en "Decisiones". Ningún criterio
-  cambió. No quedan preguntas abiertas.
+  cambió. No quedan preguntas abiertas. Los criterios 4, 5 y 13 llevan una "precisión del orquestador (17/11/2026)"
+  que explicita lo que ya exigían las pruebas protegidas, sin cambiar su intención.
 
 ## Objetivo
 
@@ -67,12 +68,21 @@ activas. "Ruta de academia", "sesión válida" y "actor vigente" son los de la s
    `academiaId` (o cualquier campo que no sea del contrato) responde 400 sin escribir nada, y un parámetro de consulta
    (`?academiaId=<id de B>`) no cambia la academia. Lo mismo con `GET /api/mi-academia` (criterio 20). _(crítico)_ (D-23;
    criterio 20 de 002)
+
+   _Precisión del orquestador (17/11/2026), implícita en las pruebas protegidas:_ un parámetro de consulta
+   `?academiaId=<id de B>` en `GET` o `PATCH /api/configuracion` o en `GET /api/mi-academia` se ignora (200 con los
+   datos de la academia de la sesión) o se rechaza con 400; las dos respuestas son válidas, pero nunca muestra datos de
+   B ni escribe en B.
 5. **Permisos.** Dadas sesiones válidas de cada rol de A, entonces `GET` y `PATCH /api/configuracion` responden 200 al
    `ADMIN` y 403 `SIN_PERMISO` a `SECRETARIA`, `ENTRENADOR` y `ALUMNO`, sin escribir ni auditar nada; sin sesión, 401
    `NO_AUTENTICADO`; con el cambio de contraseña pendiente, 403 `CAMBIO_DE_CLAVE_OBLIGATORIO`; con A suspendida, 403
    `ACADEMIA_SUSPENDIDA`, en el orden de comprobaciones de 002. `MATRIZ_PERMISOS` suma la fila `CONFIGURAR_ACADEMIA` con
    `ADMIN: 'TODO'` y nada más (24 filas). El Superadmin no tiene ruta para ver ni cambiar la configuración de una
    academia (D-29). _(crítico)_ (sección 2.1, D-11, D-29)
+
+   _Precisión del orquestador (17/11/2026), implícita en las pruebas protegidas:_ como el Superadmin no tiene ruta de
+   configuración de academia, su cookie (`aq_plataforma`) en `GET` o `PATCH /api/configuracion` responde 401, igual que
+   en cualquier ruta de academia (criterio 19 de 002), sin leer ni escribir nada.
 6. **Función para las historias siguientes.** `leerConfiguracion(tx)` devuelve los valores efectivos de la academia de
    la transacción que recibe (`tx.academiaId`), con una sola consulta dentro de esa transacción y sin guardar nada entre
    llamadas (sin caché, regla de `docs/arquitectura.md`). Prueba: con valores distintos en A y en B, `conAcademia(A, tx
@@ -122,6 +132,10 @@ activas. "Ruta de academia", "sesión válida" y "actor vigente" son los de la s
     correcta entra y deja el contador en 0. En B, los 4 primeros responden 401 y el 5.º 423 con `ahora + 15 min`. Dados
     10 intentos fallidos simultáneos contra la cuenta de A, cada respuesta es 401 o 423, al menos una es 423 y la cuenta
     queda bloqueada. _(crítico)_ (D-07, criterio 9 de 002)
+
+    _Precisión del orquestador (17/11/2026), implícita en las pruebas protegidas:_ con N intentos configurados, entre
+    los 10 intentos simultáneos con la clave equivocada como mucho N−1 responden 401 y el resto 423 (con
+    `intentosInicioSesion` 3 en A, como mucho 2 responden 401): cada fallo cuenta una vez y el N-ésimo bloquea.
 14. Dada A con `intentosInicioSesion` 3, cuando un usuario de A envía `POST /api/sesion/clave` con la `claveActual`
     equivocada, entonces el 3.º fallo responde 423 y bloquea la cuenta por los `minutosBloqueo` de A, con el resto de
     reglas de los criterios 24, 58 y 60 de 002. _(crítico)_
