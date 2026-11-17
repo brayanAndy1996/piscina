@@ -1,7 +1,7 @@
 # 004 · Tareas
 
 Cada tarea indica su rol y los criterios de aceptación de [`spec.md`](spec.md) que cubre. Historia en parte crítica:
-los criterios 1 a 7, 10, 18, 22 y 23 llevan pruebas protegidas escritas y confirmadas en rojo antes de implementar (T1
+los criterios 1 a 7, 10, 18, 22, 23 y, desde la ronda 1 adversarial, 32 y 33 (T13a a T13c) llevan pruebas protegidas escritas y confirmadas en rojo antes de implementar (T1
 a T4) y ataque adversarial después (T13). Los demás llevan las pruebas que indica cada tarea, escritas por quien
 implementa. No se empieza T1 sin la aprobación del responsable (dada el 17/11/2026, T0).
 
@@ -87,7 +87,32 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
       entre crear clases, reasignar entrenadores y desactivar entrenadores o administradores (interbloqueos, 500);
       bloques en el borde (la clase de 19:00 a 20:00, `20:00`, horas con segundos) y estado del plan en el cambio de
       día, de mes y con el servidor en otra zona. Por cada falla: el especificador agrega el criterio a `spec.md`,
-      test-writer la prueba protegida en rojo, se corrige y se vuelve a atacar, hasta una ronda sin fallas
+      test-writer la prueba protegida en rojo, se corrige y se vuelve a atacar, hasta una ronda sin fallas.
+      **Ronda 1 adversarial: 3 fallas (32, 33, 34)**, agregadas a la spec ("G. Ronda 1 adversarial"); tareas T13a a
+      T13f.
+
+### Ronda 1 adversarial
+
+- [ ] T13a · test-writer · Pruebas protegidas en rojo del criterio 32: `POST /api/clases` y `PATCH /api/clases/{id}`
+      (reactivar y cambiar entrenador) que chocan con una clase C mientras otra transacción confirmada la desactiva o
+      reactiva otra entre medio (espera comprobada en `pg_locks`, sin depender de tiempos); siempre 201/200 o 409
+      `CLASE_DUPLICADA`/`ENTRENADOR_OCUPADO`, nunca 500, con filas y auditoría coherentes (criterio 32)
+- [ ] T13b · test-writer · Pruebas protegidas en rojo del criterio 33: `INSERT` y `UPDATE` directos como
+      `aquagestion_app` en su academia con `precio = 'NaN'`, los tres arreglos con dos dimensiones y con un `NULL`, y
+      `vigencia_inicio`/`vigencia_fin` en `'infinity'` y `'-infinity'`, todos con `23514` exacto (criterio 33)
+- [ ] T13c · tester · Confirmar que T13a y T13b fallan por la razón esperada (500 en la carrera; la fila se escribe en
+      vez de dar `23514`) y no por la prueba; que las demás protegidas siguen como estaban. Commit del orquestador:
+      "Pruebas protegidas (004): ronda 1 adversarial, choques de clases e invariantes de planes (en rojo)"
+- [ ] T13d · backend · Corrección del criterio 32 en `ClasesService`: `INSERT` sin `ON CONFLICT` y 409 por el nombre
+      de la restricción después del `ROLLBACK` en `POST` y `PATCH`, sin releer para decidir; la consulta del 20 e solo
+      elige entre los dos 409 (plan, sección 9.1). Sin tocar las pruebas protegidas (criterios 20 e, 20 f, 21, 32)
+- [ ] T13e · backend · Migración `<marca>_planes_clases_invariantes` con los `CHECK` de `NaN`, dimensiones, `NULL` y
+      fechas finitas (plan, sección 9.2); comprobar que las pruebas de catálogo de 001 siguen pasando (criterios 4, 33)
+- [ ] T13f · backend · `normalizarNombrePlan` en `packages/contratos` y `nombrePlanSchema` que normaliza antes de
+      validar; prueba no protegida: unitarias de la normalización e integración de los 409 de `POST` y `PATCH` y del
+      `PATCH` sin cambios (plan, sección 9.3; criterios 11, 12, 34)
+- [ ] T13g · tester · Pruebas protegidas en verde (T13a, T13b) y suite completa; después, el orquestador vuelve a
+      lanzar el ataque (ronda 2)
 
 ## Revisión y cierre
 

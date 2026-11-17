@@ -20,6 +20,8 @@
   DR-8 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-5), en "Decisiones". Ningún criterio
   cambió. No quedan preguntas abiertas. Ajustes técnicos de la implementación del backend (AT-1 a AT-5, sin cambios de
   negocio) en "Decisiones".
+- **Ronda 1 adversarial:** 3 fallas (32, 33, 34), agregadas como criterios en "G. Ronda 1 adversarial" (17/11/2026).
+  32 y 33 son de ruta crítica; 34 no (DT-6 de 004). Ninguna cambia una regla de negocio.
 
 ## Objetivo
 
@@ -45,9 +47,14 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   tomen el último cupo a la vez"). En esta historia todavía no hay inscritos (ver "Decisiones", pregunta T1): lo crítico
   es que el aforo nunca salga de su rango y que cambiarlo use el mismo bloqueo de la fila de la clase que usarán las
   historias que ocupan cupos, para que un cambio de aforo y una inscripción nunca se crucen.
+- **Ronda 1 adversarial (32 y 33):** el 32, porque un 500 en la carrera de los choques del bloque deja a la clase y al
+  entrenador en un estado que el administrador no sabe interpretar, en las mismas escrituras de clases que se ordenan
+  con el cupo (criterios 20 f y 22), y es el patrón de error que copiarán las historias del cupo; el 33 amplía el 4:
+  un precio `NaN` llega al cobro (RN-25, D-03) y un arreglo de dos dimensiones deja a toda la academia sin la lista de
+  planes, de la que parten la inscripción y el cobro.
 
-No son críticos, pero llevan _(prueba obligatoria)_: 8, 9, 11 a 17, 19 a 21, 24 y 25 (API y dominio) y 26 a 29 (web,
-con pruebas de componentes). Los 30 y 31 (semilla y documentación) los verifica el revisor.
+No son críticos, pero llevan _(prueba obligatoria)_: 8, 9, 11 a 17, 19 a 21, 24, 25 y 34 (API y dominio) y 26 a 29
+(web, con pruebas de componentes). Los 30 y 31 (semilla y documentación) los verifica el revisor.
 
 ## Criterios de aceptación
 
@@ -84,7 +91,8 @@ siguiente (RN-09). Los días de la semana van de 1 (lunes) a 7 (domingo), como e
    menos días que `veces_por_semana`; `franjas_permitidas` vacía o con una hora que no sea un bloque; `niveles_aplicables`
    vacío; `vigencia_fin` anterior a `vigencia_inicio`; `clases.dia_semana` fuera de 1 a 7; `clases.hora_inicio` que no
    sea un bloque (minutos o segundos distintos de cero, antes de las 08:00 o después de las 19:00); y `clases.hora_fin`
-   distinta de `hora_inicio` más una hora. _(crítico)_ (RN-09, RN-11, RN-25)
+   distinta de `hora_inicio` más una hora. _(crítico)_ (RN-09, RN-11, RN-25) _(Ampliado por el criterio 33, ronda 1
+   adversarial: `NaN`, arreglos de varias dimensiones o con `NULL` y vigencias infinitas.)_
 
 ### B. Permisos, aislamiento en la API y actor vigente
 
@@ -137,7 +145,8 @@ siguiente (RN-09). Los días de la semana van de 1 (lunes) a 7 (domingo), como e
     "plan mensual" o " PLAN MENSUAL " (mismo nombre recortado, sin distinguir mayúsculas), entonces responde 409
     `NOMBRE_PLAN_EN_USO` sin escribir ni auditar, aunque el plan existente esté inactivo; en B se acepta. Dadas dos
     creaciones simultáneas con el mismo nombre en A, exactamente una responde 201 y la otra 409, y queda una fila y un
-    `PLAN_CREADO` (provisional, pregunta N8). _(prueba obligatoria)_
+    `PLAN_CREADO` (provisional, pregunta N8). _(prueba obligatoria)_ _(Ampliado por el criterio 34, ronda 1
+    adversarial: nombres que se ven iguales cuentan como el mismo.)_
 12. **Editar un plan.** Dado un plan de A, cuando el `ADMIN` envía `PATCH /api/planes/{id}` con uno o más campos de
     `actualizarPlanSchema`, entonces responde 200 con `{ plan }` ya cambiado; las reglas que cruzan campos (días frente
     a veces por semana, fin frente a inicio de la vigencia) se comprueban con el resultado de combinar lo guardado y lo
@@ -187,7 +196,8 @@ siguiente (RN-09). Los días de la semana van de 1 (lunes) a 7 (domingo), como e
     - f) dadas dos creaciones simultáneas que chocan por b o por c, exactamente una responde 201 y la otra 409, y queda
       una fila y una `CLASE_CREADA` (lo garantiza la base, no una consulta previa).
 
-    _(prueba obligatoria)_
+    _(prueba obligatoria)_ _(Las carreras con una clase que se desactiva o reactiva entre medio: criterio 32, ronda 1
+    adversarial.)_
 21. **Editar una clase.** `PATCH /api/clases/{id}` acepta solo `entrenadorId`, `aforo` y `activo` (al menos uno):
     `nivel`, `diaSemana`, `horaInicio` u otro campo responden 400 (provisional, pregunta N4). Cambiar el entrenador
     aplica los criterios 19 y 20 b; reactivar una clase (`activo: true`) exige que su entrenador esté activo (criterio
@@ -259,6 +269,49 @@ siguiente (RN-09). Los días de la semana van de 1 (lunes) a 7 (domingo), como e
     historias siguientes" de esta spec (cupo, precio, horas); el `README.md` y la guía de uso explican las dos
     pantallas. _(verificación del revisor)_
 
+### G. Ronda 1 adversarial
+
+Fallas encontradas en la ronda 1 del ataque (T13, 17/11/2026), agregadas antes de tocar el código. Origen de cada una:
+"ataque ronda 1".
+
+32. **Carreras en los choques de clases, nunca 500.** `POST /api/clases` y `PATCH /api/clases/{id}` (al reactivar una
+    clase o al cambiarle el entrenador) responden siempre 409 `CLASE_DUPLICADA` o 409 `ENTRENADOR_OCUPADO`, o el 201 o
+    200 si la operación termina siendo válida, y nunca 500, aunque la clase que provocó el choque se desactive o se
+    reactive en otra transacción confirmada entre medio. Por ejemplo: a) dada una clase activa C del mismo nivel (o del
+    mismo entrenador) en el bloque, un `POST` que choca con C mientras otra transacción confirma `activo = false` en C;
+    b) lo mismo con un `PATCH` que reactiva una clase o le asigna el entrenador de C. En los dos casos la respuesta es
+    uno de esos 409 o el éxito, y si es un éxito queda una sola fila nueva o cambiada con su `CLASE_CREADA` o
+    `CLASE_ACTUALIZADA`; si es un 409, no se escribe ni se audita nada. El código del 409 se decide por la restricción
+    que la base informa como violada (`clases_nivel_bloque_activo_key` → `CLASE_DUPLICADA`,
+    `clases_entrenador_bloque_activo_key` → `ENTRENADOR_OCUPADO`), o reintentando la escritura, y no depende de releer
+    las clases después del choque. Sin carrera, se mantienen los criterios 20 b a 20 f (incluido el 20 e: si chocan
+    nivel y entrenador a la vez, `CLASE_DUPLICADA`). _(crítico)_ (RN-10, HU-17; criterios 20 f y 21; ataque ronda 1.
+    Causa: el `POST` hace `INSERT … ON CONFLICT DO NOTHING` y busca el choque en otra sentencia, y el `PATCH` relee
+    después del `23505`; si la clase que chocó ya no está activa, no encuentran nada y responden 500.)
+33. **Más invariantes en la base (amplía el 4).** Dado un `INSERT` o `UPDATE` directo como `aquagestion_app` en su
+    academia (los `CHECK` valen igual para el dueño de las tablas), entonces falla con `23514`:
+    - a) `planes.precio = 'NaN'` (en PostgreSQL `NaN > 0` es verdadero, así que el `CHECK` del criterio 4 lo deja
+      pasar);
+    - b) `dias_permitidos`, `franjas_permitidas` o `niveles_aplicables` con más de una dimensión (por ejemplo
+      `'{{1,2},{3,4}}'`) o con algún elemento `NULL` (por ejemplo `'{1,NULL,3}'` o `ARRAY['BASICO', NULL]`);
+    - c) `vigencia_inicio` o `vigencia_fin` igual a `'infinity'` o `'-infinity'` (no finitas, `isfinite`).
+
+    Con esas filas imposibles, `GET /api/planes` no puede volver a fallar por ellas: hoy un arreglo de dos dimensiones
+    escrito así hace que responda 500 a toda la academia. _(crítico)_ (RN-25, D-03; criterio 4; ataque ronda 1)
+34. **Nombres de plan que se ven iguales son el mismo (amplía el 11 y DR-8).** Antes de validar, guardar y comparar,
+    el nombre del plan se normaliza: a NFC; los espacios Unicode (categoría `Zs`: no separable U+00A0, ideográfico
+    U+3000, finos, etc.) pasan a un espacio normal; se eliminan los caracteres de formato invisibles (categoría `Cf`:
+    ancho cero U+200B, U+200C, U+200D, U+2060, U+FEFF, guion suave U+00AD), salvo los de control bidireccional, que
+    siguen respondiendo 400 como hoy (criterio 9, `textoVisibleSchema`); y se colapsan los espacios seguidos y se
+    recortan los extremos. La unicidad sigue sin distinguir mayúsculas (criterio 11). Dado un plan de A llamado
+    "Plan Mensual", cuando se crea o se renombra otro de A como `"Plan Men​sual"` o `"Plan ​Mensual"` (con
+    un espacio de ancho cero, que no se ve), `"Plan Mensual"` (no separable), `"Plan　Mensual"` (ideográfico)
+    o `"Plan  Mensual"` (dos espacios), entonces
+    responde 409 `NOMBRE_PLAN_EN_USO` sin escribir ni auditar; lo mismo con "Natación" escrito en NFD (`a` + U+0301)
+    contra "Natación" en NFC. El nombre que se guarda y se devuelve es el normalizado ("Plan Mensual" con un solo
+    espacio normal), y los límites del criterio 9 (de 3 a 80 caracteres, 3 visibles) se miden sobre él. _(prueba
+    obligatoria)_ (DR-8, DT-6 de 004; ataque ronda 1)
+
 ## Casos límite
 
 - **La clase de 19:00 a 20:00:** es el último bloque válido; `"20:00"` como inicio responde 400 (criterio 17).
@@ -276,6 +329,14 @@ siguiente (RN-09). Los días de la semana van de 1 (lunes) a 7 (domingo), como e
   del plan se calcula con la fecha de Lima (criterio 14). La 009 compone la fecha de Lima y la hora de la clase.
 - **Ids en mayúsculas:** un UUID en mayúsculas en la dirección se trata igual que en minúsculas. _(Implementación,
   AT-2: lo normaliza el servicio, no `IdDeRuta`.)_
+- **La clase que chocó deja de estar activa a mitad de la escritura:** 409 por la restricción violada, o el éxito si
+  la escritura se reintenta y ya no choca; nunca 500 (criterio 32).
+- **Precio `NaN`, arreglos de dos dimensiones o con `NULL`, vigencia infinita:** la API ya no los acepta (criterios 9 y
+  10); la base tampoco, aunque se escriba directo (criterio 33).
+- **Nombre que, normalizado, queda con menos de 3 caracteres visibles** (por ejemplo, dos letras y espacios de ancho
+  cero): 400 en `nombre` (criterios 9 y 34).
+- **Renombrar un plan solo con espacios invisibles o en NFD** ("Plan Mensual" a `"Plan Mensual"`): el nombre
+  normalizado es el mismo, así que es un `PATCH` sin cambios (200 sin escribir ni auditar, criterio 12).
 
 ## Reglas de negocio aplicables
 
@@ -343,7 +404,9 @@ incorrecto) y el nombre de la lista cuando es de la lista entera (vacía, con re
   `vigenciaFin` opcionales o `null`), `actualizarPlanSchema` (estricto, todo opcional más `activo`, al menos un campo),
   `estadoPlanSchema` (`VIGENTE`, `PROGRAMADO`, `VENCIDO`, `INACTIVO`), `planSchema` (los campos, `id`, `activo` y
   `estado`), `respuestaPlanSchema` (`{ plan }`) y `respuestaListaPlanesSchema` (`{ planes }`), con sus límites
-  exportados para la web.
+  exportados para la web. _(Ronda 1, criterio 34, DT-6.)_ El `nombre` de `crearPlanSchema` y `actualizarPlanSchema` se
+  normaliza en el propio esquema antes de sus validaciones, con una función pura exportada (`normalizarNombrePlan`),
+  para que la web valide y muestre lo mismo que guarda la API.
 - `packages/contratos/src/clases.ts`: `crearClaseSchema` (estricto: `nivel`, `diaSemana`, `horaInicio`, `entrenadorId`,
   `aforo`), `actualizarClaseSchema` (estricto: `entrenadorId`, `aforo` y `activo` opcionales, al menos uno),
   `AFORO_MINIMO` 20 y `AFORO_MAXIMO` 50, `claseSchema` (`id`, `nivel`, `diaSemana`, `horaInicio`, `horaFin`, `aforo`,
@@ -403,6 +466,11 @@ Una migración `<marca>_planes_clases`. Ajusta las entidades `PLAN` y `CLASE` de
 - Los `CHECK` del criterio 4 van a mano en la migración (Prisma no los genera). Los límites provisionales de la API
   (`clasesPorMes` ≤ 31, `duracionMinutos` de 15 a 60, precio ≤ 99 999.99, nombre de 3 a 80) no van a la base
   (decisión D3).
+- _(Ronda 1, criterio 33.)_ Una migración nueva `<marca>_planes_clases_invariantes` (no se edita la ya aplicada)
+  reemplaza o suma `CHECK` en `planes`: precio distinto de `NaN`; los tres arreglos de una sola dimensión y sin
+  elementos `NULL`; `vigencia_inicio` y `vigencia_fin` finitas cuando no son nulas. Sin cambios de columnas, índices,
+  políticas ni privilegios. La normalización del nombre (criterio 34) no cambia la base: el índice único sigue sobre
+  `lower(nombre)`.
 
 ## Fuera de alcance
 
@@ -467,8 +535,13 @@ Para documentar en `docs/arquitectura.md` (criterio 31):
   aforo ni al dinero.
 - **El último en guardar el mismo campo gana:** dos administradores que cambian el mismo campo a la vez no se avisan;
   los dos cambios quedan en la auditoría, encadenados (criterios 12 y 22 c).
-- **Arreglos sin repetidos solo en la API:** la base exige el rango y que no estén vacíos, pero no que no haya
-  repetidos; solo el dueño de las tablas podría escribirlos.
+- **Arreglos sin repetidos solo en la API:** la base exige el rango, que no estén vacíos, una sola dimensión y ningún
+  `NULL` (criterio 33), pero no que no haya repetidos ni que estén ordenados; solo una escritura directa en la base
+  podría guardarlos, y la API los muestra tal como están.
+- **Nombres parecidos que no son iguales (criterio 34):** la normalización une lo que Unicode considera el mismo texto
+  o un espacio invisible, pero no las letras de otros alfabetos que se parecen (una `а` cirílica frente a una `a`
+  latina) ni los rellenos que Unicode clasifica como letras (U+3164); esos nombres se aceptan como distintos. La
+  normalización vive en la API y en la web: una escritura directa en la base podría guardar un nombre sin normalizar.
 
 ## Decisiones
 
@@ -537,7 +610,24 @@ propuesta.
   descartada por ahora: una ruta propia que devuelva solo id y nombre, si algún día otro rol tiene que elegir
   entrenadores.
 - **DT-5 (pregunta T5). Clasificación.** **Decidido (la propuesta):** "en parte", con críticos 1 a 7, 10, 18, 22 y 23
-  (sección "Clasificación de ruta crítica").
+  (sección "Clasificación de ruta crítica"). _(Ronda 1 adversarial: se suman 32 y 33 como críticos; 34 no lo es.)_
+
+### Decisiones de la ronda 1 adversarial (17/11/2026)
+
+- **DT-6. Normalización del nombre del plan (criterio 34).** Decisión técnica del orquestador para cumplir DR-8 ("sin
+  distinguir mayúsculas", para que no se muestren dos planes iguales), no una regla de negocio nueva: dos nombres que
+  se ven iguales son el mismo. Se normaliza en el esquema zod del contrato (`packages/contratos/src/planes.ts`), no
+  solo en el servicio, para que la web valide, cuente los caracteres y muestre el mismo nombre que guarda la API y
+  para que el `PATCH` compare lo normalizado con lo guardado. Los controles bidireccionales siguen respondiendo 400 en
+  vez de eliminarse, para no debilitar el criterio 9 ni las reglas de texto de 001 (`textoVisibleSchema`, que no
+  cambia para los demás campos). Alternativas descartadas: normalizar solo en el servicio (la web contaría otra
+  longitud y no sabría por qué choca); un índice único sobre `normalize(lower(nombre), NFC)` en la base (no resuelve
+  los espacios ni los caracteres de formato, y ata el índice a la versión de Unicode de PostgreSQL).
+- **Corrección del criterio 32.** El 409 se decide por el nombre de la restricción del error de la base (el que da el
+  adaptador, nunca el texto del mensaje), con el detalle en el plan (sección 6). Releer las clases después del choque
+  solo puede afinar entre los dos 409 (criterio 20 e), nunca convertir el resultado en un 500.
+- **Corrección del criterio 33.** Una migración nueva con los `CHECK`; la de `planes_clases` ya aplicada no se edita
+  (plan, "Migraciones").
 
 ### Decisiones de diseño (técnicas)
 

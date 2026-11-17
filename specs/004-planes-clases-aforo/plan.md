@@ -14,6 +14,8 @@ esquemas, un índice único y los privilegios de `clases` (con otra migración);
 las secciones de abajo. El más importante es AT-1: al crear o reasignar una clase, el entrenador se bloquea junto con el
 actor (modifica D11; secciones 6 y "Riesgos").
 
+**Ronda 1 adversarial (17/11/2026):** 3 fallas (32, 33, 34). Cómo se corrige cada una, en la sección 9 de abajo.
+
 ## Módulos afectados
 
 ```
@@ -92,7 +94,8 @@ forma exacta de `usuarios`; `GRANT SELECT, INSERT` y `GRANT UPDATE (columnas…)
 - `vigencia_fin IS NULL OR vigencia_inicio IS NULL OR vigencia_fin >= vigencia_inicio`.
 
 `<@` con un arreglo vacío es verdadero, por eso cada uno va con su `cardinality`. Un `NULL` dentro del arreglo: añadir
-`array_position(col, NULL) IS NULL` en los tres arreglos.
+`array_position(col, NULL) IS NULL` en los tres arreglos. _(No se hizo en be7170a; lo corrige la migración de la
+ronda 1, sección 9.2, junto con las dimensiones, `NaN` y las fechas infinitas.)_
 
 Ampliar en el mismo cambio `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs` (la prueba que compara las dos listas falla si
 no) y `TABLAS_DESPUES_DE_MIGRAR`.
@@ -224,6 +227,86 @@ los índices parciales). Repetirla no duplica ni pisa cambios (criterio 30). El 
 comprueba la prueba protegida del criterio 45 de 002 (5 usuarios en `delfines`, 6 en total, dos entrenadores): se
 agrega después del commit "Pruebas protegidas (004)" que la actualiza (AT-5).
 
+### 9. Correcciones de la ronda 1 adversarial
+
+Orden: pruebas protegidas en rojo de 32 y 33 (test-writer), después estas correcciones (backend). El 34 lleva prueba no
+protegida, escrita por quien implementa.
+
+#### 9.1. Choques de clases sin 500 (criterio 32)
+
+Causa: el `POST` hace `INSERT … ON CONFLICT DO NOTHING` y, sin fila, busca el choque con otra sentencia; el `PATCH`
+relee las clases después del `23505`. Si la clase que chocó se desactiva (o se reactiva otra) en una transacción
+confirmada entre las dos sentencias, la búsqueda no encuentra nada y el servicio termina en 500.
+
+Corrección:
+
+- **`POST`:** `INSERT … RETURNING …` sin `ON CONFLICT`. Igual que con `ON CONFLICT`, si la fila en conflicto es de una
+  transacción sin confirmar, el `INSERT` la espera; si esa transacción la desactiva o se deshace, el `INSERT` pasa (201).
+  Si choca, salta `23505`, la transacción aborta (criterio 149 de 001) y el 409 se decide después del `ROLLBACK` por el
+  nombre de la restricción: `clases_nivel_bloque_activo_key` → `CLASE_DUPLICADA`; `clases_entrenador_bloque_activo_key`
+  → `ENTRENADOR_OCUPADO`. El nombre sale del error estructurado del adaptador (`constraint`/`index`, como en
+  `punto-autorizado.test.ts`), nunca del texto del mensaje. Cualquier otro `23505` o un error sin nombre sigue su
+  camino normal (no se adivina un 409).
+- **`PATCH`:** el mismo mapeo al `23505` del `UPDATE`, sin releer.
+- **Criterio 20 e (los dos choques a la vez):** PostgreSQL informa una sola restricción, la del primer índice que
+  comprueba, y ese orden no es parte del contrato. Para mantener el 20 e: si la restricción es la del entrenador, una
+  consulta posterior (otra transacción, sin bloqueo) puede mirar si además hay una clase activa del mismo nivel en el
+  bloque y, si la hay, responder `CLASE_DUPLICADA`; si no la encuentra (la carrera del 32), responde
+  `ENTRENADOR_OCUPADO`. Esa consulta solo elige entre los dos 409; nunca puede terminar en 500. En el `PATCH`, solo la
+  reactivación puede chocar con los dos índices (cambiar el entrenador de una clase activa no cambia su nivel ni su
+  bloque).
+- **Alternativa aceptada por la spec:** reintentar la escritura (una vez o un número pequeño de veces) cuando la
+  búsqueda no encuentra el choque; si se elige, el último intento debe responder igual un 409 por nombre de restricción
+  o el éxito, nunca 500. Se prefiere el mapeo por nombre porque es determinista y no depende de cuántas veces cambie la
+  otra clase.
+- **Alternativa descartada:** seguir con `ON CONFLICT DO NOTHING` y releer (es la causa), o un `SAVEPOINT` por
+  escritura (no hace falta: antes del `INSERT` no se escribió nada que haya que conservar).
+- Se mantienen el orden de bloqueos de AT-1, la idempotencia y el 20 f (una fila y una `CLASE_CREADA`). El 409 sale
+  después del `ROLLBACK`, así que no hay auditoría.
+- Pruebas protegidas deterministas (test-writer): la prueba deja una transacción sin confirmar que desactiva la clase C
+  que va a chocar (o que reactiva otra), lanza el `POST` o el `PATCH`, comprueba en `pg_locks` que espera, y confirma;
+  y la variante en que la desactivación se confirma justo después del choque. En todas: 201/200 o 409 con uno de los
+  dos códigos, nunca 500, y filas y auditoría coherentes con la respuesta.
+
+#### 9.2. Migración con más `CHECK` (criterio 33)
+
+Migración nueva `<marca>_planes_clases_invariantes` (la de `planes_clases` ya está aplicada en las bases de desarrollo
+y no se edita). Con `ALTER TABLE planes DROP CONSTRAINT …, ADD CONSTRAINT …` en una sola sentencia:
+
+- `planes_precio_positivo`: `precio > 0 AND precio <> 'NaN'::numeric` (en PostgreSQL `NaN` es igual a sí mismo y mayor
+  que cualquier número; `numeric(10,2)` ya rechaza `Infinity`).
+- `planes_dias_permitidos_validos`, `planes_franjas_permitidas_validas` y `planes_niveles_aplicables_no_vacios`: exigir
+  una sola dimensión y ningún `NULL`. `<@` y `cardinality` aplanan las dimensiones, por eso hoy un `'{{1,2},{3,4}}'`
+  pasa. Dos cuidados: un `CHECK` que da `NULL` cuenta como cumplido (`array_ndims` de un arreglo vacío es `NULL`), y
+  `array_position` lanza un error (`0A000`, no `23514`) con un arreglo de varias dimensiones, y PostgreSQL no garantiza
+  el orden de evaluación de un `AND`. Forma sugerida, con `CASE` para fijar el orden:
+  `CASE WHEN array_ndims(col) = 1 THEN array_position(col, NULL) IS NULL AND <condición actual> ELSE false END`.
+  Las pruebas comprueban `23514` (no `0A000`) para cada caso del criterio 33 b.
+- Nuevo `planes_vigencia_finita`: `(vigencia_inicio IS NULL OR isfinite(vigencia_inicio)) AND (vigencia_fin IS NULL
+  OR isfinite(vigencia_fin))`.
+- Los nombres de restricción se conservan o se nombran con el prefijo `planes_` (las pruebas buscan `23514`, no el
+  nombre).
+- `ADD CONSTRAINT` valida las filas existentes: si una base de desarrollo tiene filas inválidas escritas a mano, la
+  migración falla y hay que limpiarla; no hay datos reales (repositorio público, D-26).
+- Sin cambios de columnas, índices, políticas ni privilegios: `PRIVILEGIOS_APP`, `rol-app.mjs` y
+  `TABLAS_DESPUES_DE_MIGRAR` no cambian. Las pruebas de catálogo de 001 deben seguir pasando.
+- `GET /api/planes` no cambia: con la base garantizando la forma, no hay que defender la lectura de filas imposibles.
+
+#### 9.3. Nombre del plan normalizado (criterio 34, DT-6)
+
+- `packages/contratos/src/planes.ts` (o `texto.ts` si se quiere reutilizar): función pura exportada
+  `normalizarNombrePlan(texto)`: `normalize('NFC')`; reemplazar `\p{Zs}` por `' '`; eliminar `\p{Cf}` salvo
+  `\p{Bidi_Control}` (que `textoVisibleSchema` sigue rechazando con 400); colapsar `' '+` en uno; recortar.
+- `nombrePlanSchema = z.string().transform(normalizarNombrePlan).pipe(textoVisibleSchema(…))` (o el equivalente en
+  zod 4), para que los límites de 3 a 80 caracteres y 3 visibles se midan sobre el nombre normalizado y la API guarde lo
+  que validó. `textoVisibleSchema` no cambia para los demás campos.
+- Servicio de planes: no cambia el `INSERT` ni el índice (`lower(nombre)`); recibe ya el nombre normalizado.
+  `cambiosPedidosPlan` compara el nombre normalizado con el guardado (un renombre que solo cambia espacios invisibles
+  es "sin cambios").
+- Web: el formulario usa el mismo esquema, así que el nombre que muestra después de guardar es el normalizado.
+- Prueba no protegida (backend): unitarias de `normalizarNombrePlan` (NFD → NFC, U+00A0, U+3000, U+200B, U+FEFF,
+  U+00AD, espacios dobles, bidi sigue fallando) e integración de los cuatro 409 del criterio 34 en `POST` y `PATCH`.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -244,11 +327,16 @@ agrega después del commit "Pruebas protegidas (004)" que la actualiza (AT-5).
 | Reutilizar `GET /api/usuarios` para elegir entrenador (DT-4) | Ruta nueva | El administrador ya tiene el permiso |
 | Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` (DT-2) | Permiso nuevo de lectura | La matriz dice lo que permite; DR-7 |
 | Ocupación, reservas y prueba del último cupo en la 005 (DT-1) | Tabla de matrículas en la 004 | Adelantaría el diseño de la 005 (D-17); la 004 deja el bloqueo común |
+| 409 de los choques por el nombre de la restricción (ronda 1, criterio 32) | `ON CONFLICT DO NOTHING` y releer; reintentar | Releer falla si la clase que chocó cambió entre medio (500); el nombre es determinista. Reintentar queda permitido por la spec |
+| Migración nueva para los `CHECK` de la ronda 1 (criterio 33) | Editar la migración ya aplicada | Las bases de desarrollo ya la aplicaron; Prisma detecta el cambio en la suma de comprobación de una migración aplicada |
+| Nombre del plan normalizado en el esquema zod (DT-6, criterio 34) | Solo en el servicio; índice sobre `normalize(...)` en la base | La web ve y cuenta lo mismo que guarda la API; el índice no resuelve espacios ni formato |
 
 ## Migraciones
 
 - `<marca>_planes_clases`: tipo `nivel_natacion`, tablas `planes` y `clases`, `CHECK`, índices, RLS forzada, políticas
   y privilegios (spec, "Cambios al modelo de datos"). Sin datos.
+- `<marca>_planes_clases_invariantes` (ronda 1, criterio 33): solo `CHECK` de `planes` (sección 9.2). Sin datos ni
+  cambios de privilegios.
 
 ## Riesgos
 
@@ -272,3 +360,10 @@ agrega después del commit "Pruebas protegidas (004)" que la actualiza (AT-5).
   base (DR-3, DR-4) necesitan otra migración.
 - **Pruebas protegidas de 001 y 002 con listas exactas** (privilegios y tablas): si alguna no está prevista en las
   tareas, el tester lo reporta en el rojo y decide el orquestador.
+- **Ronda 1, criterio 32:** el nombre de la restricción tiene que llegar en el error estructurado del adaptador de
+  Prisma; si en algún camino solo viene el mensaje, no se lee el mensaje: se usa la alternativa de reintentar. El
+  revisor busca `message` o `includes(` sobre errores de la base en el módulo de clases.
+- **Ronda 1, criterio 33:** un `CHECK` que da `NULL` pasa, y `array_position` falla con `0A000` en arreglos de varias
+  dimensiones; las pruebas deben exigir `23514` exacto.
+- **Ronda 1, criterio 34:** un cambio en `nombrePlanSchema` no debe tocar `textoVisibleSchema` ni los demás campos que
+  lo usan (001, 002, 003).
