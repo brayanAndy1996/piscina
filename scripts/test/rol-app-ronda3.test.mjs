@@ -146,6 +146,27 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       'usuarios|bloqueado_hasta|UPDATE',
       'usuarios|ultimo_acceso|UPDATE',
       'usuarios|actualizado_en|UPDATE',
+      // Historia 004, criterio 2: se suman los privilegios de `planes` y `clases` (no se quita nada de lo anterior).
+      'planes|*|SELECT',
+      'planes|*|INSERT',
+      'planes|nombre|UPDATE',
+      'planes|veces_por_semana|UPDATE',
+      'planes|clases_por_mes|UPDATE',
+      'planes|duracion_minutos|UPDATE',
+      'planes|precio|UPDATE',
+      'planes|dias_permitidos|UPDATE',
+      'planes|franjas_permitidas|UPDATE',
+      'planes|niveles_aplicables|UPDATE',
+      'planes|vigencia_inicio|UPDATE',
+      'planes|vigencia_fin|UPDATE',
+      'planes|activo|UPDATE',
+      'planes|actualizado_en|UPDATE',
+      'clases|*|SELECT',
+      'clases|*|INSERT',
+      'clases|entrenador_id|UPDATE',
+      'clases|aforo|UPDATE',
+      'clases|activo|UPDATE',
+      'clases|actualizado_en|UPDATE',
     ];
     expect([...PRIVILEGIOS_APP].map(clave).sort()).toEqual([...esperada].sort());
   });

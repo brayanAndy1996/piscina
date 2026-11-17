@@ -57,6 +57,26 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
     'ultimo_acceso',
     'actualizado_en',
   ].map((c) => efectivo('usuarios', c, 'UPDATE')),
+  // Historia 004, criterio 2: la lista exacta suma los privilegios de `planes` y `clases` (no se quita nada de lo anterior).
+  efectivo('planes', null, 'SELECT'),
+  efectivo('planes', null, 'INSERT'),
+  ...[
+    'nombre',
+    'veces_por_semana',
+    'clases_por_mes',
+    'duracion_minutos',
+    'precio',
+    'dias_permitidos',
+    'franjas_permitidas',
+    'niveles_aplicables',
+    'vigencia_inicio',
+    'vigencia_fin',
+    'activo',
+    'actualizado_en',
+  ].map((c) => efectivo('planes', c, 'UPDATE')),
+  efectivo('clases', null, 'SELECT'),
+  efectivo('clases', null, 'INSERT'),
+  ...['entrenador_id', 'aforo', 'activo', 'actualizado_en'].map((c) => efectivo('clases', c, 'UPDATE')),
 ];
 
 async function cargarDeLaApi(): Promise<Modulo> {
