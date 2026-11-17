@@ -1,7 +1,16 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { error, llamadas, type Manejador, mostrar, rutaActual, sesionDe, simularApi } from '../../pruebas-api';
+import {
+  error,
+  llamadas,
+  type Manejador,
+  mostrar,
+  type Respuesta,
+  rutaActual,
+  sesionDe,
+  simularApi,
+} from '../../pruebas-api';
 
 const POR_DEFECTO = {
   toleranciaTardanzaMinutos: 10,
@@ -498,5 +507,328 @@ describe('formulario con la base de llenado (criterio 27)', () => {
     await waitFor(() => expect(llamadas(api, 'PATCH /api/configuracion')).toHaveLength(2));
     expect(llamadas(api, 'PATCH /api/configuracion')[1]).toEqual({ telefono: null });
     expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+  });
+});
+
+describe('la cabecera nunca muestra datos de otra academia (criterio 28)', () => {
+  const NOMBRE_A = 'Academia de Natación Los Delfines';
+  const TELEFONO_A = '01 111 1111';
+  const NOMBRE_B = 'Academia Tiburones del Sur';
+  const TELEFONO_B = '01 222 2222';
+  const sesionDeB = (debeCambiarClave: boolean) => ({
+    usuario: {
+      id: '7c8d9e0f-1a2b-4b3c-8d4e-6f708192a3b4',
+      nombres: 'Bruno',
+      apellidos: 'Salas Peña',
+      rol: 'ADMIN',
+      debeCambiarClave,
+      academia: { nombreCorto: 'tiburones', nombre: NOMBRE_B },
+    },
+  });
+  const CONFIGURACION_A = { ...POR_DEFECTO, telefono: TELEFONO_A };
+
+  /** La sesión pasa de un administrador de A a uno de B (se ingresó en B en otra pestaña) y la página recupera el foco. */
+  async function cambiarDeSesion(debeCambiarClave: boolean, miAcademiaDeB: () => Respuesta | Promise<Respuesta>) {
+    let enB = false;
+    simularApi({
+      'GET /api/sesion': () => ({ estado: 200, cuerpo: enB ? sesionDeB(debeCambiarClave) : sesionDe('ADMIN') }),
+      'GET /api/mi-academia': () =>
+        enB
+          ? miAcademiaDeB()
+          : {
+              estado: 200,
+              cuerpo: { academia: { nombre: NOMBRE_A, nombreCorto: 'delfines', telefono: TELEFONO_A } },
+            },
+      'GET /api/configuracion': () => ({ estado: 200, cuerpo: { configuracion: CONFIGURACION_A } }),
+    });
+    mostrar('/panel/configuracion');
+    await screen.findByRole('link', { name: TELEFONO_A });
+    enB = true;
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(rutaActual()).toBe(debeCambiarClave ? '/cambiar-clave' : '/panel'));
+    // Pasados unos instantes: ni un render posterior puede mostrar lo de A.
+    await new Promise((resolver) => setTimeout(resolver, 300));
+  }
+
+  function sinDatosDeA() {
+    const cabecera = screen.getByRole('banner');
+    expect(cabecera).not.toHaveTextContent(NOMBRE_A);
+    expect(cabecera).not.toHaveTextContent(TELEFONO_A);
+    expect(cabecera).toHaveTextContent(NOMBRE_B);
+    expect(cabecera).not.toHaveTextContent(/Teléfono:/);
+  }
+
+  it('con el cambio de contraseña pendiente en B, muestra el nombre de B y ningún teléfono', async () => {
+    await cambiarDeSesion(true, () => error('CAMBIO_CLAVE_REQUERIDO', 403));
+    sinDatosDeA();
+  });
+
+  it('mientras GET /api/mi-academia de B tarda, muestra el nombre de B y ningún teléfono', async () => {
+    await cambiarDeSesion(false, () => new Promise<Respuesta>(() => undefined));
+    sinDatosDeA();
+  });
+
+  it('si GET /api/mi-academia de B falla, muestra el nombre de B y ningún teléfono', async () => {
+    await cambiarDeSesion(false, () => error('ERROR_INTERNO', 500));
+    sinDatosDeA();
+  });
+
+  it('cuando responde GET /api/mi-academia de B, muestra el nombre y el teléfono de B', async () => {
+    await cambiarDeSesion(false, () => ({
+      estado: 200,
+      cuerpo: { academia: { nombre: NOMBRE_B, nombreCorto: 'tiburones', telefono: TELEFONO_B } },
+    }));
+    const cabecera = screen.getByRole('banner');
+    expect(await within(cabecera).findByRole('link', { name: TELEFONO_B })).toBeInTheDocument();
+    expect(cabecera).toHaveTextContent(NOMBRE_B);
+    expect(cabecera).not.toHaveTextContent(NOMBRE_A);
+    expect(cabecera).not.toHaveTextContent(TELEFONO_A);
+  });
+
+  it('una respuesta de otra academia con la clave de la sesión no se muestra (comprobación del nombreCorto)', async () => {
+    await cambiarDeSesion(false, () => ({
+      estado: 200,
+      cuerpo: { academia: { nombre: NOMBRE_A, nombreCorto: 'delfines', telefono: TELEFONO_A } },
+    }));
+    sinDatosDeA();
+  });
+});
+
+describe('el formulario ante un GET en segundo plano y un guardado en curso (criterios 29 a 31)', () => {
+  const INTENTOS = 'Intentos fallidos antes del bloqueo (intentos)';
+  const BLOQUEO = 'Duración del bloqueo (minutos)';
+  const TELEFONO = 'Teléfono de la academia';
+  const AVISO_OTRO_ADMIN = /Otro administrador cambió la configuración/;
+  const AVISO_SIN_COMPROBAR =
+    'No pudimos comprobar si la configuración cambió. Tus cambios siguen aquí y puedes guardarlos.';
+
+  function diferido() {
+    let resolver: () => void = () => undefined;
+    const promesa = new Promise<void>((resolve) => {
+      resolver = resolve;
+    });
+    return { promesa, resolver };
+  }
+
+  /** Corta y vuelve la conexión: la web vuelve a pedir la configuración sin desmontar el formulario. */
+  function reconectar() {
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+      window.dispatchEvent(new Event('online'));
+    });
+  }
+
+  it('29: un GET pedido antes de la respuesta del PATCH no deshace lo guardado', async () => {
+    let actual: Record<string, unknown> = { ...POR_DEFECTO };
+    let patch: ReturnType<typeof diferido> | null = null;
+    let get: ReturnType<typeof diferido> | null = null;
+    let retenerGet = false;
+    const api = comoAdmin({
+      'GET /api/configuracion': async () => {
+        const foto = { ...actual };
+        if (retenerGet) {
+          get = diferido();
+          await get.promesa;
+        }
+        return { estado: 200, cuerpo: { configuracion: foto } };
+      },
+      'PATCH /api/configuracion': async (cuerpo) => {
+        patch = diferido();
+        await patch.promesa;
+        actual = { ...actual, ...(cuerpo as object) };
+        return { estado: 200, cuerpo: { configuracion: actual } };
+      },
+    });
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    const intentos = await screen.findByLabelText(INTENTOS);
+    await usuario.clear(intentos);
+    await usuario.type(intentos, '3');
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await waitFor(() => expect(patch).not.toBeNull());
+
+    // Una reconexión pide la configuración mientras el PATCH está en curso; ese GET leyó los valores de antes de guardar.
+    retenerGet = true;
+    reconectar();
+    await waitFor(() => expect(get).not.toBeNull());
+    await act(async () => {
+      patch?.resolver();
+      await new Promise((resolver) => setTimeout(resolver, 50));
+    });
+    expect(await screen.findByText('Configuración guardada.')).toBeInTheDocument();
+    expect(screen.getByLabelText(INTENTOS)).toHaveValue('3');
+
+    // a) y b) la respuesta vieja del GET no cambia los campos, ni muestra el aviso, ni quita el aviso de éxito
+    await act(async () => {
+      get?.resolver();
+      await new Promise((resolver) => setTimeout(resolver, 50));
+    });
+    expect(screen.getByLabelText(INTENTOS)).toHaveValue('3');
+    expect(screen.queryByText(AVISO_OTRO_ADMIN)).not.toBeInTheDocument();
+    expect(screen.getByText('Configuración guardada.')).toBeInTheDocument();
+
+    // c) lo siguiente se compara con la respuesta del PATCH: solo viaja el campo editado
+    retenerGet = false;
+    await usuario.type(screen.getByLabelText(TELEFONO), '01 555 0000');
+    expect(screen.queryByText(AVISO_OTRO_ADMIN)).not.toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await waitFor(() => expect(llamadas(api, 'PATCH /api/configuracion')).toHaveLength(2));
+    expect(llamadas(api, 'PATCH /api/configuracion')).toEqual([
+      { intentosInicioSesion: 3 },
+      { telefono: '01 555 0000' },
+    ]);
+    (patch as ReturnType<typeof diferido> | null)?.resolver();
+    await screen.findByText('Configuración guardada.');
+  });
+
+  it('30: un error del GET en segundo plano deja el formulario con lo escrito y muestra un aviso', async () => {
+    let falla = false;
+    const api = comoAdmin({
+      'GET /api/configuracion': () =>
+        falla ? error('ERROR_INTERNO', 500) : { estado: 200, cuerpo: { configuracion: POR_DEFECTO } },
+      'PATCH /api/configuracion': (cuerpo) => ({
+        estado: 200,
+        cuerpo: { configuracion: { ...POR_DEFECTO, ...(cuerpo as object) } },
+      }),
+    });
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    await usuario.type(await screen.findByLabelText(TELEFONO), '01 555 0000');
+    const bloqueo = screen.getByLabelText(BLOQUEO);
+    await usuario.clear(bloqueo);
+    await usuario.type(bloqueo, '45');
+
+    falla = true;
+    reconectar();
+    // a) el formulario sigue, con lo escrito y Guardar activo; b) el aviso está a la vista y no hay "Reintentar"
+    expect(await screen.findByText(AVISO_SIN_COMPROBAR)).toBeInTheDocument();
+    expect(screen.getByLabelText(TELEFONO)).toHaveValue('01 555 0000');
+    expect(screen.getByLabelText(BLOQUEO)).toHaveValue('45');
+    expect(screen.getByRole('button', GUARDAR)).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+
+    // c) un GET posterior que responde bien quita el aviso y no toca lo escrito
+    falla = false;
+    reconectar();
+    await waitFor(() => expect(screen.queryByText(AVISO_SIN_COMPROBAR)).not.toBeInTheDocument());
+    expect(screen.getByLabelText(TELEFONO)).toHaveValue('01 555 0000');
+    expect(screen.getByLabelText(BLOQUEO)).toHaveValue('45');
+
+    // y lo escrito se guarda tal cual
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await screen.findByText('Configuración guardada.');
+    expect(llamadas(api, 'PATCH /api/configuracion')).toEqual([{ minutosBloqueo: 45, telefono: '01 555 0000' }]);
+  });
+
+  it('30: guardar con éxito quita el aviso del GET fallido', async () => {
+    let falla = false;
+    comoAdmin({
+      'GET /api/configuracion': () =>
+        falla ? error('ERROR_INTERNO', 500) : { estado: 200, cuerpo: { configuracion: POR_DEFECTO } },
+      'PATCH /api/configuracion': (cuerpo) => ({
+        estado: 200,
+        cuerpo: { configuracion: { ...POR_DEFECTO, ...(cuerpo as object) } },
+      }),
+    });
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    await usuario.type(await screen.findByLabelText(TELEFONO), '01 555 0000');
+    falla = true;
+    reconectar();
+    expect(await screen.findByText(AVISO_SIN_COMPROBAR)).toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await screen.findByText('Configuración guardada.');
+    expect(screen.queryByText(AVISO_SIN_COMPROBAR)).not.toBeInTheDocument();
+  });
+
+  it('30: si el GET hecho al entrar falla con la caché llena, sigue mostrando el error con "Reintentar"', async () => {
+    let falla = false;
+    comoAdmin({
+      'GET /api/configuracion': () =>
+        falla ? error('ERROR_INTERNO', 500) : { estado: 200, cuerpo: { configuracion: POR_DEFECTO } },
+    });
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    await screen.findByLabelText(TELEFONO);
+    await usuario.click(screen.getByRole('link', { name: /Volver al inicio/ }));
+    falla = true;
+    await usuario.click(await screen.findByRole('link', { name: /Configuración/ }));
+    expect(await screen.findByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(TELEFONO)).not.toBeInTheDocument();
+  });
+
+  it('31: mientras se guarda, los campos y los botones "Usar el valor por defecto" están desactivados', async () => {
+    let patch: ReturnType<typeof diferido> | null = null;
+    const api = comoAdmin({
+      'PATCH /api/configuracion': async (cuerpo) => {
+        patch = diferido();
+        await patch.promesa;
+        return { estado: 200, cuerpo: { configuracion: { ...POR_DEFECTO, ...(cuerpo as object) } } };
+      },
+    });
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    await usuario.type(await screen.findByLabelText(TELEFONO), '01 555 0000');
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await waitFor(() => expect(patch).not.toBeNull());
+
+    expect(screen.getByRole('button', { name: 'Guardando…' })).toBeDisabled();
+    for (const etiqueta of [INTENTOS, BLOQUEO, TELEFONO, 'Tolerancia de tardanza (minutos)']) {
+      expect(screen.getByLabelText(etiqueta)).toBeDisabled();
+    }
+    for (const boton of screen.getAllByRole('button', { name: /Usar el valor por defecto/ })) {
+      expect(boton).toBeDisabled();
+    }
+
+    await act(async () => {
+      patch?.resolver();
+      await new Promise((resolver) => setTimeout(resolver, 50));
+    });
+    await screen.findByText('Configuración guardada.');
+    expect(screen.getByLabelText(TELEFONO)).toBeEnabled();
+    expect(screen.getByLabelText(TELEFONO)).toHaveValue('01 555 0000');
+    for (const boton of screen.getAllByRole('button', { name: /Usar el valor por defecto/ })) {
+      expect(boton).toBeEnabled();
+    }
+    // desactivar los campos no cambia lo que se envía
+    expect(llamadas(api, 'PATCH /api/configuracion')).toEqual([{ telefono: '01 555 0000' }]);
+  });
+
+  it('31: si el PATCH falla, todo vuelve a activarse con lo escrito y los errores junto a cada campo', async () => {
+    let patch: ReturnType<typeof diferido> | null = null;
+    comoAdmin({
+      'PATCH /api/configuracion': async () => {
+        patch = diferido();
+        await patch.promesa;
+        return error('SOLICITUD_INVALIDA', 400, {
+          errores: [{ campo: 'minutosBloqueo', mensaje: 'Mensaje de la API para el bloqueo.' }],
+        });
+      },
+    });
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    await usuario.type(await screen.findByLabelText(TELEFONO), '01 555 0000');
+    const bloqueo = screen.getByLabelText(BLOQUEO);
+    await usuario.clear(bloqueo);
+    await usuario.type(bloqueo, '20');
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await waitFor(() => expect(patch).not.toBeNull());
+    expect(screen.getByLabelText(TELEFONO)).toBeDisabled();
+
+    await act(async () => {
+      patch?.resolver();
+      await new Promise((resolver) => setTimeout(resolver, 50));
+    });
+    expect(await screen.findByText('Mensaje de la API para el bloqueo.')).toBeInTheDocument();
+    expect(screen.getByLabelText(TELEFONO)).toBeEnabled();
+    expect(screen.getByLabelText(TELEFONO)).toHaveValue('01 555 0000');
+    expect(screen.getByLabelText(BLOQUEO)).toBeEnabled();
+    expect(screen.getByLabelText(BLOQUEO)).toHaveValue('20');
+    expect(screen.getByRole('button', GUARDAR)).toBeEnabled();
+    for (const boton of screen.getAllByRole('button', { name: /Usar el valor por defecto/ })) {
+      expect(boton).toBeEnabled();
+    }
   });
 });

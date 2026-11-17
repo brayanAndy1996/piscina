@@ -71,6 +71,9 @@ function sonIguales(a: ConfiguracionAcademia, b: ConfiguracionAcademia): boolean
 const AVISO_BASE_NUEVA =
   'Otro administrador cambió la configuración mientras editabas. Actualizamos los campos que no tocaste; revisa los tuyos antes de guardar.';
 
+const AVISO_SIN_COMPROBAR =
+  'No pudimos comprobar si la configuración cambió. Tus cambios siguen aquí y puedes guardarlos.';
+
 function esCampo(nombre: unknown): nombre is CampoConfiguracion {
   return CAMPOS_CONFIGURACION.some((campo) => campo === nombre);
 }
@@ -96,6 +99,12 @@ export function PaginaConfiguracion() {
 function ContenidoConfiguracion() {
   const consulta = useConfiguracion();
   useAlPerderSesion(consulta.error);
+  // El formulario se muestra solo con la respuesta pedida al entrar, nunca con la caché sola (criterio 27 a). Una vez a la vista,
+  // sigue a la vista aunque un `GET` en segundo plano falle: no se pierden las ediciones (criterio 30).
+  const recienPedida = consulta.isFetchedAfterMount && !consulta.isError && consulta.data !== undefined;
+  const [yaMostrado, setYaMostrado] = useState(false);
+  if (recienPedida && !yaMostrado) setYaMostrado(true);
+  const verFormulario = recienPedida || (yaMostrado && consulta.data !== undefined);
 
   return (
     <div className="space-y-4">
@@ -106,10 +115,11 @@ function ContenidoConfiguracion() {
       <p className="text-slate-700">
         Ajusta los valores de tu academia. Los cambios valen desde que los guardas y no modifican lo que ya se registró.
       </p>
-      {consulta.isPending || (!consulta.isError && !consulta.isFetchedAfterMount) ? (
-        <p role="status" className="text-slate-700">
-          Cargando…
-        </p>
+      {verFormulario && consulta.data ? (
+        <>
+          {consulta.isError && !esErrorDeApi(consulta.error, 401) ? <Alerta>{AVISO_SIN_COMPROBAR}</Alerta> : null}
+          <FormularioConfiguracion base={consulta.data} />
+        </>
       ) : consulta.isError ? (
         <div className="space-y-3">
           {esErrorDeApi(consulta.error, 401) ? null : <Alerta>{mensajeGeneral(consulta.error)}</Alerta>}
@@ -118,8 +128,9 @@ function ContenidoConfiguracion() {
           </button>
         </div>
       ) : (
-        // Solo se muestra con la respuesta pedida al entrar, nunca con la caché sola (criterio 27 a).
-        <FormularioConfiguracion base={consulta.data} />
+        <p role="status" className="text-slate-700">
+          Cargando…
+        </p>
       )}
     </div>
   );
@@ -246,6 +257,7 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
       {GRUPOS.map((grupo) => (
         <fieldset
           key={grupo.titulo}
+          disabled={actualizar.isPending}
           className="space-y-5 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 sm:p-6"
         >
           <legend className="sr-only">{grupo.titulo}</legend>
@@ -257,7 +269,10 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
         </fieldset>
       ))}
 
-      <fieldset className="space-y-5 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 sm:p-6">
+      <fieldset
+        disabled={actualizar.isPending}
+        className="space-y-5 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 sm:p-6"
+      >
         <legend className="sr-only">Identidad</legend>
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Identidad</h2>

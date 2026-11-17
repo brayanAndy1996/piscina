@@ -24,9 +24,11 @@ export function LayoutPanel({
   const miAcademia = useMiAcademia(!usuario.debeCambiarClave);
   const navegar = useNavigate();
   const cerrar = useCerrarSesionAcademia();
-  // Si la petición falla, el panel funciona igual: con el nombre de la sesión y sin teléfono (criterio 24).
-  const nombre = miAcademia.data?.nombre ?? usuario.academia.nombre;
-  const telefono = miAcademia.data?.telefono ?? null;
+  // Solo se usa la respuesta de la academia de la sesión vigente. Mientras tarda, si falla o si la consulta está desactivada,
+  // el panel funciona igual: con el nombre de la sesión y sin teléfono (criterios 24 y 28).
+  const propia = miAcademia.data?.nombreCorto === usuario.academia.nombreCorto ? miAcademia.data : undefined;
+  const nombre = propia?.nombre ?? usuario.academia.nombre;
+  const telefono = propia?.telefono ?? null;
   const rutaIngreso = `/a/${encodeURIComponent(usuario.academia.nombreCorto)}/ingresar`;
 
   return (
