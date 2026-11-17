@@ -832,6 +832,9 @@ describe('el formulario ante un GET en segundo plano y un guardado en curso (cri
     }
   });
   describe('31: el formulario se desbloquea al responder el PATCH, sin esperar a "mi-academia"', () => {
+    const TELEFONO_NUEVO = '01 777 1111';
+    const MI_ACADEMIA_NUEVA = { academia: { ...MI_ACADEMIA.academia, telefono: TELEFONO_NUEVO } };
+
     async function guardarConMiAcademiaLenta(respuestaMiAcademia: () => Promise<Respuesta>) {
       let recargaMiAcademia = false;
       const api = comoAdmin({
@@ -844,7 +847,7 @@ describe('el formulario ante un GET en segundo plano y un guardado en curso (cri
       });
       const usuario = userEvent.setup();
       mostrar('/panel/configuracion');
-      await usuario.type(await screen.findByLabelText(TELEFONO), '01 555 0000');
+      await usuario.type(await screen.findByLabelText(TELEFONO), TELEFONO_NUEVO);
       recargaMiAcademia = true;
       await usuario.click(screen.getByRole('button', GUARDAR));
       await waitFor(() => expect(llamadas(api, 'PATCH /api/configuracion')).toHaveLength(1));
@@ -871,9 +874,14 @@ describe('el formulario ante un GET en segundo plano y un guardado en curso (cri
     it('si "mi-academia" tarda 2 s, el formulario ya está activo apenas responde el PATCH', async () => {
       await guardarConMiAcademiaLenta(
         () =>
-          new Promise<Respuesta>((resolver) => setTimeout(() => resolver({ estado: 200, cuerpo: MI_ACADEMIA }), 2000)),
+          new Promise<Respuesta>((resolver) =>
+            setTimeout(() => resolver({ estado: 200, cuerpo: MI_ACADEMIA_NUEVA }), 2000),
+          ),
       );
       comprobarActivo();
+      expect(screen.getByRole('link', { name: '01 555 0000' })).toBeInTheDocument();
+      expect(await screen.findByRole('link', { name: TELEFONO_NUEVO }, { timeout: 4000 })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: '01 555 0000' })).not.toBeInTheDocument();
     });
   });
 });
