@@ -16,6 +16,9 @@ actor (modifica D11; secciones 6 y "Riesgos").
 
 **Ronda 1 adversarial (17/11/2026):** 3 fallas (32, 33, 34). Cómo se corrige cada una, en la sección 9 de abajo.
 
+**Ronda 2 adversarial (17/11/2026):** 2 fallas en el 34 (no crítico), ninguna en ruta crítica; criterios 34 a y 34 b y
+DT-7 de la spec. La corrección, en la sección 10 de abajo; la sección 9.3 queda reemplazada en lo que se contradiga.
+
 ## Módulos afectados
 
 ```
@@ -307,6 +310,48 @@ y no se edita). Con `ALTER TABLE planes DROP CONSTRAINT …, ADD CONSTRAINT …`
 - Prueba no protegida (backend): unitarias de `normalizarNombrePlan` (NFD → NFC, U+00A0, U+3000, U+200B, U+FEFF,
   U+00AD, espacios dobles, bidi sigue fallando) e integración de los cuatro 409 del criterio 34 en `POST` y `PATCH`.
 
+_(Ronda 2: el orden y los caracteres de arriba los reemplaza la sección 10.)_
+
+### 10. Corrección de la ronda 2 adversarial (criterios 34 a y 34 b, DT-7)
+
+Causa: el NFC se aplicaba antes de quitar los invisibles, así que `"Natacio" + U+200B + U+0301 + "n"` quedaba en NFD (la tilde
+suelta no se componía con la `o` porque el U+200B las separaba al normalizar); y quitar solo `Cf` dejaba pasar
+invisibles que no son de formato (U+034F, selectores de variación, selectores mongoles, U+17B4 y U+17B5) y el braille en
+blanco U+2800.
+
+- **`normalizarNombrePlan(texto)`** en `packages/contratos/src/planes.ts`, en este orden:
+  1. quitar `[\p{Cf}\p{Default_Ignorable_Code_Point}]` salvo `\p{Bidi_Control}` (por ejemplo
+     `/(?!\p{Bidi_Control})[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu`);
+  2. reemplazar `\p{Zs}` y U+2800 por `' '`;
+  3. colapsar `/ {2,}/g` en un espacio;
+  4. recortar;
+  5. `normalize('NFC')`, al final.
+
+  Los pasos 1 y 2 pueden ir en cualquier orden (ningún carácter está en los dos grupos). U+2028 y U+2029 no se tocan
+  (los rechaza `textoVisibleSchema`). Ningún carácter que sobreviva a los pasos 1 a 4 se convierte en espacio ni en
+  invisible con el NFC (los espacios con descomposición canónica, U+2000 y U+2001, ya son `Zs` y se reemplazaron en el
+  paso 2), por eso no hace falta repetir los pasos después.
+- **Revisar lo ya escrito:** el `planes.ts` del árbol de trabajo quita solo `\p{Default_Ignorable_Code_Point}`; la spec
+  pide también `\p{Cf}` (los `Cf` que no son ignorables, como U+0600 a U+0605, U+06DD, U+070F, U+08E2, U+110BD,
+  U+110CD y los de formato egipcios U+13430 en adelante). Se suma `\p{Cf}` a la clase del paso 1.
+- **`nombrePlanSchema`** no cambia: `z.string().transform(normalizarNombrePlan).pipe(textoVisibleSchema(…))`.
+  `textoVisibleSchema` no cambia.
+- **Web:** `frontend/src/modulos/planes/campos.ts` usa `normalizarNombrePlan` (importada de `@aquagestion/contratos`, como
+  el resto del archivo) en lugar de `campos.nombre.trim()` para el nombre que envía en `POST` y en
+  `PATCH` y para decidir si el nombre cambió frente a la base del formulario (criterio 29). Los demás campos siguen con
+  `trim()`.
+- **Servicio de planes y base:** sin cambios (reciben el nombre ya normalizado; el índice sigue sobre `lower(nombre)`).
+- **Pruebas no protegidas:**
+  - contratos (`packages/contratos/src/planes-nombre-normalizado.test.ts`): "Plan Natacio" + U+200B + U+0301 + "n"
+    y sus variantes con U+00AD, U+FEFF y U+2060 dan "Plan Natación" en NFC; "Plan Men" + U+034F + "sual",
+    "Plan" + U+2800 + "Mensual", "Plan Mensual" + U+FE0F, "Plan Men" + U+180B + "sual" y "Plan Men" + U+E0101 + "sual"
+    dan "Plan Mensual"; U+202E, U+200F,
+    U+061C, U+2028 y U+2029 se conservan y el esquema responde con error en `nombre`; idempotencia y resultado en NFC
+    sobre una lista amplia de entradas (incluidas las de la ronda 1);
+  - backend (integración): los 409 de los criterios 34 a y 34 b en `POST` y `PATCH`, y el nombre guardado en NFC;
+  - web (componentes o unitarias de `campos.ts`): un nombre con invisibles se envía normalizado, y editar un plan
+    cambiando solo invisibles o la forma NFD no envía `nombre` en el `PATCH`.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -330,6 +375,7 @@ y no se edita). Con `ALTER TABLE planes DROP CONSTRAINT …, ADD CONSTRAINT …`
 | 409 de los choques por el nombre de la restricción (ronda 1, criterio 32) | `ON CONFLICT DO NOTHING` y releer; reintentar | Releer falla si la clase que chocó cambió entre medio (500); el nombre es determinista. Reintentar queda permitido por la spec |
 | Migración nueva para los `CHECK` de la ronda 1 (criterio 33) | Editar la migración ya aplicada | Las bases de desarrollo ya la aplicaron; Prisma detecta el cambio en la suma de comprobación de una migración aplicada |
 | Nombre del plan normalizado en el esquema zod (DT-6, criterio 34) | Solo en el servicio; índice sobre `normalize(...)` en la base | La web ve y cuenta lo mismo que guarda la API; el índice no resuelve espacios ni formato |
+| NFC al final; quitar `Cf` y `Default_Ignorable_Code_Point` salvo bidi; U+2800 como espacio (DT-7, criterios 34 a y 34 b) | NFC al principio (o dos veces); NFKC; `Cf` más una lista a mano | Un invisible entre la letra y la tilde impedía componer; NFKC unifica lo que se ve distinto; la propiedad de Unicode no se queda corta |
 
 ## Migraciones
 
@@ -367,3 +413,7 @@ y no se edita). Con `ALTER TABLE planes DROP CONSTRAINT …, ADD CONSTRAINT …`
   dimensiones; las pruebas deben exigir `23514` exacto.
 - **Ronda 1, criterio 34:** un cambio en `nombrePlanSchema` no debe tocar `textoVisibleSchema` ni los demás campos que
   lo usan (001, 002, 003).
+- **Ronda 2, criterios 34 a y 34 b:** la clase de caracteres del paso 1 depende de la versión de Unicode del motor de
+  JavaScript (Node 22 en la API y el navegador en la web); un carácter nuevo podría tratarse distinto en un navegador
+  viejo, pero la API vuelve a normalizar y decide. Quitar U+200D y los selectores de variación separa los emojis
+  compuestos (riesgo aceptado en la spec).

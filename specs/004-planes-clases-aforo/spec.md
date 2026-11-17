@@ -22,6 +22,9 @@
   negocio) en "Decisiones".
 - **Ronda 1 adversarial:** 3 fallas (32, 33, 34), agregadas como criterios en "G. Ronda 1 adversarial" (17/11/2026).
   32 y 33 son de ruta crítica; 34 no (DT-6 de 004). Ninguna cambia una regla de negocio.
+- **Ronda 2 adversarial:** 2 fallas en el 34 (no crítico), ninguna en ruta crítica (1 a 7, 10, 18, 22, 23, 32 y 33).
+  Agregadas como criterios 34 a y 34 b en "H. Ronda 2 adversarial" (17/11/2026), con la decisión técnica DT-7 de 004.
+  Ninguna cambia una regla de negocio.
 
 ## Objetivo
 
@@ -53,7 +56,8 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   un precio `NaN` llega al cobro (RN-25, D-03) y un arreglo de dos dimensiones deja a toda la academia sin la lista de
   planes, de la que parten la inscripción y el cobro.
 
-No son críticos, pero llevan _(prueba obligatoria)_: 8, 9, 11 a 17, 19 a 21, 24, 25 y 34 (API y dominio) y 26 a 29
+No son críticos, pero llevan _(prueba obligatoria)_: 8, 9, 11 a 17, 19 a 21, 24, 25, 34, 34 a y 34 b (API, contratos y
+dominio; el 34 a también en la web) y 26 a 29
 (web, con pruebas de componentes). Los 30 y 31 (semilla y documentación) los verifica el revisor.
 
 ## Criterios de aceptación
@@ -310,7 +314,46 @@ Fallas encontradas en la ronda 1 del ataque (T13, 17/11/2026), agregadas antes d
     responde 409 `NOMBRE_PLAN_EN_USO` sin escribir ni auditar; lo mismo con "Natación" escrito en NFD (`a` + U+0301)
     contra "Natación" en NFC. El nombre que se guarda y se devuelve es el normalizado ("Plan Mensual" con un solo
     espacio normal), y los límites del criterio 9 (de 3 a 80 caracteres, 3 visibles) se miden sobre él. _(prueba
-    obligatoria)_ (DR-8, DT-6 de 004; ataque ronda 1)
+    obligatoria)_ (DR-8, DT-6 de 004; ataque ronda 1) _(Corregido y ampliado por los criterios 34 a y 34 b, ronda 2
+    adversarial: el NFC va al final, no al principio, y se quitan todos los invisibles de `Default_Ignorable_Code_Point`.
+    Donde este criterio y el 34 a o el 34 b difieran, mandan el 34 a y el 34 b.)_
+
+### H. Ronda 2 adversarial
+
+Fallas encontradas en la ronda 2 del ataque (17/11/2026), las dos en el criterio 34, que no es de ruta crítica; ninguna
+en los criterios críticos. Agregadas antes de tocar el código. Origen de cada una: "ataque ronda 2". En los ejemplos,
+los caracteres invisibles se escriben por su código (`"Plan Men" + U+034F + "sual"`), no pegados en el texto.
+
+**34 a. El nombre guardado siempre queda en NFC (corrige el orden del 34).** `normalizarNombrePlan` aplica sus pasos
+en este orden: 1) quita los caracteres invisibles (criterio 34 b), salvo los de control bidireccional; 2) pasa los
+espacios Unicode (`Zs`) y el braille en blanco U+2800 a un espacio normal; 3) colapsa los espacios seguidos; 4) recorta
+los extremos; y 5) por último, normaliza a NFC. (El orden de 1 y 2 puede invertirse, porque ningún carácter está en los
+dos grupos; lo que no puede cambiar es que el NFC vaya al final.) Así, un invisible entre una letra y una tilde suelta
+no impide que se compongan. Entonces:
+
+- a) dado un plan de A llamado "Plan Natación" (NFC), cuando se crea o se renombra otro de A como
+  `"Plan Natacio" + U+200B + U+0301 + "n"` (una `o`, un espacio de ancho cero y la tilde suelta), y lo mismo con U+00AD,
+  U+FEFF o U+2060 en lugar de U+200B, responde 409 `NOMBRE_PLAN_EN_USO` sin escribir ni auditar;
+- b) dado ese nombre en un plan nuevo de otra academia (o sin choque), se guarda y se devuelve "Plan Natación" en NFC
+  (`nombre === nombre.normalize('NFC')`), nunca con la tilde suelta;
+- c) la función es idempotente (`normalizarNombrePlan(normalizarNombrePlan(x)) === normalizarNombrePlan(x)`) y su
+  resultado siempre está en NFC, para cualquier texto de entrada (prueba de propiedades o una lista amplia de casos);
+- d) la web usa la misma función (no un `trim`) para preparar el nombre que envía y para decidir si el nombre cambió al
+  editar (criterio 29), así que muestra, cuenta y envía lo mismo que guarda la API.
+
+_(prueba obligatoria; no protegida)_ (DR-8, DT-6 y DT-7 de 004; criterio 34; ataque ronda 2)
+
+**34 b. Más caracteres invisibles (amplía el 34).** Antes de comparar y guardar, además de los de formato (`Cf`) se
+quitan todos los de la propiedad Unicode `Default_Ignorable_Code_Point`, salvo los de control bidireccional
+(`Bidi_Control`), que siguen respondiendo 400 (criterio 9, `textoVisibleSchema`): entre otros, la unión de grafemas
+U+034F, los selectores de variación U+FE00 a U+FE0F y U+E0100 a U+E01EF, los selectores mongoles U+180B a U+180F, U+17B4
+y U+17B5, los rellenos de hangul U+115F, U+1160, U+3164 y U+FFA0, y las etiquetas U+E0000 a U+E0FFF. El braille en
+blanco U+2800 cuenta como un espacio (criterio 34 a, paso 2). Los separadores de línea y de párrafo (U+2028, U+2029) no
+son `Zs` ni se quitan: siguen respondiendo 400. Dado un plan de A llamado "Plan Mensual", cuando se crea o se renombra
+otro de A como `"Plan Men" + U+034F + "sual"` o `"Plan" + U+2800 + "Mensual"`, entonces responde 409
+`NOMBRE_PLAN_EN_USO` sin escribir ni auditar; lo mismo con `"Plan Mensual" + U+FE0F` y `"Plan Men" + U+180B + "sual"`.
+Un nombre con U+202E o U+200F sigue respondiendo 400 en `nombre`. _(prueba obligatoria; no protegida)_ (DR-8, DT-7 de
+004; criterio 34; ataque ronda 2)
 
 ## Casos límite
 
@@ -337,6 +380,12 @@ Fallas encontradas en la ronda 1 del ataque (T13, 17/11/2026), agregadas antes d
   cero): 400 en `nombre` (criterios 9 y 34).
 - **Renombrar un plan solo con espacios invisibles o en NFD** ("Plan Mensual" a `"Plan Mensual"`): el nombre
   normalizado es el mismo, así que es un `PATCH` sin cambios (200 sin escribir ni auditar, criterio 12).
+- **Invisible entre una letra y su tilde suelta** (`"Natacio" + U+200B + U+0301 + "n"`): se quita el invisible y después
+  se compone en NFC; choca con "Natación" (criterio 34 a).
+- **Nombre con emojis compuestos o selectores de variación** (una familia unida con U+200D, un corazón con U+FE0F): se
+  guardan sin U+200D ni U+FE0F, como emojis sueltos (criterio 34 b; ver "Riesgos aceptados").
+- **Braille en blanco entre palabras** (`"Plan" + U+2800 + "Mensual"`): cuenta como un espacio y choca con
+  "Plan Mensual" (criterio 34 b).
 
 ## Reglas de negocio aplicables
 
@@ -406,7 +455,8 @@ incorrecto) y el nombre de la lista cuando es de la lista entera (vacía, con re
   `estado`), `respuestaPlanSchema` (`{ plan }`) y `respuestaListaPlanesSchema` (`{ planes }`), con sus límites
   exportados para la web. _(Ronda 1, criterio 34, DT-6.)_ El `nombre` de `crearPlanSchema` y `actualizarPlanSchema` se
   normaliza en el propio esquema antes de sus validaciones, con una función pura exportada (`normalizarNombrePlan`),
-  para que la web valide y muestre lo mismo que guarda la API.
+  para que la web valide y muestre lo mismo que guarda la API. _(Ronda 2, criterios 34 a y 34 b, DT-7: el orden de los
+  pasos, con el NFC al final, y los caracteres que se quitan.)_
 - `packages/contratos/src/clases.ts`: `crearClaseSchema` (estricto: `nivel`, `diaSemana`, `horaInicio`, `entrenadorId`,
   `aforo`), `actualizarClaseSchema` (estricto: `entrenadorId`, `aforo` y `activo` opcionales, al menos uno),
   `AFORO_MINIMO` 20 y `AFORO_MAXIMO` 50, `claseSchema` (`id`, `nivel`, `diaSemana`, `horaInicio`, `horaFin`, `aforo`,
@@ -540,8 +590,24 @@ Para documentar en `docs/arquitectura.md` (criterio 31):
   podría guardarlos, y la API los muestra tal como están.
 - **Nombres parecidos que no son iguales (criterio 34):** la normalización une lo que Unicode considera el mismo texto
   o un espacio invisible, pero no las letras de otros alfabetos que se parecen (una `а` cirílica frente a una `a`
-  latina) ni los rellenos que Unicode clasifica como letras (U+3164); esos nombres se aceptan como distintos. La
-  normalización vive en la API y en la web: una escritura directa en la base podría guardar un nombre sin normalizar.
+  latina); esos nombres se aceptan como distintos. La normalización vive en la API y en la web: una escritura directa
+  en la base podría guardar un nombre sin normalizar. _(Ronda 2: los rellenos de hangul que la ronda 1 dejaba aquí
+  pasan al punto siguiente.)_
+- **Efectos de quitar los invisibles (criterio 34 b, ronda 2):** quitar U+200D y los selectores de variación separa
+  los emojis compuestos de un nombre de plan: "Plan" seguido de la familia de tres personas (tres emojis unidos con
+  U+200D) se guarda como tres emojis sueltos, y un corazón con U+FE0F pierde su selector. Los rellenos de hangul (U+3164, U+1160, U+115F, U+FFA0), que la ronda 1 aceptaba como distintos, ya no
+  cuentan como visibles (criterio 87 de 001) y ahora, por ser `Default_Ignorable_Code_Point`, se quitan del nombre sin
+  dejar un espacio en su lugar: `"Plan" + U+3164 + "Mensual"` queda `"PlanMensual"`, que no choca con "Plan Mensual". Se acepta
+  porque nadie escribe así un nombre de plan en una academia peruana y nunca se muestran dos nombres que se vean iguales.
+- **Ligaduras de compatibilidad (criterio 34 a):** se eligió NFC y no NFKC, así que `"Plan Proﬁ"` (con la ligadura
+  U+FB01 "ﬁ") no se unifica con `"Plan Profi"` y se acepta como distinto. NFKC uniría además superíndices, anchos
+  completos y otros caracteres que sí se ven distintos.
+- **Filas imposibles para la web escritas directo en la base (D3):** la base admite precios hasta 99 999 999.99
+  (`numeric(10,2)`) y años de 5 cifras en `vigencia_inicio` y `vigencia_fin`; la API solo los produce dentro de los
+  límites de DR-1. Si alguien escribe directo en la base un precio mayor que 99 999.99 o una fecha con año de 5 cifras,
+  la web rechaza la respuesta de `GET /api/planes` (no cumple `respuestaListaPlanesSchema`) y la página de planes de
+  esa academia muestra un error hasta que se corrija la fila. Una fecha antes de Cristo escrita directo se mostraría
+  como si fuera después de Cristo. Ninguna de las dos se puede escribir por la API.
 
 ## Decisiones
 
@@ -628,6 +694,18 @@ propuesta.
   solo puede afinar entre los dos 409 (criterio 20 e), nunca convertir el resultado en un 500.
 - **Corrección del criterio 33.** Una migración nueva con los `CHECK`; la de `planes_clases` ya aplicada no se edita
   (plan, "Migraciones").
+
+### Decisiones de la ronda 2 adversarial (17/11/2026)
+
+- **DT-7. Qué se quita del nombre del plan y en qué orden (criterios 34 a y 34 b).** Decisión técnica del orquestador
+  para cumplir DR-8, no una regla de negocio nueva. Se quitan los caracteres de formato (`Cf`) y todos los de
+  `Default_Ignorable_Code_Point`, salvo los de control bidireccional (siguen con 400, como en DT-6); el braille en
+  blanco U+2800 cuenta como un espacio, igual que los `Zs`; y el NFC se aplica al final, después de quitar los
+  invisibles, de colapsar y de recortar, para que el nombre guardado siempre esté en NFC. Se usa la propiedad de
+  Unicode y no una lista a mano, como en `textoVisibleSchema` (criterio 87 de 001). Alternativas descartadas: aplicar
+  el NFC dos veces (al principio y al final; el del principio no aporta nada); NFKC (unificaría caracteres que se ven
+  distintos, ver "Riesgos aceptados"); quitar solo `Cf` más una lista de excepciones (se queda corta con cada versión
+  de Unicode, que es lo que encontró el ataque).
 
 ### Decisiones de diseño (técnicas)
 

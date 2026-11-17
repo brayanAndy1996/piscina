@@ -89,7 +89,8 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
       día, de mes y con el servidor en otra zona. Por cada falla: el especificador agrega el criterio a `spec.md`,
       test-writer la prueba protegida en rojo, se corrige y se vuelve a atacar, hasta una ronda sin fallas.
       **Ronda 1 adversarial: 3 fallas (32, 33, 34)**, agregadas a la spec ("G. Ronda 1 adversarial"); tareas T13a a
-      T13f.
+      T13f. **Ronda 2 adversarial: 2 fallas en el 34 (no crítico), ninguna en ruta crítica** (34 a y 34 b); tareas
+      T13h a T13j.
 
 ### Ronda 1 adversarial
 
@@ -113,6 +114,23 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
       `PATCH` sin cambios (plan, sección 9.3; criterios 11, 12, 34)
 - [ ] T13g · tester · Pruebas protegidas en verde (T13a, T13b) y suite completa; después, el orquestador vuelve a
       lanzar el ataque (ronda 2)
+
+### Ronda 2 adversarial
+
+**Ronda 2 adversarial: 2 fallas en el 34 (no crítico), ninguna en ruta crítica**; agregadas a la spec como criterios
+34 a y 34 b ("H. Ronda 2 adversarial") y DT-7. Sin pruebas protegidas nuevas (no son de ruta crítica).
+
+- [ ] T13h · backend · Corrección en `packages/contratos/src/planes.ts`: `normalizarNombrePlan` quita `Cf` y
+      `Default_Ignorable_Code_Point` salvo `Bidi_Control`, pasa `Zs` y U+2800 a espacio, colapsa, recorta y aplica NFC
+      al final (plan, sección 10). Prueba no protegida en `planes-nombre-normalizado.test.ts` (invisible entre letra y
+      tilde, U+034F, U+2800, selectores de variación y mongoles, bidi y U+2028/U+2029 siguen con error, idempotencia y
+      resultado en NFC) e integración de los 409 y del nombre guardado en NFC en `POST` y `PATCH` (criterios 34 a, 34 b)
+- [ ] T13i · frontend · `frontend/src/modulos/planes/campos.ts` usa `normalizarNombrePlan` en lugar de `trim()` para el
+      nombre que envía y para decidir si cambió frente a la base del formulario; prueba no protegida (un nombre con
+      invisibles se envía normalizado; un cambio solo de invisibles o de NFD no manda `nombre` en el `PATCH`)
+      (criterios 29 y 34 a d)
+- [ ] T13j · tester · Suite completa (contratos, backend y web), lint y verificación de tipos; después, el orquestador
+      decide si relanza el ataque sobre el 34 o pasa a la revisión (T14)
 
 ## Revisión y cierre
 
