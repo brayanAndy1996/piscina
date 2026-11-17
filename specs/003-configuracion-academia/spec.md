@@ -26,6 +26,10 @@
   falla en la web (F3, media: el formulario queda en "Guardando…" hasta que responde `GET /api/mi-academia`), que se
   corrige como precisión del criterio 31 (31 a), y dos observaciones (O8 y O9). Todo en la sección I de los criterios.
   Pendiente: corregir F3 y la ronda 4.
+- **Ataque, ronda 4** (sobre a36b244, con la corrección de F3): **sin fallas; termina el ciclo adversarial.** El
+  criterio 31 a quedó verificado y no hay regresiones en 27 a 31; la batería del backend se repitió contra PostgreSQL
+  real con los mismos resultados. Una observación sobre la prueba de componentes del 31 a (O10, no es falla). Todo en
+  la sección J de los criterios. Siguen la revisión, la suite completa y la documentación.
 
 ## Objetivo
 
@@ -396,6 +400,33 @@ precisión del criterio 31.
   `GET /api/mi-academia`) responde 403 porque la sesión cambió o se cerró, lo maneja el `GET /api/sesion` que la web
   vuelve a pedir, y `RutaConSesion` actúa según su resultado (criterio 59 de 002). No es falla: el formulario no envía
   nada con esa respuesta y el 403 no muestra datos.
+
+### J. Ataque adversarial, ronda 4 (sobre a36b244)
+
+**Resultado: sin fallas con impacto. Termina el ciclo adversarial de la 003.** No se agregan criterios.
+
+Lo que la ronda 4 probó:
+
+- **Criterio 31 a (F3):** verificado con un `MutationObserver`, sin estados intermedios: al responder el `PATCH`, el
+  formulario vuelve a quedar activo y deja de decir "Guardando…" sin esperar a `GET /api/mi-academia`, y nunca se ven
+  a la vez "Configuración guardada." y "Guardando…" (O8 resuelta).
+- **Sin regresiones en la web:** los criterios 27 a 30, incluido el 28 (cabecera solo con la academia de la sesión),
+  se siguen cumpliendo.
+- **Backend, contra PostgreSQL real:** la batería de las rondas anteriores se repitió con los mismos resultados:
+  aislamiento entre academias (criterio 4), permisos (5), cuerpos de las peticiones, bloqueo por academia con valores
+  inválidos guardados (13 a 16), concurrencia, doble clic (idempotencia, criterio 9) y 300 rondas pareadas del criterio
+  17 (mismo trabajo en la base con y sin cuenta).
+
+**Observación de la ronda 4** _(no es falla)_:
+
+- **O10. La prueba del 31 a no comprueba la cabecera al responder `mi-academia`.** El criterio 31 a pide en su prueba
+  obligatoria que, cuando `GET /api/mi-academia` responde tras guardar, la cabecera muestre el teléfono nuevo. Las
+  pruebas de `frontend/src/modulos/configuracion/Configuracion.test.tsx` (bloque "31: el formulario se desbloquea al
+  responder el PATCH…") solo comprueban que el formulario queda activo: en el caso de 2 s, `mi-academia` responde con
+  el teléfono de antes y la cabecera no se mira. El comportamiento es correcto (la ronda 4 lo verificó); lo que falta
+  es la comprobación en la prueba. La puede cerrar el frontend o el revisor sumando esa aserción (respuesta de
+  `mi-academia` con el teléfono guardado y la cabecera que lo muestra). No bloquea el cierre ni requiere otra ronda de
+  ataque: el 31 a no es crítico.
 
 ## Casos límite
 
