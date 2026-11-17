@@ -52,7 +52,7 @@ de bloqueo con los minutos que faltan"). T10 no tiene registro propio en el hist
 - [x] T8 · backend · Semilla: teléfono de ejemplo inventado en `delfines`, repetible (criterio 25)
 - [x] T9 · frontend · `/panel/configuracion`, menú, `useMiAcademia` en `LayoutPanel` y mensaje del 423 de la academia,
       con pruebas de componentes (criterios 19, 22 a 24; el 27 lo agrega la ronda 1 de ataque, T11.3)
-- [ ] T10 · tester · Pruebas protegidas en verde y suite completa _(sin registro en el historial; se hace en T14)_
+- [x] T10 · tester · Pruebas protegidas en verde y suite completa _(sin registro en el historial; se hace en T14)_
 
 ## Ataque
 
@@ -155,7 +155,7 @@ en la sección J de [`spec.md`](spec.md).
 - [x] T13 · revisor · Comparar con la spec, las reglas de `docs/arquitectura.md` (DT-5 de 002, `@Permiso`/`@SoloSesion`,
       `await` en cada paso, sin caché, errores con `errorParaRegistro`, registro sin datos sensibles) y las convenciones.
       _Hecho: aprobado con cambios menores._
-- [ ] T14 · tester · Suite completa, lint y verificación de tipos
+- [x] T14 · tester · Suite completa, lint y verificación de tipos
 - [x] T15 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (claves, valores por defecto,
       `leerConfiguracion`, orden de bloqueos y regla para las historias siguientes), `README.md` y guía de uso
       (criterio 26). _Hecho: documentación actualizada en el árbol de trabajo; sin commit, a pedido del orquestador._
@@ -165,5 +165,5 @@ en la sección J de [`spec.md`](spec.md).
 ## Solo ruta crítica
 
 - [x] Pruebas escritas por test-writer y confirmadas en rojo (de0ca51)
-- [ ] Pruebas en verde tras la implementación (se confirma en T14)
+- [x] Pruebas en verde tras la implementación (se confirma en T14)
 - [x] Ataque adversarial sin fallas abiertas (ronda 4 sobre a36b244)
