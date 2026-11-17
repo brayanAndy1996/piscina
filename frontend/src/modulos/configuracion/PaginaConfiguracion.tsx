@@ -9,7 +9,7 @@ import {
   CONFIGURACION_POR_DEFECTO,
   LIMITES_CONFIGURACION,
 } from '@aquagestion/contratos';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { Link } from 'react-router';
 import { Alerta, CampoTexto, ESTILO_BOTON } from '../../componentes/ui';
@@ -63,6 +63,14 @@ function cambiosDe(textos: Campos, base: ConfiguracionAcademia): Record<string, 
   return cambios;
 }
 
+/** Si las dos configuraciones valen lo mismo en los seis campos. */
+function sonIguales(a: ConfiguracionAcademia, b: ConfiguracionAcademia): boolean {
+  return CAMPOS_CONFIGURACION.every((campo) => a[campo] === b[campo]);
+}
+
+const AVISO_BASE_NUEVA =
+  'Otro administrador cambió la configuración mientras editabas. Actualizamos los campos que no tocaste; revisa los tuyos antes de guardar.';
+
 function esCampo(nombre: unknown): nombre is CampoConfiguracion {
   return CAMPOS_CONFIGURACION.some((campo) => campo === nombre);
 }
@@ -98,7 +106,7 @@ function ContenidoConfiguracion() {
       <p className="text-slate-700">
         Ajusta los valores de tu academia. Los cambios valen desde que los guardas y no modifican lo que ya se registró.
       </p>
-      {consulta.isPending ? (
+      {consulta.isPending || (!consulta.isError && !consulta.isFetchedAfterMount) ? (
         <p role="status" className="text-slate-700">
           Cargando…
         </p>
@@ -110,23 +118,63 @@ function ContenidoConfiguracion() {
           </button>
         </div>
       ) : (
+        // Solo se muestra con la respuesta pedida al entrar, nunca con la caché sola (criterio 27 a).
         <FormularioConfiguracion base={consulta.data} />
       )}
     </div>
   );
 }
 
+/**
+ * El formulario se llena con la configuración que llega, pero compara siempre contra su propia base de llenado: la
+ * configuración con la que se llenaron los campos por última vez (criterio 27). Así nunca envía como cambio un valor
+ * viejo que el administrador no tocó.
+ */
 function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
   const usuario = useUsuario();
-  const actualizar = useActualizarConfiguracion();
   const [guardado, setGuardado] = useState(false);
-  const { register, handleSubmit, setValue, setError, clearErrors, reset, control, formState } = useForm<Campos>({
-    defaultValues: aTextos(base),
-  });
+  const [avisoBaseNueva, setAvisoBaseNueva] = useState(false);
+  const [baseDeLlenado, setBaseDeLlenado] = useState(base);
+  // La misma base en una referencia: el efecto que recibe una base nueva la lee sin depender de ella.
+  const baseDeLlenadoRef = useRef(base);
+  const { register, handleSubmit, setValue, getValues, setError, clearErrors, reset, control, formState } =
+    useForm<Campos>({ defaultValues: aTextos(base) });
   const textos = useWatch({ control });
+
+  const fijarBase = (nueva: ConfiguracionAcademia) => {
+    baseDeLlenadoRef.current = nueva;
+    setBaseDeLlenado(nueva);
+  };
+
+  const actualizar = useActualizarConfiguracion((configuracion) => {
+    // La respuesta del PATCH es la nueva base (criterio 27 e).
+    fijarBase(configuracion);
+    reset(aTextos(configuracion));
+    setAvisoBaseNueva(false);
+    setGuardado(true);
+  });
   useAlPerderSesion(actualizar.error);
 
-  const cambios = cambiosDe({ ...aTextos(base), ...textos }, base);
+  // Llega una base distinta de la de llenado (criterio 27 a y d).
+  useEffect(() => {
+    const anterior = baseDeLlenadoRef.current;
+    if (sonIguales(base, anterior)) return;
+    const editados = Object.keys(cambiosDe(getValues(), anterior));
+    baseDeLlenadoRef.current = base;
+    setBaseDeLlenado(base);
+    if (editados.length === 0) {
+      reset(aTextos(base));
+      setAvisoBaseNueva(false);
+      return;
+    }
+    const nuevos = aTextos(base);
+    for (const nombre of CAMPOS_CONFIGURACION) {
+      if (!editados.includes(nombre)) setValue(nombre, nuevos[nombre]);
+    }
+    setAvisoBaseNueva(true);
+  }, [base, getValues, reset, setValue]);
+
+  const cambios = cambiosDe({ ...aTextos(baseDeLlenado), ...textos }, baseDeLlenado);
   const hayCambios = Object.keys(cambios).length > 0;
 
   const alEditar = (campo: CampoConfiguracion) => {
@@ -136,7 +184,7 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
 
   const enviar = handleSubmit((valores) => {
     setGuardado(false);
-    const pedido = actualizarConfiguracionSchema.safeParse(cambiosDe(valores, base));
+    const pedido = actualizarConfiguracionSchema.safeParse(cambiosDe(valores, baseDeLlenado));
     if (!pedido.success) {
       const conError = new Set<string>();
       for (const problema of pedido.error.issues) {
@@ -151,10 +199,6 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
     }
     const datos: ActualizarConfiguracion = pedido.data;
     actualizar.mutate(datos, {
-      onSuccess: (configuracion) => {
-        reset(aTextos(configuracion));
-        setGuardado(true);
-      },
       onError: (error) => {
         for (const { campo, mensaje } of erroresPorCampo(error)) {
           if (esCampo(campo)) setError(campo, { message: mensaje });
@@ -228,6 +272,11 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
         {campo('telefono')}
       </fieldset>
 
+      {avisoBaseNueva && hayCambios ? (
+        <p role="status" className="rounded-2xl bg-amber-50 p-4 text-amber-900 ring-1 ring-amber-200">
+          {AVISO_BASE_NUEVA}
+        </p>
+      ) : null}
       {guardado ? (
         <p role="status" className="rounded-2xl bg-emerald-50 p-4 text-emerald-900 ring-1 ring-emerald-200">
           Configuración guardada.

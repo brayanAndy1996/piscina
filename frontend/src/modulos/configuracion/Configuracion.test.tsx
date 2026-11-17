@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { error, llamadas, type Manejador, mostrar, rutaActual, sesionDe, simularApi } from '../../pruebas-api';
@@ -304,5 +304,199 @@ describe('nombre y teléfono en el panel (criterio 24)', () => {
     await usuario.type(campo, '01 777 1111');
     await usuario.click(screen.getByRole('button', GUARDAR));
     expect(await screen.findByRole('link', { name: '01 777 1111' })).toBeInTheDocument();
+  });
+});
+
+describe('formulario con la base de llenado (criterio 27)', () => {
+  const INTENTOS = 'Intentos fallidos antes del bloqueo (intentos)';
+  const BLOQUEO = 'Duración del bloqueo (minutos)';
+  const TOLERANCIA = 'Tolerancia de tardanza (minutos)';
+  const TELEFONO = 'Teléfono de la academia';
+  const AVISO =
+    'Otro administrador cambió la configuración mientras editabas. Actualizamos los campos que no tocaste; revisa los tuyos antes de guardar.';
+
+  /** Un servidor que guarda lo que recibe, como la API: el `PATCH` mezcla los cambios con lo vigente y responde con todo. */
+  function servidor(inicial: Record<string, unknown> = POR_DEFECTO) {
+    const estado = { actual: inicial };
+    const api = comoAdmin({
+      'GET /api/configuracion': () => ({ estado: 200, cuerpo: { configuracion: estado.actual } }),
+      'PATCH /api/configuracion': (cuerpo) => {
+        estado.actual = { ...estado.actual, ...(cuerpo as object) };
+        return { estado: 200, cuerpo: { configuracion: estado.actual } };
+      },
+    });
+    return { api, estado };
+  }
+
+  /** Corta y vuelve la conexión: la web vuelve a pedir la configuración sin desmontar el formulario. */
+  function reconectar() {
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+      window.dispatchEvent(new Event('online'));
+    });
+  }
+
+  it('a, b y c: al volver a la página tras un cambio de otro administrador, muestra lo vigente y envía solo el teléfono', async () => {
+    const { api, estado } = servidor();
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    expect(await screen.findByLabelText(INTENTOS)).toHaveValue('5');
+    await usuario.click(screen.getByRole('link', { name: /Volver al inicio/ }));
+
+    // Otro administrador endurece la seguridad mientras este volvía al inicio.
+    estado.actual = { ...POR_DEFECTO, intentosInicioSesion: 3, minutosBloqueo: 60 };
+    await usuario.click(await screen.findByRole('link', { name: /Configuración/ }));
+    await waitFor(() => expect(llamadas(api, 'GET /api/configuracion')).toHaveLength(2));
+
+    // a) el formulario termina con los valores del servidor
+    await waitFor(() => expect(screen.getByLabelText(INTENTOS)).toHaveValue('3'));
+    expect(screen.getByLabelText(BLOQUEO)).toHaveValue('60');
+    // b) sin ediciones, Guardar sigue desactivado
+    expect(screen.getByRole('button', GUARDAR)).toBeDisabled();
+
+    // c) solo se envía lo editado
+    await usuario.type(screen.getByLabelText(TELEFONO), '01 555 0000');
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await screen.findByText('Configuración guardada.');
+    expect(llamadas(api, 'PATCH /api/configuracion')).toEqual([{ telefono: '01 555 0000' }]);
+    expect(estado.actual).toEqual({
+      ...POR_DEFECTO,
+      intentosInicioSesion: 3,
+      minutosBloqueo: 60,
+      telefono: '01 555 0000',
+    });
+    expect(screen.getByLabelText(INTENTOS)).toHaveValue('3');
+    expect(screen.getByLabelText(BLOQUEO)).toHaveValue('60');
+  });
+
+  it('a: no muestra el formulario con valores de la caché hasta tener la respuesta de la petición hecha al entrar', async () => {
+    const { api, estado } = servidor();
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    expect(await screen.findByLabelText(INTENTOS)).toHaveValue('5');
+    await usuario.click(screen.getByRole('link', { name: /Volver al inicio/ }));
+
+    estado.actual = { ...POR_DEFECTO, intentosInicioSesion: 3 };
+    let soltar: () => void = () => undefined;
+    const demora = new Promise<void>((resolver) => {
+      soltar = resolver;
+    });
+    simularApi({
+      'GET /api/sesion': () => ({ estado: 200, cuerpo: sesionDe('ADMIN') }),
+      'GET /api/mi-academia': () => ({ estado: 200, cuerpo: MI_ACADEMIA }),
+      'GET /api/configuracion': async () => {
+        await demora;
+        return { estado: 200, cuerpo: { configuracion: estado.actual } };
+      },
+    });
+    await usuario.click(await screen.findByRole('link', { name: /Configuración/ }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Cargando…');
+    expect(screen.queryByLabelText(INTENTOS)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', GUARDAR)).not.toBeInTheDocument();
+
+    soltar();
+    expect(await screen.findByLabelText(INTENTOS)).toHaveValue('3');
+    expect(screen.getByRole('button', GUARDAR)).toBeDisabled();
+    expect(llamadas(api, 'GET /api/configuracion')).toHaveLength(1);
+  });
+
+  it('b: sin ediciones, una base distinta que llega con el formulario a la vista lo recarga y Guardar sigue desactivado', async () => {
+    const { api, estado } = servidor();
+    mostrar('/panel/configuracion');
+    expect(await screen.findByLabelText(INTENTOS)).toHaveValue('5');
+
+    estado.actual = { ...POR_DEFECTO, intentosInicioSesion: 3, minutosBloqueo: 60, telefono: '01 777 1111' };
+    reconectar();
+    await waitFor(() => expect(screen.getByLabelText(INTENTOS)).toHaveValue('3'));
+    expect(screen.getByLabelText(BLOQUEO)).toHaveValue('60');
+    expect(screen.getByLabelText(TELEFONO)).toHaveValue('01 777 1111');
+    expect(screen.getByRole('button', GUARDAR)).toBeDisabled();
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+    expect(llamadas(api, 'PATCH /api/configuracion')).toHaveLength(0);
+  });
+
+  it('d: con una base distinta y ediciones, actualiza lo que no se tocó, conserva lo editado y envía solo lo editado', async () => {
+    const { api, estado } = servidor();
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    const tolerancia = await screen.findByLabelText(TOLERANCIA);
+    await usuario.clear(tolerancia);
+    await usuario.type(tolerancia, '20');
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+
+    // El otro administrador cambia la seguridad y también la tolerancia (que este ya estaba editando).
+    estado.actual = { ...POR_DEFECTO, toleranciaTardanzaMinutos: 25, intentosInicioSesion: 3, minutosBloqueo: 60 };
+    reconectar();
+    await waitFor(() => expect(screen.getByLabelText(INTENTOS)).toHaveValue('3'));
+    expect(screen.getByLabelText(BLOQUEO)).toHaveValue('60');
+    expect(screen.getByLabelText(TOLERANCIA)).toHaveValue('20');
+    expect(screen.getByText(AVISO)).toBeInTheDocument();
+    expect(screen.getByRole('button', GUARDAR)).toBeEnabled();
+
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await screen.findByText('Configuración guardada.');
+    expect(llamadas(api, 'PATCH /api/configuracion')).toEqual([{ toleranciaTardanzaMinutos: 20 }]);
+    // e) la respuesta del PATCH pasa a ser la base: el aviso se va y Guardar vuelve a quedar desactivado
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(TOLERANCIA)).toHaveValue('20');
+    expect(screen.getByLabelText(INTENTOS)).toHaveValue('3');
+    expect(screen.getByLabelText(BLOQUEO)).toHaveValue('60');
+    expect(screen.getByRole('button', GUARDAR)).toBeDisabled();
+  });
+
+  it('d: un campo editado que la base nueva ya tiene igual deja de enviarse', async () => {
+    const { api, estado } = servidor();
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    await usuario.type(await screen.findByLabelText(TELEFONO), '01 555 0000');
+    const bloqueo = screen.getByLabelText(BLOQUEO);
+    await usuario.clear(bloqueo);
+    await usuario.type(bloqueo, '30');
+
+    estado.actual = { ...POR_DEFECTO, telefono: '01 555 0000', intentosInicioSesion: 4 };
+    reconectar();
+    await waitFor(() => expect(screen.getByLabelText(INTENTOS)).toHaveValue('4'));
+    expect(screen.getByText(AVISO)).toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await screen.findByText('Configuración guardada.');
+    expect(llamadas(api, 'PATCH /api/configuracion')).toEqual([{ minutosBloqueo: 30 }]);
+  });
+
+  it('d: si el administrador deshace sus ediciones, el aviso se va y Guardar vuelve a quedar desactivado', async () => {
+    const { estado } = servidor();
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    const tolerancia = await screen.findByLabelText(TOLERANCIA);
+    await usuario.clear(tolerancia);
+    await usuario.type(tolerancia, '20');
+    estado.actual = { ...POR_DEFECTO, minutosBloqueo: 60 };
+    reconectar();
+    expect(await screen.findByText(AVISO)).toBeInTheDocument();
+
+    await usuario.clear(tolerancia);
+    await usuario.type(tolerancia, '10');
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', GUARDAR)).toBeDisabled();
+  });
+
+  it('e: al guardar, la respuesta del PATCH es la nueva base: lo siguiente se compara con ella', async () => {
+    const { api } = servidor();
+    const usuario = userEvent.setup();
+    mostrar('/panel/configuracion');
+    const telefono = await screen.findByLabelText(TELEFONO);
+    await usuario.type(telefono, '  01 555 0000  ');
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await screen.findByText('Configuración guardada.');
+    expect(llamadas(api, 'PATCH /api/configuracion')).toEqual([{ telefono: '01 555 0000' }]);
+    expect(telefono).toHaveValue('01 555 0000');
+    expect(screen.getByRole('button', GUARDAR)).toBeDisabled();
+
+    // Volver al valor anterior es ahora un cambio frente a la respuesta del PATCH.
+    await usuario.clear(telefono);
+    expect(screen.getByRole('button', GUARDAR)).toBeEnabled();
+    await usuario.click(screen.getByRole('button', GUARDAR));
+    await waitFor(() => expect(llamadas(api, 'PATCH /api/configuracion')).toHaveLength(2));
+    expect(llamadas(api, 'PATCH /api/configuracion')[1]).toEqual({ telefono: null });
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
   });
 });
