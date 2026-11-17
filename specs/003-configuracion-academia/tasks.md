@@ -73,8 +73,32 @@ protegida.
       `plan.md` sección 7) y sumar a `PaginaConfiguracion.test.tsx` las pruebas de componentes que reproducen el
       escenario de la ronda 1 (`w1.test.tsx` del adversarial) y comprueban los puntos a a e, con el cuerpo exacto del
       `PATCH` (criterio 27)
-- [ ] T11.4 · orquestador · Revisar con `git diff` que la corrección no tocó pruebas protegidas
-- [ ] T11.5 · adversarial · Ronda 2 sobre el commit con la corrección (criterios críticos y criterio 27)
+- [x] T11.4 · orquestador · Revisar con `git diff` que la corrección no tocó pruebas protegidas
+- [x] T11.5 · adversarial · Ronda 2 sobre el commit con la corrección (criterios críticos y criterio 27)
+
+### Ronda 2 (sobre 78be4a6)
+
+Resultado: el criterio 27 quedó verificado. Una falla en la web (F2, media: la cabecera del panel mostraba el nombre y
+el teléfono de otra academia tras cambiar de sesión en el mismo navegador) y cuatro observaciones (O4: un `GET` viejo
+deshacía lo guardado; O5: un error del `GET` en segundo plano borraba las ediciones; O6: lo escrito durante el guardado
+se perdía; O7: doble envío en el mismo instante). El orquestador decidió corregir O4 a O6 como criterios del
+formulario y dejar O7 como observación. Todo en la sección H de [`spec.md`](spec.md): criterios 28 (amplía el 24) y 29
+a 31, no críticos, con prueba obligatoria de componentes (el 28, salvo que el orquestador decida otra cosa en la
+pregunta T4).
+
+- [x] T11.6 · especificador · Sección H de `spec.md` (criterios 28 a 31, O7, casos límite, riesgo aceptado, impacto y
+      pregunta T4); diseño de la ronda 2 en `plan.md` (sección 7, decisiones y riesgos)
+- [ ] T11.7 · orquestador · Decidir la pregunta T4 (propuesta: el 28 no es crítico). Si es crítico, test-writer escribe
+      su prueba de componentes protegida en rojo antes de T11.8
+- [ ] T11.8 · frontend · Corregir `useMiAcademia` y `LayoutPanel` (clave con la identidad de la sesión y comprobación
+      del `nombreCorto`), `useActualizarConfiguracion` (cancelar los `GET` en curso al empezar y al terminar el
+      `PATCH`), `PaginaConfiguracion` (formulario a la vista con aviso si falla un `GET` en segundo plano;
+      `<fieldset disabled>` mientras se guarda), según `plan.md` sección 7, y sumar a
+      `frontend/src/modulos/configuracion/Configuracion.test.tsx` pruebas de componentes que reproducen `x1.test.tsx`
+      (los tres casos de F2 y el caso en que `mi-academia` de B responde) y las pruebas T2 a T4 de `x2.test.tsx`, con el
+      cuerpo exacto del `PATCH` en el 29 (criterios 28 a 31)
+- [ ] T11.9 · orquestador · Revisar con `git diff` que la corrección no tocó pruebas protegidas
+- [ ] T11.10 · adversarial · Ronda 3 sobre el commit con la corrección (criterios críticos, 27 y 28 a 31)
 
 ## Revisión y cierre
 
