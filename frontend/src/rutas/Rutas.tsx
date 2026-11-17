@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router';
+import { PaginaConfiguracion } from '../modulos/configuracion/PaginaConfiguracion';
 import { Inicio } from '../modulos/inicio/Inicio';
 import { PaginaPanel } from '../modulos/panel/PaginaPanel';
 import { PaginaAcademias } from '../modulos/plataforma/PaginaAcademias';
@@ -23,6 +24,7 @@ export function Rutas() {
         <Route path="/panel" element={<PaginaPanel />} />
         <Route path="/panel/usuarios" element={<PaginaUsuarios />} />
         <Route path="/panel/restablecer" element={<PaginaRestablecer />} />
+        <Route path="/panel/configuracion" element={<PaginaConfiguracion />} />
       </Route>
       <Route path="*" element={<PaginaNoEncontrada />} />
     </Routes>

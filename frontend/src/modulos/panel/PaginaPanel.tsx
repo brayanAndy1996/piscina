@@ -26,6 +26,13 @@ const OPCIONES: readonly Opcion[] = [
     descripcion: 'Busca a una persona por su DNI y devuélvele la contraseña inicial.',
     ruta: '/panel/restablecer',
   },
+  {
+    permiso: 'CONFIGURAR_ACADEMIA',
+    texto: 'Configuración',
+    descripcion:
+      'Ajusta la tolerancia de tardanza, los días por vencer, el bloqueo del inicio de sesión y el teléfono.',
+    ruta: '/panel/configuracion',
+  },
 ];
 
 /** `/panel`: inicio con la sesión y el menú según el rol (criterio 48). */
