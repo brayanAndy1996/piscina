@@ -142,8 +142,9 @@ Hace cuatro cosas, en este orden:
 2. Crea las bases que falten: `aquagestion` (desarrollo) y `aquagestion_pruebas` (pruebas).
 3. Aplica las migraciones a las dos bases.
 4. Ejecuta la semilla. Crea, si no existen, las academias de ejemplo `delfines` ("Academia de Natación Los Delfines") y
-   `tiburones` ("Club de Natación Tiburones"), el superadmin de desarrollo, con los datos `SUPERADMIN_*` de tu `.env`, y
-   los usuarios de ejemplo de cada academia (ver "Entrar como usuario de una academia").
+   `tiburones` ("Club de Natación Tiburones"), el superadmin de desarrollo, con los datos `SUPERADMIN_*` de tu `.env`, los
+   usuarios de ejemplo de cada academia (ver "Entrar como usuario de una academia") y el teléfono de ejemplo de `delfines`
+   (ver "Probar la configuración de la academia").
 
 Es seguro repetir este comando: no borra nada.
 
@@ -211,6 +212,22 @@ npm run dev
   academia". Si ya existen, no los duplica ni les cambia la contraseña. Sin este paso, esos usuarios no existen y el
   ingreso responde «DNI o contraseña incorrectos».
 - La historia 002 no agrega variables a `.env`, así que `npm run env:completar` no hace falta.
+
+## Después de traer la historia 003
+
+Si ya tenías el proyecto con la historia 002, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+npm ci
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- La historia 003 no tiene migraciones ni variables nuevas en `.env`, así que `npm run env:completar` no hace falta.
+- `npm run db:preparar` ejecuta la semilla, que agrega a `delfines` un teléfono de ejemplo (`+51 999 000 111`). Si la fila
+  del teléfono ya existe, no la toca, aunque la hayas cambiado o quitado. Sin este paso, `delfines` no tiene teléfono.
 
 ## Entrar a la plataforma y crear una academia de prueba
 
@@ -309,9 +326,13 @@ Usuarios de ejemplo (los DNI y los nombres son inventados):
 La contraseña inicial de cada uno es su DNI, y debe cambiarla al entrar. El DNI `10000001` aparece en `delfines` y en
 `tiburones`: son dos cuentas distintas, una por academia (D-28).
 
+`delfines` también tiene un teléfono de ejemplo, `+51 999 000 111`, que se ve en **Configuración** (ver "Probar la
+configuración de la academia").
+
 Lo que ves en `/panel` depende del rol:
 
-- **Administrador:** **Usuarios** (el personal) y **Restablecer contraseña**. En **Usuarios** puedes crear, desactivar,
+- **Administrador:** **Usuarios** (el personal), **Restablecer contraseña** y **Configuración** (la configuración de la
+  academia, más abajo). En **Usuarios** puedes crear, desactivar,
   reactivar y restablecer al personal. No puedes desactivar ni restablecer tu propia cuenta.
 - **Secretaria:** **Restablecer contraseña**, solo para alumnos.
 - **Entrenador y alumno:** solo **Cambiar contraseña**. Las demás pantallas llegan con sus historias.
@@ -320,8 +341,49 @@ Quién restablece a quién: el administrador, a cualquier usuario de su academia
 alumnos; el superadmin, a los administradores de cada academia. Restablecer deja la contraseña igual al DNI, y la persona
 la cambia al entrar. Si olvidas tu contraseña, pide en recepción que la restablezcan.
 
-Todavía no hay el panel del alumno con su carnet y su asistencia (historia 011), ni la pantalla de auditoría, ni la
-configuración de los intentos y del bloqueo (historia 003).
+Todavía no hay el panel del alumno con su carnet y su asistencia (historia 011) ni la pantalla de auditoría.
+
+## Probar la configuración de la academia
+
+La pantalla **Configuración** (historia 003) la ve solo el administrador de la academia, desde el inicio del panel. Para
+probarla con los datos de ejemplo:
+
+1. Entra como administrador de `delfines` en http://localhost:5173/a/delfines/ingresar, con el DNI `10000001`. Si nunca
+   cambiaste la contraseña, la inicial es `10000001` y el sistema te pide cambiarla.
+2. En el inicio del panel (`/panel`), pulsa **Configuración**. Verás el nombre de la academia, que no se cambia desde ahí,
+   y el **Teléfono de la academia**, que en `delfines` es `+51 999 000 111`. La cabecera del panel muestra el mismo
+   teléfono.
+3. Cambia **Intentos fallidos antes del bloqueo (intentos)** de 5 a 3 y pulsa **Guardar cambios**. Debe aparecer
+   **Configuración guardada.** Cada campo tiene el botón **Usar el valor por defecto**, que vuelve a su valor inicial.
+4. Pulsa **Cerrar sesión**.
+5. Entra en http://localhost:5173/a/delfines/ingresar con el DNI `10000004` (el alumno de ejemplo) y una contraseña
+   equivocada, por ejemplo `equivocada`. Los dos primeros intentos muestran **DNI o contraseña incorrectos.** El tercero
+   muestra: «La cuenta está bloqueada por varios intentos fallidos. Intenta de nuevo en 15 minutos. Si no puedes esperar,
+   pide en recepción que restablezcan tu contraseña.»
+6. Prueba con la contraseña correcta (`10000004`): la cuenta sigue bloqueada hasta que pasen los 15 minutos.
+7. Para desbloquearla antes, entra como administrador, pulsa **Restablecer contraseña** en el inicio del panel, busca el
+   DNI `10000004`, pulsa **Restablecer contraseña** y confírmalo. La contraseña vuelve a ser el DNI y la cuenta queda
+   desbloqueada.
+8. Vuelve a **Configuración**, pulsa **Usar el valor por defecto** en "Intentos fallidos antes del bloqueo" (vuelve a 5)
+   y después **Guardar cambios**.
+
+Estos son los campos de la pantalla, con su valor por defecto y su rango. Hoy solo tienen efecto el bloqueo y el teléfono;
+los demás se guardan y los usarán sus historias.
+
+| Campo                                                | Por defecto  | Rango             | Qué hace hoy                                                                      |
+| ---------------------------------------------------- | ------------ | ----------------- | --------------------------------------------------------------------------------- |
+| Tolerancia de tardanza (minutos)                     | 10           | de 0 a 30         | Se guarda; la asistencia la usará (historia 009).                                  |
+| Días para marcar una mensualidad "por vencer" (días) | 5            | de 1 a 15         | Se guarda; las mensualidades la usarán (historia 010).                             |
+| Días de prioridad para renovar (días)                | 5            | de 1 a 15         | Se guarda; la renovación la usará (historia 010).                                  |
+| Intentos fallidos antes del bloqueo (intentos)       | 5            | de 3 a 10         | Ya se aplica al ingreso y al cambio de contraseña.                                 |
+| Duración del bloqueo (minutos)                       | 15           | de 5 a 60         | Ya se aplica al ingreso y al cambio de contraseña.                                 |
+| Teléfono de la academia                              | Sin teléfono | 6 a 20 caracteres | Ya se ve en la cabecera del panel; las páginas públicas lo mostrarán desde la historia 005. |
+
+Otras comprobaciones:
+
+- Con una cuenta de secretaria, entrenador o alumno, **Configuración** no aparece en el inicio del panel. Si entran a
+  `/panel/configuracion`, la página dice «No tienes permiso para ver esta página».
+- Si borras el teléfono y guardas, la academia deja de tener teléfono: desaparece de la cabecera del panel.
 
 ## Día a día
 
@@ -383,7 +445,7 @@ Las pruebas E2E levantan la API y la web en otros puertos (3100 y 5180), así qu
 | `npm run db:crear`                     | Crea solo el rol `aquagestion_app` y las bases que falten. Lo usa `db:preparar`.                         |
 | `npm run db:migrar`                    | Aplica a la base de desarrollo las migraciones pendientes.                                               |
 | `npm run db:migrar:pruebas`            | Aplica las migraciones pendientes a la base de pruebas.                                                  |
-| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo y los usuarios de ejemplo, si no existen. Repetirla no duplica nada ni cambia las contraseñas.   |
+| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines`, si no existen. Repetirla no duplica nada ni cambia las contraseñas ni el teléfono.   |
 | `npm run db:migracion`                 | Crea una migración nueva a partir de un cambio del esquema. Pide un nombre.                              |
 | `npm run env:completar`                | Agrega a `.env` las variables de `.env.example` que falten. No cambia las que ya tienes.                 |
 | `npm run plataforma:superadmin`        | Crea el superadmin de la plataforma o le restablece la clave (usa `SUPERADMIN_*`; ver arriba).           |
@@ -561,9 +623,10 @@ Según el mensaje que muestre la página de ingreso:
   los usuarios de ejemplo entran, ejecuta `npm run db:semilla` (es seguro repetirlo): puede faltar la semilla de la 002.
 - **«Hiciste demasiados intentos. Espera un minuto.»** Hay un límite de 10 ingresos por minuto desde una misma red, y todas
   las personas de esa red cuentan juntas. Espera un minuto.
-- **«La cuenta está bloqueada por varios intentos fallidos…»** Cinco intentos fallidos seguidos bloquean la cuenta 15
-  minutos. Espera, o pide en recepción que restablezcan la contraseña: eso la desbloquea. Si el bloqueado es el único
-  administrador, lo restablece el superadmin, en **Administradores** de la academia.
+- **«La cuenta está bloqueada por varios intentos fallidos…»** Por defecto, cinco intentos fallidos seguidos bloquean la
+  cuenta 15 minutos; el administrador de la academia puede cambiar esos valores en **Configuración**. Espera, o pide en
+  recepción que restablezcan la contraseña: eso la desbloquea. Si el bloqueado es el único administrador, lo restablece el
+  superadmin, en **Administradores** de la academia.
 - **«Tu cuenta está desactivada. Consulta en recepción.»** Un administrador de la academia la reactiva.
 - **«Academia no disponible por el momento.»** El superadmin suspendió la academia. Sus datos se conservan; se reactiva
   desde la lista de academias.

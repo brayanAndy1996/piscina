@@ -10,6 +10,7 @@ import { RelojModule } from './infraestructura/reloj';
 import { AcademiasModule } from './modulos/academias';
 import { AuditoriaModule } from './modulos/auditoria';
 import { AutenticacionModule } from './modulos/autenticacion';
+import { ConfiguracionModule } from './modulos/configuracion';
 import { SaludModule } from './modulos/salud/salud.module';
 import { UsuariosModule } from './modulos/usuarios';
 
@@ -41,6 +42,7 @@ export class AppModule {
         AcademiasModule,
         AutenticacionModule,
         UsuariosModule,
+        ConfiguracionModule,
         SaludModule,
       ],
       // El filtro también es un proveedor normal: el middleware de `/api/plataforma` lo reutiliza para sus respuestas.

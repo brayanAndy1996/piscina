@@ -13,7 +13,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 000 | Esqueleto | No | ✅ |
 | 001 | Academias y aislamiento | Sí | ✅ |
 | 002 | Autenticación y roles por academia | Sí | ✅ |
-| 003 | Configuración de la academia | No | ⬜ |
+| 003 | Configuración de la academia | En parte | 🟨 |
 | 004 | Planes y clases con aforo | En parte | ⬜ |
 | 005 | Inscripción pública y seguimiento de la solicitud | Sí | ⬜ |
 | 006 | Caja | Sí | ⬜ |
@@ -75,6 +75,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     demorar o hacer fallar las peticiones de todas las academias. Se decide con el hosting (D-21: proxy, CDN o límites
     del proveedor, y `trust proxy` para que `req.ip` sea la del cliente) y con esta historia, que es la que pone la ruta
     en uso: límite por IP en la ruta pública (como el del inicio de sesión), caché corta de la respuesta, o las dos.
+  - Nota de 003 (DR-4 de 003): el teléfono de la academia (`telefono`, D-22) se publica en las páginas públicas (ingreso,
+    inscripción y seguimiento) desde esta historia, con la `tx` de la ruta pública y sin caché. La 003 solo lo muestra con
+    sesión.
 - **006 · Caja.** Apertura, movimientos, egresos, cierre con esperado por método y diferencia, reapertura por el
   administrador, PDF del cierre (HU-25 a HU-27, RN-17).
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de
@@ -87,9 +90,14 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **009 · Asistencia y faltas.** QR y manual, validaciones, una por día, solo mientras dura la clase, puntual o
   tarde, descuento de clase, registro de faltas por tarea programada (HU-14, HU-15, RN-14 a RN-16, D-08, D-11,
   D-16).
+  - Nota de 003: la tolerancia de tardanza (`toleranciaTardanzaMinutos`) la leerá `leerConfiguracion(tx)` dentro de la
+    transacción de la asistencia, sin caché (ver "Configuración de la academia (003)" en `docs/arquitectura.md`).
 - **010 · Mensualidades.** Estados al día, por vencer, vencido y pendiente (HU-11), renovación con prioridad de
   horario (HU-12, D-06), cierre de mes y clases no usadas (RN-23), cambio de horario por la secretaria (HU-03,
   RN-08).
+  - Nota de 003: "por vencer" (`diasPorVencer`) y la prioridad de renovación (`diasPrioridadRenovacion`) los leerá
+    `leerConfiguracion(tx)` dentro de la transacción de la operación, sin caché. Son valores aparte: cambiar uno no cambia
+    el otro (DR-3 de 003).
 - **011 · Panel del alumno y apoderado.** Datos, plan, horario, clases restantes, vencimiento, asistencia día por
   día con hora (puntual, tarde, falta), nivel actual; solo lectura salvo el cambio de contraseña (HU-06, D-08, D-14).
 

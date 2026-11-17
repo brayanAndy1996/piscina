@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 // 002 (las 21 filas de la sección 2.1 de los requerimientos más `GESTIONAR_USUARIOS` y `RESTABLECER_CLAVE`), y `puede(rol, permiso)`
 // dice si el rol tiene la celda (una celda vacía es "no"). La tabla esperada está escrita aquí a mano, fila por fila, de forma
 // independiente de la implementación.
+//
+// Actualizada por la 003 (spec 003-configuracion-academia, DT-1 y criterio 5): suma la fila `CONFIGURAR_ACADEMIA` con `ADMIN: 'TODO'` y
+// nada más (de 23 a 24 filas). No se quitó ni se cambió nada de lo que la 002 comprobaba.
 
 type Rol = 'ADMIN' | 'SECRETARIA' | 'ENTRENADOR' | 'ALUMNO';
 type Alcance = 'TODO' | 'SUS_ALUMNOS' | 'SUS_CLASES' | 'PROPIO' | 'SU_CAJA' | 'LOS_QUE_SUBE' | 'ALUMNOS';
@@ -67,6 +70,7 @@ const MATRIZ_ESPERADA: Readonly<Record<string, Fila>> = {
   VER_MULTIMEDIA: { ADMIN: 'TODO', ENTRENADOR: 'LOS_QUE_SUBE', ALUMNO: 'PROPIO' },
   GESTIONAR_USUARIOS: { ADMIN: 'TODO' },
   RESTABLECER_CLAVE: { ADMIN: 'TODO', SECRETARIA: 'ALUMNOS' },
+  CONFIGURAR_ACADEMIA: { ADMIN: 'TODO' },
 };
 
 const PERMISOS_ESPERADOS = Object.keys(MATRIZ_ESPERADA).sort();
@@ -77,8 +81,8 @@ function sinVacias(fila: Fila | undefined): Fila {
 }
 
 describe('criterio 26: matriz de permisos', () => {
-  it('criterio 26: la tabla esperada tiene las 23 filas del contrato (21 de la sección 2.1 más las 2 de esta historia)', () => {
-    expect(PERMISOS_ESPERADOS).toHaveLength(23);
+  it('criterio 26: la tabla esperada tiene las 24 filas del contrato (21 de la sección 2.1, las 2 de la 002 y CONFIGURAR_ACADEMIA de la 003)', () => {
+    expect(PERMISOS_ESPERADOS).toHaveLength(24);
   });
 
   it('criterio 26: ROLES_USUARIO son exactamente ADMIN, SECRETARIA, ENTRENADOR y ALUMNO', async () => {
@@ -95,7 +99,7 @@ describe('criterio 26: matriz de permisos', () => {
     );
   });
 
-  it('criterio 26: PERMISOS y las claves de MATRIZ_PERMISOS son exactamente los 23 permisos del contrato, sin repetir', async () => {
+  it('criterio 26: PERMISOS y las claves de MATRIZ_PERMISOS son exactamente los 24 permisos del contrato, sin repetir', async () => {
     const { PERMISOS, MATRIZ_PERMISOS } = await cargar();
 
     expect([...PERMISOS].sort()).toEqual(PERMISOS_ESPERADOS);
@@ -139,6 +143,13 @@ describe('criterio 26: matriz de permisos', () => {
 
     expect(ROLES.filter((rol) => puede(rol, 'GESTIONAR_USUARIOS'))).toEqual(['ADMIN']);
     expect(ROLES.filter((rol) => puede(rol, 'RESTABLECER_CLAVE'))).toEqual(['ADMIN', 'SECRETARIA']);
+  });
+
+  it('003, criterio 5: solo el administrador configura la academia; la secretaria, el entrenador y el alumno no', async () => {
+    const { MATRIZ_PERMISOS, puede } = await cargar();
+
+    expect(ROLES.filter((rol) => puede(rol, 'CONFIGURAR_ACADEMIA'))).toEqual(['ADMIN']);
+    expect(sinVacias(MATRIZ_PERMISOS['CONFIGURAR_ACADEMIA'])).toStrictEqual({ ADMIN: 'TODO' });
   });
 
   it('criterio 26: el entrenador solo ve a sus alumnos y no verifica pagos ni abre la caja (CLAUDE.md, RN-18)', async () => {

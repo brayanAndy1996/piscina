@@ -4,6 +4,7 @@ import { Navigate, Outlet, useLocation } from 'react-router';
 import { esErrorDeApi } from '../../api/cliente';
 import { ESTILO_BOTON } from '../../componentes/ui';
 import { mensajeGeneral } from '../../lib/errores';
+import { esMiAcademiaDeIdentidad } from '../configuracion/hooks';
 import { LayoutPanel } from '../panel/LayoutPanel';
 import { ContextoUsuario } from './contexto';
 import {
@@ -64,7 +65,12 @@ export function RutaConSesion() {
   const anterior = useRef<string | null>(null);
   useEffect(() => {
     if (anterior.current !== null && anterior.current !== identidadMostrada) {
-      cliente.removeQueries({ predicate: (consulta) => consulta.queryKey[0] !== CLAVE_SESION[0] });
+      // La cabecera ya pidió su `mi-academia` con la identidad nueva (clave propia): quitarla dejaría el teléfono sin llegar (criterio 28).
+      cliente.removeQueries({
+        predicate: (consulta) =>
+          consulta.queryKey[0] !== CLAVE_SESION[0] &&
+          !(identidadMostrada !== null && esMiAcademiaDeIdentidad(consulta.queryKey, identidadMostrada)),
+      });
     }
     anterior.current = identidadMostrada;
   }, [identidadMostrada, cliente]);

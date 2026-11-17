@@ -39,7 +39,7 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
 - **Auditoría:** las altas, suspensiones y reactivaciones de academias, y el alta y el restablecimiento del superadmin,
   quedan en la auditoría de la plataforma. Los inicios de sesión van solo al registro técnico. Todavía no hay pantalla
   para verla.
-- **Configuración:** la tabla de configuración por academia existe, sin claves todavía (las define la 003).
+- **Configuración:** la tabla de configuración por academia existe; sus claves y valores por defecto son de la 003.
 - **Ruta pública:** `GET /api/a/{nombreCorto}` devuelve el nombre de una academia activa, sin su id ni su estado. Responde
   404 si no existe y 403 si está suspendida.
 - **Datos de ejemplo:** `npm run db:semilla` (y `npm run db:preparar`) crea, si no existen, las academias `delfines`
@@ -51,15 +51,15 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
   suspende y reactiva una academia, y cierra sesión. A 360 px, la plataforma se ve completa, sin desplazamiento
   horizontal.
 
-**002 · Autenticación y roles por academia** está construida y espera la suite completa, la revisión y la aprobación del
-responsable para unirse a `main`. Trae:
+**002 · Autenticación y roles por academia** está unida a `main` (17/11/2026). Trae:
 
 - **Ingreso por academia:** `/a/{nombreCorto}/ingresar`, con el DNI y la contraseña. La sesión va en la cookie `aq_sesion`
   (`HttpOnly`, `SameSite=Strict`): 12 horas para el personal y 30 días para el alumno. "Cerrar sesión" la cierra en todos
   los dispositivos de esa cuenta.
 - **Contraseñas:** la inicial es el DNI, y se cambia al primer ingreso (y después, desde el panel). Tiene de 8 a 128
   caracteres, distintos del DNI y de la actual, y se guarda con argon2. Cinco intentos fallidos seguidos bloquean la cuenta
-  15 minutos, y un restablecimiento la desbloquea. El ingreso admite 10 peticiones por minuto desde una misma IP (contador
+  15 minutos por defecto (desde la 003, cada academia los configura), y un restablecimiento la desbloquea. El ingreso
+  admite 10 peticiones por minuto desde una misma IP (contador
   en memoria de cada instancia).
 - **Roles:** administrador, secretaria, entrenador y alumno, con un rol por cuenta (DR-7 de 002). El DNI es único dentro de
   cada academia (D-28). La matriz de permisos está en `packages/contratos/src/permisos.ts`; la API la aplica con un guard, y
@@ -73,15 +73,35 @@ responsable para unirse a `main`. Trae:
 - **Auditoría:** crear, desactivar, reactivar y restablecer cuentas, y cambiar la contraseña, quedan en la auditoría de la
   academia. Los inicios de sesión solo van al registro técnico, sin DNI ni claves. Todavía no hay pantalla para verla.
 - **Datos de ejemplo:** `npm run db:semilla` crea un usuario por rol en `delfines` y un administrador en `tiburones`, con
-  DNIs inventados y la contraseña inicial igual al DNI. Los detalles están en la guía.
+  DNIs inventados y la contraseña inicial igual al DNI. Desde la 003, también deja un teléfono de ejemplo en `delfines`.
+  Los detalles están en la guía.
 - **Pruebas E2E de la autenticación:** `e2e/pruebas/autenticacion.spec.ts`. El superadmin crea una academia y su
   administrador; el administrador cambia su contraseña y crea una secretaria, que también debe cambiarla al entrar.
 
-Todavía no trae los permisos de cada módulo (cada historia aplica su alcance), el alta de las cuentas de alumno (historia
-007), la configuración de los intentos y del bloqueo (historia 003), la pantalla de auditoría (Fase 3), la recuperación de
-la contraseña por correo (se pide en recepción) ni el cambio del DNI, del nombre o del rol de una cuenta.
+**003 · Configuración de la academia** está construida y espera la suite completa, la revisión y la aprobación del
+responsable para unirse a `main`. Trae:
 
-La siguiente historia es la **003 · Configuración de la academia** (ver [`specs/backlog.md`](specs/backlog.md)).
+- **Valores de cada academia:** la tolerancia de tardanza, los días para marcar una mensualidad "por vencer", los días de
+  prioridad para renovar, los intentos fallidos antes del bloqueo, la duración del bloqueo y el teléfono. Sin valor
+  guardado, vale el valor por defecto. Las claves y los rangos están en [`docs/arquitectura.md`](docs/arquitectura.md).
+- **Pantalla:** `/panel/configuracion`, con la opción **Configuración** del inicio del panel, solo para el administrador.
+  La cabecera del panel muestra el nombre y el teléfono de la academia.
+- **Bloqueo del ingreso con valores propios:** los intentos y la duración del bloqueo son de cada academia, y también
+  valen para el cambio de contraseña. Un bloqueo que ya está puesto no cambia si se modifican los valores, y el mensaje
+  dice cuántos minutos faltan. El bloqueo del superadmin sigue fijo (5 intentos y 15 minutos).
+- **API:** `GET` y `PATCH /api/configuracion` (solo el administrador) y `GET /api/mi-academia` (nombre, nombre corto y
+  teléfono de la academia de la sesión). Cada cambio guardado queda en la auditoría de la academia.
+- **Lo que todavía no usa nada:** la tolerancia de tardanza, los días por vencer y la prioridad de renovación se guardan,
+  pero las historias 009 y 010 todavía no los leen. El teléfono se publicará en las páginas públicas con la historia 005.
+- **Datos de ejemplo:** la semilla deja un teléfono de ejemplo en `delfines`; `tiburones` queda con los valores por
+  defecto.
+
+Todavía no trae los permisos de cada módulo (cada historia aplica su alcance), el alta de las cuentas de alumno (historia
+007), la pantalla de auditoría (Fase 3), la recuperación de la contraseña por correo (se pide en recepción), el teléfono en
+las páginas públicas (historia 005), el logo ni el cambio del nombre de la academia (DR-2 y DR-5 de 003), ni el cambio del
+DNI, del nombre o del rol de una cuenta.
+
+La siguiente historia es la **004 · Planes y clases con aforo** (ver [`specs/backlog.md`](specs/backlog.md)).
 
 ## Cómo levantarlo en Windows
 
@@ -109,6 +129,9 @@ están en la guía, en "Después de traer la historia 001".
 Si ya tenías la historia 001 y traes la 002, ejecuta `npm ci` y `npm run db:preparar` (aplica las migraciones nuevas y
 agrega los usuarios de ejemplo). Los pasos están en la guía, en "Después de traer la historia 002".
 
+Si ya tenías la historia 002 y traes la 003, ejecuta `npm ci` y `npm run db:preparar`: la 003 no tiene migraciones, y la
+semilla agrega el teléfono de ejemplo de `delfines`. Los pasos están en la guía, en "Después de traer la historia 003".
+
 ## Comandos principales
 
 | Comando                                                                 | Qué hace                                                                                                          |
@@ -123,7 +146,7 @@ agrega los usuarios de ejemplo). Los pasos están en la guía, en "Después de t
 | `npm run db:crear`                                                      | Crea solo el rol `aquagestion_app` y las bases que falten (lo usa `db:preparar`).                                 |
 | `npm run db:migrar`, `npm run db:migrar:pruebas`                        | Aplica las migraciones pendientes a la base de desarrollo o a la de pruebas.                                      |
 | `npm run db:migracion`                                                  | Crea una migración nueva a partir de un cambio en el esquema de Prisma.                                           |
-| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo y los usuarios de ejemplo, si no existen.              |
+| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines`, si no existen.              |
 | `npm run env:completar`                                                 | Agrega a `.env` las variables de `.env.example` que falten, sin cambiar las que ya tienes.                        |
 | `npm run plataforma:superadmin`                                         | Crea el superadmin de la plataforma o le restablece la clave, con `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE`. |
 | `npm run verificar:pruebas-protegidas`, `npm run verificar:sin-secretos` | Verificaciones del método y de seguridad del repositorio.                                                         |

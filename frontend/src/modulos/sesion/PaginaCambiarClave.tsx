@@ -8,7 +8,7 @@ import { Alerta, CampoTexto, ESTILO_BOTON } from '../../componentes/ui';
 import { erroresPorCampo, mensajeGeneral } from '../../lib/errores';
 import { useUsuario } from './contexto';
 import { esErrorDeCambioDeSesion, useAlPerderSesion, useCambiarClave } from './hooks';
-import { MENSAJE_BLOQUEO } from './mensajes';
+import { mensajeDeBloqueo } from './mensajes';
 
 // La confirmación solo existe en la pantalla: a la API viaja `{ claveActual, claveNueva }`.
 const formularioSchema = cambiarClaveSchema
@@ -103,7 +103,7 @@ export function PaginaCambiarClave() {
           error={formState.errors.confirmacion?.message}
           {...register('confirmacion')}
         />
-        {esErrorDeApi(cambiar.error, 423) ? <Alerta>{MENSAJE_BLOQUEO}</Alerta> : null}
+        {esErrorDeApi(cambiar.error, 423) ? <Alerta>{mensajeDeBloqueo(cambiar.error)}</Alerta> : null}
         {errorGeneral ? <Alerta>{mensajeGeneral(cambiar.error)}</Alerta> : null}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           {obligatorio ? null : (

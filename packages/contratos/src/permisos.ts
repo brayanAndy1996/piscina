@@ -1,5 +1,5 @@
 /**
- * Matriz de permisos (sección 2.1 de los requerimientos, más `GESTIONAR_USUARIOS` y `RESTABLECER_CLAVE` de la spec 002). La
+ * Matriz de permisos (sección 2.1 de los requerimientos, más `GESTIONAR_USUARIOS` y `RESTABLECER_CLAVE` de la spec 002 y `CONFIGURAR_ACADEMIA` de la spec 003). La
  * comparten la API (guard de permisos) y la web (menú). Quien decide siempre es la API: la web solo muestra u oculta.
  *
  * El guard de la API solo decide si el rol pasa (`puede`); el alcance de cada celda (`SUS_ALUMNOS`, `PROPIO`…) lo aplica el
@@ -41,6 +41,7 @@ export const PERMISOS = [
   'VER_MULTIMEDIA',
   'GESTIONAR_USUARIOS',
   'RESTABLECER_CLAVE',
+  'CONFIGURAR_ACADEMIA',
 ] as const;
 export type Permiso = (typeof PERMISOS)[number];
 
@@ -74,6 +75,7 @@ export const MATRIZ_PERMISOS: Readonly<Record<Permiso, FilaDePermiso>> = {
   VER_MULTIMEDIA: { ADMIN: 'TODO', ENTRENADOR: 'LOS_QUE_SUBE', ALUMNO: 'PROPIO' },
   GESTIONAR_USUARIOS: { ADMIN: 'TODO' },
   RESTABLECER_CLAVE: { ADMIN: 'TODO', SECRETARIA: 'ALUMNOS' },
+  CONFIGURAR_ACADEMIA: { ADMIN: 'TODO' },
 };
 
 /**

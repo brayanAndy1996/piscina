@@ -68,7 +68,7 @@ describe('/a/{nombreCorto}/ingresar (criterio 46)', () => {
 
   it.each([
     [401, 'CREDENCIALES_INVALIDAS', 'DNI o contraseña incorrectos.'],
-    [423, 'CUENTA_BLOQUEADA', 'La cuenta está bloqueada por varios intentos fallidos.'],
+    [423, 'CUENTA_BLOQUEADA', 'Mensaje de CUENTA_BLOQUEADA. Si no puedes esperar, pide en recepción que restablezcan'],
     [429, 'DEMASIADAS_SOLICITUDES', 'Hiciste demasiados intentos. Espera un minuto.'],
     [403, 'USUARIO_INACTIVO', 'Tu cuenta está desactivada. Consulta en recepción.'],
     [403, 'ACADEMIA_SUSPENDIDA', 'Academia no disponible por el momento.'],
@@ -198,7 +198,7 @@ describe('/cambiar-clave (criterio 47)', () => {
     simularApi({ ...obligatorio, 'POST /api/sesion/clave': () => error('CUENTA_BLOQUEADA', 423) });
     mostrar('/cambiar-clave');
     await llenar('equivocada', 'Una clave nueva 1', 'Una clave nueva 1');
-    expect(await screen.findByRole('alert')).toHaveTextContent('La cuenta está bloqueada');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Mensaje de CUENTA_BLOQUEADA');
   });
 
   it('el cambio voluntario (también del alumno) ofrece volver al panel', async () => {
