@@ -76,6 +76,32 @@ describe('cambios de un plan frente a su base', () => {
     ).toEqual({ vigenciaFin: null, nombre: 'Nuevo nombre' });
   });
 
+  it('el mismo nombre escrito con invisibles, espacios Unicode o tilde suelta no es un cambio (criterio 34)', () => {
+    const base: Plan = { ...PLAN, nombre: 'Plan Natación' };
+    for (const escrito of [
+      'Plan Natacio\u200B\u0301n',
+      'Plan Natacio\u00AD\u0301n',
+      'Plan Natacio\u0301n',
+      ' Plan\u00A0\u00A0Natación ',
+      'Plan\u2800Natación',
+      'Plan Natación\uFE0F',
+      'Plan Nat\u034Fación',
+    ]) {
+      expect(cambiosDePlan({ ...aCamposPlan(base), nombre: escrito }, base), JSON.stringify(escrito)).toEqual({});
+      expect(camposEditadosDePlan({ ...aCamposPlan(base), nombre: escrito }, base)).toEqual([]);
+    }
+  });
+
+  it('un nombre distinto se envía normalizado, al editar y al crear (criterio 34)', () => {
+    expect(cambiosDePlan({ ...aCamposPlan(PLAN), nombre: ' Plan\u00A0\u200BNuevo ' }, PLAN)).toEqual({
+      nombre: 'Plan Nuevo',
+    });
+    const validado = validarPlanNuevo({ ...aCamposPlan(PLAN), nombre: 'Plan Natacio\u200B\u0301n' });
+    expect(validado.correcto ? validado.datos.nombre : null).toBe('Plan Natación');
+    const bidi = validarPlanNuevo({ ...aCamposPlan(PLAN), nombre: 'Plan\u202EMensual' });
+    expect(!bidi.correcto && bidi.errores.nombre !== undefined).toBe(true);
+  });
+
   it('activar y desactivar', () => {
     expect(cambiosDePlan({ ...aCamposPlan(PLAN), activo: false }, PLAN)).toEqual({ activo: false });
   });

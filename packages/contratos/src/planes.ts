@@ -21,27 +21,30 @@ export const ESTADOS_PLAN = ['VIGENTE', 'PROGRAMADO', 'VENCIDO', 'INACTIVO'] as 
 export const estadoPlanSchema = z.enum(ESTADOS_PLAN);
 export type EstadoPlan = z.infer<typeof estadoPlanSchema>;
 
-/** Espacios Unicode (categoría `Zs`: no separable, ideográfico, finos, etc.). */
-const ESPACIOS_UNICODE = /\p{Zs}/gu;
+/** Espacios Unicode (categoría `Zs`: no separable, ideográfico, finos, etc.) y el braille en blanco U+2800, que se ve como un espacio. */
+const ESPACIOS_UNICODE = /[\p{Zs}\u2800]/gu;
 
 /**
- * Caracteres de formato invisibles (categoría `Cf`: ancho cero U+200B, U+200C, U+200D, U+2060, U+FEFF, guion suave U+00AD...) que no son
- * de control bidireccional. Los bidireccionales no se eliminan: `textoVisibleSchema` los rechaza con 400.
+ * Caracteres de formato (`Cf`) y los que Unicode manda ignorar al mostrar el texto (`Default_Ignorable_Code_Point`): ancho cero U+200B, U+200C, U+200D,
+ * U+2060, U+FEFF, guion suave U+00AD, unión de grafemas U+034F, selectores de variación (U+FE00 a U+FE0F, U+E0100 a U+E01EF),
+ * selectores mongoles (U+180B a U+180F), U+17B4 y U+17B5, rellenos de hangul (U+115F, U+1160, U+3164, U+FFA0), etiquetas, etc.
+ * Se excluyen los de control bidireccional: no se eliminan, `textoVisibleSchema` los rechaza con 400.
  */
-const FORMATO_INVISIBLE = /(?![\p{Bidi_Control}])\p{Cf}/gu;
+const IGNORABLES_INVISIBLES = /(?![\p{Bidi_Control}])[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 
 /**
- * Normaliza el nombre de un plan (criterio 34, DT-6 de 004): dos nombres que se ven iguales son el mismo. NFC; los espacios Unicode
- * pasan a un espacio normal; se eliminan los caracteres de formato invisibles, salvo los de control bidireccional; los espacios
- * seguidos se colapsan en uno y se recortan los extremos. Función pura: la web y la API aplican la misma antes de validar.
+ * Normaliza el nombre de un plan (criterio 34, DT-6 de 004): dos nombres que se ven iguales son el mismo. Se eliminan los caracteres invisibles (`Cf` y `Default_Ignorable_Code_Point`), salvo los de control
+ * bidireccional; los espacios Unicode y el braille en blanco pasan a un espacio normal; los espacios seguidos se colapsan en uno, se recortan los extremos y, al final, el texto queda en NFC
+ * (al final, porque quitar un invisible entre una letra y su tilde suelta deja marcas que solo entonces se pueden componer).
+ * Función pura e idempotente: la web y la API aplican la misma antes de validar.
  */
 export function normalizarNombrePlan(texto: string): string {
   return texto
-    .normalize('NFC')
+    .replace(IGNORABLES_INVISIBLES, '')
     .replace(ESPACIOS_UNICODE, ' ')
-    .replace(FORMATO_INVISIBLE, '')
     .replace(/ {2,}/g, ' ')
-    .trim();
+    .trim()
+    .normalize('NFC');
 }
 
 /** El nombre se normaliza antes de validar: los límites de 3 a 80 caracteres y 3 visibles se miden sobre el nombre que se guarda. */

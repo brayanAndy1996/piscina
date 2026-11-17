@@ -6,6 +6,7 @@ import {
   MENSAJE_DIAS_INSUFICIENTES,
   MENSAJE_VIGENCIA_INVERTIDA,
   NIVELES,
+  normalizarNombrePlan,
   type Plan,
   vigenciaInvertida,
 } from '@aquagestion/contratos';
@@ -98,7 +99,7 @@ const POSICION_NIVEL = new Map<string, number>(NIVELES.map((nivel, posicion) => 
  */
 export function cambiosDePlan(campos: CamposPlan, base: Plan): Record<string, unknown> {
   const cambios: Record<string, unknown> = {};
-  const nombre = campos.nombre.trim();
+  const nombre = normalizarNombrePlan(campos.nombre);
   if (nombre !== base.nombre) cambios['nombre'] = nombre;
   for (const campo of ['vecesPorSemana', 'clasesPorMes', 'duracionMinutos'] as const) {
     const valor = numeroODeTexto(campos[campo]);
@@ -152,7 +153,7 @@ export function sonIgualesPlanes(a: Plan | null, b: Plan | null): boolean {
 /** El cuerpo de `POST /api/planes` con los campos del formulario. Sin fecha, el campo no se envía. */
 function pedidoDeCreacion(campos: CamposPlan): Record<string, unknown> {
   const pedido: Record<string, unknown> = {
-    nombre: campos.nombre.trim(),
+    nombre: normalizarNombrePlan(campos.nombre),
     vecesPorSemana: numeroODeTexto(campos.vecesPorSemana),
     clasesPorMes: numeroODeTexto(campos.clasesPorMes),
     duracionMinutos: numeroODeTexto(campos.duracionMinutos),

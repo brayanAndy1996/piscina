@@ -35,6 +35,30 @@ const NOMBRES_QUE_CHOCAN_CON_PLAN_MENSUAL = [
   ['otra capitalización con espacio no separable', 'PLAN mensual'],
 ] as const;
 
+// Ronda 2 (F2-1 y F2-2): NFC al final, tras quitar los invisibles, y todos los Default_Ignorable_Code_Point salvo los bidireccionales.
+const NOMBRES_RONDA_2_QUE_CHOCAN_CON_PLAN_NATACION = [
+  ['U+200B entre la letra y la tilde suelta', 'Plan Natacio\u200B\u0301n'],
+  ['U+00AD entre la letra y la tilde suelta', 'Plan Natacio\u00AD\u0301n'],
+  ['U+FEFF entre la letra y la tilde suelta', 'Plan Natacio\uFEFF\u0301n'],
+  ['U+2060 entre la letra y la tilde suelta', 'Plan Natacio\u2060\u0301n'],
+  ['NFD sin invisibles', 'Plan Natacio\u0301n'],
+  ['unión de grafemas U+034F', 'Plan Nat\u034Fación'],
+  ['selector de variación U+FE0F', 'Plan Natación\uFE0F'],
+  ['selector de variación suplementario U+E0100', 'Plan Nat\u{E0100}ación'],
+  ['selector mongol U+180B', 'Plan Nat\u180Bación'],
+  ['U+17B4', 'Plan Nat\u17B4ación'],
+  ['relleno de hangul U+3164', 'Plan Nat\u3164ación'],
+  ['relleno de hangul U+FFA0', 'Plan Nat\uFFA0ación'],
+  ['braille en blanco U+2800 como espacio', 'Plan\u2800Natación'],
+] as const;
+
+const NOMBRES_RONDA_2_QUE_CHOCAN_CON_PLAN_ORO = [
+  ['selector de variación U+FE0F al final', 'Plan Oro\uFE0F'],
+  ['selector de variación U+FE0E dentro', 'Plan O\uFE0Ero'],
+  ['unión de grafemas U+034F', 'Plan O\u034Fro'],
+  ['braille en blanco U+2800 al final', 'Plan Oro\u2800'],
+] as const;
+
 describe('planes: nombres normalizados (criterio 34, API)', () => {
   let app: NestExpressApplication;
   let http: ClientePC;
@@ -83,6 +107,72 @@ describe('planes: nombres normalizados (criterio 34, API)', () => {
     },
   );
 
+  it.each(NOMBRES_RONDA_2_QUE_CHOCAN_CON_PLAN_NATACION)(
+    'F2: %s: crear y renombrar responden 409 NOMBRE_PLAN_EN_USO sin escribir ni auditar',
+    async (_nombre, texto) => {
+      await crearPlanDePrueba(e.A.id, { nombre: 'Plan Natación'.normalize('NFC') });
+      const otro = await crearPlanDePrueba(e.A.id, { nombre: 'Otro plan' });
+      const antes = await estadoDeA();
+
+      const creado = await crear(cuerpoPlan({ nombre: texto }));
+      const renombrado = await editar(otro.id, { nombre: texto });
+
+      expect(creado.status, JSON.stringify(creado.body)).toBe(409);
+      expect((creado.body as ErrorCuerpo).codigo).toBe('NOMBRE_PLAN_EN_USO');
+      expect(renombrado.status, JSON.stringify(renombrado.body)).toBe(409);
+      expect((renombrado.body as ErrorCuerpo).codigo).toBe('NOMBRE_PLAN_EN_USO');
+      expect(await estadoDeA()).toEqual(antes);
+    },
+  );
+
+  it.each(NOMBRES_RONDA_2_QUE_CHOCAN_CON_PLAN_ORO)(
+    'F2-2: %s choca con "Plan Oro" al crear y al renombrar',
+    async (_nombre, texto) => {
+      await crearPlanDePrueba(e.A.id, { nombre: 'Plan Oro' });
+      const otro = await crearPlanDePrueba(e.A.id, { nombre: 'Otro plan' });
+      const antes = await estadoDeA();
+
+      const creado = await crear(cuerpoPlan({ nombre: texto }));
+      const renombrado = await editar(otro.id, { nombre: texto });
+
+      expect(creado.status, JSON.stringify(creado.body)).toBe(409);
+      expect((creado.body as ErrorCuerpo).codigo).toBe('NOMBRE_PLAN_EN_USO');
+      expect(renombrado.status, JSON.stringify(renombrado.body)).toBe(409);
+      expect((renombrado.body as ErrorCuerpo).codigo).toBe('NOMBRE_PLAN_EN_USO');
+      expect(await estadoDeA()).toEqual(antes);
+    },
+  );
+
+  it('F2-1: el nombre guardado y devuelto está en NFC aunque el invisible esté entre la letra y la tilde', async () => {
+    const respuesta = await crear(cuerpoPlan({ nombre: 'Plan Natacio\u200B\u0301n' }));
+
+    expect(respuesta.status, JSON.stringify(respuesta.body)).toBe(201);
+    expect(planDe(respuesta).nombre).toBe('Plan Natación'.normalize('NFC'));
+    expect(planDe(respuesta).nombre).toBe(planDe(respuesta).nombre.normalize('NFC'));
+  });
+
+  it('F2-1: jamo de hangul separados por U+200B chocan con la sílaba compuesta', async () => {
+    await crearPlanDePrueba(e.A.id, { nombre: 'Plan \uD55C' });
+    const antes = await estadoDeA();
+
+    const creado = await crear(cuerpoPlan({ nombre: 'Plan \u1112\u200B\u1161\u200B\u11AB' }));
+
+    expect(creado.status, JSON.stringify(creado.body)).toBe(409);
+    expect((creado.body as ErrorCuerpo).codigo).toBe('NOMBRE_PLAN_EN_USO');
+    expect(await estadoDeA()).toEqual(antes);
+  });
+
+  it('F2-2: renombrar con el mismo nombre más invisibles nuevos es "sin cambios" (200 sin auditoría)', async () => {
+    const plan = await crearPlanDePrueba(e.A.id, { nombre: 'Plan Oro' });
+    const antes = await estadoDeA();
+
+    const respuesta = await editar(plan.id, { nombre: 'Plan\u2800Oro\uFE0F' });
+
+    expect(respuesta.status, JSON.stringify(respuesta.body)).toBe(200);
+    expect(planDe(respuesta).nombre).toBe('Plan Oro');
+    expect(await estadoDeA()).toEqual(antes);
+  });
+
   it('criterio 34: "Natación" en NFD (a + U+0301) choca con "Natación" en NFC al crear y al renombrar', async () => {
     await crearPlanDePrueba(e.A.id, { nombre: 'Natación'.normalize('NFC') });
     const otro = await crearPlanDePrueba(e.A.id, { nombre: 'Otro plan' });
@@ -126,6 +216,11 @@ describe('planes: nombres normalizados (criterio 34, API)', () => {
     ['menos de 3 visibles tras normalizar', 'a​  b'],
     ['control bidireccional (U+202E)', 'Plan‮Mensual'],
     ['marca de dirección (U+200F)', 'Plan‏Mensual'],
+    ['solo invisibles nuevos y braille en blanco', '\u034F\uFE0F\u2800\u180B'],
+    ['menos de 3 visibles con invisibles nuevos', 'a\u034F\u2800\uFE0Fb'],
+    ['control bidireccional entre invisibles nuevos', 'Plan\u034F\u202E\uFE0FMensual'],
+    ['isolate bidireccional (U+2067)', 'Plan\u2067Mensual'],
+    ['marca de letra árabe (U+061C)', 'Plan\u061CMensual'],
   ])('criterio 34: %s responde 400 sin escribir', async (_nombre, texto) => {
     const antes = await estadoDeA();
 
@@ -138,6 +233,18 @@ describe('planes: nombres normalizados (criterio 34, API)', () => {
   it('criterio 34: los 80 caracteres se miden sobre el nombre normalizado', async () => {
     const justo = `${'a'.repeat(40)}\u200B\u00A0\u00A0${'b'.repeat(39)}`; // normalizado: 40 + 1 + 39 = 80
     const largo = `${'a'.repeat(40)} ${'b'.repeat(40)}`; // normalizado: 81
+
+    const aceptado = await crear(cuerpoPlan({ nombre: justo }));
+    const rechazado = await crear(cuerpoPlan({ nombre: largo }));
+
+    expect(aceptado.status, JSON.stringify(aceptado.body)).toBe(201);
+    expect(planDe(aceptado).nombre).toHaveLength(80);
+    expect(rechazado.status).toBe(400);
+  });
+
+  it('F2-2: los 80 caracteres se miden tras quitar invisibles nuevos y tratar U+2800 como espacio', async () => {
+    const justo = `${'a'.repeat(40)}\u2800\u034F\uFE0F\u2800${'b'.repeat(39)}`; // normalizado: 40 + 1 + 39 = 80
+    const largo = `${'a'.repeat(40)}\u2800${'b'.repeat(40)}`; // normalizado: 81
 
     const aceptado = await crear(cuerpoPlan({ nombre: justo }));
     const rechazado = await crear(cuerpoPlan({ nombre: largo }));
