@@ -56,7 +56,9 @@ export function useActualizarConfiguracion(alGuardar?: (configuracion: Configura
       await cliente.cancelQueries({ queryKey: CLAVE_CONFIGURACION });
       alGuardar?.(configuracion);
       cliente.setQueryData(CLAVE_CONFIGURACION, configuracion);
-      return cliente.invalidateQueries({ queryKey: CLAVE_MI_ACADEMIA });
+      // La cabecera se actualiza en segundo plano: la mutación no espera esa petición, así el formulario se desbloquea
+      // apenas responde el PATCH aunque `mi-academia` tarde o no responda (criterio 31).
+      void cliente.invalidateQueries({ queryKey: CLAVE_MI_ACADEMIA }).catch(() => undefined);
     },
   });
 }

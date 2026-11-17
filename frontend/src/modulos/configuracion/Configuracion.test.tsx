@@ -831,4 +831,49 @@ describe('el formulario ante un GET en segundo plano y un guardado en curso (cri
       expect(boton).toBeEnabled();
     }
   });
+  describe('31: el formulario se desbloquea al responder el PATCH, sin esperar a "mi-academia"', () => {
+    async function guardarConMiAcademiaLenta(respuestaMiAcademia: () => Promise<Respuesta>) {
+      let recargaMiAcademia = false;
+      const api = comoAdmin({
+        'GET /api/mi-academia': () =>
+          recargaMiAcademia ? respuestaMiAcademia() : { estado: 200, cuerpo: MI_ACADEMIA },
+        'PATCH /api/configuracion': (cuerpo) => ({
+          estado: 200,
+          cuerpo: { configuracion: { ...POR_DEFECTO, ...(cuerpo as object) } },
+        }),
+      });
+      const usuario = userEvent.setup();
+      mostrar('/panel/configuracion');
+      await usuario.type(await screen.findByLabelText(TELEFONO), '01 555 0000');
+      recargaMiAcademia = true;
+      await usuario.click(screen.getByRole('button', GUARDAR));
+      await waitFor(() => expect(llamadas(api, 'PATCH /api/configuracion')).toHaveLength(1));
+      await screen.findByText('Configuración guardada.');
+      return api;
+    }
+
+    function comprobarActivo() {
+      for (const etiqueta of [INTENTOS, BLOQUEO, TELEFONO, 'Tolerancia de tardanza (minutos)']) {
+        expect(screen.getByLabelText(etiqueta).matches(':disabled')).toBe(false);
+      }
+      const porDefecto = screen.getAllByRole('button', { name: /Usar el valor por defecto/ });
+      expect(porDefecto).toHaveLength(6);
+      expect(porDefecto.filter((boton) => boton.matches(':disabled'))).toHaveLength(0);
+      expect(screen.queryByRole('button', { name: 'Guardando…' })).not.toBeInTheDocument();
+    }
+
+    it('si "mi-academia" no responde, los campos y los 6 botones quedan activos', async () => {
+      await guardarConMiAcademiaLenta(() => new Promise<Respuesta>(() => undefined));
+      await new Promise((resolver) => setTimeout(resolver, 300));
+      comprobarActivo();
+    });
+
+    it('si "mi-academia" tarda 2 s, el formulario ya está activo apenas responde el PATCH', async () => {
+      await guardarConMiAcademiaLenta(
+        () =>
+          new Promise<Respuesta>((resolver) => setTimeout(() => resolver({ estado: 200, cuerpo: MI_ACADEMIA }), 2000)),
+      );
+      comprobarActivo();
+    });
+  });
 });
