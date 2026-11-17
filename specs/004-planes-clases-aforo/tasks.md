@@ -3,14 +3,18 @@
 Cada tarea indica su rol y los criterios de aceptación de [`spec.md`](spec.md) que cubre. Historia en parte crítica:
 los criterios 1 a 7, 10, 18, 22 y 23 llevan pruebas protegidas escritas y confirmadas en rojo antes de implementar (T1
 a T4) y ataque adversarial después (T13). Los demás llevan las pruebas que indica cada tarea, escritas por quien
-implementa. No se empieza T1 sin la aprobación del responsable.
+implementa. No se empieza T1 sin la aprobación del responsable (dada el 17/11/2026, T0).
 
 ## Aprobación
 
-- [ ] T0 · responsable y orquestador · Aprobar la especificación y resolver las preguntas N1 a N8 (Bryan) y T1 a T5
+- [x] T0 · responsable y orquestador · Aprobar la especificación y resolver las preguntas N1 a N8 (Bryan) y T1 a T5
       (orquestador). Si alguna respuesta cambia un valor provisional (N1, N3, N4, N6, N8), el especificador ajusta los
       criterios afectados antes de T1. Si se aprueba T1, el orquestador suma a la nota de la 005 en `specs/backlog.md`
       la ocupación, el último cupo simultáneo y la advertencia de N5.
+      **Hecho (17/11/2026):** Bryan aprobó la spec y las propuestas de N1 a N8 ("Estoy de acuerdo con tus
+      sugerencias"; DR-1 a DR-8 de 004) y el orquestador las de T1 a T5 (DT-1 a DT-5 de 004). Ningún valor provisional
+      cambió, así que ningún criterio cambió. La nota de la 005 en `specs/backlog.md` ya suma la ocupación, la reserva
+      de cupos, el último cupo simultáneo con `bloquearClasesParaCupo` y lo de DR-5; la 004 pasó a 🟨.
 
 ## Pruebas protegidas (en rojo)
 

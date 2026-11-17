@@ -14,8 +14,11 @@
 - **Ruta crítica:** en parte. Son críticos el aforo (RN-11: rango y forma de bloquear el cupo), el precio y las clases
   por mes (entradas del cálculo del cobro, RN-25 y D-03), el aislamiento entre academias de las tablas nuevas y los
   permisos. El resto del mantenimiento de planes y clases, la web, la semilla y la documentación no lo son (lista de
-  `CLAUDE.md`: "mantenimiento simple de planes y clases (salvo lo que toca el aforo)").
-- **Estado:** borrador (17/11/2026), pendiente de la aprobación del responsable.
+  `CLAUDE.md`: "mantenimiento simple de planes y clases (salvo lo que toca el aforo)"). _(Aprobado por el orquestador,
+  DT-5; el backlog la marca "En parte".)_
+- **Estado:** aprobada por el responsable (17/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
+  DR-8 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-5), en "Decisiones". Ningún criterio
+  cambió. No quedan preguntas abiertas.
 
 ## Objetivo
 
@@ -411,7 +414,7 @@ Una migración `<marca>_planes_clases`. Ajusta las entidades `PLAN` y `CLASE` de
   protegidas de 004, solo para sumar, sin quitar nada de lo que comprueban; `scripts/lib/rol-app.mjs` se amplía igual.
 - **001, criterio 10:** no cambia (las tablas nuevas tienen `academia_id`). Criterio 12: la llave compuesta hacia
   `usuarios` lo cumple.
-- **002, criterio 26 (matriz):** no cambia si se aprueba T2 (se reutiliza `CONFIGURAR_PLANES_HORARIOS_AFORO`).
+- **002, criterio 26 (matriz):** no cambia (DT-2: se reutiliza `CONFIGURAR_PLANES_HORARIOS_AFORO`).
 - **002, desactivar usuarios:** no cambia (pregunta N6).
 - **002, "Fuera de alcance: datos propios del entrenador (… asignación a clases): 004 y 012":** la asignación se cumple
   aquí; el resto sigue en 012.
@@ -449,7 +452,76 @@ Para documentar en `docs/arquitectura.md` (criterio 31):
 
 ## Decisiones
 
-Propuestas del especificador, pendientes de aprobación junto con la spec.
+**Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" en esta sección y como "DR-n de
+004" fuera de ella; las del orquestador, "DT-n" y "DT-n de 004". Los criterios, el contrato y las demás secciones se
+escribieron antes de la aprobación y no cambian: donde dicen "pregunta Nn" se refieren a DR-n de 004 y donde dicen
+"pregunta Tn", a DT-n de 004. Los valores que la spec llama "provisionales" (límites de N1 en los criterios 9 y 10, una
+clase por nivel y bloque del criterio 20 c, campos inmutables del criterio 21, entrenador inactivo del criterio 25 y
+nombre único del criterio 11) quedan aprobados para el MVP.
+
+### Decisiones del responsable (17/11/2026)
+
+Bryan aprobó la especificación y aceptó la propuesta de cada pregunta de negocio ("Estoy de acuerdo con tus
+sugerencias"). Se conserva el texto de cada pregunta y su propuesta, que es lo decidido.
+
+- **DR-1 (pregunta N1). Límites de los planes.** Los documentos dicen los campos, pero no sus límites. **Decidido (la
+  propuesta):** nombre de 3 a 80 caracteres; de 1 a 7 veces por semana; de 1 a 31 clases por mes; duración de 15 a 60
+  minutos, 60 por defecto (es informativa: la clase ocupa su bloque de 1 hora, RN-09); precio mayor que S/ 0 y hasta
+  S/ 99 999.99, con céntimos; la academia puede tener clases de lunes a domingo (criterios 9, 10 y 17).
+- **DR-2 (pregunta N2). ¿Qué significa la vigencia del plan?** **Decidido (la propuesta):** las fechas entre las que el
+  plan se puede elegir para inscripciones nuevas y renovaciones (por ejemplo, un plan de verano de enero a marzo); las
+  dos son opcionales (sin inicio, desde ya; sin fin, sin límite); no afecta a las matrículas que ya se pagaron. En esta
+  historia solo se guarda y se muestra como estado (criterio 14); lo aplican la 005 y la 010.
+- **DR-3 (pregunta N3). ¿Puede haber dos clases del mismo nivel en el mismo bloque** (por ejemplo, dos grupos de Básico
+  a las 18:00 con dos entrenadores)? RN-10 habla de una clase de cada nivel. **Decidido (la propuesta):** no, como mucho
+  una por nivel en cada bloque (hasta tres a la vez); así el alumno elige nivel, día y hora sin ambigüedad. Si luego
+  hace falta, se quita la regla sin tocar los datos (criterio 20 c).
+- **DR-4 (pregunta N4). ¿Se puede cambiar el nivel, el día o la hora de una clase ya creada?** **Decidido (la
+  propuesta):** no; solo el entrenador, el aforo y si está activa. Para moverla, se desactiva y se crea otra. Cuando
+  haya alumnos, mover una clase es cambiar el horario de cada uno, que tiene su propio flujo con motivo y auditoría
+  (HU-03, 010) (criterios 2 y 21, decisión D7).
+- **DR-5 (pregunta N5). Reducir el aforo por debajo de los inscritos** (HU-17: "el sistema advierte"). **Decidido (la
+  propuesta):** se permite con una confirmación explícita; nadie pierde su lugar, y no entran inscripciones nuevas
+  hasta que haya cupo. Desactivar una clase con inscritos no se permite hasta moverlos. Se construye en la 005, que es
+  la primera con inscritos (nota de la 005 en `specs/backlog.md`).
+- **DR-6 (pregunta N6). Entrenador desactivado con clases activas.** **Decidido (la propuesta):** se permite
+  desactivarlo (la 002 no cambia); sus clases siguen activas y se marcan "Entrenador inactivo" para que el
+  administrador las reasigne. Una clase nueva, una reasignación o una reactivación exigen un entrenador activo
+  (criterios 19, 21 y 25). Alternativa descartada: no dejar desactivarlo mientras tenga clases.
+- **DR-7 (pregunta N7). ¿Quién ve los planes y las clases en esta historia?** **Decidido (la propuesta):** solo el
+  administrador, que es quien los configura (sección 2.1). La secretaria los verá donde los usa (inscripción y cobro,
+  005 y 007; cambio de horario, 010), el entrenador su horario (HU-18, 012) y el público los planes vigentes y las
+  clases con cupo (005) (criterio 5).
+- **DR-8 (pregunta N8). ¿El nombre del plan es único en la academia?** **Decidido (la propuesta):** sí, sin distinguir
+  mayúsculas y contando los inactivos, para que los reportes y el formulario de inscripción no muestren dos planes
+  iguales (criterio 11).
+
+### Decisiones técnicas del orquestador (17/11/2026)
+
+El orquestador aprobó las cinco propuestas técnicas tal como estaban. Se conserva el texto de cada pregunta y su
+propuesta.
+
+- **DT-1 (pregunta T1). Ocupación y reservas en la 005, no aquí.** "Nunca más inscritos que el aforo" necesita algo que
+  cuente inscritos, y eso nace con la solicitud de inscripción y su reserva de cupo (RN-28, 005); crear ahora una tabla
+  de matrículas sería adelantar el diseño de la 005 (D-17). **Decidido (la propuesta):** la 004 deja el rango, el
+  bloqueo común (`bloquearClasesParaCupo`) y la regla para las historias siguientes; la 005 cuenta la ocupación dentro
+  de ese bloqueo, reserva los cupos y trae las pruebas protegidas del último cupo simultáneo y lo de DR-5. Quedó
+  anotado en la nota de la 005 de `specs/backlog.md`.
+- **DT-2 (pregunta T2). Permiso.** **Decidido (la propuesta):** las seis rutas usan `CONFIGURAR_PLANES_HORARIOS_AFORO`
+  (también las lecturas, DR-7); la matriz sigue con 24 filas y la prueba protegida del criterio 26 de 002 no cambia.
+  Alternativa descartada: un permiso de lectura nuevo para la secretaria (no hace falta con DR-7).
+- **DT-3 (pregunta T3). Montos como texto en el JSON** (D3), con `montoSchema` en los contratos para todas las
+  historias de dinero. **Decidido (la propuesta).**
+- **DT-4 (pregunta T4). Entrenadores para el formulario.** **Decidido (la propuesta):** se reutiliza `GET /api/usuarios`
+  (`GESTIONAR_USUARIOS`, que el administrador ya tiene) y la web filtra los entrenadores activos. Alternativa
+  descartada por ahora: una ruta propia que devuelva solo id y nombre, si algún día otro rol tiene que elegir
+  entrenadores.
+- **DT-5 (pregunta T5). Clasificación.** **Decidido (la propuesta):** "en parte", con críticos 1 a 7, 10, 18, 22 y 23
+  (sección "Clasificación de ruta crítica").
+
+### Decisiones de diseño (técnicas)
+
+Propuestas del especificador, aprobadas con la spec (17/11/2026).
 
 - **D1. Días, franjas y niveles del plan en arreglos de la misma fila** (`smallint[]`, `time[]`, `nivel_natacion[]`), con
   `CHECK`. Alternativa descartada: tablas hijas por plan (más uniones, más escrituras por cambio y nada que ganar con
@@ -467,7 +539,7 @@ Propuestas del especificador, pendientes de aprobación junto con la spec.
 - **D6. Llave foránea compuesta hacia `usuarios`** (criterio 12 de 001): una clase no puede apuntar a un entrenador de
   otra academia, aunque la API fallara. El rol `ENTRENADOR` y el estado `ACTIVO` los comprueba la API (una llave no
   puede hacerlo).
-- **D7. Nivel, día y hora inmutables en la base** (sin privilegio de `UPDATE` en esas columnas), si se aprueba N4.
+- **D7. Nivel, día y hora inmutables en la base** (sin privilegio de `UPDATE` en esas columnas), por DR-4.
 - **D8. Sin borrar:** sin política ni privilegio de `DELETE`; los planes y las clases se desactivan.
 - **D9. Se audita todo cambio de planes y clases.** RN-22 nombra la caja, los pagos y los cambios de horario; un cambio
   de precio o de aforo afecta al dinero y al cupo, así que se trata igual (como D8 de 003).
@@ -479,52 +551,5 @@ Propuestas del especificador, pendientes de aprobación junto con la spec.
 
 ## Preguntas abiertas
 
-### De negocio (las decide Bryan)
-
-- **N1. Límites de los planes.** Los documentos dicen los campos, pero no sus límites. **Propuesta:** nombre de 3 a 80
-  caracteres; de 1 a 7 veces por semana; de 1 a 31 clases por mes; duración de 15 a 60 minutos, 60 por defecto (es
-  informativa: la clase ocupa su bloque de 1 hora, RN-09); precio mayor que S/ 0 y hasta S/ 99 999.99, con céntimos;
-  la academia puede tener clases de lunes a domingo. **Valor provisional:** esos.
-- **N2. ¿Qué significa la vigencia del plan?** **Propuesta:** las fechas entre las que el plan se puede elegir para
-  inscripciones nuevas y renovaciones (por ejemplo, un plan de verano de enero a marzo); las dos son opcionales (sin
-  inicio, desde ya; sin fin, sin límite); no afecta a las matrículas que ya se pagaron. **Valor provisional:** ese; en
-  esta historia solo se guarda y se muestra como estado.
-- **N3. ¿Puede haber dos clases del mismo nivel en el mismo bloque** (por ejemplo, dos grupos de Básico a las 18:00 con
-  dos entrenadores)? RN-10 habla de una clase de cada nivel. **Propuesta:** no, como mucho una por nivel en cada bloque
-  (hasta tres a la vez); así el alumno elige nivel, día y hora sin ambigüedad. Si luego hace falta, se quita la regla
-  sin tocar los datos. **Valor provisional:** una por nivel (criterio 20 c).
-- **N4. ¿Se puede cambiar el nivel, el día o la hora de una clase ya creada?** **Propuesta:** no; solo el entrenador, el
-  aforo y si está activa. Para moverla, se desactiva y se crea otra. Cuando haya alumnos, mover una clase es cambiar el
-  horario de cada uno, que tiene su propio flujo con motivo y auditoría (HU-03, 010). **Valor provisional:** no
-  (criterio 21).
-- **N5. Reducir el aforo por debajo de los inscritos** (HU-17: "el sistema advierte"). **Propuesta:** se permite con una
-  confirmación explícita; nadie pierde su lugar, y no entran inscripciones nuevas hasta que haya cupo. Desactivar una
-  clase con inscritos no se permite hasta moverlos. Se construye en la 005, que es la primera con inscritos.
-- **N6. Entrenador desactivado con clases activas.** **Propuesta:** se permite desactivarlo (la 002 no cambia); sus
-  clases siguen activas y se marcan "Entrenador inactivo" para que el administrador las reasigne. Una clase nueva, una
-  reasignación o una reactivación exigen un entrenador activo. Alternativa: no dejar desactivarlo mientras tenga clases.
-  **Valor provisional:** la propuesta (criterio 25).
-- **N7. ¿Quién ve los planes y las clases en esta historia?** **Propuesta:** solo el administrador, que es quien los
-  configura (sección 2.1). La secretaria los verá donde los usa (inscripción y cobro, 005 y 007; cambio de horario,
-  010), el entrenador su horario (HU-18, 012) y el público los planes vigentes y las clases con cupo (005).
-- **N8. ¿El nombre del plan es único en la academia?** **Propuesta:** sí, sin distinguir mayúsculas y contando los
-  inactivos, para que los reportes y el formulario de inscripción no muestren dos planes iguales. **Valor
-  provisional:** sí (criterio 11).
-
-### Técnicas (las decide el orquestador)
-
-- **T1. Ocupación y reservas en la 005, no aquí.** "Nunca más inscritos que el aforo" necesita algo que cuente inscritos,
-  y eso nace con la solicitud de inscripción y su reserva de cupo (RN-28, 005); crear ahora una tabla de matrículas
-  sería adelantar el diseño de la 005 (D-17). **Propuesta:** la 004 deja el rango, el bloqueo común
-  (`bloquearClasesParaCupo`) y la regla para las historias siguientes; la 005 cuenta la ocupación dentro de ese
-  bloqueo y trae las pruebas protegidas del último cupo simultáneo y la advertencia de N5. Conviene sumar esto a la
-  nota de la 005 en `specs/backlog.md`.
-- **T2. Permiso.** **Propuesta:** las seis rutas usan `CONFIGURAR_PLANES_HORARIOS_AFORO` (también las lecturas, N7); la
-  matriz sigue con 24 filas y la prueba protegida del criterio 26 de 002 no cambia. Alternativa: un permiso de lectura
-  nuevo para la secretaria, si Bryan decide otra cosa en N7.
-- **T3. Montos como texto en el JSON** (D3), con `montoSchema` en los contratos para todas las historias de dinero.
-- **T4. Entrenadores para el formulario:** se reutiliza `GET /api/usuarios` (`GESTIONAR_USUARIOS`, que el administrador
-  ya tiene) y la web filtra los entrenadores activos. Alternativa: una ruta propia que devuelva solo id y nombre, si
-  algún día otro rol tiene que elegir entrenadores.
-- **T5. Clasificación.** **Propuesta:** "en parte", con críticos 1 a 7, 10, 18, 22 y 23 (sección "Clasificación de ruta
-  crítica").
+Ninguna. Las preguntas N1 a N8 y T1 a T5 quedaron decididas el 17/11/2026 (DR-1 a DR-8 y DT-1 a DT-5, en
+"Decisiones", con el texto de cada pregunta y su propuesta).

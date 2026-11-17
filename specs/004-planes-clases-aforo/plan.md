@@ -5,9 +5,10 @@ historias siguientes") y las specs [`001`](../001-academias-aislamiento/spec.md)
 [`002`](../002-autenticacion-roles/spec.md) y [`003`](../003-configuracion-academia/spec.md). Lo que no es orientativo
 es el contrato de `spec.md`.
 
-**Estado:** borrador (17/11/2026), pendiente de la aprobación de la spec. Si cambian las respuestas de N1 (límites), N3
-(una clase por nivel y bloque) o N4 (campos inmutables), cambian los esquemas, un índice único y los privilegios de
-`clases`; el resto del diseño no.
+**Estado:** aprobado con la spec (17/11/2026). Bryan aceptó las propuestas de N1 a N8 (DR-1 a DR-8 de 004) y el
+orquestador las de T1 a T5 (DT-1 a DT-5 de 004); el diseño no cambia. Los límites de N1, la clase única por nivel y
+bloque de N3 y los campos inmutables de N4 quedan como están en este plan. Si algún día se revisan, cambian los
+esquemas, un índice único y los privilegios de `clases` (con otra migración); el resto del diseño no.
 
 ## Módulos afectados
 
@@ -217,8 +218,9 @@ los índices parciales). Repetirla no duplica ni pisa cambios (criterio 30).
 | Estado del plan calculado al leer (D10) | Columna por tarea programada | Nunca queda viejo |
 | Entrenador leído sin bloqueo (D11) | Bloquear su fila | Orden de bloqueos para las historias siguientes |
 | `bloquearClasesParaCupo` sin Nest | Método de `ClasesService` | Las historias 005 a 020 la usan sin depender del módulo (como `leerConfiguracion`) |
-| Reutilizar `GET /api/usuarios` para elegir entrenador (T4) | Ruta nueva | El administrador ya tiene el permiso |
-| Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` (T2) | Permiso nuevo de lectura | La matriz dice lo que permite; N7 |
+| Reutilizar `GET /api/usuarios` para elegir entrenador (DT-4) | Ruta nueva | El administrador ya tiene el permiso |
+| Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` (DT-2) | Permiso nuevo de lectura | La matriz dice lo que permite; DR-7 |
+| Ocupación, reservas y prueba del último cupo en la 005 (DT-1) | Tabla de matrículas en la 004 | Adelantaría el diseño de la 005 (D-17); la 004 deja el bloqueo común |
 
 ## Migraciones
 
@@ -237,7 +239,7 @@ los índices parciales). Repetirla no duplica ni pisa cambios (criterio 30).
 - **Coma flotante en el precio:** cualquier `Number(precio)` en el backend o la web rompe el criterio 10. El revisor
   busca `Number(`, `parseFloat` y `+precio` en los módulos de planes y en `lib/dinero.ts`.
 - **Horas con segundos o zona:** `hora_inicio::text` puede dar `08:00:00`; se usa `to_char(…, 'HH24:MI')`.
-- **Cambiar los límites provisionales (N1, N3, N4):** los de la API cambian en los contratos; los de la base (N3, N4)
-  necesitan otra migración.
+- **Revisar más adelante los límites aprobados (DR-1, DR-3, DR-4):** los de la API cambian en los contratos; los de la
+  base (DR-3, DR-4) necesitan otra migración.
 - **Pruebas protegidas de 001 y 002 con listas exactas** (privilegios y tablas): si alguna no está prevista en las
   tareas, el tester lo reporta en el rojo y decide el orquestador.

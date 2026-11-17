@@ -14,7 +14,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 001 | Academias y aislamiento | Sí | ✅ |
 | 002 | Autenticación y roles por academia | Sí | ✅ |
 | 003 | Configuración de la academia | En parte | ✅ |
-| 004 | Planes y clases con aforo | En parte | ⬜ |
+| 004 | Planes y clases con aforo | En parte | 🟨 |
 | 005 | Inscripción pública y seguimiento de la solicitud | Sí | ⬜ |
 | 006 | Caja | Sí | ⬜ |
 | 007 | Pagos, verificación y paso de cliente a alumno | Sí | ⬜ |
@@ -78,6 +78,15 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Nota de 003 (DR-4 de 003): el teléfono de la academia (`telefono`, D-22) se publica en las páginas públicas (ingreso,
     inscripción y seguimiento) desde esta historia, con la `tx` de la ruta pública y sin caché. La 003 solo lo muestra con
     sesión.
+  - Nota de 004 (DT-1 de 004): la 004 deja el aforo de 20 a 50, el bloqueo común `bloquearClasesParaCupo(tx, ids)` y la
+    regla "Cupo de una clase" de `docs/arquitectura.md`, pero no cuenta inscritos. Esta historia cuenta la ocupación de
+    cada clase y reserva los cupos mientras el pago está pendiente (RN-28), siempre dentro de ese bloqueo (todas las
+    clases que toca en una sola llamada, después de `bloquearActorVigente` si hay actor y antes de contar o escribir), y
+    trae las pruebas protegidas de "nunca más inscritos que el aforo, aunque dos personas tomen el último cupo a la vez"
+    usando `bloquearClasesParaCupo`. También construye lo decidido en DR-5 de 004: bajar el aforo por debajo de los
+    inscritos se permite con una confirmación explícita (nadie pierde su lugar y no entran inscripciones nuevas hasta que
+    haya cupo), y no se puede desactivar una clase con inscritos hasta moverlos. Además, aplica la vigencia del plan (DR-2
+    de 004) y los días, franjas y niveles permitidos al ofrecer planes y clases.
 - **006 · Caja.** Apertura, movimientos, egresos, cierre con esperado por método y diferencia, reapertura por el
   administrador, PDF del cierre (HU-25 a HU-27, RN-17).
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de
