@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatearFecha, formatearFechaHora } from './fechas';
+import { diaDeLaSemanaEnLima, formatearFecha, formatearFechaCalendario, formatearFechaHora } from './fechas';
 
 describe('fechas en America/Lima', () => {
   it('formatea la fecha con dd/MM/yyyy', () => {
@@ -10,5 +10,17 @@ describe('fechas en America/Lima', () => {
     expect(formatearFechaHora('2026-11-12T03:05:00.000Z')).toBe('11/11/2026 22:05');
     // Medianoche en Lima (05:00 UTC): "00:00" y no "24:00".
     expect(formatearFechaHora('2026-11-12T05:00:00.000Z')).toBe('12/11/2026 00:00');
+  });
+
+  it('una fecha de calendario AAAA-MM-DD se muestra como dd/MM/yyyy sin tocar la zona horaria', () => {
+    expect(formatearFechaCalendario('2026-11-30')).toBe('30/11/2026');
+    expect(formatearFechaCalendario('2027-01-01')).toBe('01/01/2027');
+  });
+
+  it('el día de la semana se decide en Lima, de 1 (lunes) a 7 (domingo)', () => {
+    // 2026-11-16 es lunes. 04:59 UTC todavía es domingo 23:59 en Lima; 05:00 UTC ya es lunes.
+    expect(diaDeLaSemanaEnLima(new Date('2026-11-16T04:59:00.000Z'))).toBe(7);
+    expect(diaDeLaSemanaEnLima(new Date('2026-11-16T05:00:00.000Z'))).toBe(1);
+    expect(diaDeLaSemanaEnLima(new Date('2026-11-18T15:00:00.000Z'))).toBe(3);
   });
 });

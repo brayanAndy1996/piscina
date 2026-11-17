@@ -25,3 +25,17 @@ export function formatearFechaHora(iso: string): string {
   const partes = Object.fromEntries(PARTES_FECHA_HORA.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
   return `${partes['day']}/${partes['month']}/${partes['year']} ${partes['hour']}:${partes['minute']}`;
 }
+
+/** Una fecha de calendario `AAAA-MM-DD` (por ejemplo, la vigencia de un plan) como `dd/MM/yyyy`. Es texto: no pasa por zona horaria. */
+export function formatearFechaCalendario(fecha: string): string {
+  const [anio, mes, dia] = fecha.split('-');
+  return anio && mes && dia ? `${dia}/${mes}/${anio}` : fecha;
+}
+
+const DIA_ISO: Readonly<Record<string, number>> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+const DIA_EN_LIMA = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Lima', weekday: 'short' });
+
+/** El día de la semana de un instante en America/Lima, de 1 (lunes) a 7 (domingo), sin depender de la zona del navegador. */
+export function diaDeLaSemanaEnLima(instante: Date = new Date()): number {
+  return DIA_ISO[DIA_EN_LIMA.format(instante)] ?? 1;
+}
