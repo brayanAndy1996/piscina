@@ -24,20 +24,22 @@ import {
 } from '../../infraestructura/seguridad';
 import { AuditoriaService } from '../auditoria';
 import { estaBloqueado, evaluarIntentoFallido } from '../academias/dominio/bloqueo';
+import { leerConfiguracion } from '../configuracion/lectura';
 import { bloquearActorVigente, noAutenticado } from './actor-vigente';
 import { duracionSesionSegundos } from './dominio/duracion-sesion';
-import { REGLAS_BLOQUEO_USUARIO } from './dominio/reglas-bloqueo';
+import { minutosRestantes, reglasBloqueoDe } from './dominio/reglas-bloqueo';
 import { type SesionVerificada, TIPO_TOKEN_ACADEMIA } from './tipos';
 
 function credencialesInvalidas(): ErrorNegocio {
   return new ErrorNegocio(401, 'CREDENCIALES_INVALIDAS', 'El DNI o la contraseña no son correctos.');
 }
 
-function cuentaBloqueada(): ErrorNegocio {
+function cuentaBloqueada(bloqueadoHasta: Date | null, ahora: Date): ErrorNegocio {
+  const minutos = minutosRestantes(bloqueadoHasta, ahora);
   return new ErrorNegocio(
     423,
     'CUENTA_BLOQUEADA',
-    `La cuenta está bloqueada por varios intentos fallidos. Intenta de nuevo en ${REGLAS_BLOQUEO_USUARIO.minutosBloqueo} minutos.`,
+    `La cuenta está bloqueada por varios intentos fallidos. Intenta de nuevo en ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}.`,
   );
 }
 
@@ -92,10 +94,11 @@ interface ClaveVerificada {
   readonly versionToken: number;
 }
 
-type ResultadoFallo = { tipo: 'FALLO' } | { tipo: 'BLOQUEADA' } | { tipo: 'DESAPARECIDO' };
+/** `BLOQUEADA` lleva el `bloqueado_hasta` que se acaba de escribir o el que la fila ya tenía (para decir cuántos minutos faltan). */
+type ResultadoFallo = { tipo: 'FALLO' } | { tipo: 'BLOQUEADA'; bloqueadoHasta: Date | null } | { tipo: 'DESAPARECIDO' };
 type ResultadoAcierto =
   | { tipo: 'ACIERTO'; fila: FilaIngreso }
-  | { tipo: 'BLOQUEADA' }
+  | { tipo: 'BLOQUEADA'; bloqueadoHasta: Date | null }
   | { tipo: 'INACTIVO' }
   | { tipo: 'DESAPARECIDO' }
   | { tipo: 'CAMBIADA' };
@@ -159,12 +162,13 @@ export class SesionAcademiaService {
     // Falla cerrada (criterio 108 de 001): una fecha inválida de la fila no autoriza nada; el filtro responde 500.
     const bloqueadoHasta = fechaDeBaseONula(fila.bloqueado_hasta);
     fechaDeBaseONula(fila.ultimo_acceso);
-    if (estaBloqueado({ intentosFallidos: fila.intentos_fallidos, bloqueadoHasta }, this.reloj.ahora())) {
+    const ahoraDelIngreso = this.reloj.ahora();
+    if (estaBloqueado({ intentosFallidos: fila.intentos_fallidos, bloqueadoHasta }, ahoraDelIngreso)) {
       this.registro.warn(
         { usuarioId: fila.id, academiaId: academia.id, ip },
         'Inicio de sesión rechazado: cuenta bloqueada',
       );
-      throw cuentaBloqueada();
+      throw cuentaBloqueada(bloqueadoHasta, ahoraDelIngreso);
     }
 
     // El hash tarda decenas de milisegundos: se calcula fuera de la transacción para no retener la conexión.
@@ -230,12 +234,13 @@ export class SesionAcademiaService {
     if (!fila || fila.estado !== 'ACTIVO' || Number(fila.version_token) !== sesion.versionToken) throw noAutenticado();
 
     const bloqueadoHasta = fechaDeBaseONula(fila.bloqueado_hasta);
-    if (estaBloqueado({ intentosFallidos: fila.intentos_fallidos, bloqueadoHasta }, this.reloj.ahora())) {
+    const ahoraDelCambio = this.reloj.ahora();
+    if (estaBloqueado({ intentosFallidos: fila.intentos_fallidos, bloqueadoHasta }, ahoraDelCambio)) {
       this.registro.warn(
         { usuarioId: usuario.id, academiaId: usuario.academiaId, ip },
         'Cambio de contraseña rechazado: cuenta bloqueada',
       );
-      throw cuentaBloqueada();
+      throw cuentaBloqueada(bloqueadoHasta, ahoraDelCambio);
     }
     const correcta = await verificarClave(fila.clave_hash, datos.claveActual);
     if (!correcta) {
@@ -268,13 +273,9 @@ export class SesionAcademiaService {
       if (!actual) return { tipo: 'SESION_PERDIDA' as const };
       // Otro cambio ganó la carrera (criterio 25): la contraseña actual ya no es la que se verificó.
       if (actual.clave_hash !== fila.clave_hash) return { tipo: 'CLAVE_CAMBIADA' as const };
-      if (
-        estaBloqueado(
-          { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: fechaDeBaseONula(actual.bloqueado_hasta) },
-          ahora,
-        )
-      ) {
-        return { tipo: 'BLOQUEADA' as const };
+      const bloqueadoActual = fechaDeBaseONula(actual.bloqueado_hasta);
+      if (estaBloqueado({ intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: bloqueadoActual }, ahora)) {
+        return { tipo: 'BLOQUEADA' as const, bloqueadoHasta: bloqueadoActual };
       }
       const versionNueva = sesion.versionToken + 1;
       await tx.cliente.$executeRaw`
@@ -295,7 +296,7 @@ export class SesionAcademiaService {
 
     if (resultado.tipo === 'SESION_PERDIDA') throw noAutenticado();
     if (resultado.tipo === 'CLAVE_CAMBIADA') throw claveActualIncorrecta();
-    if (resultado.tipo === 'BLOQUEADA') throw cuentaBloqueada();
+    if (resultado.tipo === 'BLOQUEADA') throw cuentaBloqueada(resultado.bloqueadoHasta, ahora);
     this.registro.info({ usuarioId: usuario.id, academiaId: usuario.academiaId, ip }, 'Cambio de contraseña correcto');
     const nueva: SesionVerificada = {
       usuario: { ...usuario, debeCambiarClave: false },
@@ -413,8 +414,9 @@ export class SesionAcademiaService {
   }
 
   /**
-   * Las dos sentencias del conteo (leer la fila con `FOR UPDATE` y escribir el contador), dentro de la transacción que recibe. Las
-   * comparten el ingreso y el cambio de contraseña: la secuencia del ingreso no cambia (criterio 53).
+   * Las tres sentencias del conteo (leer la fila con `FOR UPDATE`, leer la configuración de la academia y escribir el contador),
+   * dentro de la transacción que recibe. Las comparten el ingreso y el cambio de contraseña. La configuración se lee siempre, exista
+   * o no la fila (D5 de 003): la secuencia de sentencias es la misma con y sin cuenta (criterio 53 de 002, criterio 17 de 003).
    */
   private async contarFalloEnTransaccion(tx: TransaccionAcademia, id: string): Promise<ResultadoFallo> {
     const ahora = this.reloj.ahora();
@@ -422,16 +424,19 @@ export class SesionAcademiaService {
       SELECT intentos_fallidos, bloqueado_hasta
         FROM usuarios WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid FOR UPDATE`;
     const actual = filas[0];
+    // Los valores de esta academia (un valor guardado inválido vale lo de por defecto): nunca los de otra ni una constante.
+    const configuracion = await leerConfiguracion(tx, { registro: this.registro });
     // Sin fila (id inexistente) el `UPDATE` también se envía, con valores neutros y sin afectar ninguna fila: la secuencia de
     // sentencias es la misma con o sin cuenta (criterio 53).
+    const bloqueadoActual = actual ? fechaDeBaseONula(actual.bloqueado_hasta) : null;
     const evaluacion = evaluarIntentoFallido(
       actual
-        ? { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: fechaDeBaseONula(actual.bloqueado_hasta) }
+        ? { intentosFallidos: actual.intentos_fallidos, bloqueadoHasta: bloqueadoActual }
         : { intentosFallidos: 0, bloqueadoHasta: null },
       ahora,
-      REGLAS_BLOQUEO_USUARIO,
+      reglasBloqueoDe(configuracion),
     );
-    if (evaluacion.tipo === 'YA_BLOQUEADA') return { tipo: 'BLOQUEADA' };
+    if (evaluacion.tipo === 'YA_BLOQUEADA') return { tipo: 'BLOQUEADA', bloqueadoHasta: bloqueadoActual };
     await tx.cliente.$executeRaw`
       UPDATE usuarios
          SET intentos_fallidos = ${evaluacion.estado.intentosFallidos},
@@ -439,7 +444,9 @@ export class SesionAcademiaService {
              actualizado_en = ${ahora}::timestamptz
        WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid`;
     if (!actual) return { tipo: 'DESAPARECIDO' };
-    return evaluacion.bloquea ? { tipo: 'BLOQUEADA' } : { tipo: 'FALLO' };
+    return evaluacion.bloquea
+      ? { tipo: 'BLOQUEADA', bloqueadoHasta: evaluacion.estado.bloqueadoHasta }
+      : { tipo: 'FALLO' };
   }
 
   /**
@@ -479,7 +486,7 @@ export class SesionAcademiaService {
   ): void {
     if (resultado.tipo === 'BLOQUEADA') {
       this.registro.warn({ usuarioId: id, academiaId, ip }, `${operacion} rechazado: cuenta bloqueada`);
-      throw cuentaBloqueada();
+      throw cuentaBloqueada(resultado.bloqueadoHasta, this.reloj.ahora());
     }
     this.registro.warn({ usuarioId: id, academiaId, ip }, `${operacion} rechazado: contraseña incorrecta`);
   }
@@ -513,7 +520,7 @@ export class SesionAcademiaService {
       }
       const bloqueadoHasta = fechaDeBaseONula(actual.bloqueado_hasta);
       if (estaBloqueado({ intentosFallidos: actual.intentos_fallidos, bloqueadoHasta }, ahora)) {
-        return { tipo: 'BLOQUEADA' };
+        return { tipo: 'BLOQUEADA', bloqueadoHasta };
       }
       if (actual.estado !== 'ACTIVO') return { tipo: 'INACTIVO' };
       await tx.cliente.$executeRaw`
@@ -526,7 +533,7 @@ export class SesionAcademiaService {
     const contexto = { usuarioId: id, academiaId: academia.id, ip };
     if (resultado.tipo === 'BLOQUEADA') {
       this.registro.warn(contexto, 'Inicio de sesión rechazado: cuenta bloqueada');
-      throw cuentaBloqueada();
+      throw cuentaBloqueada(resultado.bloqueadoHasta, this.reloj.ahora());
     }
     if (resultado.tipo === 'INACTIVO') {
       this.registro.warn(contexto, 'Inicio de sesión rechazado: usuario inactivo');

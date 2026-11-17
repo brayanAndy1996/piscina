@@ -32,6 +32,12 @@ const USUARIOS_DE_EJEMPLO = [
   { academia: 'tiburones', dni: '10000001', rol: 'ADMIN', nombres: 'Elena', apellidos: 'Espinoza Luna' },
 ] as const;
 
+/**
+ * Configuración de ejemplo (spec 003, criterio 25): `delfines` tiene un teléfono inventado y `tiburones` queda sin filas, con los
+ * valores por defecto. El valor de `configuraciones.valor` es el JSON del valor (un texto).
+ */
+const TELEFONO_DE_DELFINES = '+51 999 000 111';
+
 async function sembrar(): Promise<number> {
   cargarEnvDeLaRaiz();
 
@@ -135,6 +141,28 @@ async function sembrar(): Promise<number> {
           : `El usuario de ejemplo ya existía: ${usuario.academia}, ${usuario.rol}`,
       );
     }
+    // La configuración va en la transacción de su academia (RLS forzada). Solo se agrega si falta: repetir la semilla no la pisa.
+    const delfines = await enPlataforma(
+      cliente,
+      (tx) => tx.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM academias WHERE nombre_corto = 'delfines'`,
+    );
+    const delfinesId = delfines[0]?.id;
+    if (!delfinesId) throw new Error('No se encontró la academia de ejemplo delfines.');
+    const telefono = await enAcademia(
+      cliente,
+      delfinesId,
+      (tx) =>
+        tx.$queryRaw<{ clave: string }[]>`
+          INSERT INTO configuraciones (academia_id, clave, valor, actualizado_en)
+          VALUES (${delfinesId}::uuid, 'telefono', ${JSON.stringify(TELEFONO_DE_DELFINES)}::jsonb, ${ahora}::timestamptz)
+          ON CONFLICT (academia_id, clave) DO NOTHING
+          RETURNING clave`,
+    );
+    console.log(
+      telefono.length > 0
+        ? 'Teléfono de ejemplo agregado a la configuración de delfines'
+        : 'La configuración de ejemplo de delfines ya existía',
+    );
     return 0;
   } catch (error) {
     const secretos = [
