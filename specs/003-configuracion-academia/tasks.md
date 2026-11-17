@@ -141,23 +141,26 @@ comprueba que la cabecera muestra el teléfono nuevo cuando responde `mi-academi
 en la sección J de [`spec.md`](spec.md).
 
 - [x] T11.15 · especificador · Sección J de `spec.md` (ronda 4 sin fallas y O10) y estas tareas marcadas
-- [ ] T11.16 · frontend o revisor · Cerrar O10: en el bloque del criterio 31 de
+- [x] T11.16 · frontend o revisor · Cerrar O10: en el bloque del criterio 31 de
       `frontend/src/modulos/configuracion/Configuracion.test.tsx`, que `GET /api/mi-academia` responda con el teléfono
       guardado y comprobar que la cabecera lo muestra (criterio 31 a). Solo prueba de componentes, no protegida; no
       pide otra ronda de ataque
 
 ## Revisión y cierre
 
-**Siguen:** T12 (orquestador, `git diff` de las pruebas protegidas), T13 (revisor), T14 (tester, suite completa, lint
-y tipos; cubre T10) y T15 (documentador). T11.16 puede hacerse dentro de T13 o antes.
+**Siguen:** T10 y T11.16 (los marca el orquestador), T12 (orquestador, `git diff` de las pruebas protegidas) y T14
+(tester, suite completa, lint y tipos; cubre T10).
 
-- [ ] T12 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
-- [ ] T13 · revisor · Comparar con la spec, las reglas de `docs/arquitectura.md` (DT-5 de 002, `@Permiso`/`@SoloSesion`,
-      `await` en cada paso, sin caché, errores con `errorParaRegistro`, registro sin datos sensibles) y las convenciones
+- [x] T12 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
+- [x] T13 · revisor · Comparar con la spec, las reglas de `docs/arquitectura.md` (DT-5 de 002, `@Permiso`/`@SoloSesion`,
+      `await` en cada paso, sin caché, errores con `errorParaRegistro`, registro sin datos sensibles) y las convenciones.
+      _Hecho: aprobado con cambios menores._
 - [ ] T14 · tester · Suite completa, lint y verificación de tipos
-- [ ] T15 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (claves, valores por defecto,
+- [x] T15 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (claves, valores por defecto,
       `leerConfiguracion`, orden de bloqueos y regla para las historias siguientes), `README.md` y guía de uso
-      (criterio 26)
+      (criterio 26). _Hecho: documentación actualizada en el árbol de trabajo; sin commit, a pedido del orquestador._
+- [x] Criterio 26 de `spec.md`: `docs/arquitectura.md`, `README.md` y `docs/guia-local-windows.md` documentan lo construido
+      (T15).
 
 ## Solo ruta crítica
 

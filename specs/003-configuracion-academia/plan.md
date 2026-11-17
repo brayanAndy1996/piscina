@@ -32,8 +32,8 @@ piscina/
 │       ├── utilidades/configuracion.ts        fijarConfiguracionEnBase (test-writer, protegida)
 │       └── integracion/configuracion/         pruebas protegidas y no protegidas
 ├── frontend/src/
-│   ├── api/configuracion.ts                   consultas (TanStack Query)
-│   ├── modulos/configuracion/PaginaConfiguracion.tsx (+ .test.tsx)
+│   ├── modulos/configuracion/api.ts · hooks.ts   consultas y ganchos (TanStack Query)
+│   ├── modulos/configuracion/PaginaConfiguracion.tsx · Configuracion.test.tsx
 │   ├── modulos/panel/LayoutPanel.tsx · PaginaPanel.tsx   menú y teléfono
 │   ├── modulos/sesion/mensajes.ts             423 sin "15 minutos" fijo (criterio 19)
 │   └── rutas/Rutas.tsx                        + /panel/configuracion
@@ -114,7 +114,7 @@ la academia y luego espera una fila de `usuarios`, así que no hay ciclo; el con
 
 ### 7. Web
 
-- `api/configuracion.ts`: `useConfiguracion`, `useActualizarConfiguracion` (invalida la consulta al guardar) y
+- `modulos/configuracion/hooks.ts` (las llamadas HTTP están en `api.ts`): `useConfiguracion`, `useActualizarConfiguracion` (invalida la consulta al guardar) y
   `useMiAcademia`.
 - `PaginaConfiguracion`: React Hook Form con `actualizarConfiguracionSchema`; compara con lo cargado y envía solo lo que
   cambió; los textos de ayuda, unidades, rangos y valores por defecto salen de `CLAVES_CONFIGURACION`. Los errores 400
@@ -169,8 +169,9 @@ la academia y luego espera una fila de `usuarios`, así que no hay ciclo; el con
 
 ### 8. Semilla
 
-`seed.ts` escribe en `delfines`, con `enAcademia`, la fila `telefono` con un número inventado, con `ON CONFLICT DO
-UPDATE` para poder repetirse (criterio 25). `tiburones` queda sin filas.
+`seed.ts` escribe en `delfines`, con `enAcademia`, la fila `telefono` con un número inventado, con `ON CONFLICT (academia_id, clave) DO
+NOTHING` (no `DO UPDATE`): repetirla no pisa un teléfono que la academia ya cambió, ni vuelve a poner uno que quitó
+(criterio 25). `tiburones` queda sin filas.
 
 ## Decisiones
 

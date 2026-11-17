@@ -64,18 +64,54 @@ Lo que construye la historia 001 (migraciones en `backend/prisma/migrations/` y 
   quedan en `auditoria_plataforma`. Los cambios dentro de una academia van a `auditoria`. Los inicios de sesión solo van
   al registro técnico (DR-7).
 - **Lo que no hace la 001:** los usuarios de las academias, su inicio de sesión y el primer administrador de cada
-  academia (lo hace la 002, DR-1 de 002); la configuración con sus claves y valores por defecto (la define la 003, DR-8
-  de 001).
+  academia (lo hace la 002, DR-1 de 002). La configuración con sus claves la define la 003 (DR-8 de 001, abajo).
 - **Lo que construye la historia 002** (migración `usuarios` y los módulos `autenticacion/` y `usuarios/`):
   - **Tabla `usuarios` con RLS.** Cada cuenta pertenece a una academia (`academia_id`), y el DNI es único dentro de ella
     (D-28). Un rol por cuenta (DR-7 de 002). Subir `version_token` cierra todas sus sesiones.
   - **Ingreso y sesión.** `POST /api/a/{nombreCorto}/sesion` emite la cookie `aq_sesion`; `GET` y `DELETE /api/sesion` la
     leen y la cierran; `POST /api/sesion/clave` cambia la contraseña. El ingreso admite 10 peticiones por minuto y por IP,
-    y la cuenta se bloquea 15 minutos tras 5 fallos seguidos.
+    y la cuenta se bloquea 15 minutos tras 5 fallos seguidos (valores por defecto; desde la 003, cada academia los
+    configura).
   - **Permisos.** La matriz compartida y los decoradores: ver "Permisos, sesión y datos personales (002)" más abajo.
   - **Gestión de cuentas.** `UsuariosService` en `/api/usuarios`: listar, crear, desactivar, reactivar, buscar por DNI y
     restablecer, cada operación en su transacción y con su auditoría. El superadmin gestiona los administradores de cada
     academia en `/api/plataforma/academias/{id}/administradores`; lo que hace queda en la auditoría de esa academia.
+
+- **Lo que construye la historia 003** (configuración de cada academia, D-23; sin migración: usa la tabla
+  `configuraciones` de 001, con su RLS):
+  - **Valores y claves.** Cada academia tiene sus valores, guardados en `configuraciones` (una fila por clave, con el JSON
+    del valor). La tabla de claves está en `packages/contratos/src/configuracion.ts` (`CLAVES_CONFIGURACION`) y la leen la
+    API y la web. Una clave sin fila, o con un valor que no cumple la tabla, vale lo de por defecto; el valor inválido se
+    anota en el registro técnico con la academia y la clave, nunca con el valor. Guardar el valor por defecto de una clave
+    sin fila no crea la fila, así que un cambio de ese valor en el código llega a las academias que no tienen fila para
+    esa clave.
+  - **Rutas.** `GET /api/configuracion` y `PATCH /api/configuracion`, con el permiso `CONFIGURAR_ACADEMIA`. El `PATCH` es
+    parcial: escribe solo los campos que cambian, en una sola sentencia, y registra un `CONFIGURACION_ACTUALIZADA`
+    (entidad `configuracion`, con `datosAntes` y `datosDespues` de los campos cambiados). Sin cambios, no escribe ni
+    audita. `GET /api/mi-academia` (`@SoloSesion`, de cualquier rol) da el nombre, el nombre corto y el teléfono de la
+    academia de la sesión (D-22).
+  - **Permiso.** `CONFIGURAR_ACADEMIA` está en `packages/contratos/src/permisos.ts`, solo con `ADMIN` (`TODO`). La matriz
+    pasa de 23 a 24 filas (criterio 26 de 002, que la 003 amplía).
+  - **Bloqueo con los valores de la academia.** `intentosInicioSesion` y `minutosBloqueo` sustituyen a las constantes de
+    002 en el ingreso y en el cambio de contraseña (`reglasBloqueoDe`, en `autenticacion/dominio/reglas-bloqueo.ts`). Un
+    bloqueo ya puesto no cambia si se modifican los valores, y el 423 dice cuántos minutos faltan.
+    `REGLAS_BLOQUEO_SUPERADMIN` (5 intentos y 15 minutos) sigue fijo para el superadmin.
+  - **Lo que todavía no usa nada.** La tolerancia de tardanza, los días por vencer y la prioridad de renovación se guardan
+    y se muestran, pero la asistencia (009) y las mensualidades (010) aún no los leen. El teléfono se publica en las
+    páginas públicas desde la 005 (DR-4 de 003); hoy solo se ve con sesión.
+  - **Datos de ejemplo.** La semilla deja un teléfono de ejemplo en `delfines`, con `ON CONFLICT ... DO NOTHING`: no pisa
+    un teléfono que la academia haya cambiado. `tiburones` queda con los valores por defecto.
+
+Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
+
+| Campo de la API | Clave en `configuraciones` | Por defecto | Rango |
+| --- | --- | --- | --- |
+| `toleranciaTardanzaMinutos` | `tolerancia_tardanza_minutos` | 10 | de 0 a 30 minutos |
+| `diasPorVencer` | `dias_por_vencer` | 5 | de 1 a 15 días |
+| `diasPrioridadRenovacion` | `dias_prioridad_renovacion` | 5 | de 1 a 15 días |
+| `intentosInicioSesion` | `intentos_inicio_sesion` | 5 | de 3 a 10 intentos |
+| `minutosBloqueo` | `minutos_bloqueo` | 15 | de 5 a 60 minutos |
+| `telefono` | `telefono` | sin teléfono (`null`) | de 6 a 20 caracteres: dígitos, espacios, guiones, paréntesis y un `+` al inicio, con al menos 6 dígitos |
 
 ## Fechas y horas de negocio (America/Lima)
 
@@ -197,6 +233,29 @@ en cada historia nueva. Los números entre paréntesis son criterios de `specs/0
 - Los servicios no guardan resultados de consultas en propiedades ni en variables del módulo: otra academia recibiría
   datos que no son suyos, sin pasar por su propia transacción. Si una historia necesita caché, la clave incluye la
   `academia_id` (por ejemplo, `Map<academiaId, …>`), se invalida al escribir y lo decide su especificación.
+
+### Configuración de la academia (003)
+
+- **Leer la configuración en la transacción de la operación.** `leerConfiguracion(tx, { registro? })`
+  (`backend/src/modulos/configuracion/lectura.ts`, reexportada en `configuracion/index.ts`) devuelve los seis valores
+  efectivos de `tx.academiaId` con una sola consulta dentro de la transacción de quien llama. No tiene caché: cada
+  operación la lee con su propia `tx`, y un cambio confirmado se ve en la siguiente. Es una función sin Nest, como
+  `insertarEnAuditoriaDeAcademia`, para que cualquier módulo la use sin depender del módulo de configuración. Las
+  historias 009 (tolerancia) y 010 (días por vencer y prioridad) la usarán con la `tx` de su operación.
+- **Importarla desde `configuracion/lectura`.** `autenticacion` la importa de ese archivo y no del índice del módulo: el
+  módulo de configuración usa los decoradores y `bloquearActorVigente` de `autenticacion`, así que importar desde el
+  índice crearía un ciclo entre los dos.
+- **Orden de bloqueos del `PATCH`.** Primero la fila de quien pide, con `bloquearActorVigente` (`FOR SHARE`); después el
+  bloqueo de la academia, con `pg_advisory_xact_lock(hashtextextended('configuracion:' || academiaId))`. Así los cambios
+  de una misma academia se ordenan y su auditoría queda encadenada. Ninguna escritura futura debe tomar el bloqueo de la
+  academia y luego filas de `usuarios`: dos transacciones se esperarían en cruz.
+- **El conteo de fallos no bloquea `configuraciones`.** La lectura de la configuración dentro del conteo de fallos (en el
+  ingreso y en el cambio de contraseña) es un `SELECT` sin bloqueo: no toma el bloqueo de la academia ni espera al
+  `PATCH` (criterio 17 de 003).
+- **La cabecera de la web lleva la identidad de la sesión.** La clave de `useMiAcademia` incluye el `nombreCorto` de la
+  academia y el `id` del usuario (`['mi-academia', nombreCorto, id]`). Así, la respuesta de otra academia o de otra
+  persona no se reutiliza al cambiar de sesión en el mismo navegador (criterio 28 de 003). Una consulta nueva con datos
+  de la academia que muestre el panel sigue la misma regla.
 
 ## Estructura de carpetas
 
