@@ -20,7 +20,7 @@ const ACADEMIAS_DE_EJEMPLO = [
 ] as const;
 
 /**
- * Usuarios de ejemplo (spec 002, criterio 45): uno por rol en `delfines` y un administrador en `tiburones` con el mismo DNI que el de
+ * Usuarios de ejemplo (spec 002, criterio 45; spec 004, criterio 30): uno por rol en `delfines`, más un segundo entrenador, y un administrador en `tiburones` con el mismo DNI que el de
  * `delfines` (D-28: la misma persona en dos academias es dos cuentas). DNIs inventados. La contraseña inicial es el DNI y deben
  * cambiarla al entrar (RN-02); por eso la salida de la semilla no los muestra: están en `docs/guia-local-windows.md`.
  */
@@ -28,6 +28,7 @@ const USUARIOS_DE_EJEMPLO = [
   { academia: 'delfines', dni: '10000001', rol: 'ADMIN', nombres: 'Rosa', apellidos: 'Alvarez Prado' },
   { academia: 'delfines', dni: '10000002', rol: 'SECRETARIA', nombres: 'Lucia', apellidos: 'Benites Rojas' },
   { academia: 'delfines', dni: '10000003', rol: 'ENTRENADOR', nombres: 'Mario', apellidos: 'Castro Vega' },
+  { academia: 'delfines', dni: '10000005', rol: 'ENTRENADOR', nombres: 'Paula', apellidos: 'Fuentes Ibarra' },
   { academia: 'delfines', dni: '10000004', rol: 'ALUMNO', nombres: 'Diego', apellidos: 'Delgado Soto' },
   { academia: 'tiburones', dni: '10000001', rol: 'ADMIN', nombres: 'Elena', apellidos: 'Espinoza Luna' },
 ] as const;
@@ -62,14 +63,17 @@ const FRANJAS_DE_EJEMPLO = [
 ];
 const NIVELES_DE_EJEMPLO = ['BASICO', 'INTERMEDIO', 'AVANZADO'];
 
-/** Clases de ejemplo de `delfines` (spec 004, criterio 30): los tres niveles, del entrenador de ejemplo (DNI 10000003). */
+/**
+ * Clases de ejemplo de `delfines` (spec 004, criterio 30): los tres niveles y, el lunes a las 18:00, dos clases en el mismo bloque con
+ * entrenadores distintos (10000003 y 10000005; RN-10, HU-17).
+ */
 const CLASES_DE_EJEMPLO = [
-  { nivel: 'BASICO', diaSemana: 1, horaInicio: '18:00', aforo: 30 },
-  { nivel: 'INTERMEDIO', diaSemana: 1, horaInicio: '19:00', aforo: 25 },
-  { nivel: 'AVANZADO', diaSemana: 3, horaInicio: '18:00', aforo: 20 },
-  { nivel: 'BASICO', diaSemana: 5, horaInicio: '18:00', aforo: 30 },
+  { nivel: 'BASICO', diaSemana: 1, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000003' },
+  { nivel: 'INTERMEDIO', diaSemana: 1, horaInicio: '18:00', aforo: 25, dniEntrenador: '10000005' },
+  { nivel: 'INTERMEDIO', diaSemana: 1, horaInicio: '19:00', aforo: 25, dniEntrenador: '10000003' },
+  { nivel: 'AVANZADO', diaSemana: 3, horaInicio: '18:00', aforo: 20, dniEntrenador: '10000003' },
+  { nivel: 'BASICO', diaSemana: 5, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000003' },
 ] as const;
-const DNI_DEL_ENTRENADOR_DE_EJEMPLO = '10000003';
 
 async function sembrar(): Promise<number> {
   cargarEnvDeLaRaiz();
@@ -225,14 +229,15 @@ async function sembrar(): Promise<number> {
       cliente,
       delfinesId,
       (tx) =>
-        tx.$queryRaw<{ id: string }[]>`
-          SELECT id::text AS id FROM usuarios
-           WHERE academia_id = ${delfinesId}::uuid AND dni = ${DNI_DEL_ENTRENADOR_DE_EJEMPLO} AND rol = 'ENTRENADOR'::rol_usuario`,
+        tx.$queryRaw<{ id: string; dni: string }[]>`
+          SELECT id::text AS id, dni FROM usuarios
+           WHERE academia_id = ${delfinesId}::uuid AND rol = 'ENTRENADOR'::rol_usuario`,
     );
-    const entrenadorId = entrenadores[0]?.id;
-    if (!entrenadorId) throw new Error('No se encontró el entrenador de ejemplo de delfines.');
+    const entrenadorPorDni = new Map(entrenadores.map((entrenador) => [entrenador.dni, entrenador.id]));
     let clasesCreadas = 0;
     for (const clase of CLASES_DE_EJEMPLO) {
+      const entrenadorId = entrenadorPorDni.get(clase.dniEntrenador);
+      if (!entrenadorId) throw new Error('No se encontró un entrenador de ejemplo de delfines.');
       const horaFin = `${String(Number(clase.horaInicio.slice(0, 2)) + 1).padStart(2, '0')}:00`;
       const creadas = await enAcademia(
         cliente,

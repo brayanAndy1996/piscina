@@ -7,8 +7,8 @@ import { leerClases, leerPlanes } from '../../utilidades/planes-clases';
 
 // Spec 004, criterio 30: la semilla deja a `delfines` con dos planes de ejemplo y clases de los tres niveles del entrenador de ejemplo, a
 // `tiburones` sin planes ni clases, y se puede ejecutar dos veces sin duplicar ni fallar ni pisar lo que el administrador cambió. Prueba no
-// protegida. El segundo entrenador de `delfines` y las dos clases en el mismo bloque quedan pendientes de la prueba protegida de la 002
-// (criterio 45), que fija cuatro usuarios en `delfines`.
+// protegida. `delfines` tiene dos entrenadores (10000003 y 10000005) y dos clases activas en el mismo bloque con entrenadores distintos
+// (la prueba protegida de la 002, criterio 45, fija los usuarios).
 
 const TIMEOUT = 120_000;
 const VARIABLES = {
@@ -57,6 +57,18 @@ describe('semilla: planes y clases de ejemplo (criterio 30)', () => {
       const clases = await leerClases(delfinesId);
       expect(new Set(clases.map((clase) => clase.nivel))).toEqual(new Set(['BASICO', 'INTERMEDIO', 'AVANZADO']));
       expect(clases.every((clase) => clase.activo && clase.aforo >= 20 && clase.aforo <= 50)).toBe(true);
+      const dobles = Object.values(
+        clases.reduce<Record<string, typeof clases>>((grupos, clase) => {
+          const bloque = `${clase.dia_semana}|${clase.hora_inicio}`;
+          (grupos[bloque] ??= []).push(clase);
+          return grupos;
+        }, {}),
+      ).filter((grupo) => grupo.length >= 2);
+      expect(dobles.length, 'al menos un bloque con dos clases').toBeGreaterThanOrEqual(1);
+      for (const grupo of dobles) {
+        expect(new Set(grupo.map((clase) => clase.entrenador_id)).size, 'entrenadores distintos').toBe(grupo.length);
+        expect(new Set(grupo.map((clase) => clase.nivel)).size, 'niveles distintos').toBe(grupo.length);
+      }
       const tiburonesId = await idDe('tiburones');
       expect(await leerPlanes(tiburonesId)).toEqual([]);
       expect(await leerClases(tiburonesId)).toEqual([]);
