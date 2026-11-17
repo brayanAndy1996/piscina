@@ -1,8 +1,9 @@
 import type { AcademiaResumen } from '@aquagestion/contratos';
 import { useState } from 'react';
+import { DialogoAdministradores } from './DialogoAdministradores';
 import { DialogoReactivar, DialogoSuspender } from './DialogosAcademia';
 import { FormularioNuevaAcademia } from './FormularioNuevaAcademia';
-import { formatearFecha } from './fechas';
+import { formatearFecha } from '../../lib/fechas';
 import {
   RUTA_INGRESAR,
   useAcademias,
@@ -10,14 +11,15 @@ import {
   useRedirigirSiNoAutenticado,
   useSesionPlataforma,
 } from './hooks';
-import { mensajeGeneral } from './mensajes';
-import { Alerta, ESTILO_BOTON } from './ui';
+import { mensajeGeneral } from '../../lib/errores';
+import { Alerta, ESTILO_BOTON } from '../../componentes/ui';
 import { useNavigate } from 'react-router';
 
 type Accion =
   | { tipo: 'nueva' }
   | { tipo: 'suspender'; academia: AcademiaResumen }
-  | { tipo: 'reactivar'; academia: AcademiaResumen };
+  | { tipo: 'reactivar'; academia: AcademiaResumen }
+  | { tipo: 'administradores'; academia: AcademiaResumen };
 
 /** `/plataforma/academias`: las academias de la plataforma y sus acciones (crear, suspender, reactivar). */
 export function PaginaAcademias() {
@@ -65,6 +67,7 @@ export function PaginaAcademias() {
             consulta={academias}
             alSuspender={(academia) => setAccion({ tipo: 'suspender', academia })}
             alReactivar={(academia) => setAccion({ tipo: 'reactivar', academia })}
+            alAdministradores={(academia) => setAccion({ tipo: 'administradores', academia })}
           />
         </div>
       </main>
@@ -76,6 +79,9 @@ export function PaginaAcademias() {
       {accion?.tipo === 'reactivar' ? (
         <DialogoReactivar academia={accion.academia} alCerrar={() => setAccion(null)} />
       ) : null}
+      {accion?.tipo === 'administradores' ? (
+        <DialogoAdministradores academia={accion.academia} alCerrar={() => setAccion(null)} />
+      ) : null}
     </div>
   );
 }
@@ -84,9 +90,10 @@ interface PropiedadesLista {
   consulta: ReturnType<typeof useAcademias>;
   alSuspender: (academia: AcademiaResumen) => void;
   alReactivar: (academia: AcademiaResumen) => void;
+  alAdministradores: (academia: AcademiaResumen) => void;
 }
 
-function ListaAcademias({ consulta, alSuspender, alReactivar }: PropiedadesLista) {
+function ListaAcademias({ consulta, alSuspender, alReactivar, alAdministradores }: PropiedadesLista) {
   if (consulta.isPending) {
     return (
       <p role="status" className="text-slate-600">
@@ -115,7 +122,12 @@ function ListaAcademias({ consulta, alSuspender, alReactivar }: PropiedadesLista
     <ul className="space-y-3">
       {consulta.data.map((academia) => (
         <li key={academia.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
-          <FilaAcademia academia={academia} alSuspender={alSuspender} alReactivar={alReactivar} />
+          <FilaAcademia
+            academia={academia}
+            alSuspender={alSuspender}
+            alReactivar={alReactivar}
+            alAdministradores={alAdministradores}
+          />
         </li>
       ))}
     </ul>
@@ -126,9 +138,10 @@ interface PropiedadesFila {
   academia: AcademiaResumen;
   alSuspender: (academia: AcademiaResumen) => void;
   alReactivar: (academia: AcademiaResumen) => void;
+  alAdministradores: (academia: AcademiaResumen) => void;
 }
 
-function FilaAcademia({ academia, alSuspender, alReactivar }: PropiedadesFila) {
+function FilaAcademia({ academia, alSuspender, alReactivar, alAdministradores }: PropiedadesFila) {
   const suspendida = academia.estado === 'SUSPENDIDA';
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -155,25 +168,35 @@ function FilaAcademia({ academia, alSuspender, alReactivar }: PropiedadesFila) {
           </p>
         ) : null}
       </div>
-      {suspendida ? (
+      <div className="flex shrink-0 flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => alReactivar(academia)}
-          aria-label={`Reactivar ${academia.nombre}`}
-          className={`${ESTILO_BOTON.primario} shrink-0`}
+          onClick={() => alAdministradores(academia)}
+          aria-label={`Administradores de ${academia.nombre}`}
+          className={ESTILO_BOTON.secundario}
         >
-          Reactivar
+          Administradores
         </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => alSuspender(academia)}
-          aria-label={`Suspender ${academia.nombre}`}
-          className={`${ESTILO_BOTON.secundario} shrink-0`}
-        >
-          Suspender
-        </button>
-      )}
+        {suspendida ? (
+          <button
+            type="button"
+            onClick={() => alReactivar(academia)}
+            aria-label={`Reactivar ${academia.nombre}`}
+            className={ESTILO_BOTON.primario}
+          >
+            Reactivar
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => alSuspender(academia)}
+            aria-label={`Suspender ${academia.nombre}`}
+            className={ESTILO_BOTON.secundario}
+          >
+            Suspender
+          </button>
+        )}
+      </div>
     </div>
   );
 }

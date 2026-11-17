@@ -11,7 +11,7 @@ export class ServicioTokens {
     @Inject(RELOJ) private readonly reloj: Reloj,
   ) {}
 
-  firmar(datos: Pick<ClaimsSesion, 'sub' | 'tipo' | 'ver'>, duracionSegundos: number): string {
+  firmar(datos: Pick<ClaimsSesion, 'sub' | 'tipo' | 'ver' | 'aca'>, duracionSegundos: number): string {
     return firmarToken(datos, this.entorno.JWT_SECRETO, this.reloj.ahora(), duracionSegundos);
   }
 

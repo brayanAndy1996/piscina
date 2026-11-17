@@ -12,6 +12,7 @@ import {
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { SoloSesion } from '../../../src/modulos/autenticacion';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase } from '../../utilidades/base-datos';
 import { crearDatosDeAislamiento, type DatosDeAislamiento } from '../../utilidades/datos';
@@ -28,6 +29,7 @@ import { objetosConTipo } from '../../utilidades/ronda14';
 import { comprobarConvertido, DNI_R15, ALERGIA_R15, PROHIBIDOS_R15, SINTAXIS_R15 } from '../../utilidades/ronda15';
 import { intentar, obtenerBaseDatosRonda3, type BaseDatosRonda3 } from '../../utilidades/ronda3';
 import { cargarPuntoAutorizado } from '../../utilidades/ronda4';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 
 // Criterio 165 (ataque ronda 15, F1; ampliacion del criterio 162 y precision de P-42), con el error real que provoca
 // `tx.cliente.auditoria.create` con `ip: 'DNI 44556677 alergia penicilina-r15'` en `conAcademia(A, ...)` sin atraparlo (P2007 o 22P02).
@@ -72,6 +74,7 @@ function crearControladorDePrueba(): Type<unknown> {
   @Controller('prueba-r15-registro')
   class ControladorPruebaR15Registro {
     @Get('a1/:id/:n')
+    @SoloSesion()
     async a1(@Param('id') id: string, @Param('n') n: string): Promise<unknown> {
       try {
         return await provocar(id, Number(n));
@@ -81,6 +84,7 @@ function crearControladorDePrueba(): Type<unknown> {
     }
 
     @Get('a2/:id/:n')
+    @SoloSesion()
     async a2(@Param('id') id: string, @Param('n') n: string): Promise<unknown> {
       try {
         return await provocar(id, Number(n));
@@ -90,6 +94,7 @@ function crearControladorDePrueba(): Type<unknown> {
     }
 
     @Get('a3/:id/:n')
+    @SoloSesion()
     async a3(@Param('id') id: string, @Param('n') n: string): Promise<unknown> {
       try {
         return await provocar(id, Number(n));
@@ -109,8 +114,9 @@ interface RegistroLeido {
 
 /** Hace la peticion y devuelve la respuesta con los registros nuevos que genero. */
 async function pedir(ruta: string): Promise<{ estado: number; cuerpo: unknown; registros: RegistroLeido[] }> {
+  const { cookie } = await sesionDeAcademia(datos.A); // spec 002, criterio 18: toda ruta de `/api` de prueba exige sesion
   const desde = lineas.length;
-  const respuesta = await request(app.getHttpServer()).get(ruta);
+  const respuesta = await request(app.getHttpServer()).get(ruta).set('Cookie', cookie);
   await new Promise((resolver) => setTimeout(resolver, 150));
   const registros = lineas.slice(desde).map((linea) => {
     const registro = JSON.parse(linea) as { level?: number; err?: Record<string, unknown> };

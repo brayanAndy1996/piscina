@@ -4,8 +4,8 @@ import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
 import { esErrorDeApi } from '../../api/cliente';
 import { useCrearAcademia, useRedirigirSiNoAutenticado } from './hooks';
-import { erroresPorCampo, mensajeGeneral } from './mensajes';
-import { Alerta, CampoTexto, ESTILO_BOTON, Modal } from './ui';
+import { erroresPorCampo, mensajeGeneral } from '../../lib/errores';
+import { Alerta, CampoTexto, ESTILO_BOTON, Modal } from '../../componentes/ui';
 
 type CamposAcademia = z.input<typeof crearAcademiaSchema>;
 

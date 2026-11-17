@@ -18,6 +18,13 @@ function esInicioDeSesion(solicitud: Request): boolean {
   return solicitud.method === 'POST' && RUTA_DE_SESION.test(solicitud.path);
 }
 
+/** `POST /api/a/{nombreCorto}/sesion` (con o sin barra final, sin distinguir mayúsculas): el inicio de sesión de una academia. */
+const RUTA_DE_INGRESO_A_ACADEMIA = /^\/[^/]+\/sesion\/?$/i;
+
+function esIngresoAAcademia(solicitud: Request): boolean {
+  return solicitud.method === 'POST' && RUTA_DE_INGRESO_A_ACADEMIA.test(solicitud.path);
+}
+
 function esRutaPublicaDeSesion(solicitud: Request): boolean {
   return (solicitud.method === 'POST' || solicitud.method === 'DELETE') && RUTA_DE_SESION.test(solicitud.path);
 }
@@ -40,7 +47,13 @@ function esDireccionDecodificable(ruta: string): boolean {
  *   sesión, que cuenta **antes** de leer el cuerpo (criterio 75: también el JSON roto, el 413 y los tipos que no son
  *   JSON); y sesión de superadmin válida en toda ruta salvo `POST` y `DELETE /api/plataforma/sesion`; sin ella, 401
  *   `NO_AUTENTICADO`.
- * - `/api/a`: `Cache-Control: no-store` en toda respuesta.
+ * - `/api/a`: `Cache-Control: no-store` en toda respuesta; y el límite por IP del inicio de sesión de una academia
+ *   (`POST /api/a/{nombreCorto}/sesion`, spec 002, criterio 12): 10 por minuto por IP sumando todas las academias, contado antes de
+ *   leer el cuerpo y de buscar la academia. El contador es el almacén en memoria de `@nestjs/throttler`, por instancia de la API
+ *   (PO-6).
+ *
+ * Las rutas de academia (`/api/*` salvo estas y `/api/salud`) las protege `instalarProteccionDeAcademia`
+ * (`modulos/autenticacion`).
  */
 export function instalarProteccionDePrefijos(app: NestExpressApplication, prefijoApi: string): void {
   const sesion = app.get(SesionPlataformaService, { strict: false });
@@ -49,6 +62,25 @@ export function instalarProteccionDePrefijos(app: NestExpressApplication, prefij
 
   app.use(`/${prefijoApi}/a`, (solicitud: Request, respuesta: Response, siguiente: NextFunction) => {
     respuesta.setHeader('Cache-Control', CABECERA_SIN_CACHE);
+    if (esIngresoAAcademia(solicitud)) {
+      // Cada petición cuenta, sea cual sea su resultado y su academia; la que pasa del límite no llega a leer el cuerpo.
+      const { ttl, limit } = LIMITE_INICIO_SESION;
+      almacenLimite
+        .increment(`inicio-sesion-academia:${solicitud.ip ?? ''}`, ttl, limit, ttl, LIMITE_INICIO_SESION.name)
+        .then(
+          (registro) => {
+            if (registro.isBlocked)
+              responderError(filtro, new HttpException('Too Many Requests', 429), solicitud, respuesta, siguiente);
+            else comprobarDireccion(solicitud, respuesta, siguiente);
+          },
+          (error: unknown) => responderError(filtro, error, solicitud, respuesta, siguiente),
+        );
+      return;
+    }
+    comprobarDireccion(solicitud, respuesta, siguiente);
+  });
+
+  function comprobarDireccion(solicitud: Request, respuesta: Response, siguiente: NextFunction): void {
     // Una dirección con un `%` mal formado (`/a/%FF`) no puede ser un nombre corto: se responde igual que un nombre
     // inexistente, y no con el 400 genérico de Express.
     if (!esDireccionDecodificable(solicitud.path)) {
@@ -56,7 +88,7 @@ export function instalarProteccionDePrefijos(app: NestExpressApplication, prefij
       return;
     }
     siguiente();
-  });
+  }
 
   app.use(`/${prefijoApi}/plataforma`, (solicitud: Request, respuesta: Response, siguiente: NextFunction) => {
     respuesta.setHeader('Cache-Control', CABECERA_SIN_CACHE);

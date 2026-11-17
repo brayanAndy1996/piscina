@@ -5,6 +5,7 @@ import { Controller, Get, Param, type Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { SoloSesion } from '../../../src/modulos/autenticacion';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase, urlAppPruebas } from '../../utilidades/base-datos';
 import { crearDatosDeAislamiento, type DatosDeAislamiento } from '../../utilidades/datos';
@@ -31,6 +32,7 @@ import {
   type Variante,
 } from '../../utilidades/ronda10';
 import { obtenerBaseDatosRonda3, type BaseDatosRonda3 } from '../../utilidades/ronda3';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 import { cargarPuntoAutorizado } from '../../utilidades/ronda4';
 
 // Criterios 149 y 151 (ataque ronda 10, F1): una transaccion abortada nunca se reporta como confirmada en `BaseDatos`.
@@ -73,11 +75,18 @@ let base: BaseDatosRonda3;
 let auditoria: AuditoriaServicePrueba;
 let datos: DatosDeAislamiento;
 
+/** GET a una ruta de prueba con una sesion valida de la academia A (spec 002, criterio 18: toda ruta de `/api` exige sesion). */
+async function pedirConSesion(ruta: string) {
+  const { cookie } = await sesionDeAcademia(datos.A);
+  return request(app.getHttpServer()).get(ruta).set('Cookie', cookie);
+}
+
 /** Controlador de prueba (opcion `controladores` de `crearAppDePruebas`): llama a `BaseDatos` con las variantes del criterio 149. */
 function crearControladorDePrueba(): Type<unknown> {
   @Controller('prueba-r10')
   class ControladorPruebaR10 {
     @Get('plataforma/:n')
+    @SoloSesion()
     async plataforma(@Param('n') n: string): Promise<{ valor: string }> {
       const numero = Number(n);
       const valor = await base.comoPlataforma((tx) =>
@@ -87,6 +96,7 @@ function crearControladorDePrueba(): Type<unknown> {
     }
 
     @Get('plataforma-ok/:n')
+    @SoloSesion()
     async plataformaSinFallo(@Param('n') n: string): Promise<{ valor: string }> {
       const numero = Number(n);
       const valor = await base.comoPlataforma((tx) =>
@@ -96,6 +106,7 @@ function crearControladorDePrueba(): Type<unknown> {
     }
 
     @Get('academia/:id/:n')
+    @SoloSesion()
     async academia(@Param('id') id: string, @Param('n') n: string): Promise<{ valor: string }> {
       const numero = Number(n);
       const valor = await base.conAcademia(id, (tx) =>
@@ -257,7 +268,7 @@ describe('criterio 149, variante 4: por la API', () => {
   it('criterio 149: GET de una ruta de prueba que llama a comoPlataforma con la variante 1 responde 500 ERROR_INTERNO con el formato comun de error', async () => {
     const n = siguienteNumero();
 
-    const respuesta = await request(app.getHttpServer()).get(`/api/prueba-r10/plataforma/${n}`);
+    const respuesta = await pedirConSesion(`/api/prueba-r10/plataforma/${n}`);
 
     expect(respuesta.status).toBe(500);
     const cuerpo = errorApiSchema.parse(respuesta.body);
@@ -271,7 +282,7 @@ describe('criterio 149, variante 4: por la API', () => {
   it('criterio 149: tras la respuesta 500 de la ruta de plataforma, ni la academia ni su registro de auditoria existen', async () => {
     const n = siguienteNumero();
 
-    await request(app.getHttpServer()).get(`/api/prueba-r10/plataforma/${n}`);
+    await pedirConSesion(`/api/prueba-r10/plataforma/${n}`);
 
     expect(await leerEscritoDePlataforma(n)).toEqual(NADA);
   });
@@ -279,7 +290,7 @@ describe('criterio 149, variante 4: por la API', () => {
   it('criterio 149: GET de una ruta de prueba que llama a conAcademia con la variante 1 responde 500 ERROR_INTERNO y no queda nada escrito', async () => {
     const n = siguienteNumero();
 
-    const respuesta = await request(app.getHttpServer()).get(`/api/prueba-r10/academia/${datos.A.id}/${n}`);
+    const respuesta = await pedirConSesion(`/api/prueba-r10/academia/${datos.A.id}/${n}`);
 
     expect(respuesta.status).toBe(500);
     expect(errorApiSchema.parse(respuesta.body).codigo).toBe('ERROR_INTERNO');
@@ -289,7 +300,7 @@ describe('criterio 149, variante 4: por la API', () => {
   it('criterio 149 (control): la misma ruta sin el paso que falla responde 200 con el valor y la academia y su registro quedan', async () => {
     const n = siguienteNumero();
 
-    const respuesta = await request(app.getHttpServer()).get(`/api/prueba-r10/plataforma-ok/${n}`);
+    const respuesta = await pedirConSesion(`/api/prueba-r10/plataforma-ok/${n}`);
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body).toEqual({ valor: VALOR });
@@ -299,7 +310,7 @@ describe('criterio 149, variante 4: por la API', () => {
   it('criterio 149: despues de la respuesta 500 la conexion sigue sana (DATABASE_POOL_MAX=1)', async () => {
     const n = siguienteNumero();
 
-    await request(app.getHttpServer()).get(`/api/prueba-r10/plataforma/${n}`);
+    await pedirConSesion(`/api/prueba-r10/plataforma/${n}`);
 
     await esperarConexionSana(base, datos.B.id, 'despues de la ruta que responde 500');
   });

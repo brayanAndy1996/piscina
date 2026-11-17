@@ -4,6 +4,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { crearAcademiaDePrueba, type AcademiaDePrueba } from '../../utilidades/academias';
+import { SoloSesion } from '../../../src/modulos/autenticacion';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { contarDeAcademia, crearDatosDeAislamiento, insertarAuditoria } from '../../utilidades/datos';
 import { ejecutarComo, limpiarBase } from '../../utilidades/base-datos';
@@ -18,6 +19,7 @@ import {
   obtenerBaseDatos,
   uuidInexistente,
 } from '../../utilidades/modulos';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 
 interface Contexto {
   academia: string | null;
@@ -296,9 +298,13 @@ describe('BaseDatos: conAcademia y comoPlataforma', () => {
     });
   });
 
-  /** Una petición a un controlador de prueba que llama a `conAcademia` con el id de la ruta. */
-  function pedirConAcademia(ruta: string) {
-    return request(appHttp.getHttpServer()).get(ruta);
+  /**
+   * Una petición a un controlador de prueba que llama a `conAcademia` con el id de la ruta. Lleva una sesión válida de la academia A
+   * (spec 002, criterio 18: toda ruta de `/api` que no sea `/salud`, `/plataforma` ni `/a` exige sesión).
+   */
+  async function pedirConAcademia(ruta: string) {
+    const { cookie } = await sesionDeAcademia(A);
+    return request(appHttp.getHttpServer()).get(ruta).set('Cookie', cookie);
   }
 });
 
@@ -307,6 +313,7 @@ function crearControladorDePrueba(dar: () => BaseDatosPrueba): new () => unknown
   @Controller('prueba-academia')
   class ControladorPruebaAcademia {
     @Get(':id')
+    @SoloSesion()
     async obtener(@Param('id') id: string): Promise<{ ok: boolean }> {
       await dar().conAcademia(id, () => Promise.resolve(undefined));
       return { ok: true };

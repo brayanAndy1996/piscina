@@ -6,18 +6,41 @@ import request from 'supertest';
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { crearAppDePruebas } from '../test/utilidades/aplicacion';
+import { SesionAcademiaService, SoloSesion, type SesionVerificada } from './modulos/autenticacion';
 
 // Una URL que nunca se usa: estas pruebas no consultan la base (no hace falta PostgreSQL).
 const URL_SIN_USO = 'postgresql://usuario:clave@127.0.0.1:1/base_sin_uso';
 
+// Spec 002, criterio 18: toda ruta de `/api` que no sea `/salud`, `/plataforma` ni `/a` exige sesion. Esta prueba no usa base de datos,
+// asi que no puede iniciar una sesion real: reemplaza solo la verificacion de la sesion (`SesionAcademiaService.autenticar`) por una
+// que devuelve un usuario fijo, y las rutas de prueba declaran `@SoloSesion()`. El resto de la aplicacion es la de produccion.
+const SESION_SIMULADA: SesionVerificada = {
+  usuario: {
+    id: '00000000-0000-4000-8000-000000000001',
+    academiaId: '00000000-0000-4000-8000-0000000000a1',
+    rol: 'ADMIN',
+    nombres: 'Usuario',
+    apellidos: 'De Prueba',
+    debeCambiarClave: false,
+  },
+  versionToken: 0,
+  academia: { nombreCorto: 'academia-de-prueba', nombre: 'Academia de prueba' },
+};
+const SESIONES_SIMULADAS = {
+  autenticar: () => Promise.resolve(SESION_SIMULADA),
+  registrarRechazo: () => undefined,
+};
+
 @Controller('prueba')
 class ControladorDePrueba {
   @Get('falla')
+  @SoloSesion()
   falla(): never {
     throw new Error('detalle-interno-secreto');
   }
 
   @Get('cookie')
+  @SoloSesion()
   cookie(@Res({ passthrough: true }) respuesta: Response): { ok: boolean } {
     respuesta.setHeader('Set-Cookie', 'sesion=VALOR-SET-COOKIE; HttpOnly');
     return { ok: true };
@@ -50,6 +73,7 @@ describe('aplicación completa (sin base de datos)', () => {
     app = await crearAppDePruebas({
       variables: { DATABASE_URL_APP: URL_SIN_USO },
       controladores: [ControladorDePrueba],
+      ajustar: (constructor) => constructor.overrideProvider(SesionAcademiaService).useValue(SESIONES_SIMULADAS),
       nivelRegistro: 'info',
       destinoRegistro: destino,
     });

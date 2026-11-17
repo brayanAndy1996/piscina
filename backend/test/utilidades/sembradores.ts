@@ -20,7 +20,7 @@ export type Sembrador = (academiaId: string) => Promise<void>;
 const claveAleatoria = (): string => `sembrada_${randomBytes(8).toString('hex')}`;
 
 export const SEMBRADORES_POR_TABLA: Readonly<Record<string, Sembrador>> = {
-  // hoy: 'public.auditoria' y 'public.configuraciones'.
+  // hoy: 'public.auditoria', 'public.configuraciones' y (historia 002) 'public.usuarios'.
   'public.auditoria': async (academiaId) => {
     await ejecutarComo(
       'propietario',
@@ -36,6 +36,18 @@ export const SEMBRADORES_POR_TABLA: Readonly<Record<string, Sembrador>> = {
       `INSERT INTO public.configuraciones (academia_id, clave, valor, actualizado_en)
        VALUES ($1::uuid, $2, '{}'::jsonb, now())`,
       [academiaId, claveAleatoria()],
+      { academiaId },
+    );
+  },
+  // Historia 002 (criterio 1: las pruebas de catalogo de la 001 siguen pasando con la tabla nueva). Cada llamada crea un usuario
+  // nuevo de la misma academia, con un DNI distinto de 8 digitos.
+  'public.usuarios': async (academiaId) => {
+    const dni = String(10_000_000 + (randomBytes(4).readUInt32BE(0) % 89_999_999));
+    await ejecutarComo(
+      'propietario',
+      `INSERT INTO public.usuarios (id, academia_id, dni, nombres, apellidos, rol, clave_hash, creado_en, actualizado_en)
+       VALUES ($1::uuid, $2::uuid, $3, 'Sembrado', 'Para RLS', 'ALUMNO', 'no-es-un-hash-real', now(), now())`,
+      [randomUUID(), academiaId, dni],
       { academiaId },
     );
   },

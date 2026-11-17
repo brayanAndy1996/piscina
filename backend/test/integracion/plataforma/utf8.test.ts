@@ -8,6 +8,7 @@ import { crearAcademiaDePrueba } from '../../utilidades/academias';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase } from '../../utilidades/base-datos';
 import { leerAcademias, leerAuditoriaPlataforma, leerSuperadmin } from '../../utilidades/datos';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 import {
   cookieDePlataforma,
   cookieDeSesion,
@@ -378,7 +379,6 @@ describe('criterio 105: rutas de la plataforma con sesion y cuerpos que no son U
       ['POST /api/salud', 'POST', '/api/salud'],
       ['POST /api/a/delfines', 'POST', '/api/a/delfines'],
       ['PUT /api/salud', 'PUT', '/api/salud'],
-      ['POST /api/no-existe', 'POST', '/api/no-existe'],
     ])(
       'criterio 105: %s con un cuerpo que no es UTF-8 valido responde 400 SOLICITUD_INVALIDA',
       async (_nombre, metodo, ruta) => {
@@ -388,6 +388,20 @@ describe('criterio 105: rutas de la plataforma con sesion y cuerpos que no son U
         esperarRechazoPorUtf8(respuesta, { noStore: ruta.startsWith('/api/a/') });
       },
     );
+
+    // Spec 002, criterio 18: `/api/no-existe` no es una ruta publica. Sin sesion responde 401 antes de leer el cuerpo; con una sesion de
+    // academia valida el error del cuerpo se difiere hasta el permiso y, como la ruta no existe, responde 404.
+    it('criterio 105: POST /api/no-existe con un cuerpo que no es UTF-8 valido responde 401 sin sesion y 404 con sesion de academia', async () => {
+      const cuerpo = Buffer.concat([texto('{"a":"'), bytes(0xff), texto('"}')]);
+      const sinSesion = await enviar(app, '/api/no-existe', cuerpo, {}, 'POST');
+      const { cookie: cookieAcademia } = await sesionDeAcademia(undefined, { ahora: AHORA });
+      const conSesion = await enviar(app, '/api/no-existe', cuerpo, { Cookie: cookieAcademia }, 'POST');
+
+      expect(sinSesion.status).toBe(401);
+      expect((sinSesion.body as ErrorCuerpo).codigo).toBe('NO_AUTENTICADO');
+      expect(conSesion.status).toBe(404);
+      expect((conSesion.body as ErrorCuerpo).codigo).toBe('NO_ENCONTRADO');
+    });
 
     it.each(['PUT', 'PATCH', 'DELETE'])(
       'criterio 105: %s con sesion en una ruta de la plataforma con bytes invalidos responde 400',

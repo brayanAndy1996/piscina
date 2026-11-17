@@ -1,8 +1,5 @@
-import { detallesValidacionSchema } from '@aquagestion/contratos';
-import { ErrorDeApi, esErrorDeApi } from '../../api/cliente';
-
-export const MENSAJE_SIN_SERVIDOR = 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
-export const MENSAJE_ERROR_GENERAL = 'Ocurrió un error inesperado. Inténtalo de nuevo.';
+import { esErrorDeApi } from '../../api/cliente';
+import { mensajeGeneral } from '../../lib/errores';
 
 /** Mensaje del ingreso según la respuesta de la API (textos de la especificación, criterio 68). */
 export function mensajeDeIngreso(error: unknown): string {
@@ -24,14 +21,12 @@ export function mensajeDeAccion(error: unknown): string {
   return mensajeGeneral(error);
 }
 
-/** Error de red o del servidor sin un caso propio. */
-export function mensajeGeneral(error: unknown): string {
-  return error instanceof ErrorDeApi && error.estado < 500 ? error.message : MENSAJE_SIN_SERVIDOR;
-}
-
-/** Errores por campo de un 400 `SOLICITUD_INVALIDA` (`detalles.errores`), o una lista vacía. */
-export function erroresPorCampo(error: unknown): { campo: string; mensaje: string }[] {
-  if (!esErrorDeApi(error, 400)) return [];
-  const detalles = detallesValidacionSchema.safeParse(error.detalles);
-  return detalles.success ? detalles.data.errores : [];
+/** Mensaje de las acciones sobre los administradores de una academia (listar, crear y restablecer). */
+export function mensajeDeAdministradores(error: unknown): string {
+  if (esErrorDeApi(error, 403, 'ACADEMIA_SUSPENDIDA')) {
+    return 'La academia está suspendida. Reactívala para gestionar a sus administradores.';
+  }
+  if (esErrorDeApi(error, 404, 'ACADEMIA_NO_ENCONTRADA')) return 'La academia no existe.';
+  if (esErrorDeApi(error, 404)) return 'El administrador ya no existe.';
+  return mensajeGeneral(error);
 }

@@ -9,6 +9,7 @@ import { crearAcademiaDePrueba } from '../../utilidades/academias';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase } from '../../utilidades/base-datos';
 import { leerAcademias, leerAuditoriaPlataforma, leerSuperadmin } from '../../utilidades/datos';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 import { cookieDeSesion, crearSuperadminDePrueba, type SuperadminDePrueba } from '../../utilidades/superadmins';
 
 // Criterio 74 (ataque ronda 1, F2): en las rutas de /api con POST, PUT, PATCH o DELETE y cuerpo (Content-Length > 0 o
@@ -470,7 +471,6 @@ describe('criterio 74: rutas protegidas de /api/plataforma y otras rutas de /api
       ['POST /api/salud', 'POST', '/api/salud'],
       ['POST /api/a/delfines', 'POST', '/api/a/delfines'],
       ['PUT /api/salud', 'PUT', '/api/salud'],
-      ['POST /api/no-existe', 'POST', '/api/no-existe'],
     ])('criterio 74: %s con un cuerpo text/plain responde 400 SOLICITUD_INVALIDA', async (_nombre, metodo, ruta) => {
       const respuesta = await enviarCrudo(app, {
         metodo,
@@ -483,6 +483,29 @@ describe('criterio 74: rutas protegidas de /api/plataforma y otras rutas de /api
       const cuerpo = respuesta.body as ErrorCuerpo;
       expect(cuerpo.codigo).toBe('SOLICITUD_INVALIDA');
       expect(cuerpo.detalles?.errores).toEqual([{ campo: '', mensaje: expect.any(String) as string }]);
+    });
+
+    // Spec 002, criterio 18: `/api/no-existe` no es una ruta publica. Sin sesion responde 401 antes de leer el cuerpo; con una sesion de
+    // academia valida el error del cuerpo se difiere hasta el permiso y, como la ruta no existe, responde 404.
+    it('criterio 74: POST /api/no-existe con un cuerpo text/plain responde 401 sin sesion y 404 con sesion de academia', async () => {
+      const sinSesion = await enviarCrudo(app, {
+        metodo: 'POST',
+        ruta: '/api/no-existe',
+        cabeceras: { 'Content-Type': 'text/plain' },
+        cuerpo: 'hola',
+      });
+      const { cookie: cookieAcademia } = await sesionDeAcademia(undefined, { ahora: AHORA });
+      const conSesion = await enviarCrudo(app, {
+        metodo: 'POST',
+        ruta: '/api/no-existe',
+        cabeceras: { 'Content-Type': 'text/plain', Cookie: cookieAcademia },
+        cuerpo: 'hola',
+      });
+
+      expect(sinSesion.status).toBe(401);
+      expect((sinSesion.body as ErrorCuerpo).codigo).toBe('NO_AUTENTICADO');
+      expect(conSesion.status).toBe(404);
+      expect((conSesion.body as ErrorCuerpo).codigo).toBe('NO_ENCONTRADO');
     });
 
     it('criterio 74: un GET con Content-Type text/plain y sin cuerpo no se ve afectado', async () => {

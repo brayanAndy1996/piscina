@@ -3,6 +3,7 @@ import { Controller, Get, Param, type Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { SoloSesion } from '../../../src/modulos/autenticacion';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
 import { limpiarBase } from '../../utilidades/base-datos';
 import { crearDatosDeAislamiento, type DatosDeAislamiento } from '../../utilidades/datos';
@@ -23,6 +24,7 @@ import {
   type DelegadosRonda12,
 } from '../../utilidades/ronda12';
 import { obtenerBaseDatosRonda3, type BaseDatosRonda3, type ClienteRonda3 } from '../../utilidades/ronda3';
+import { sesionDeAcademia } from '../../utilidades/sesion-academia';
 
 // Criterio 156 (ataque ronda 12, F1; amplia los criterios 21, 26, 30 y 149): `asentar()` solo esperaba las consultas que ya estaban en la
 // cola cuando `terminar()` apagaba el envoltorio. La segunda consulta de una cadena sin `await` (`x.create(...).then(() => registrar...)
@@ -160,6 +162,7 @@ function crearControladorDePrueba(): Type<unknown> {
   @Controller('prueba-r12')
   class ControladorPruebaR12 {
     @Get('plataforma/:n')
+    @SoloSesion()
     async plataforma(@Param('n') n: string): Promise<{ valor: string; terminoAlContinuar: boolean | undefined }> {
       const numero = Number(n);
       const visto: Visto = {};
@@ -295,7 +298,9 @@ describe('criterio 156, caso 4: por la API', () => {
     const escenario = escenarioDe('comoPlataforma');
     const n = siguienteNumero();
 
-    const respuesta = await request(app.getHttpServer()).get(`/api/prueba-r12/plataforma/${n}`);
+    const { cookie } = await sesionDeAcademia(datos.A);
+
+    const respuesta = await request(app.getHttpServer()).get(`/api/prueba-r12/plataforma/${n}`).set('Cookie', cookie);
 
     expect(respuesta.status, JSON.stringify(respuesta.body)).toBe(200);
     expect(respuesta.body).toEqual({ valor: VALOR, terminoAlContinuar: true });

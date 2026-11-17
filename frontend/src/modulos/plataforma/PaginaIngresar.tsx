@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router';
 import type { z } from 'zod';
 import { RUTA_ACADEMIAS, useIniciarSesion } from './hooks';
 import { mensajeDeIngreso } from './mensajes';
-import { Alerta, CampoTexto, ESTILO_BOTON } from './ui';
+import { Alerta, CampoTexto, ESTILO_BOTON } from '../../componentes/ui';
 
 type CamposIngreso = z.input<typeof iniciarSesionPlataformaSchema>;
 
