@@ -156,6 +156,12 @@ la academia y luego espera una fila de `usuarios`, así que no hay ciclo; el con
     `<fieldset disabled={actualizar.isPending}>`. No usar la opción `disabled` de `register` de React Hook Form, que
     deja el valor del campo en `undefined` y cambiaría lo que se envía y la comparación con la base de llenado.
   - **Doble envío (O7):** sin cambio; lo cubre la idempotencia de la API (criterio 9).
+- **Ataque ronda 3 (criterio 31 a, F3).** En `useActualizarConfiguracion`, `onSuccess` no devuelve ni espera la
+  promesa de `invalidateQueries` de `['mi-academia']`: la lanza sin esperarla (`void cliente.invalidateQueries(...)`),
+  para que la mutación termine (y `isPending` pase a falso) apenas se pone la respuesta en la caché y la base de
+  llenado. Se conservan el `await cancelQueries` del criterio 29 (no espera respuestas) y el orden `alGuardar` →
+  `setQueryData`. Alternativa descartada: seguir esperando la invalidación y desbloquear el formulario con un estado
+  propio (dos fuentes de "guardando" que pueden contradecirse, que es lo que muestra O8).
 - Menú y ruta con `puede(rol, 'CONFIGURAR_ACADEMIA')` y `RequierePermiso`.
 - `modulos/sesion/mensajes.ts`: el 423 de la academia muestra el `mensaje` de la respuesta (con los minutos que faltan)
   más "Si no puedes esperar, pide en recepción que la restablezcan"; sin el número fijo (criterio 19). El de la
@@ -182,6 +188,7 @@ UPDATE` para poder repetirse (criterio 25). `tiburones` queda sin filas.
 | Cancelar los `GET` de la configuración al empezar y al terminar el `PATCH` (criterio 29, ronda 2) | `refetchOnReconnect: false` | No cubre la invalidación ni otros disparadores |
 | Formulario a la vista con aviso si falla un `GET` en segundo plano (criterio 30, ronda 2) | Reemplazar el formulario por el error con "Reintentar" | Borra las ediciones |
 | `<fieldset disabled>` mientras se guarda (criterio 31, ronda 2) | Opción `disabled` de `register` | React Hook Form deja el valor en `undefined` y cambia lo que se envía |
+| Invalidar `mi-academia` tras guardar sin esperarla (criterio 31 a, ronda 3) | Esperar la invalidación y desbloquear con un estado propio | La mutación quedaba pendiente hasta que respondía otra petición; dos estados de "guardando" se contradicen |
 | Permiso `CONFIGURAR_ACADEMIA` (DT-1) | Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` | Es otra función; la matriz debe decir lo que permite |
 
 ## Migraciones
@@ -208,5 +215,8 @@ Ninguna (spec, "Cambios al modelo de datos").
 - **Respuestas cruzadas en el formulario (ataque ronda 2, O4 a O6):** un `GET` viejo que responde después del
   `PATCH`, un `GET` que falla con ediciones a la vista o lo escrito durante el guardado. Lo cubren los criterios 29 a
   31 y sus pruebas de componentes.
+- **Formulario bloqueado tras guardar (ataque ronda 3, F3):** si `onSuccess` espera otra consulta, el formulario sigue
+  desactivado hasta que esa consulta responda. Lo cubren el criterio 31 a y su prueba de componentes; el revisor
+  comprueba que ninguna otra mutación de la web devuelva o espere una invalidación que no le haga falta para terminar.
 - **Pruebas protegidas de 002 que dependen del texto del 423:** no deberían existir (002 compara códigos); si alguna lo
   hiciera, el tester lo reporta en el rojo y decide el orquestador.

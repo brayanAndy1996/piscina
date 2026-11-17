@@ -88,17 +88,41 @@ pregunta T4).
 
 - [x] T11.6 · especificador · Sección H de `spec.md` (criterios 28 a 31, O7, casos límite, riesgo aceptado, impacto y
       pregunta T4); diseño de la ronda 2 en `plan.md` (sección 7, decisiones y riesgos)
-- [ ] T11.7 · orquestador · Decidir la pregunta T4 (propuesta: el 28 no es crítico). Si es crítico, test-writer escribe
-      su prueba de componentes protegida en rojo antes de T11.8
-- [ ] T11.8 · frontend · Corregir `useMiAcademia` y `LayoutPanel` (clave con la identidad de la sesión y comprobación
+- [x] T11.7 · orquestador · Decidir la pregunta T4 (propuesta: el 28 no es crítico). Si es crítico, test-writer escribe
+      su prueba de componentes protegida en rojo antes de T11.8. _Hecho: el orquestador confirmó que no es crítico
+      (DT-4 en `spec.md`)._
+- [x] T11.8 · frontend · Corregir `useMiAcademia` y `LayoutPanel` (clave con la identidad de la sesión y comprobación
       del `nombreCorto`), `useActualizarConfiguracion` (cancelar los `GET` en curso al empezar y al terminar el
       `PATCH`), `PaginaConfiguracion` (formulario a la vista con aviso si falla un `GET` en segundo plano;
       `<fieldset disabled>` mientras se guarda), según `plan.md` sección 7, y sumar a
       `frontend/src/modulos/configuracion/Configuracion.test.tsx` pruebas de componentes que reproducen `x1.test.tsx`
       (los tres casos de F2 y el caso en que `mi-academia` de B responde) y las pruebas T2 a T4 de `x2.test.tsx`, con el
       cuerpo exacto del `PATCH` en el 29 (criterios 28 a 31)
-- [ ] T11.9 · orquestador · Revisar con `git diff` que la corrección no tocó pruebas protegidas
-- [ ] T11.10 · adversarial · Ronda 3 sobre el commit con la corrección (criterios críticos, 27 y 28 a 31)
+- [x] T11.9 · orquestador · Revisar con `git diff` que la corrección no tocó pruebas protegidas
+- [x] T11.10 · adversarial · Ronda 3 sobre el commit con la corrección (criterios críticos, 27 y 28 a 31)
+
+### Ronda 3 (sobre ab71be2)
+
+Resultado: los criterios 28 a 31 quedaron verificados; las pruebas de la ronda 1 se repitieron contra PostgreSQL real
+sin cambios y el cambio de `RutaConSesion` no rompe el criterio 59 de 002. Una falla en la web (F3, media: tras guardar,
+el formulario quedaba en "Guardando…" hasta que respondía `GET /api/mi-academia`, porque `onSuccess` devolvía la
+promesa de la invalidación) y dos observaciones (O8: se veían a la vez "Configuración guardada." y "Guardando…", se
+resuelve con F3; O9: el 403 en un `GET` de fondo lo maneja el `GET /api/sesion` que se vuelve a pedir, no es falla).
+Todo en la sección I de [`spec.md`](spec.md): criterio 31 a, precisión del 31, no crítico, con prueba obligatoria de
+componentes.
+
+- [x] T11.11 · especificador · Sección I de `spec.md` (criterio 31 a, O8 y O9, precisiones del 31 y de los casos
+      límite, clasificación); diseño de la ronda 3 en `plan.md` (sección 7, decisiones y riesgos)
+- [ ] T11.12 · frontend · Corregir `useActualizarConfiguracion` (`frontend/src/modulos/configuracion/hooks.ts`):
+      `onSuccess` lanza la invalidación de `['mi-academia']` sin devolverla ni esperarla, y conserva el
+      `cancelQueries` y el orden `alGuardar` → `setQueryData` del criterio 29. Sumar a
+      `frontend/src/modulos/configuracion/Configuracion.test.tsx` la prueba de componentes del criterio 31 a: `PATCH`
+      que responde 200 con `GET /api/mi-academia` demorado a mano sin responder; los campos y un botón "Usar el valor
+      por defecto" quedan activos, Guardar ya no dice "Guardando…", se ve "Configuración guardada." sin "Guardando…" a
+      la vez; al responder `mi-academia`, la cabecera muestra el teléfono nuevo. Las pruebas de los criterios 27 a 31
+      siguen pasando (criterio 31 a)
+- [ ] T11.13 · orquestador · Revisar con `git diff` que la corrección no tocó pruebas protegidas
+- [ ] T11.14 · adversarial · Ronda 4 sobre el commit con la corrección (criterios críticos, 27, 28 a 31 y 31 a)
 
 ## Revisión y cierre
 

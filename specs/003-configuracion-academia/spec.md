@@ -21,6 +21,11 @@
   web (F2, media, cabecera del panel con datos de otra academia tras cambiar de sesión: criterio 28, amplía el 24) y
   cuatro observaciones (O4 a O7); el orquestador decidió convertir O4 a O6 en los criterios 29 a 31 del formulario y
   dejar O7 como observación. Todo en la sección H de los criterios. Pendiente: corregir 28 a 31 y la ronda 3.
+- **Ataque, ronda 3** (sobre ab71be2, con la corrección de 28 a 31): los criterios 28 a 31 quedaron verificados, las
+  pruebas de la ronda 1 se repitieron contra PostgreSQL real sin cambios y el criterio 59 de 002 sigue cumpliéndose. Una
+  falla en la web (F3, media: el formulario queda en "Guardando…" hasta que responde `GET /api/mi-academia`), que se
+  corrige como precisión del criterio 31 (31 a), y dos observaciones (O8 y O9). Todo en la sección I de los criterios.
+  Pendiente: corregir F3 y la ronda 4.
 
 ## Objetivo
 
@@ -53,6 +58,9 @@ aislamiento entre academias, pero solo en la pantalla: la API no entrega nada de
 que se ve es lo que la sesión anterior dejó en la caché del mismo navegador, y son el nombre y el teléfono de la
 academia, que se publicarán desde la 005 (DR-4). Clasificación propuesta por el especificador (pregunta T4); si el
 orquestador lo marca crítico, su prueba de componentes la escribe test-writer como protegida.
+
+El criterio 31 a (web, ataque ronda 3) precisa el 31: no es crítico y lleva prueba obligatoria de componentes. Solo
+afecta cuándo se desbloquea el formulario; no cambia lo que se envía ni lo que se muestra de otra academia.
 
 ## Criterios de aceptación
 
@@ -338,7 +346,8 @@ O7, pruebas T2 a T5).
     27 e); con error, con los textos que se enviaron y los errores junto a cada campo (criterio 23). _(prueba
     obligatoria, de componentes: la prueba T4 de `x2.test.tsx`; con el `PATCH` demorado, el teléfono y un botón "Usar el
     valor por defecto" están desactivados, y tras un error del `PATCH` los campos vuelven a estar activos con lo que se
-    escribió)_
+    escribió)_ _Precisión (ataque ronda 3, F3): "al responder" es al responder el `PATCH`, sin esperar ninguna otra
+    petición; ver el criterio 31 a en la sección I._
 
 **Observaciones de la ronda 2** _(no son fallas)_:
 
@@ -346,6 +355,46 @@ O7, pruebas T2 a T5).
   que React desactive Guardar) mandan varios `PATCH` iguales; en la reproducción, 3. No es falla: la API es
   idempotente (criterio 9), así que el primero escribe y audita y los demás responden 200 sin escribir ni auditar.
   Riesgo aceptado (abajo).
+
+### I. Ataque adversarial, ronda 3 (sobre ab71be2)
+
+La ronda 3 verificó las correcciones de la ronda 2: los criterios 28 a 31 se cumplen con los escenarios de
+`x1.test.tsx` y `x2.test.tsx`. Repitió contra PostgreSQL real las pruebas de la ronda 1 (criterios críticos 4, 5, 11 y
+13 a 17), sin cambios en el resultado. Comprobó que el cambio de `RutaConSesion` hecho para el criterio 28 no rompe el
+criterio 59 de 002. Encontró una falla (F3, media, en la web) y dos observaciones que no son fallas. F3 se corrige como
+precisión del criterio 31.
+
+31 a. **El formulario se desbloquea apenas responde el `PATCH`** _(ataque ronda 3, F3; precisa el criterio 31)_. Falla
+    encontrada: en `useActualizarConfiguracion` (`frontend/src/modulos/configuracion/hooks.ts`), `onSuccess` termina con
+    `return cliente.invalidateQueries({ queryKey: CLAVE_MI_ACADEMIA })`; React Query espera esa promesa antes de dar la
+    mutación por terminada, así que `isPending` sigue verdadero hasta que responde el nuevo `GET /api/mi-academia`. Si
+    esa petición tarda o no responde, el formulario queda desactivado y Guardar sigue en "Guardando…", aunque el
+    guardado ya terminó (y ya se ve "Configuración guardada.", observación O8). Entonces, cuando el `PATCH` responde:
+    - a) con éxito, en ese mismo momento (sin esperar la respuesta de `GET /api/mi-academia`, de `GET /api/configuracion`
+      ni de ninguna otra petición) los seis campos y los botones "Usar el valor por defecto" vuelven a quedar activos,
+      llenos con la respuesta del `PATCH` (criterio 27 e), Guardar vuelve a su texto normal y se ve el aviso de éxito;
+    - b) con error, igual que dice el criterio 31: activos de inmediato, con lo que se envió y los errores junto a cada
+      campo;
+    - c) la actualización de la cabecera (criterio 24) y cualquier otra consulta que se vuelva a pedir tras guardar
+      ocurre en segundo plano: si tarda, falla o no responde, el formulario no se entera; cuando responde, la cabecera
+      sigue las reglas de los criterios 24 y 28;
+    - d) en ningún momento se ven a la vez el aviso de éxito y "Guardando…" (O8).
+
+    Lo que el criterio 29 pide hacer antes de poner la respuesta en la caché (cancelar las consultas de la configuración
+    en curso) se mantiene: cancelar no espera ninguna respuesta. _(prueba obligatoria, de componentes, no crítico: con el
+    `PATCH` que responde 200 y `GET /api/mi-academia` demorado a mano sin responder, tras la respuesta del `PATCH` el
+    teléfono y un botón "Usar el valor por defecto" están activos, el botón de guardar ya no dice "Guardando…" y se ve
+    "Configuración guardada.", sin los dos textos a la vez; luego `mi-academia` responde y la cabecera muestra el
+    teléfono nuevo)_
+
+**Observaciones de la ronda 3** _(no son fallas)_:
+
+- **O8. "Configuración guardada." y "Guardando…" a la vez.** Es un síntoma de F3: el aviso de éxito aparece en
+  `alGuardar`, mientras la mutación sigue pendiente por la invalidación. Se resuelve con el criterio 31 a (punto d).
+- **O9. 403 en un `GET` de fondo.** Si un `GET` en segundo plano (por ejemplo `GET /api/configuracion` o
+  `GET /api/mi-academia`) responde 403 porque la sesión cambió o se cerró, lo maneja el `GET /api/sesion` que la web
+  vuelve a pedir, y `RutaConSesion` actúa según su resultado (criterio 59 de 002). No es falla: el formulario no envía
+  nada con esa respuesta y el 403 no muestra datos.
 
 ## Casos límite
 
@@ -373,6 +422,8 @@ O7, pruebas T2 a T5).
 - **El formulario con peticiones cruzadas** _(ataque ronda 2, O4 a O6)_: un `GET` que responde después del `PATCH`
   pero se pidió antes no deshace lo guardado (criterio 29); un `GET` que falla no borra las ediciones (criterio 30); no
   se escribe mientras se guarda (criterio 31).
+  _Precisión (ataque ronda 3, F3):_ el formulario se desbloquea apenas responde el `PATCH`; lo que se vuelve a pedir
+  después de guardar (la cabecera, `GET /api/mi-academia`) no lo deja en "Guardando…" (criterio 31 a).
 - **Hora del servidor en otra zona:** esta historia solo guarda instantes (`actualizado_en`, `bloqueado_hasta`); los días
   "por vencer" y de prioridad se cuentan en America/Lima en la 010.
 
@@ -583,6 +634,10 @@ propuesta.
   parte".
 - **DT-3 (pregunta T3). Sin migración.** **Decidido (la propuesta):** valores por defecto en el código y sin `CHECK`
   por clave (decisiones D1 y D3).
+- **DT-4 (pregunta T4, ronda 2). ¿El criterio 28 es de ruta crítica?** **Decidido (la propuesta), 17/11/2026:** no
+  crítico, con prueba obligatoria de componentes que escribe el frontend, como el criterio 27. Motivo: la API nunca
+  entrega datos de otra academia (criterios 4 y 20); lo que se veía venía de la caché que dejó la sesión anterior en el
+  mismo navegador, y son el nombre y el teléfono de la academia, que serán públicos desde la 005 (DR-4).
 
 ### Decisiones de diseño (técnicas)
 
@@ -626,3 +681,4 @@ Pregunta técnica nueva de la ronda 2, para el orquestador:
   la 005 (DR-4). **Propuesta:** no crítico, con prueba obligatoria de componentes que escribe el frontend, como el
   criterio 27. Si el orquestador lo marca crítico, test-writer escribe esa prueba como protegida (en rojo) antes de la
   corrección. Valor provisional: no crítico; no bloquea la corrección.
+  _Decidida: DT-4 (no crítico), en "Decisiones"._
