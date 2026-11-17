@@ -11,7 +11,7 @@ import {
 import { PinoLogger } from 'nestjs-pino';
 import { ErrorNegocio } from '../../comun/errores';
 import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
-import { BaseDatos, esViolacionDeUnicidad, type TransaccionAcademia } from '../../infraestructura/prisma';
+import { BaseDatos, restriccionDeUnicidadViolada, type TransaccionAcademia } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { AuditoriaService } from '../auditoria';
 import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
@@ -35,6 +35,19 @@ interface FilaClase {
 
 /** Los dos choques del bloque que la base decide con índices únicos parciales (decisión D4 de 004). */
 type Choque = 'CLASE_DUPLICADA' | 'ENTRENADOR_OCUPADO';
+
+/** Las restricciones de los índices únicos parciales de `clases` (migración `planes_clases`) y el choque que cada una significa. */
+const CHOQUE_POR_RESTRICCION: Readonly<Record<string, Choque>> = {
+  clases_nivel_bloque_activo_key: 'CLASE_DUPLICADA',
+  clases_entrenador_bloque_activo_key: 'ENTRENADOR_OCUPADO',
+};
+
+/** El bloque de una clase (día y hora de inicio) con su nivel: lo que comparten las clases que chocan. */
+interface BloqueDeClase {
+  nivel: NivelNatacion;
+  diaSemana: number;
+  horaInicio: string;
+}
 
 function noEncontrado(): ErrorNegocio {
   return new ErrorNegocio(404, 'NO_ENCONTRADO', 'No se encontró el recurso solicitado.');
@@ -125,95 +138,130 @@ export class ClasesService {
   }
 
   /**
-   * `POST /api/clases` (criterios 16 a 20): en una sola transacción, bloquea y comprueba la fila del administrador (primera sentencia),
-   * comprueba que el entrenador sea un `ENTRENADOR` `ACTIVO` de la academia (409 `ENTRENADOR_NO_VALIDO`, igual para los cuatro casos),
-   * inserta con `ON CONFLICT DO NOTHING` (los índices únicos parciales deciden los choques, también entre dos creaciones simultáneas;
-   * sin fila, se averigua cuál chocó: `CLASE_DUPLICADA` y, si no, `ENTRENADOR_OCUPADO`) y audita `CLASE_CREADA`.
+   * `POST /api/clases` (criterios 16 a 20 y 32): en una sola transacción, bloquea y comprueba la fila del administrador (primera
+   * sentencia), comprueba que el entrenador sea un `ENTRENADOR` `ACTIVO` de la academia (409 `ENTRENADOR_NO_VALIDO`, igual para los
+   * cuatro casos), inserta (los índices únicos parciales deciden los choques, también entre dos creaciones simultáneas) y audita
+   * `CLASE_CREADA`. Si el `INSERT` choca, la transacción se revierte y el 409 se decide por el nombre de la restricción violada, sin
+   * releer las clases (la que chocó pudo cambiar entre medio).
    */
   async crear(sesion: SesionVerificada, datos: CrearClase, ip: string | null): Promise<Clase> {
     const actor = actorDeSesion(sesion);
-    const entrenadorId = datos.entrenadorId.toLowerCase();
-    return this.baseDatos.conAcademia(actor.academiaId, async (tx) => {
-      // El entrenador se bloquea junto con el actor, en la misma sentencia y en el orden de `id` (como `desactivar` de 002): la llave
-      // foránea de la clase toma `FOR KEY SHARE` sobre su fila, y si la tomara después de dejar al actor bloqueado, otra petición del
-      // mismo administrador que desactiva a ese entrenador (`FOR UPDATE` sobre las dos filas) se esperaría en cruz (`40P01`). Siempre
-      // antes de cualquier fila de `clases`.
-      const { objetivo } = await bloquearActorVigente(
-        tx,
-        { id: actor.id, versionToken: actor.versionToken },
-        { objetivoId: entrenadorId, registro: this.registro, ip },
-      );
-      if (!esEntrenadorActivo(objetivo)) throw entrenadorNoValido();
+    try {
+      return await this.baseDatos.conAcademia(actor.academiaId, (tx) => this.crearEnTransaccion(tx, actor, datos, ip));
+    } catch (error) {
+      throw await this.errorDeEscritura(actor.academiaId, error, datos, null);
+    }
+  }
 
-      const ahora = this.reloj.ahora();
-      const horaFin = horaFinDe(datos.horaInicio);
-      const creadas = await tx.cliente.$queryRaw<{ id: string }[]>`
-        INSERT INTO clases (id, academia_id, nivel, dia_semana, hora_inicio, hora_fin, entrenador_id, aforo, activo, creado_en,
-                            actualizado_en)
-        VALUES (gen_random_uuid(), ${tx.academiaId}::uuid, ${datos.nivel}::nivel_natacion, ${datos.diaSemana}::smallint,
-                ${datos.horaInicio}::time(0), ${horaFin}::time(0), ${entrenadorId}::uuid, ${datos.aforo}::smallint, true,
-                ${ahora}::timestamptz, ${ahora}::timestamptz)
-        ON CONFLICT DO NOTHING
-        RETURNING id::text AS id`;
-      const creada = creadas[0];
-      if (!creada) {
-        const choque = await this.buscarChoque(tx, {
-          nivel: datos.nivel,
-          diaSemana: datos.diaSemana,
-          horaInicio: datos.horaInicio,
-          entrenadorId,
-          excluirId: null,
-        });
-        if (choque) throw errorDeChoque(choque);
-        throw new Error('La inserción de una clase no creó ninguna fila y no hay una clase que choque.');
-      }
-      const clase = await this.leerClase(tx, creada.id);
-      await this.auditoria.registrarEnAcademia(tx, {
-        actorTipo: 'USUARIO',
-        actorId: actor.id,
-        accion: 'CLASE_CREADA',
-        entidad: 'clase',
-        entidadId: clase.id,
-        datosDespues: datosDeCreacion(clase),
-        ip,
-      });
-      return clase;
+  private async crearEnTransaccion(
+    tx: TransaccionAcademia,
+    actor: ReturnType<typeof actorDeSesion>,
+    datos: CrearClase,
+    ip: string | null,
+  ): Promise<Clase> {
+    const entrenadorId = datos.entrenadorId.toLowerCase();
+    // El entrenador se bloquea junto con el actor, en la misma sentencia y en el orden de `id` (como `desactivar` de 002): la llave
+    // foránea de la clase toma `FOR KEY SHARE` sobre su fila, y si la tomara después de dejar al actor bloqueado, otra petición del
+    // mismo administrador que desactiva a ese entrenador (`FOR UPDATE` sobre las dos filas) se esperaría en cruz (`40P01`). Siempre
+    // antes de cualquier fila de `clases`.
+    const { objetivo } = await bloquearActorVigente(
+      tx,
+      { id: actor.id, versionToken: actor.versionToken },
+      { objetivoId: entrenadorId, registro: this.registro, ip },
+    );
+    if (!esEntrenadorActivo(objetivo)) throw entrenadorNoValido();
+
+    const ahora = this.reloj.ahora();
+    const horaFin = horaFinDe(datos.horaInicio);
+    const creadas = await tx.cliente.$queryRaw<{ id: string }[]>`
+      INSERT INTO clases (id, academia_id, nivel, dia_semana, hora_inicio, hora_fin, entrenador_id, aforo, activo, creado_en,
+                          actualizado_en)
+      VALUES (gen_random_uuid(), ${tx.academiaId}::uuid, ${datos.nivel}::nivel_natacion, ${datos.diaSemana}::smallint,
+              ${datos.horaInicio}::time(0), ${horaFin}::time(0), ${entrenadorId}::uuid, ${datos.aforo}::smallint, true,
+              ${ahora}::timestamptz, ${ahora}::timestamptz)
+      RETURNING id::text AS id`;
+    const creada = creadas[0];
+    if (!creada) throw new Error('La inserción de una clase no devolvió ninguna fila.');
+    const clase = await this.leerClase(tx, creada.id);
+    await this.auditoria.registrarEnAcademia(tx, {
+      actorTipo: 'USUARIO',
+      actorId: actor.id,
+      accion: 'CLASE_CREADA',
+      entidad: 'clase',
+      entidadId: clase.id,
+      datosDespues: datosDeCreacion(clase),
+      ip,
     });
+    return clase;
   }
 
   /**
-   * `PATCH /api/clases/{id}` (criterios 21, 22 y 25): en una sola transacción, bloquea y comprueba la fila del administrador
+   * `PATCH /api/clases/{id}` (criterios 21, 22, 25 y 32): en una sola transacción, bloquea y comprueba la fila del administrador
    * (`bloquearActorVigente`, primera sentencia) y después la fila de la clase con `bloquearClasesParaCupo`, siempre y antes de leerla
    * (el aforo se lee ya con el bloqueo, así dos cambios se encadenan). Sin fila, 404 (id inexistente, de otra academia o que no es
    * UUID, con el mismo cuerpo). Cambiar el entrenador o reactivar exige un entrenador válido y activo y comprueba los choques del
    * bloque. Sin cambios, no escribe ni audita. Un choque que escapa a la comprobación (otra clase que entra al mismo bloque a la vez)
-   * lo detiene el índice: la transacción se revierte y se responde 409.
+   * lo detiene el índice: la transacción se revierte y el 409 se decide por el nombre de la restricción violada, sin releer las clases.
    */
   async actualizar(sesion: SesionVerificada, id: string, pedido: ActualizarClase, ip: string | null): Promise<Clase> {
     const actor = actorDeSesion(sesion);
+    // El bloque de la clase bloqueada, para afinar entre los dos 409 si el índice detiene la escritura.
+    const bloque: { actual: (BloqueDeClase & { id: string }) | null } = { actual: null };
     try {
       return await this.baseDatos.conAcademia(actor.academiaId, (tx) =>
-        this.actualizarEnTransaccion(tx, actor, id, pedido, ip),
+        this.actualizarEnTransaccion(tx, actor, id, pedido, ip, bloque),
       );
     } catch (error) {
-      if (!esViolacionDeUnicidad(error)) throw error;
-      const choque = await this.baseDatos.conAcademia(actor.academiaId, async (tx) => {
-        const [actual] = await tx.cliente.$queryRaw<
-          { nivel: NivelNatacion; dia_semana: number; hora_inicio: string; entrenador_id: string }[]
-        >`
-          SELECT nivel::text AS nivel, dia_semana::int AS dia_semana, to_char(hora_inicio, 'HH24:MI') AS hora_inicio,
-                 entrenador_id::text AS entrenador_id
-            FROM clases WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id.toLowerCase()}::uuid`;
-        if (!actual) return null;
-        return this.buscarChoque(tx, {
-          nivel: actual.nivel,
-          diaSemana: actual.dia_semana,
-          horaInicio: actual.hora_inicio,
-          entrenadorId: (pedido.entrenadorId ?? actual.entrenador_id).toLowerCase(),
-          excluirId: id.toLowerCase(),
-        });
+      throw await this.errorDeEscritura(actor.academiaId, error, bloque.actual, bloque.actual?.id ?? null);
+    }
+  }
+
+  /**
+   * El error que sale de una escritura de `clases` que falló. Si es una violación de una de las dos restricciones del bloque, el 409
+   * que le toca por su nombre (el del error estructurado de la base, nunca el texto del mensaje); cualquier otro error (otro `23505`,
+   * un error sin nombre) sigue su camino sin adivinar un 409.
+   *
+   * PostgreSQL informa una sola restricción, la del primer índice que comprueba, y ese orden no es parte del contrato: si es la del
+   * entrenador, una consulta posterior (otra transacción, sin bloqueo) mira si además hay una clase activa del mismo nivel en el
+   * bloque (criterio 20 e: `CLASE_DUPLICADA`). Esa consulta solo elige entre los dos 409; si no encuentra nada o falla, responde
+   * `ENTRENADOR_OCUPADO`, nunca un 500.
+   */
+  private async errorDeEscritura(
+    academiaId: string,
+    error: unknown,
+    bloque: BloqueDeClase | null,
+    excluirId: string | null,
+  ): Promise<unknown> {
+    const restriccion = restriccionDeUnicidadViolada(error);
+    const choque = restriccion === null ? undefined : CHOQUE_POR_RESTRICCION[restriccion];
+    if (choque === undefined) return error;
+    if (
+      choque === 'ENTRENADOR_OCUPADO' &&
+      bloque !== null &&
+      (await this.hayClaseDelMismoNivel(academiaId, bloque, excluirId))
+    ) {
+      return errorDeChoque('CLASE_DUPLICADA');
+    }
+    return errorDeChoque(choque);
+  }
+
+  /** ¿Hay otra clase activa del mismo nivel en el bloque? Solo afina el 409; ante cualquier fallo responde que no. */
+  private async hayClaseDelMismoNivel(
+    academiaId: string,
+    bloque: BloqueDeClase,
+    excluirId: string | null,
+  ): Promise<boolean> {
+    try {
+      return await this.baseDatos.conAcademia(academiaId, async (tx) => {
+        const filas = await tx.cliente.$queryRaw<{ duplicada: boolean }[]>`
+          SELECT EXISTS (SELECT 1 FROM clases
+                          WHERE academia_id = ${tx.academiaId}::uuid AND activo AND nivel = ${bloque.nivel}::nivel_natacion
+                            AND dia_semana = ${bloque.diaSemana}::smallint AND hora_inicio = ${bloque.horaInicio}::time(0)
+                            AND id IS DISTINCT FROM ${excluirId}::uuid) AS duplicada`;
+        return filas[0]?.duplicada === true;
       });
-      throw choque ? errorDeChoque(choque) : error;
+    } catch {
+      return false;
     }
   }
 
@@ -223,6 +271,7 @@ export class ClasesService {
     idPedido: string,
     pedido: ActualizarClase,
     ip: string | null,
+    bloque: { actual: (BloqueDeClase & { id: string }) | null },
   ): Promise<Clase> {
     // Si se pide un entrenador, su fila se bloquea junto con la del actor, antes de cualquier fila de `clases` (ver `crear`).
     const { objetivo } = await bloquearActorVigente(
@@ -234,6 +283,7 @@ export class ClasesService {
     const id = idPedido.toLowerCase();
     const [guardada] = await bloquearClasesParaCupo(tx, [id]);
     if (!guardada) throw noEncontrado();
+    bloque.actual = { id, nivel: guardada.nivel, diaSemana: guardada.diaSemana, horaInicio: guardada.horaInicio };
 
     const cambios = cambiosPedidosClase(guardada, pedido);
     const cambiaElEntrenador = cambios.campos.includes('entrenadorId');

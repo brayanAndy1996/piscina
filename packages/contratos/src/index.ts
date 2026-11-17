@@ -132,6 +132,7 @@ export {
   LIMITES_PLAN,
   MENSAJE_DIAS_INSUFICIENTES,
   MENSAJE_VIGENCIA_INVERTIDA,
+  normalizarNombrePlan,
   planSchema,
   respuestaListaPlanesSchema,
   respuestaPlanSchema,

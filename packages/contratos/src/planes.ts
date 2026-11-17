@@ -21,11 +21,40 @@ export const ESTADOS_PLAN = ['VIGENTE', 'PROGRAMADO', 'VENCIDO', 'INACTIVO'] as 
 export const estadoPlanSchema = z.enum(ESTADOS_PLAN);
 export type EstadoPlan = z.infer<typeof estadoPlanSchema>;
 
-const nombrePlanSchema = textoVisibleSchema({
-  sujeto: 'El nombre',
-  min: LIMITES_PLAN.nombre.minimo,
-  max: LIMITES_PLAN.nombre.maximo,
-});
+/** Espacios Unicode (categoría `Zs`: no separable, ideográfico, finos, etc.). */
+const ESPACIOS_UNICODE = /\p{Zs}/gu;
+
+/**
+ * Caracteres de formato invisibles (categoría `Cf`: ancho cero U+200B, U+200C, U+200D, U+2060, U+FEFF, guion suave U+00AD...) que no son
+ * de control bidireccional. Los bidireccionales no se eliminan: `textoVisibleSchema` los rechaza con 400.
+ */
+const FORMATO_INVISIBLE = /(?![\p{Bidi_Control}])\p{Cf}/gu;
+
+/**
+ * Normaliza el nombre de un plan (criterio 34, DT-6 de 004): dos nombres que se ven iguales son el mismo. NFC; los espacios Unicode
+ * pasan a un espacio normal; se eliminan los caracteres de formato invisibles, salvo los de control bidireccional; los espacios
+ * seguidos se colapsan en uno y se recortan los extremos. Función pura: la web y la API aplican la misma antes de validar.
+ */
+export function normalizarNombrePlan(texto: string): string {
+  return texto
+    .normalize('NFC')
+    .replace(ESPACIOS_UNICODE, ' ')
+    .replace(FORMATO_INVISIBLE, '')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+}
+
+/** El nombre se normaliza antes de validar: los límites de 3 a 80 caracteres y 3 visibles se miden sobre el nombre que se guarda. */
+const nombrePlanSchema = z
+  .string()
+  .transform(normalizarNombrePlan)
+  .pipe(
+    textoVisibleSchema({
+      sujeto: 'El nombre',
+      min: LIMITES_PLAN.nombre.minimo,
+      max: LIMITES_PLAN.nombre.maximo,
+    }),
+  );
 
 function enteroDe(campo: 'vecesPorSemana' | 'clasesPorMes' | 'duracionMinutos', sujeto: string, unidad: string) {
   const { minimo, maximo } = LIMITES_PLAN[campo];

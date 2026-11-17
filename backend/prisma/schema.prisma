@@ -175,7 +175,7 @@ model Usuario {
 
 /// Un plan de la academia (HU-19, RN-07). El precio ya incluye IGV (D-03) y es la base del cobro proporcional (RN-25). Los arreglos
 /// (días, franjas y niveles) viven en la misma fila. El nombre es único en la academia sin distinguir mayúsculas (índice sobre
-/// `lower(nombre)` a mano en la migración, que Prisma no representa), y los CHECK del criterio 4 también van a mano. No se borra: se
+/// `lower(nombre)` a mano en la migración, que Prisma no representa), y los CHECK de los criterios 4 y 33 también van a mano. No se borra: se
 /// desactiva (spec 004).
 model Plan {
   id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

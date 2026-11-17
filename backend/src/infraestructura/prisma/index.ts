@@ -7,7 +7,7 @@ import { Prisma } from '../../generated/prisma/client';
 
 export { BaseDatos } from './base-datos';
 export { cerrarCursores } from './cursores';
-export { codigoDeErrorDeBase, esViolacionDeUnicidad } from './errores-base';
+export { codigoDeErrorDeBase, esViolacionDeUnicidad, restriccionDeUnicidadViolada } from './errores-base';
 export {
   ErrorAcademiaNoEncontrada,
   ErrorAcademiaSuspendida,
