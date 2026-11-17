@@ -15,6 +15,8 @@
   DR-7 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-3), en "Decisiones". Ningún criterio
   cambió. No quedan preguntas abiertas. Los criterios 4, 5 y 13 llevan una "precisión del orquestador (17/11/2026)"
   que explicita lo que ya exigían las pruebas protegidas, sin cambiar su intención.
+- **Ataque:** ronda 1 sobre 0768735 con una falla en la web (F1, criterio 27, no crítico, prueba de componentes) y tres
+  observaciones (O1 a O3), en la sección G de los criterios. Pendiente: corregir F1 y la ronda 2.
 
 ## Objetivo
 
@@ -39,7 +41,8 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   en la base, si un DNI tiene cuenta (criterio 53 de 002).
 
 No son críticos, pero llevan _(prueba obligatoria)_: 1 a 3, 6 a 10, 12, 18 a 21 (API, dominio y registro técnico) y 22 a
-24 (web, con pruebas de componentes). Los 25 y 26 (semilla y documentación) los verifica el revisor.
+24 (web, con pruebas de componentes). Los 25 y 26 (semilla y documentación) los verifica el revisor. El 27 (web,
+ataque ronda 1) tampoco es crítico y lleva prueba obligatoria de componentes.
 
 ## Criterios de aceptación
 
@@ -199,6 +202,63 @@ activas. "Ruta de academia", "sesión válida" y "actor vigente" son los de la s
     historias siguientes (leer en la propia transacción, sin caché; un valor inválido vale lo de por defecto); el
     `README.md` y la guía de uso explican la pantalla. _(verificación del revisor)_
 
+### G. Ataque adversarial, ronda 1 (sobre 0768735)
+
+La ronda 1 encontró una falla (F1, media, en la web) y tres observaciones que no son fallas. F1 se corrige con el
+criterio 27, que amplía el 23. Las observaciones se registran como precisiones y riesgos aceptados; no cambian ningún
+criterio ni piden código.
+
+27. **El formulario nunca envía valores viejos como si fueran cambios** _(ataque ronda 1, F1; amplía el criterio 23)_.
+    Falla encontrada: al volver a `/panel/configuracion`, `FormularioConfiguracion`
+    (`frontend/src/modulos/configuracion/PaginaConfiguracion.tsx`) se llenaba una sola vez con los valores de la caché
+    (`useForm({ defaultValues })`); cuando llegaba la respuesta nueva de `GET /api/configuracion`, los campos seguían con
+    los textos viejos y `cambiosDe(textos, base)` los comparaba con la base nueva y los enviaba como cambios. Si otro
+    administrador había guardado `intentosInicioSesion` 3 y `minutosBloqueo` 60, el que solo cambiaba el teléfono enviaba
+    también 5 y 15, deshacía el bloqueo endurecido y la auditoría le atribuía ese cambio. Llamamos **base de llenado** a la
+    configuración con la que se llenaron los campos por última vez (al mostrarse, al recargarse por el punto b o al
+    guardar), y **campo editado** a uno cuyo texto, normalizado como al enviar (recorte, entero, teléfono vacío = `null`),
+    es distinto de su valor en la base de llenado. Entonces:
+    - a) **Valores vigentes.** Dado que el servidor tiene valores distintos de los de la caché, cuando el administrador
+      vuelve a la página, entonces el formulario termina mostrando los valores del servidor: o no se muestra (ni se
+      puede editar) hasta tener la respuesta de la petición hecha al entrar, o se muestra con la caché y se recarga en
+      cuanto llega una base distinta, si no hay campos editados.
+    - b) **Sin ediciones, sin envío.** Mientras no hay campos editados, el botón Guardar sigue desactivado, también
+      después de llegar una base distinta.
+    - c) **Solo lo editado.** Los cambios se calculan siempre contra la base de llenado, nunca contra una base que llegó
+      después; el `PATCH` lleva solo los campos editados. En el caso de la falla (servidor con 3 y 60, el administrador
+      solo escribe el teléfono), los campos muestran 3 y 60 y el `PATCH` es exactamente `{ "telefono": "01 555 0000" }`.
+    - d) **Base distinta con ediciones** (regla segura). Si llega una base distinta de la base de llenado y el
+      administrador ya editó algún campo, entonces: los campos que no editó toman el valor nuevo y nunca se envían; los
+      que editó conservan su texto y se envían si siguen siendo distintos de la base nueva; la base de llenado pasa a ser
+      la nueva; y la página muestra, hasta que guarde o descarte, el aviso "Otro administrador cambió la configuración
+      mientras editabas. Actualizamos los campos que no tocaste; revisa los tuyos antes de guardar." Un campo editado que
+      el otro administrador también cambió se sigue enviando con el valor del que guarda (es el "último gana" de los
+      riesgos aceptados, que queda en la auditoría); la regla impide solo que se envíe un campo que el administrador no
+      tocó.
+    - e) Al guardar, el formulario se llena con la respuesta del `PATCH`, que pasa a ser la base de llenado, y Guardar
+      vuelve a quedar desactivado (como en el criterio 23).
+
+    _(prueba obligatoria, de componentes; no crítico, porque es la web y la API sigue validando todo: con la falla los
+    valores enviados estaban dentro del rango y el cambio quedaba auditado. Las pruebas reproducen el escenario de la
+    ronda 1 (reproducción del adversarial fuera del repositorio,
+    `/tmp/claude-0/-home-user-piscina/341c84a9-d07f-5f07-a262-1ffd096a60b3/scratchpad/ataque/r003web/w1.test.tsx`): primera visita con 5 y 15, volver al inicio, el
+    servidor pasa a 3 y 60, volver a Configuración; comprueban a, b y c con el cuerpo exacto del `PATCH`, y d con un
+    campo no editado que cambia en el servidor y uno editado, por ejemplo con una respuesta de `GET` demorada o volviendo
+    a mostrar el formulario con otra base)_
+
+**Observaciones de la ronda 1** _(no son fallas; precisiones y riesgos aceptados)_:
+
+- **O1. Decimales que JavaScript convierte en un entero.** Un número como `2.99999999999999999999` en el JSON llega
+  como `3` tras leerlo (no se puede distinguir de `3`), así que la API lo acepta como 3 y eso es lo que se guarda y se
+  audita. Es el mismo caso que `10.0` y `1e1` de los casos límite: el valor validado es siempre un entero dentro del
+  rango de la tabla de claves. Riesgo aceptado (abajo).
+- **O2. Controles en los extremos del teléfono.** `\n`, `\t` o el BOM (`U+FEFF`) al principio o al final del teléfono
+  se quitan con el recorte del criterio 10 y la petición responde 200 con el teléfono recortado. El caso límite
+  "caracteres de control → 400" se precisa: responde 400 un carácter de control **en medio** del texto (después del
+  recorte).
+- **O3. Minutos del primer 423.** El 423 que bloquea la cuenta (el N-ésimo fallo) dice los `minutosBloqueo`
+  configurados completos, porque faltan exactamente esos minutos; es lo que pide el criterio 19 y no cambia.
+
 ## Casos límite
 
 - **Academias creadas antes de esta historia:** no tienen filas; valen los valores por defecto, sin migración de datos.
@@ -207,6 +267,8 @@ activas. "Ruta de academia", "sesión válida" y "actor vigente" son los de la s
   (infinito) no.
 - **Teléfono con espacios en los extremos, con dígitos de otros alfabetos o con caracteres de control:** se recorta en
   el primer caso; los otros dos responden 400.
+  _Precisión (ataque ronda 1, O2):_ los caracteres de control que responden 400 son los que quedan **en medio** del
+  texto; los de los extremos (`\n`, `\t`, BOM) se quitan con el recorte y la petición responde 200.
 - **Bajar el máximo de intentos por debajo de los fallos que ya tiene una cuenta:** el siguiente fallo la bloquea
   (criterio 15 a), pero la clave correcta todavía entra: el bloqueo lo decide `bloqueado_hasta`, no el contador.
   Subirlo no desbloquea a nadie.
@@ -360,6 +422,11 @@ las claves de la tabla de claves. No se agregan privilegios (no hace falta `DELE
 - **Una consulta más en cada intento fallido de ingreso** (leer la configuración en la transacción del conteo). Es una
   lectura por clave primaria; no se cachea por la regla de `docs/arquitectura.md`.
 - **Los cambios valen desde ese momento:** no se recalcula nada de lo ya registrado (pregunta N7).
+- **Decimales que JavaScript redondea a un entero** _(ataque ronda 1, O1)_: `2.99999999999999999999` llega como `3` al
+  leer el JSON y se acepta y guarda como 3. No se puede distinguir sin leer el texto crudo del cuerpo, y el valor
+  validado siempre es un entero dentro del rango.
+- **"Los cambios en campos distintos no se pisan"** (riesgo de arriba) dependía de que la web enviara solo lo que el
+  administrador editó; la ronda 1 mostró que no siempre era así (F1). Lo asegura el criterio 27.
 
 ## Decisiones
 

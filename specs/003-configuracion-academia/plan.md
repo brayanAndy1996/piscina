@@ -120,6 +120,15 @@ la academia y luego espera una fila de `usuarios`, así que no hay ciclo; el con
   cambió; los textos de ayuda, unidades, rangos y valores por defecto salen de `CLAVES_CONFIGURACION`. Los errores 400
   se ponen en el campo de `detalles.errores[].campo`. Antes de enviar, la comprobación previa de la sesión de 002
   (criterio 59 de 002).
+- **Base de llenado (criterio 27, ataque ronda 1).** `FormularioConfiguracion` guarda en un estado propio la base con la
+  que llenó los campos y calcula `cambiosDe(textos, baseDeLlenado)`, nunca contra la `base` que llega por props. Cuando
+  la prop `base` es distinta de la base de llenado (comparando los seis campos): sin campos editados, `reset(aTextos(base))`
+  y la base de llenado pasa a ser `base`; con campos editados, `setValue` solo en los no editados, la base de llenado pasa
+  a ser `base` y se muestra el aviso del criterio 27 d. Además, conviene que `useConfiguracion` pida siempre al montar
+  (`refetchOnMount: 'always'`) y que la página no muestre el formulario mientras esa primera petición está en curso:
+  así el caso normal (volver a la página) nunca muestra valores viejos, y la regla de la base distinta queda como
+  defensa. Alternativa descartada: `useForm({ values: base })` sin más, que reemplaza también lo que el administrador ya
+  escribió, o `key={JSON.stringify(base)}` en el formulario, que vuelve a montarlo y borra las ediciones sin avisar.
 - `LayoutPanel`: muestra el nombre y el teléfono de `useMiAcademia`; si falla, no muestra nada más.
 - Menú y ruta con `puede(rol, 'CONFIGURAR_ACADEMIA')` y `RequierePermiso`.
 - `modulos/sesion/mensajes.ts`: el 423 de la academia muestra el `mensaje` de la respuesta (con los minutos que faltan)
@@ -142,6 +151,7 @@ UPDATE` para poder repetirse (criterio 25). `tiburones` queda sin filas.
 | Leer la configuración dentro del conteo de fallos (D5) | Leerla antes, solo si hay cuenta | Criterio 53 de 002 |
 | `leerConfiguracion` sin Nest (D6) | Servicio inyectado en `SesionAcademiaService` | Evita la dependencia circular entre módulos |
 | `GET /api/mi-academia` (D7) | Agregar el teléfono a `GET /api/a/{nombreCorto}` o a la sesión | Pruebas protegidas y esquemas estrictos de 001 y 002 |
+| Base de llenado propia del formulario y petición fresca al montar (criterio 27, ronda 1) | `useForm({ values })` o volver a montar el formulario con `key` | No borra lo que el administrador escribió ni envía campos que no tocó |
 | Permiso `CONFIGURAR_ACADEMIA` (DT-1) | Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` | Es otra función; la matriz debe decir lo que permite |
 
 ## Migraciones
@@ -158,5 +168,8 @@ Ninguna (spec, "Cambios al modelo de datos").
   `docs/arquitectura.md` (criterio 26).
 - **Un valor por defecto que cambie en el código** no cambia las academias que ya lo guardaron explícitamente (se guarda
   la fila solo si el valor no es el de por defecto, criterio 9, así que la mayoría seguirá el nuevo).
+- **Formulario con datos viejos (ataque ronda 1, F1):** si el formulario compara con una base distinta de la que usó
+  para llenarse, envía como cambios valores que el administrador no tocó y puede deshacer el bloqueo que otro endureció.
+  Lo cubren el diseño de la base de llenado (sección 7) y las pruebas de componentes del criterio 27.
 - **Pruebas protegidas de 002 que dependen del texto del 423:** no deberían existir (002 compara códigos); si alguna lo
   hiciera, el tester lo reporta en el rojo y decide el orquestador.

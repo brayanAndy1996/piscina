@@ -44,7 +44,7 @@ implementa. No se empieza T1 sin la aprobación del responsable.
       prueba (criterios 13 a 19)
 - [ ] T8 · backend · Semilla: teléfono de ejemplo inventado en `delfines`, repetible (criterio 25)
 - [ ] T9 · frontend · `/panel/configuracion`, menú, `useMiAcademia` en `LayoutPanel` y mensaje del 423 de la academia,
-      con pruebas de componentes (criterios 19, 22 a 24)
+      con pruebas de componentes (criterios 19, 22 a 24; el 27 lo agrega la ronda 1 de ataque, T11.3)
 - [ ] T10 · tester · Pruebas protegidas en verde y suite completa
 
 ## Ataque
@@ -57,6 +57,24 @@ implementa. No se empieza T1 sin la aprobación del responsable.
       cuentas bloqueadas o a medias, intentos simultáneos; secuencia de sentencias y tiempos del ingreso con y sin
       cuenta. Por cada falla: el especificador agrega el criterio a `spec.md`, test-writer la prueba protegida en rojo,
       se corrige y se vuelve a atacar, hasta una ronda sin fallas
+
+### Ronda 1 (sobre 0768735)
+
+Resultado: una falla en la web (F1, media: el formulario enviaba como cambios valores viejos de la caché) y tres
+observaciones (O1 a O3: decimales que JavaScript convierte en entero, controles en los extremos del teléfono, minutos
+del primer 423), registradas en la sección G de [`spec.md`](spec.md) como el criterio 27 y como precisiones y riesgos
+aceptados. F1 no es crítica (criterio 27 no crítico): lleva prueba obligatoria de componentes del frontend, no prueba
+protegida.
+
+- [x] T11.1 · adversarial · Ronda 1 sobre 0768735 (F1, O1 a O3)
+- [x] T11.2 · especificador · Criterio 27 (amplía el 23), precisión del caso límite del teléfono y riesgos aceptados
+      en `spec.md`; base de llenado en `plan.md` (criterio 27)
+- [ ] T11.3 · frontend · Corregir `FormularioConfiguracion` con la base de llenado (y la petición fresca al montar,
+      `plan.md` sección 7) y sumar a `PaginaConfiguracion.test.tsx` las pruebas de componentes que reproducen el
+      escenario de la ronda 1 (`w1.test.tsx` del adversarial) y comprueban los puntos a a e, con el cuerpo exacto del
+      `PATCH` (criterio 27)
+- [ ] T11.4 · orquestador · Revisar con `git diff` que la corrección no tocó pruebas protegidas
+- [ ] T11.5 · adversarial · Ronda 2 sobre el commit con la corrección (criterios críticos y criterio 27)
 
 ## Revisión y cierre
 
