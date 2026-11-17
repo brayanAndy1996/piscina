@@ -57,7 +57,8 @@ Los criterios 28 a 31 (web, ataque ronda 2) no son críticos y llevan prueba obl
 aislamiento entre academias, pero solo en la pantalla: la API no entrega nada de otra academia (criterios 4 y 20), lo
 que se ve es lo que la sesión anterior dejó en la caché del mismo navegador, y son el nombre y el teléfono de la
 academia, que se publicarán desde la 005 (DR-4). Clasificación propuesta por el especificador (pregunta T4); si el
-orquestador lo marca crítico, su prueba de componentes la escribe test-writer como protegida.
+orquestador lo marca crítico, su prueba de componentes la escribe test-writer como protegida. _(Decidido: no crítico,
+DT-4.)_
 
 El criterio 31 a (web, ataque ronda 3) precisa el 31: no es crítico y lleva prueba obligatoria de componentes. Solo
 afecta cuándo se desbloquea el formulario; no cambia lo que se envía ni lo que se muestra de otra academia.
