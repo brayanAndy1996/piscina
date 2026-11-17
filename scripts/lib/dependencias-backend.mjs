@@ -18,6 +18,7 @@ import path from 'node:path';
 export const DEPENDENCIAS_BACKEND_PERMITIDAS = Object.freeze([
   // dependencies
   '@aquagestion/contratos',
+  '@date-fns/tz',
   '@nestjs/common',
   '@nestjs/core',
   '@nestjs/platform-express',
@@ -25,6 +26,7 @@ export const DEPENDENCIAS_BACKEND_PERMITIDAS = Object.freeze([
   '@node-rs/argon2',
   '@prisma/adapter-pg',
   '@prisma/client',
+  'date-fns',
   'dotenv',
   'express',
   'helmet',
