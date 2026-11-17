@@ -7,9 +7,10 @@ implementa. No se empieza T1 sin la aprobación del responsable.
 
 ## Aprobación
 
-- [ ] T0 · responsable y orquestador · Aprobar la especificación y resolver las preguntas N1 a N7 (Bryan) y T1 a T3
+- [x] T0 · responsable y orquestador · Aprobar la especificación y resolver las preguntas N1 a N7 (Bryan) y T1 a T3
       (orquestador); si T2 se aprueba, el orquestador cambia la columna "Ruta crítica" de la 003 en `specs/backlog.md`
-      a "En parte" (todos los criterios)
+      a "En parte" (todos los criterios). _Hecho el 17/11/2026: Bryan aprobó la spec y todas las propuestas (DR-1 a
+      DR-7); el orquestador aprobó T1 a T3 (DT-1 a DT-3); el backlog marca la 003 "En parte" y 🟨._
 
 ## Pruebas protegidas (en rojo)
 

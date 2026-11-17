@@ -9,8 +9,11 @@
   RNF-12 (español, America/Lima). Cumple DR-8 de 001 (la 003 define las claves y sus valores por defecto).
 - **Ruta crítica:** en parte. El bloqueo por intentos fallidos (autenticación), el aislamiento de la configuración
   entre academias y quién puede cambiarla (permisos) son de la lista de `CLAUDE.md`; guardar y mostrar los demás
-  valores, la web, la semilla y la documentación no lo son. _(El backlog la marca "No"; ver la pregunta T2.)_
-- **Estado:** borrador (17/11/2026), pendiente de aprobación del responsable.
+  valores, la web, la semilla y la documentación no lo son. _(Aprobado por el orquestador, DT-2; el backlog la marca
+  "En parte".)_
+- **Estado:** aprobada por el responsable (17/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
+  DR-7 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-3), en "Decisiones". Ningún criterio
+  cambió. No quedan preguntas abiertas.
 
 ## Objetivo
 
@@ -346,7 +349,65 @@ las claves de la tabla de claves. No se agregan privilegios (no hace falta `DELE
 
 ## Decisiones
 
-Propuestas del especificador, pendientes de la aprobación de la spec.
+**Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" en esta sección y como "DR-n de
+003" fuera de ella; las del orquestador, "DT-n" y "DT-n de 003". Los criterios, el contrato y las demás secciones se
+escribieron antes de la aprobación y no cambian: donde dicen "pregunta Nn" se refieren a DR-n de 003 y donde dicen
+"pregunta Tn", a DT-n de 003. Los valores que la spec llama "provisionales" (rangos de la tabla de claves, formato del
+teléfono del criterio 10 y prioridad aparte de "por vencer") quedan aprobados para el MVP.
+
+### Decisiones del responsable (17/11/2026)
+
+Bryan aprobó la especificación y aceptó la propuesta de cada pregunta de negocio ("de acuerdo con todas, apruebo la
+003"). Se conserva el texto de cada pregunta y su propuesta, que es lo decidido.
+
+- **DR-1 (pregunta N1). ¿Qué rangos se permiten?** Los documentos dicen los valores por defecto, pero no los límites.
+  **Decidido (la propuesta):** tolerancia de 0 a 30 minutos (la clase dura 1 hora); "por vencer" y prioridad de 1 a
+  15 días; intentos de 3 a 10; bloqueo de 5 a 60 minutos (por debajo de 3 intentos o 5 minutos el bloqueo molesta más
+  de lo que protege, y por encima de 10 o 60 deja de proteger o castiga demasiado). Teléfono de 6 a 20 caracteres con
+  dígitos, espacios, guiones, paréntesis y `+` (tabla de claves y criterio 10).
+- **DR-2 (pregunta N2). ¿El administrador puede cambiar el nombre de la academia?** D-22 dice que el nombre se lee de
+  la configuración; hoy el nombre está en `academias` y solo lo pone el Superadmin al crearla (no hay ruta para
+  cambiarlo). **Decidido (la propuesta):** no en esta historia; el nombre ya es un dato y no código, que es lo que pide
+  D-22. Si hace falta cambiarlo, se agrega una ruta del Superadmin con auditoría en una historia pequeña (criterio 21).
+- **DR-3 (pregunta N3). ¿Los días de prioridad al renovar siguen a los días "por vencer" o son un valor aparte?** D-06
+  dice "por defecto, los mismos 5 días de por vencer". **Decidido (la propuesta):** un valor aparte que empieza en 5;
+  si el administrador cambia "por vencer", la prioridad no cambia sola (la pantalla muestra los dos juntos para que lo
+  vea) (criterio 23).
+- **DR-4 (pregunta N4). ¿El teléfono se muestra en las páginas públicas** (ingreso, inscripción, seguimiento)?
+  **Decidido (la propuesta):** sí, pero desde la 005, que pone en uso las páginas públicas y decide el límite de
+  peticiones de las rutas públicas (nota de 005 del backlog). En la 003 solo se ve con sesión (criterio 21).
+- **DR-5 (pregunta N5). ¿El logo entra en esta historia?** Subirlo y servirlo necesita `AlmacenArchivos` y `sharp`
+  (D-21, D-25), que todavía no existen. **Decidido (la propuesta):** no; mientras tanto vale la identidad genérica sin
+  logo (D-22). `AlmacenArchivos` se diseña con los comprobantes y las fotos de la 005, que son ruta crítica (entradas
+  públicas), y el logo se agrega justo después, en una historia corta (por ejemplo 005b), con su ruta pública.
+- **DR-6 (pregunta N6). ¿Hay una espera entre el fin de la clase y el registro de la falta?** La HU-42 hablaba de 15
+  minutos, pero se eliminó con WhatsApp (D-08), y D-08 solo dice "al terminar cada clase, más la tolerancia".
+  **Decidido (la propuesta):** se decide en la 009; no se agrega ninguna clave ahora. Mientras tanto, la lectura
+  natural de D-16 es registrar la falta al terminar la clase, y la secretaria la corrige con la asistencia manual con
+  motivo.
+- **DR-7 (pregunta N7). ¿Un cambio de la tolerancia o de "por vencer" afecta lo ya registrado?** **Decidido (la
+  propuesta):** no; vale desde que se guarda. Una asistencia ya marcada como puntual o tarde no cambia (riesgo
+  aceptado "Los cambios valen desde ese momento").
+
+### Decisiones técnicas del orquestador (17/11/2026)
+
+El orquestador aprobó las tres propuestas técnicas tal como estaban. Se conserva el texto de cada pregunta y su
+propuesta.
+
+- **DT-1 (pregunta T1). Permiso nuevo y prueba protegida de 002.** **Decidido (la propuesta):** `CONFIGURAR_ACADEMIA`
+  (solo `ADMIN`) en lugar de reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO`, que es otra fila de la sección 2.1. Obliga
+  a sumar la fila en la prueba protegida del criterio 26 de 002 (23 → 24); lo hace el test-writer en el commit
+  "Pruebas protegidas (003)", sin quitar nada (criterio 5).
+- **DT-2 (pregunta T2). Clasificación "en parte".** El backlog marcaba la 003 como no crítica. **Decidido (la
+  propuesta):** "en parte", con los criterios 4, 5, 11 y 13 a 17 críticos, porque cambia el bloqueo del inicio de
+  sesión (autenticación) y es un dato por academia (aislamiento). La columna "Ruta crítica" del backlog pasa a "En
+  parte".
+- **DT-3 (pregunta T3). Sin migración.** **Decidido (la propuesta):** valores por defecto en el código y sin `CHECK`
+  por clave (decisiones D1 y D3).
+
+### Decisiones de diseño (técnicas)
+
+Propuestas del especificador, aprobadas con la spec (17/11/2026).
 
 - **D1. Los valores por defecto viven en el código** (`CONFIGURACION_POR_DEFECTO`, en los contratos) y una clave sin
   fila vale lo de por defecto. Alternativa descartada: insertar las filas al crear cada academia (desde
@@ -375,41 +436,5 @@ Propuestas del especificador, pendientes de la aprobación de la spec.
 
 ## Preguntas abiertas
 
-### De negocio (las decide Bryan)
-
-- **N1. ¿Qué rangos se permiten?** Los documentos dicen los valores por defecto, pero no los límites. **Propuesta
-  (valor provisional, en la tabla de claves):** tolerancia de 0 a 30 minutos (la clase dura 1 hora); "por vencer" y
-  prioridad de 1 a 15 días; intentos de 3 a 10; bloqueo de 5 a 60 minutos (por debajo de 3 intentos o 5 minutos el
-  bloqueo molesta más de lo que protege, y por encima de 10 o 60 deja de proteger o castiga demasiado). Teléfono de 6 a
-  20 caracteres con dígitos, espacios, guiones, paréntesis y `+`.
-- **N2. ¿El administrador puede cambiar el nombre de la academia?** D-22 dice que el nombre se lee de la configuración;
-  hoy el nombre está en `academias` y solo lo pone el Superadmin al crearla (no hay ruta para cambiarlo). **Propuesta:**
-  no en esta historia; el nombre ya es un dato y no código, que es lo que pide D-22. Si hace falta cambiarlo, se agrega
-  una ruta del Superadmin con auditoría en una historia pequeña.
-- **N3. ¿Los días de prioridad al renovar siguen a los días "por vencer" o son un valor aparte?** D-06 dice "por
-  defecto, los mismos 5 días de por vencer". **Propuesta (provisional):** un valor aparte que empieza en 5; si el
-  administrador cambia "por vencer", la prioridad no cambia sola (la pantalla muestra los dos juntos para que lo vea).
-- **N4. ¿El teléfono se muestra en las páginas públicas** (ingreso, inscripción, seguimiento)? **Propuesta:** sí, pero
-  desde la 005, que pone en uso las páginas públicas y decide el límite de peticiones de las rutas públicas (nota de 005
-  del backlog). En la 003 solo se ve con sesión.
-- **N5. ¿El logo entra en esta historia?** Subirlo y servirlo necesita `AlmacenArchivos` y `sharp` (D-21, D-25), que
-  todavía no existen. **Propuesta:** no; mientras tanto vale la identidad genérica sin logo (D-22). `AlmacenArchivos`
-  se diseña con los comprobantes y las fotos de la 005, que son ruta crítica (entradas públicas), y el logo se agrega
-  justo después, en una historia corta (por ejemplo 005b), con su ruta pública.
-- **N6. ¿Hay una espera entre el fin de la clase y el registro de la falta?** La HU-42 hablaba de 15 minutos, pero se
-  eliminó con WhatsApp (D-08), y D-08 solo dice "al terminar cada clase, más la tolerancia". **Propuesta:** se decide en
-  la 009; no se agrega ninguna clave ahora. Mientras tanto, la lectura natural de D-16 es registrar la falta al terminar
-  la clase, y la secretaria la corrige con la asistencia manual con motivo.
-- **N7. ¿Un cambio de la tolerancia o de "por vencer" afecta lo ya registrado?** **Propuesta:** no; vale desde que se
-  guarda. Una asistencia ya marcada como puntual o tarde no cambia.
-
-### Técnicas (las decide el orquestador)
-
-- **T1. Permiso nuevo y prueba protegida de 002.** **Propuesta:** `CONFIGURAR_ACADEMIA` (solo `ADMIN`) en lugar de
-  reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO`, que es otra fila de la sección 2.1. Obliga a sumar la fila en la prueba
-  protegida del criterio 26 de 002 (23 → 24); lo hace el test-writer en el commit "Pruebas protegidas (003)", sin
-  quitar nada.
-- **T2. Clasificación "en parte".** El backlog marca la 003 como no crítica. **Propuesta:** "en parte", con los
-  criterios 4, 5, 11 y 13 a 17 críticos, porque cambia el bloqueo del inicio de sesión (autenticación) y es un dato por
-  academia (aislamiento). El orquestador actualiza la columna del backlog si lo aprueba.
-- **T3. Sin migración.** **Propuesta:** valores por defecto en el código y sin `CHECK` por clave (decisiones D1 y D3).
+Ninguna. Las preguntas N1 a N7 y T1 a T3 quedaron decididas el 17/11/2026 (DR-1 a DR-7 y DT-1 a DT-3, en
+"Decisiones").

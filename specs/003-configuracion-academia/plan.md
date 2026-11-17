@@ -4,8 +4,9 @@ Referencias: [`spec.md`](spec.md), [`docs/arquitectura.md`](../../docs/arquitect
 historias siguientes") y las specs [`001`](../001-academias-aislamiento/spec.md) y
 [`002`](../002-autenticacion-roles/spec.md). Lo que no es orientativo es el contrato de `spec.md`.
 
-**Estado:** borrador (17/11/2026). Si el responsable cambia los rangos (N1) o la prioridad (N3), solo cambia la tabla
-de claves de los contratos.
+**Estado:** aprobado con la spec (17/11/2026). El responsable aprobó los rangos (DR-1 de 003) y la prioridad como
+valor aparte (DR-3 de 003); el orquestador aprobó el permiso nuevo (DT-1), la clasificación "en parte" (DT-2) y el
+diseño sin migración (DT-3). Si algún día cambian los rangos, solo cambia la tabla de claves de los contratos.
 
 ## Módulos afectados
 
@@ -141,7 +142,7 @@ UPDATE` para poder repetirse (criterio 25). `tiburones` queda sin filas.
 | Leer la configuración dentro del conteo de fallos (D5) | Leerla antes, solo si hay cuenta | Criterio 53 de 002 |
 | `leerConfiguracion` sin Nest (D6) | Servicio inyectado en `SesionAcademiaService` | Evita la dependencia circular entre módulos |
 | `GET /api/mi-academia` (D7) | Agregar el teléfono a `GET /api/a/{nombreCorto}` o a la sesión | Pruebas protegidas y esquemas estrictos de 001 y 002 |
-| Permiso `CONFIGURAR_ACADEMIA` (T1) | Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` | Es otra función; la matriz debe decir lo que permite |
+| Permiso `CONFIGURAR_ACADEMIA` (DT-1) | Reutilizar `CONFIGURAR_PLANES_HORARIOS_AFORO` | Es otra función; la matriz debe decir lo que permite |
 
 ## Migraciones
 

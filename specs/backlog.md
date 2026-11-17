@@ -13,7 +13,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 000 | Esqueleto | No | ✅ |
 | 001 | Academias y aislamiento | Sí | ✅ |
 | 002 | Autenticación y roles por academia | Sí | ✅ |
-| 003 | Configuración de la academia | No | ⬜ |
+| 003 | Configuración de la academia | En parte | 🟨 |
 | 004 | Planes y clases con aforo | En parte | ⬜ |
 | 005 | Inscripción pública y seguimiento de la solicitud | Sí | ⬜ |
 | 006 | Caja | Sí | ⬜ |
