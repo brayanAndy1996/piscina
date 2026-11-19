@@ -90,7 +90,8 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
       test-writer la prueba protegida en rojo, se corrige y se vuelve a atacar, hasta una ronda sin fallas.
       **Ronda 1 adversarial: 3 fallas (32, 33, 34)**, agregadas a la spec ("G. Ronda 1 adversarial"); tareas T13a a
       T13f. **Ronda 2 adversarial: 2 fallas en el 34 (no crítico), ninguna en ruta crítica** (34 a y 34 b); tareas
-      T13h a T13j.
+      T13h a T13j. **Ronda 3 adversarial (de confirmación): sin fallas en ruta crítica ni regresiones; una falla menor
+      en 11 + 34 aceptada como riesgo**; tareas T13k a T13m.
 
 ### Ronda 1 adversarial
 
@@ -131,6 +132,18 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
       (criterios 29 y 34 a d)
 - [ ] T13j · tester · Suite completa (contratos, backend y web), lint y verificación de tipos; después, el orquestador
       decide si relanza el ataque sobre el 34 o pasa a la revisión (T14)
+
+### Ronda 3 adversarial (de confirmación)
+
+**Ronda 3 adversarial: sin fallas en ruta crítica ni regresiones; una falla menor en 11 + 34 aceptada como riesgo**
+(spec, "I. Ronda 3 adversarial" y "Riesgos aceptados"; plan, sección 11). Sin pruebas protegidas nuevas.
+
+- [ ] T13k · backend · Prueba de integración no protegida del criterio 34 c (mayúsculas acentuadas en `POST` y `PATCH`,
+      409 sin escribir ni auditar; falla con una base de `LC_CTYPE` `C` o `POSIX`); ajustar la prueba de contratos de
+      U+2028 y U+2029 a los dos casos del 34 b (en medio, error; en los extremos, recortados); AT-6 (aviso en
+      `hayClaseDelMismoNivel`) y AT-7 (`diaSemanaSchema` tipado como `DiaSemana`) (criterios 11, 17, 32, 34 b, 34 c)
+- [ ] T13l · frontend · AT-8: `diaDeLaSemanaEnLima` sin `?? 1` silencioso, con su prueba (criterio 28)
+- [ ] T13m · tester · Suite completa (contratos, backend y web), lint y verificación de tipos
 
 ## Revisión y cierre
 

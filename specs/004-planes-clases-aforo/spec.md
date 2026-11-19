@@ -25,6 +25,10 @@
 - **Ronda 2 adversarial:** 2 fallas en el 34 (no crítico), ninguna en ruta crítica (1 a 7, 10, 18, 22, 23, 32 y 33).
   Agregadas como criterios 34 a y 34 b en "H. Ronda 2 adversarial" (17/11/2026), con la decisión técnica DT-7 de 004.
   Ninguna cambia una regla de negocio.
+- **Ronda 3 adversarial (de confirmación):** sin fallas en ruta crítica ni regresiones; una falla menor en 11 + 34
+  aceptada como riesgo (19/11/2026). Se registran en "I. Ronda 3 adversarial" la precisión del 34 b sobre U+2028 y
+  U+2029 y el criterio 34 c (mayúsculas acentuadas, requisito de LC_CTYPE); los riesgos, en "Riesgos aceptados"; y
+  los ajustes menores de la revisión, en AT-6 a AT-8 de "Decisiones". Ninguno cambia una regla de negocio.
 
 ## Objetivo
 
@@ -56,8 +60,8 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   un precio `NaN` llega al cobro (RN-25, D-03) y un arreglo de dos dimensiones deja a toda la academia sin la lista de
   planes, de la que parten la inscripción y el cobro.
 
-No son críticos, pero llevan _(prueba obligatoria)_: 8, 9, 11 a 17, 19 a 21, 24, 25, 34, 34 a y 34 b (API, contratos y
-dominio; el 34 a también en la web) y 26 a 29
+No son críticos, pero llevan _(prueba obligatoria)_: 8, 9, 11 a 17, 19 a 21, 24, 25, 34, 34 a, 34 b y 34 c (API,
+contratos y dominio; el 34 a también en la web) y 26 a 29
 (web, con pruebas de componentes). Los 30 y 31 (semilla y documentación) los verifica el revisor.
 
 ## Criterios de aceptación
@@ -349,11 +353,28 @@ quitan todos los de la propiedad Unicode `Default_Ignorable_Code_Point`, salvo l
 U+034F, los selectores de variación U+FE00 a U+FE0F y U+E0100 a U+E01EF, los selectores mongoles U+180B a U+180F, U+17B4
 y U+17B5, los rellenos de hangul U+115F, U+1160, U+3164 y U+FFA0, y las etiquetas U+E0000 a U+E0FFF. El braille en
 blanco U+2800 cuenta como un espacio (criterio 34 a, paso 2). Los separadores de línea y de párrafo (U+2028, U+2029) no
-son `Zs` ni se quitan: siguen respondiendo 400. Dado un plan de A llamado "Plan Mensual", cuando se crea o se renombra
+son `Zs` ni se quitan: en medio del nombre siguen respondiendo 400 en `nombre`; al principio o al final los quita el
+recorte (paso 4), como en la 001, porque el criterio 9 mide el nombre recortado _(precisado en la ronda 3)_. Dado un plan de A llamado "Plan Mensual", cuando se crea o se renombra
 otro de A como `"Plan Men" + U+034F + "sual"` o `"Plan" + U+2800 + "Mensual"`, entonces responde 409
 `NOMBRE_PLAN_EN_USO` sin escribir ni auditar; lo mismo con `"Plan Mensual" + U+FE0F` y `"Plan Men" + U+180B + "sual"`.
 Un nombre con U+202E o U+200F sigue respondiendo 400 en `nombre`. _(prueba obligatoria; no protegida)_ (DR-8, DT-7 de
 004; criterio 34; ataque ronda 2)
+
+### I. Ronda 3 adversarial
+
+Ronda de confirmación (19/11/2026): sin fallas en los criterios de ruta crítica ni regresiones. Una falla menor en los
+criterios 11 y 34 (letras sin forma precompuesta en mayúscula o minúscula) se acepta como riesgo (ver "Riesgos
+aceptados"). Origen de lo que sigue: "ataque ronda 3".
+
+- **Precisión del 34 b:** U+2028 y U+2029 dan 400 en `nombre` solo en medio del nombre; al principio o al final los quita
+  el recorte (ya incorporado en el texto del 34 b).
+
+**34 c. Mayúsculas acentuadas en la unicidad (amplía el 11).** Dado un plan de A llamado "Natación Libre", cuando se crea
+o se renombra otro de A como "NATACIÓN LIBRE", "natación libre" o "PLAN ÑANDÚ" frente a "plan ñandú" (cualquiera de las
+letras á é í ó ú ü ñ en mayúscula o minúscula), entonces responde 409 `NOMBRE_PLAN_EN_USO` sin escribir ni auditar. La
+prueba de integración corre contra la base de las pruebas y falla si la base se creó con un `LC_CTYPE` en el que
+`lower()` no cambia las letras acentuadas (`C` o `POSIX`), que es el requisito de entorno de "Riesgos aceptados".
+_(prueba obligatoria; no protegida)_ (DR-8; criterios 11 y 34; ataque ronda 3)
 
 ## Casos límite
 
@@ -386,6 +407,10 @@ Un nombre con U+202E o U+200F sigue respondiendo 400 en `nombre`. _(prueba oblig
   guardan sin U+200D ni U+FE0F, como emojis sueltos (criterio 34 b; ver "Riesgos aceptados").
 - **Braille en blanco entre palabras** (`"Plan" + U+2800 + "Mensual"`): cuenta como un espacio y choca con
   "Plan Mensual" (criterio 34 b).
+- **Separador de línea o de párrafo** (U+2028, U+2029): en medio del nombre, 400 en `nombre`; al principio o al final,
+  lo quita el recorte y el nombre se acepta (criterio 34 b, precisado en la ronda 3).
+- **Letras sin forma precompuesta en mayúscula o minúscula** ("Plan ǰota" frente a "PLAN J̌OTA"): no chocan (ver
+  "Riesgos aceptados", ronda 3). Las letras del español, el quechua y el aymara sí chocan (criterio 34 c).
 
 ## Reglas de negocio aplicables
 
@@ -521,6 +546,8 @@ Una migración `<marca>_planes_clases`. Ajusta las entidades `PLAN` y `CLASE` de
   elementos `NULL`; `vigencia_inicio` y `vigencia_fin` finitas cuando no son nulas. Sin cambios de columnas, índices,
   políticas ni privilegios. La normalización del nombre (criterio 34) no cambia la base: el índice único sigue sobre
   `lower(nombre)`.
+- _(Ronda 3.)_ Sin cambios al modelo. El índice de `lower(nombre)` exige que la base tenga un `LC_CTYPE` UTF-8
+  (requisito de entorno de "Riesgos aceptados"; criterio 34 c).
 
 ## Fuera de alcance
 
@@ -608,6 +635,18 @@ Para documentar en `docs/arquitectura.md` (criterio 31):
   la web rechaza la respuesta de `GET /api/planes` (no cumple `respuestaListaPlanesSchema`) y la página de planes de
   esa academia muestra un error hasta que se corrija la fila. Una fecha antes de Cristo escrita directo se mostraría
   como si fuera después de Cristo. Ninguna de las dos se puede escribir por la API.
+- **`lower()` sobre letras sin forma precompuesta (criterios 11 y 34; ataque ronda 3, decisión del orquestador):** la
+  unicidad compara `lower(nombre)` sobre el nombre ya en NFC. Para las letras que no tienen forma precompuesta en
+  mayúscula o en minúscula (ǰ y J̌, ẖ y H̱, ẗ, ẘ, ẙ, ẛ y algunas griegas con diacríticos), `lower()` deja un texto que
+  no está en NFC, así que "Plan ǰota" y "PLAN J̌OTA" no chocan y se aceptan como dos planes. No afecta a ninguna letra
+  del español, el quechua ni el aymara (á é í ó ú ü ñ), que sí chocan (criterio 34 c). Alternativa descartada por
+  ahora: un índice único sobre `normalize(lower(nombre), NFC)` (otra migración, y ata el índice a la versión de Unicode
+  de PostgreSQL, como se dijo en DT-6).
+- **Requisito de entorno: `LC_CTYPE` UTF-8 en la base (criterios 11 y 34 c; ataque ronda 3):** el índice único usa
+  `lower()` de PostgreSQL, que depende del `LC_CTYPE` de la base. Con el locale `C` o `POSIX`, `lower('Ó')` no cambia y
+  "NATACIÓN" y "natación" no chocarían. Requisito: las bases se crean con un `LC_CTYPE` UTF-8 (`C.UTF-8` o
+  `en_US.utf8`), como la de la nube y la de la imagen Docker del responsable. La prueba de integración no protegida del
+  criterio 34 c lo detecta si alguna base no lo cumple.
 
 ## Decisiones
 
@@ -773,6 +812,20 @@ de negocio ni el resultado que ve el usuario en los criterios; se citan como "AT
   de 002 (5 usuarios en `delfines`, 6 en total, dos entrenadores). La actualización va en un commit "Pruebas protegidas
   (004): …" del test-writer, y la parte de T10 que agrega el entrenador y las dos clases del mismo bloque con
   entrenadores distintos queda pendiente hasta ese commit ("Impacto en especificaciones anteriores").
+
+### Ajustes menores de la revisión (ronda 3, 19/11/2026)
+
+Registrados por el orquestador. No cambian ninguna regla de negocio ni lo que responde la API; se citan como "AT-n de
+004".
+
+- **AT-6. El afinado del 20 e deja rastro cuando falla.** `hayClaseDelMismoNivel` (la consulta posterior que elige entre
+  `CLASE_DUPLICADA` y `ENTRENADOR_OCUPADO`, criterio 32 y plan, sección 9.1) registra un aviso con `errorParaRegistro`
+  cuando su consulta falla, antes de devolver `false`. La respuesta no cambia (`ENTRENADOR_OCUPADO`, nunca 500).
+- **AT-7. `diaSemanaSchema` se tipa como unión de literales** (`1 | 2 | … | 7`, el tipo `DiaSemana`), no como
+  `number`, con los mismos mensajes y la misma validación estricta (criterio 17).
+- **AT-8. La web no usa un valor por defecto silencioso en `diaDeLaSemanaEnLima`.** Si `Intl` devuelve un día que no
+  reconoce, no se cae en `?? 1` (lunes) sin aviso: el caso se trata de forma explícita (criterio 28: el día que muestra
+  la grilla en el celular se calcula en America/Lima).
 
 ## Preguntas abiertas
 

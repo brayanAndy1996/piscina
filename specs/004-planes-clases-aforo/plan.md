@@ -19,6 +19,10 @@ actor (modifica D11; secciones 6 y "Riesgos").
 **Ronda 2 adversarial (17/11/2026):** 2 fallas en el 34 (no crítico), ninguna en ruta crítica; criterios 34 a y 34 b y
 DT-7 de la spec. La corrección, en la sección 10 de abajo; la sección 9.3 queda reemplazada en lo que se contradiga.
 
+**Ronda 3 adversarial (de confirmación, 19/11/2026):** sin fallas en ruta crítica ni regresiones; una falla menor en
+11 + 34 aceptada como riesgo. Precisión del 34 b (U+2028 y U+2029), criterio 34 c, requisito de `LC_CTYPE` y ajustes
+AT-6 a AT-8 de la revisión, en la sección 11 de abajo.
+
 ## Módulos afectados
 
 ```
@@ -66,7 +70,8 @@ piscina/
 ### 1. Contratos
 
 - `horario.ts`: `NIVELES = ['BASICO', 'INTERMEDIO', 'AVANZADO'] as const` y `nivelNatacionSchema`; `DIAS_SEMANA` (1 a
-  7, con `NOMBRE_DIA`) y `diaSemanaSchema` (`z.number().int().min(1).max(7)`); `BLOQUES = ['08:00', …, '19:00']` y
+  7, con `NOMBRE_DIA`) y `diaSemanaSchema` (`z.number().int().min(1).max(7)`, con el tipo de salida estrechado a la
+  unión de literales `DiaSemana`, AT-7); `BLOQUES = ['08:00', …, '19:00']` y
   `horaBloqueSchema = z.enum(BLOQUES)` (así `"8:00"`, `"08:30"` y `"08:00:00"` no pasan); `horaFinDe(bloque)`;
   `fechaSchema` (`^\d{4}-\d{2}-\d{2}$` y comprobación de fecha real con `Date.UTC`, sin zona).
 - `dinero.ts`: `montoSchema = z.string().regex(/^(0|[1-9]\d{0,4})(\.\d{1,2})?$/)` con un `refine` "mayor que 0"
@@ -328,7 +333,8 @@ blanco U+2800.
   5. `normalize('NFC')`, al final.
 
   Los pasos 1 y 2 pueden ir en cualquier orden (ningún carácter está en los dos grupos). U+2028 y U+2029 no se tocan
-  (los rechaza `textoVisibleSchema`). Ningún carácter que sobreviva a los pasos 1 a 4 se convierte en espacio ni en
+  en los pasos 1 a 3: en medio del nombre los rechaza `textoVisibleSchema`; al principio o al final los quita el
+  recorte del paso 4 (`trim` los cuenta como fin de línea), como en la 001 (precisión de la ronda 3). Ningún carácter que sobreviva a los pasos 1 a 4 se convierte en espacio ni en
   invisible con el NFC (los espacios con descomposición canónica, U+2000 y U+2001, ya son `Zs` y se reemplazaron en el
   paso 2), por eso no hace falta repetir los pasos después.
 - **Revisar lo ya escrito:** el `planes.ts` del árbol de trabajo quita solo `\p{Default_Ignorable_Code_Point}`; la spec
@@ -346,11 +352,37 @@ blanco U+2800.
     y sus variantes con U+00AD, U+FEFF y U+2060 dan "Plan Natación" en NFC; "Plan Men" + U+034F + "sual",
     "Plan" + U+2800 + "Mensual", "Plan Mensual" + U+FE0F, "Plan Men" + U+180B + "sual" y "Plan Men" + U+E0101 + "sual"
     dan "Plan Mensual"; U+202E, U+200F,
-    U+061C, U+2028 y U+2029 se conservan y el esquema responde con error en `nombre`; idempotencia y resultado en NFC
+    U+061C, U+2028 y U+2029 en medio del nombre se conservan y el esquema responde con error en `nombre` (U+2028 y
+    U+2029 al principio o al final se recortan y el nombre se acepta, ronda 3); idempotencia y resultado en NFC
     sobre una lista amplia de entradas (incluidas las de la ronda 1);
   - backend (integración): los 409 de los criterios 34 a y 34 b en `POST` y `PATCH`, y el nombre guardado en NFC;
   - web (componentes o unitarias de `campos.ts`): un nombre con invisibles se envía normalizado, y editar un plan
     cambiando solo invisibles o la forma NFD no envía `nombre` en el `PATCH`.
+
+### 11. Ronda 3 adversarial y ajustes de la revisión (19/11/2026)
+
+Sin fallas en ruta crítica ni regresiones. Nada de lo que sigue cambia el diseño de las secciones anteriores ni una
+regla de negocio.
+
+- **Falla menor aceptada (criterios 11 y 34):** el índice compara `lower(nombre)` sobre el nombre en NFC; para letras
+  sin forma precompuesta en mayúscula o minúscula (ǰ/J̌, ẖ/H̱, ẗ, ẘ, ẙ, ẛ, algunas griegas con diacríticos) `lower()`
+  deja un texto fuera de NFC y "Plan ǰota" no choca con "PLAN J̌OTA". Se acepta (spec, "Riesgos aceptados"); no se
+  toca la base. Alternativa descartada por ahora: índice sobre `normalize(lower(nombre), NFC)`.
+- **Precisión del 34 b:** U+2028 y U+2029 dan 400 en medio del nombre; en los extremos los quita el recorte (sección
+  10). Si la prueba no protegida de contratos los comprobaba solo en general, se ajusta a los dos casos.
+- **Criterio 34 c y requisito de `LC_CTYPE`:** prueba de integración no protegida en
+  `backend/test/integracion/planes-clases/` con mayúsculas acentuadas ("NATACIÓN LIBRE" frente a "Natación Libre",
+  "PLAN ÑANDÚ" frente a "plan ñandú", y las letras á é í ó ú ü ñ) en `POST` y `PATCH`: 409 sin escribir ni auditar.
+  Con una base de `LC_CTYPE` `C` o `POSIX` falla, y así detecta un entorno mal creado. No hace falta cambiar la
+  migración ni el `docker-compose`: la base de la nube y la imagen Docker ya usan un `LC_CTYPE` UTF-8; si el
+  documentador lo ve útil, lo anota en la guía de instalación en Windows.
+- **AT-6:** en `ClasesService.hayClaseDelMismoNivel`, el `catch` registra un aviso (`warn`, con `errorParaRegistro`,
+  sin datos sensibles) antes de devolver `false`. La respuesta sigue siendo `ENTRENADOR_OCUPADO`.
+- **AT-7:** `diaSemanaSchema` (`packages/contratos/src/horario.ts`) tiene como tipo de salida `DiaSemana` (unión de
+  literales de 1 a 7). Mismos mensajes y misma validación.
+- **AT-8:** `diaDeLaSemanaEnLima` (`frontend/src/lib/fechas.ts`) devuelve `DiaSemana` y no usa `?? 1` silencioso: un
+  día que `Intl` no reconoce se trata de forma explícita (por ejemplo, un error, o un respaldo documentado y con
+  prueba), nunca un lunes sin aviso.
 
 ## Decisiones
 
@@ -376,6 +408,7 @@ blanco U+2800.
 | Migración nueva para los `CHECK` de la ronda 1 (criterio 33) | Editar la migración ya aplicada | Las bases de desarrollo ya la aplicaron; Prisma detecta el cambio en la suma de comprobación de una migración aplicada |
 | Nombre del plan normalizado en el esquema zod (DT-6, criterio 34) | Solo en el servicio; índice sobre `normalize(...)` en la base | La web ve y cuenta lo mismo que guarda la API; el índice no resuelve espacios ni formato |
 | NFC al final; quitar `Cf` y `Default_Ignorable_Code_Point` salvo bidi; U+2800 como espacio (DT-7, criterios 34 a y 34 b) | NFC al principio (o dos veces); NFKC; `Cf` más una lista a mano | Un invisible entre la letra y la tilde impedía componer; NFKC unifica lo que se ve distinto; la propiedad de Unicode no se queda corta |
+| Índice sobre `lower(nombre)` también tras la ronda 3 (riesgo aceptado, criterios 11 y 34) | Índice sobre `normalize(lower(nombre), NFC)` | Solo afecta a letras sin forma precompuesta que no usan el español, el quechua ni el aymara; evita otra migración y atar el índice a la versión de Unicode de PostgreSQL |
 
 ## Migraciones
 
@@ -417,3 +450,8 @@ blanco U+2800.
   JavaScript (Node 22 en la API y el navegador en la web); un carácter nuevo podría tratarse distinto en un navegador
   viejo, pero la API vuelve a normalizar y decide. Quitar U+200D y los selectores de variación separa los emojis
   compuestos (riesgo aceptado en la spec).
+- **Ronda 3, `lower()` fuera de NFC:** letras como ǰ/J̌ o ẖ/H̱ no chocan entre mayúscula y minúscula (riesgo
+  aceptado en la spec; sección 11).
+- **Ronda 3, `LC_CTYPE` de la base:** el índice de `lower(nombre)` depende del `LC_CTYPE`; con `C` o `POSIX` las
+  mayúsculas acentuadas no chocan. Requisito: bases con `LC_CTYPE` UTF-8 (`C.UTF-8` o `en_US.utf8`). La prueba no
+  protegida del criterio 34 c lo detecta.
