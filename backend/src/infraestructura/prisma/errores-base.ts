@@ -52,3 +52,26 @@ export function codigoDeErrorDeBase(error: unknown): string | null {
 export function esViolacionDeUnicidad(error: unknown): boolean {
   return codigoDeErrorDeBase(error) === UNICIDAD || leerSeguro(error, 'code') === 'P2002';
 }
+
+/** El nombre de una restricción o índice que dice el error, si es un texto (`constraint` de `pg` o `constraint.index` del adaptador). */
+function nombreDeRestriccion(valor: unknown): string | null {
+  if (typeof valor === 'string') return valor.length > 0 ? valor : null;
+  const indice = leerSeguro(valor, 'index');
+  return typeof indice === 'string' && indice.length > 0 ? indice : null;
+}
+
+/**
+ * El nombre de la restricción única que violó el error (por ejemplo `clases_nivel_bloque_activo_key`), tomado de los campos
+ * estructurados del error y nunca de su mensaje: `meta.driverAdapterError.cause.constraint.index` en un `$queryRaw` de Prisma 7, o
+ * `constraint` en el error del adaptador. `null` si el error no es una violación de unicidad o no trae el nombre.
+ */
+export function restriccionDeUnicidadViolada(error: unknown): string | null {
+  if (!esViolacionDeUnicidad(error)) return null;
+  const causa = leerSeguro(error, 'cause');
+  const causaDelAdaptador = leerSeguro(leerSeguro(leerSeguro(error, 'meta'), 'driverAdapterError'), 'cause');
+  for (const lugar of [causaDelAdaptador, causa, error]) {
+    const nombre = nombreDeRestriccion(leerSeguro(lugar, 'constraint'));
+    if (nombre) return nombre;
+  }
+  return null;
+}

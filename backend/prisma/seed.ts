@@ -20,7 +20,7 @@ const ACADEMIAS_DE_EJEMPLO = [
 ] as const;
 
 /**
- * Usuarios de ejemplo (spec 002, criterio 45): uno por rol en `delfines` y un administrador en `tiburones` con el mismo DNI que el de
+ * Usuarios de ejemplo (spec 002, criterio 45; spec 004, criterio 30): uno por rol en `delfines`, más un segundo entrenador, y un administrador en `tiburones` con el mismo DNI que el de
  * `delfines` (D-28: la misma persona en dos academias es dos cuentas). DNIs inventados. La contraseña inicial es el DNI y deben
  * cambiarla al entrar (RN-02); por eso la salida de la semilla no los muestra: están en `docs/guia-local-windows.md`.
  */
@@ -28,6 +28,7 @@ const USUARIOS_DE_EJEMPLO = [
   { academia: 'delfines', dni: '10000001', rol: 'ADMIN', nombres: 'Rosa', apellidos: 'Alvarez Prado' },
   { academia: 'delfines', dni: '10000002', rol: 'SECRETARIA', nombres: 'Lucia', apellidos: 'Benites Rojas' },
   { academia: 'delfines', dni: '10000003', rol: 'ENTRENADOR', nombres: 'Mario', apellidos: 'Castro Vega' },
+  { academia: 'delfines', dni: '10000005', rol: 'ENTRENADOR', nombres: 'Paula', apellidos: 'Fuentes Ibarra' },
   { academia: 'delfines', dni: '10000004', rol: 'ALUMNO', nombres: 'Diego', apellidos: 'Delgado Soto' },
   { academia: 'tiburones', dni: '10000001', rol: 'ADMIN', nombres: 'Elena', apellidos: 'Espinoza Luna' },
 ] as const;
@@ -37,6 +38,42 @@ const USUARIOS_DE_EJEMPLO = [
  * valores por defecto. El valor de `configuraciones.valor` es el JSON del valor (un texto).
  */
 const TELEFONO_DE_DELFINES = '+51 999 000 111';
+
+/**
+ * Planes de ejemplo de `delfines` (spec 004, criterio 30): con todas las franjas y los tres niveles. Los precios ya incluyen IGV
+ * (D-03). `tiburones` queda sin planes ni clases.
+ */
+const PLANES_DE_EJEMPLO = [
+  { nombre: '3 veces por semana', vecesPorSemana: 3, clasesPorMes: 12, precio: '120.00', dias: [1, 3, 5] },
+  { nombre: '2 veces por semana', vecesPorSemana: 2, clasesPorMes: 8, precio: '90.00', dias: [2, 4] },
+] as const;
+const FRANJAS_DE_EJEMPLO = [
+  '08:00',
+  '09:00',
+  '10:00',
+  '11:00',
+  '12:00',
+  '13:00',
+  '14:00',
+  '15:00',
+  '16:00',
+  '17:00',
+  '18:00',
+  '19:00',
+];
+const NIVELES_DE_EJEMPLO = ['BASICO', 'INTERMEDIO', 'AVANZADO'];
+
+/**
+ * Clases de ejemplo de `delfines` (spec 004, criterio 30): los tres niveles y, el lunes a las 18:00, dos clases en el mismo bloque con
+ * entrenadores distintos (10000003 y 10000005; RN-10, HU-17).
+ */
+const CLASES_DE_EJEMPLO = [
+  { nivel: 'BASICO', diaSemana: 1, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000003' },
+  { nivel: 'INTERMEDIO', diaSemana: 1, horaInicio: '18:00', aforo: 25, dniEntrenador: '10000005' },
+  { nivel: 'INTERMEDIO', diaSemana: 1, horaInicio: '19:00', aforo: 25, dniEntrenador: '10000003' },
+  { nivel: 'AVANZADO', diaSemana: 3, horaInicio: '18:00', aforo: 20, dniEntrenador: '10000003' },
+  { nivel: 'BASICO', diaSemana: 5, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000003' },
+] as const;
 
 async function sembrar(): Promise<number> {
   cargarEnvDeLaRaiz();
@@ -162,6 +199,68 @@ async function sembrar(): Promise<number> {
       telefono.length > 0
         ? 'Teléfono de ejemplo agregado a la configuración de delfines'
         : 'La configuración de ejemplo de delfines ya existía',
+    );
+    // Los planes y las clases también van en la transacción de su academia. Solo se agregan si faltan: repetir la semilla no duplica
+    // ni pisa lo que el administrador haya cambiado (un plan se reconoce por su nombre y una clase por su nivel, día y hora).
+    let planesCreados = 0;
+    for (const plan of PLANES_DE_EJEMPLO) {
+      const creados = await enAcademia(
+        cliente,
+        delfinesId,
+        (tx) =>
+          tx.$queryRaw<{ id: string }[]>`
+          INSERT INTO planes (id, academia_id, nombre, veces_por_semana, clases_por_mes, duracion_minutos, precio, dias_permitidos,
+                              franjas_permitidas, niveles_aplicables, activo, creado_en, actualizado_en)
+          VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${plan.nombre}, ${plan.vecesPorSemana}::smallint,
+                  ${plan.clasesPorMes}::smallint, 60, ${plan.precio}::numeric(10,2), ${[...plan.dias]}::smallint[],
+                  ${FRANJAS_DE_EJEMPLO}::time(0)[], ${NIVELES_DE_EJEMPLO}::text[]::nivel_natacion[], true,
+                  ${ahora}::timestamptz, ${ahora}::timestamptz)
+          ON CONFLICT DO NOTHING
+          RETURNING id::text AS id`,
+      );
+      planesCreados += creados.length;
+    }
+    console.log(
+      planesCreados > 0
+        ? `Planes de ejemplo agregados a delfines: ${planesCreados}`
+        : 'Los planes de ejemplo de delfines ya existían',
+    );
+    const entrenadores = await enAcademia(
+      cliente,
+      delfinesId,
+      (tx) =>
+        tx.$queryRaw<{ id: string; dni: string }[]>`
+          SELECT id::text AS id, dni FROM usuarios
+           WHERE academia_id = ${delfinesId}::uuid AND rol = 'ENTRENADOR'::rol_usuario`,
+    );
+    const entrenadorPorDni = new Map(entrenadores.map((entrenador) => [entrenador.dni, entrenador.id]));
+    let clasesCreadas = 0;
+    for (const clase of CLASES_DE_EJEMPLO) {
+      const entrenadorId = entrenadorPorDni.get(clase.dniEntrenador);
+      if (!entrenadorId) throw new Error('No se encontró un entrenador de ejemplo de delfines.');
+      const horaFin = `${String(Number(clase.horaInicio.slice(0, 2)) + 1).padStart(2, '0')}:00`;
+      const creadas = await enAcademia(
+        cliente,
+        delfinesId,
+        (tx) =>
+          tx.$queryRaw<{ id: string }[]>`
+          INSERT INTO clases (id, academia_id, nivel, dia_semana, hora_inicio, hora_fin, entrenador_id, aforo, activo, creado_en,
+                              actualizado_en)
+          SELECT gen_random_uuid(), ${delfinesId}::uuid, ${clase.nivel}::nivel_natacion, ${clase.diaSemana}::smallint,
+                 ${clase.horaInicio}::time(0), ${horaFin}::time(0), ${entrenadorId}::uuid, ${clase.aforo}::smallint, true,
+                 ${ahora}::timestamptz, ${ahora}::timestamptz
+           WHERE NOT EXISTS (SELECT 1 FROM clases
+                              WHERE academia_id = ${delfinesId}::uuid AND nivel = ${clase.nivel}::nivel_natacion
+                                AND dia_semana = ${clase.diaSemana}::smallint AND hora_inicio = ${clase.horaInicio}::time(0))
+          ON CONFLICT DO NOTHING
+          RETURNING id::text AS id`,
+      );
+      clasesCreadas += creadas.length;
+    }
+    console.log(
+      clasesCreadas > 0
+        ? `Clases de ejemplo agregadas a delfines: ${clasesCreadas}`
+        : 'Las clases de ejemplo de delfines ya existían',
     );
     return 0;
   } catch (error) {

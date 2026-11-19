@@ -47,6 +47,14 @@ enum EstadoUsuario {
   @@map("estado_usuario")
 }
 
+enum NivelNatacion {
+  BASICO
+  INTERMEDIO
+  AVANZADO
+
+  @@map("nivel_natacion")
+}
+
 /// Una academia de natación (D-23). Nombre corto único: va en la dirección de sus páginas públicas (D-27).
 model Academia {
   id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -61,6 +69,8 @@ model Academia {
   auditoria       Auditoria[]
   configuraciones Configuracion[]
   usuarios        Usuario[]
+  planes          Plan[]
+  clases          Clase[]
 
   @@map("academias")
 }
@@ -155,9 +165,62 @@ model Usuario {
   actualizadoEn    DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
   academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  clases   Clase[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
   @@index([academiaId, rol, apellidos, nombres])
   @@map("usuarios")
+}
+
+/// Un plan de la academia (HU-19, RN-07). El precio ya incluye IGV (D-03) y es la base del cobro proporcional (RN-25). Los arreglos
+/// (días, franjas y niveles) viven en la misma fila. El nombre es único en la academia sin distinguir mayúsculas (índice sobre
+/// `lower(nombre)` a mano en la migración, que Prisma no representa), y los CHECK de los criterios 4 y 33 también van a mano. No se borra: se
+/// desactiva (spec 004).
+model Plan {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId        String          @map("academia_id") @db.Uuid
+  nombre            String
+  vecesPorSemana    Int             @map("veces_por_semana") @db.SmallInt
+  clasesPorMes      Int             @map("clases_por_mes") @db.SmallInt
+  duracionMinutos   Int             @default(60) @map("duracion_minutos") @db.SmallInt
+  precio            Decimal         @db.Decimal(10, 2)
+  diasPermitidos    Int[]           @map("dias_permitidos") @db.SmallInt
+  franjasPermitidas DateTime[]      @map("franjas_permitidas") @db.Time(0)
+  nivelesAplicables NivelNatacion[] @map("niveles_aplicables")
+  vigenciaInicio    DateTime?       @map("vigencia_inicio") @db.Date
+  vigenciaFin       DateTime?       @map("vigencia_fin") @db.Date
+  activo            Boolean         @default(true)
+  creadoEn          DateTime        @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn     DateTime        @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@map("planes")
+}
+
+/// Una clase de la semana (HU-17, RN-09 a RN-11): nivel, día, bloque de 1 hora (horas locales de Lima, sin zona), entrenador y aforo
+/// de 20 a 50. Los índices únicos parciales del bloque (`WHERE activo`) y los CHECK van a mano en la migración. El rol de la API no
+/// cambia el nivel, el día ni la hora, y no borra filas: una clase se desactiva (spec 004). Es el lugar donde las historias siguientes
+/// bloquean el cupo (`bloquearClasesParaCupo`).
+model Clase {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId    String        @map("academia_id") @db.Uuid
+  nivel         NivelNatacion
+  diaSemana     Int           @map("dia_semana") @db.SmallInt
+  horaInicio    DateTime      @map("hora_inicio") @db.Time(0)
+  horaFin       DateTime      @map("hora_fin") @db.Time(0)
+  entrenadorId  String        @map("entrenador_id") @db.Uuid
+  aforo         Int           @db.SmallInt
+  activo        Boolean       @default(true)
+  creadoEn      DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia   Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  entrenador Usuario  @relation(fields: [academiaId, entrenadorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@index([academiaId, diaSemana, horaInicio])
+  @@map("clases")
 }

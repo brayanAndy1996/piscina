@@ -90,6 +90,114 @@ export function CampoSelect({ etiqueta, error, children, ...seleccion }: Propied
   );
 }
 
+interface PropiedadesCasilla extends Omit<ComponentProps<'input'>, 'className' | 'type'> {
+  etiqueta: string;
+  ayuda?: string;
+  error?: string | undefined;
+}
+
+/** Una casilla de verificación con su etiqueta, con el área táctil de al menos 44 px de alto. */
+export function CampoCasilla({ etiqueta, ayuda, error, ...entrada }: PropiedadesCasilla) {
+  const id = useId();
+  const idAyuda = `${id}-ayuda`;
+  const idError = `${id}-error`;
+  const descripcion = [error ? idError : null, ayuda ? idAyuda : null].filter(Boolean).join(' ') || undefined;
+  return (
+    <div>
+      <label htmlFor={id} className="flex min-h-11 cursor-pointer items-center gap-3 text-base text-slate-900">
+        <input
+          id={id}
+          type="checkbox"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={descripcion}
+          className="size-5 shrink-0 accent-sky-700"
+          {...entrada}
+        />
+        <span>{etiqueta}</span>
+      </label>
+      {ayuda ? (
+        <p id={idAyuda} className="text-sm text-slate-600">
+          {ayuda}
+        </p>
+      ) : null}
+      {error ? (
+        <p id={idError} role="alert" className="text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+interface PropiedadesGrupoCasillas<T extends string | number> {
+  leyenda: string;
+  ayuda?: string;
+  error?: string | undefined;
+  opciones: readonly { valor: T; etiqueta: string }[];
+  seleccionados: readonly T[];
+  alCambiar: (nuevos: T[]) => void;
+}
+
+/** Varias casillas de un mismo campo (días, franjas, niveles), con "Marcar todo" y "Quitar todo". Se desactiva con su `fieldset` padre. */
+export function GrupoCasillas<T extends string | number>({
+  leyenda,
+  ayuda,
+  error,
+  opciones,
+  seleccionados,
+  alCambiar,
+}: PropiedadesGrupoCasillas<T>) {
+  const id = useId();
+  const idAyuda = `${id}-ayuda`;
+  const idError = `${id}-error`;
+  const descripcion = [error ? idError : null, ayuda ? idAyuda : null].filter(Boolean).join(' ') || undefined;
+  const alternar = (valor: T) => {
+    const nuevos = seleccionados.includes(valor) ? seleccionados.filter((v) => v !== valor) : [...seleccionados, valor];
+    // En el orden de las opciones, no en el de los clics.
+    alCambiar(opciones.map((o) => o.valor).filter((v) => nuevos.includes(v)));
+  };
+  const todas = seleccionados.length === opciones.length;
+  return (
+    <fieldset aria-describedby={descripcion} className="min-w-0">
+      <legend className="text-sm font-medium text-slate-800">{leyenda}</legend>
+      {ayuda ? (
+        <p id={idAyuda} className="text-sm text-slate-600">
+          {ayuda}
+        </p>
+      ) : null}
+      <div className="mt-1 grid grid-cols-1 gap-x-4 min-[420px]:grid-cols-2 sm:grid-cols-3">
+        {opciones.map((opcion) => (
+          <label
+            key={opcion.valor}
+            className="flex min-h-11 cursor-pointer items-center gap-3 text-base text-slate-900"
+          >
+            <input
+              type="checkbox"
+              checked={seleccionados.includes(opcion.valor)}
+              onChange={() => alternar(opcion.valor)}
+              className="size-5 shrink-0 accent-sky-700"
+            />
+            <span>{opcion.etiqueta}</span>
+          </label>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => alCambiar(todas ? [] : opciones.map((o) => o.valor))}
+        aria-label={`${todas ? 'Quitar todo' : 'Marcar todo'} en ${leyenda}`}
+        className="mt-1 min-h-11 rounded-lg px-2 text-sm font-medium text-sky-800 underline focus-visible:outline-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {todas ? 'Quitar todo' : 'Marcar todo'}
+      </button>
+      {error ? (
+        <p id={idError} role="alert" className="text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
+    </fieldset>
+  );
+}
+
 const COLOR_INSIGNIA = {
   verde: 'bg-emerald-100 text-emerald-900',
   ambar: 'bg-amber-100 text-amber-900',
@@ -108,6 +216,8 @@ const ENFOCABLES =
 interface PropiedadesModal {
   titulo: string;
   alCerrar: () => void;
+  /** `amplio` para formularios con varios grupos de opciones. */
+  ancho?: 'normal' | 'amplio';
   children: ReactNode;
 }
 
@@ -115,7 +225,7 @@ interface PropiedadesModal {
  * Ventana de confirmación: se cierra con Escape o tocando el fondo, mantiene el foco dentro mientras está abierta y lo
  * devuelve al elemento que la abrió.
  */
-export function Modal({ titulo, alCerrar, children }: PropiedadesModal) {
+export function Modal({ titulo, alCerrar, ancho = 'normal', children }: PropiedadesModal) {
   const idTitulo = useId();
   const panel = useRef<HTMLDivElement>(null);
   const cerrar = useRef(alCerrar);
@@ -169,7 +279,7 @@ export function Modal({ titulo, alCerrar, children }: PropiedadesModal) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={idTitulo}
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-lg sm:rounded-2xl sm:p-6"
+        className={`max-h-[90vh] w-full ${ancho === 'amplio' ? 'max-w-2xl' : 'max-w-md'} overflow-y-auto rounded-t-2xl bg-white p-5 shadow-lg sm:rounded-2xl sm:p-6`}
       >
         <h2 id={idTitulo} className="text-xl font-semibold text-slate-900">
           {titulo}

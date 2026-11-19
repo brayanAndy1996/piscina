@@ -1,7 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router';
+import { PaginaClases } from '../modulos/clases/PaginaClases';
 import { PaginaConfiguracion } from '../modulos/configuracion/PaginaConfiguracion';
 import { Inicio } from '../modulos/inicio/Inicio';
 import { PaginaPanel } from '../modulos/panel/PaginaPanel';
+import { PaginaPlanes } from '../modulos/planes/PaginaPlanes';
 import { PaginaAcademias } from '../modulos/plataforma/PaginaAcademias';
 import { PaginaIngresar } from '../modulos/plataforma/PaginaIngresar';
 import { PaginaCambiarClave } from '../modulos/sesion/PaginaCambiarClave';
@@ -25,6 +27,8 @@ export function Rutas() {
         <Route path="/panel/usuarios" element={<PaginaUsuarios />} />
         <Route path="/panel/restablecer" element={<PaginaRestablecer />} />
         <Route path="/panel/configuracion" element={<PaginaConfiguracion />} />
+        <Route path="/panel/planes" element={<PaginaPlanes />} />
+        <Route path="/panel/clases" element={<PaginaClases />} />
       </Route>
       <Route path="*" element={<PaginaNoEncontrada />} />
     </Routes>

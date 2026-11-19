@@ -78,8 +78,7 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
 - **Pruebas E2E de la autenticación:** `e2e/pruebas/autenticacion.spec.ts`. El superadmin crea una academia y su
   administrador; el administrador cambia su contraseña y crea una secretaria, que también debe cambiarla al entrar.
 
-**003 · Configuración de la academia** está construida y espera la suite completa, la revisión y la aprobación del
-responsable para unirse a `main`. Trae:
+**003 · Configuración de la academia** está unida a `main`. Trae:
 
 - **Valores de cada academia:** la tolerancia de tardanza, los días para marcar una mensualidad "por vencer", los días de
   prioridad para renovar, los intentos fallidos antes del bloqueo, la duración del bloqueo y el teléfono. Sin valor
@@ -101,7 +100,31 @@ Todavía no trae los permisos de cada módulo (cada historia aplica su alcance),
 las páginas públicas (historia 005), el logo ni el cambio del nombre de la academia (DR-2 y DR-5 de 003), ni el cambio del
 DNI, del nombre o del rol de una cuenta.
 
-La siguiente historia es la **004 · Planes y clases con aforo** (ver [`specs/backlog.md`](specs/backlog.md)).
+**004 · Planes y clases con aforo** está construida y espera la revisión, la suite completa y el PR para unirse a `main`.
+Trae:
+
+- **Planes** (`/panel/planes`, solo el administrador): nombre único en la academia (no distingue mayúsculas, ni espacios o
+  caracteres invisibles que se ven iguales); de 1 a 7 veces por semana; de 1 a 31 clases por mes; duración de 15 a 60
+  minutos (60 por defecto, informativa); precio con IGV incluido, de S/ 0.01 a S/ 99,999.99 y con hasta dos decimales; días,
+  franjas (bloques de 1 hora) y niveles permitidos; vigencia opcional, y activo o inactivo. El estado (Vigente, Programado,
+  Vencido o Inactivo) se calcula con la fecha de Lima. Los planes no se borran: se desactivan.
+- **Clases y horarios** (`/panel/clases`): la semana en una grilla de 08:00 a 20:00, en bloques de 1 hora (en el celular, un
+  día a la vez). Cada clase tiene nivel (Básico, Intermedio o Avanzado), día, bloque, entrenador y aforo de 20 a 50. Un
+  entrenador no tiene dos clases en el mismo bloque, y hay como mucho una clase por nivel en cada bloque: la base lo
+  garantiza. Se cambian el entrenador, el aforo y si la clase está activa; el nivel, el día y la hora no se cambian (para
+  moverla, se desactiva y se crea otra). Las clases tampoco se borran.
+- **Cupo:** todavía no hay inscritos. Esta historia deja el bloqueo común del cupo (`bloquearClasesParaCupo`) y sus reglas
+  para las historias siguientes, en [`docs/arquitectura.md`](docs/arquitectura.md).
+- **API:** `GET` y `POST /api/planes`, `PATCH /api/planes/{id}`, `GET` y `POST /api/clases` y `PATCH /api/clases/{id}`,
+  todas con el permiso `CONFIGURAR_PLANES_HORARIOS_AFORO` (solo el administrador). Cada cambio queda en la auditoría de la
+  academia.
+- **Datos de ejemplo:** `delfines` tiene un segundo entrenador, dos planes y cinco clases, dos de ellas el lunes a las
+  18:00. `tiburones` queda sin planes ni clases.
+- **Lo que todavía no trae:** las inscripciones, las reservas y la ocupación de cupos, y la vista de planes y clases para el
+  público (005); el horario del entrenador (012); los días de cierre (017).
+
+La siguiente historia es la **005 · Inscripción pública y seguimiento de la solicitud** (ver
+[`specs/backlog.md`](specs/backlog.md)).
 
 ## Cómo levantarlo en Windows
 
@@ -132,6 +155,10 @@ agrega los usuarios de ejemplo). Los pasos están en la guía, en "Después de t
 Si ya tenías la historia 002 y traes la 003, ejecuta `npm ci` y `npm run db:preparar`: la 003 no tiene migraciones, y la
 semilla agrega el teléfono de ejemplo de `delfines`. Los pasos están en la guía, en "Después de traer la historia 003".
 
+Si ya tenías la historia 003 y traes la 004, ejecuta `npm ci` y `npm run db:preparar`: la 004 agrega las tablas de planes y
+clases (con sus migraciones), y la semilla suma a `delfines` un segundo entrenador, dos planes y cinco clases de ejemplo.
+Los pasos están en la guía, en "Después de traer la historia 004".
+
 ## Comandos principales
 
 | Comando                                                                 | Qué hace                                                                                                          |
@@ -146,7 +173,7 @@ semilla agrega el teléfono de ejemplo de `delfines`. Los pasos están en la gu�
 | `npm run db:crear`                                                      | Crea solo el rol `aquagestion_app` y las bases que falten (lo usa `db:preparar`).                                 |
 | `npm run db:migrar`, `npm run db:migrar:pruebas`                        | Aplica las migraciones pendientes a la base de desarrollo o a la de pruebas.                                      |
 | `npm run db:migracion`                                                  | Crea una migración nueva a partir de un cambio en el esquema de Prisma.                                           |
-| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines`, si no existen.              |
+| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo, el teléfono de ejemplo de `delfines` y sus planes y clases de ejemplo, si no existen.              |
 | `npm run env:completar`                                                 | Agrega a `.env` las variables de `.env.example` que falten, sin cambiar las que ya tienes.                        |
 | `npm run plataforma:superadmin`                                         | Crea el superadmin de la plataforma o le restablece la clave, con `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE`. |
 | `npm run verificar:pruebas-protegidas`, `npm run verificar:sin-secretos` | Verificaciones del método y de seguridad del repositorio.                                                         |
@@ -167,6 +194,9 @@ semilla agrega el teléfono de ejemplo de `delfines`. Los pasos están en la gu�
 - **Cómo se trabaja:** cada historia tiene su carpeta `specs/NNN-nombre/` (especificación, plan y tareas) y entra al
   proyecto por pull request. Las pruebas protegidas (`// spec: NNN-nombre (pruebas protegidas)`) solo cambian en sus
   propios commits, y la CI lo verifica en cada pull request. Detalles en [`docs/metodologia.md`](docs/metodologia.md).
+- **Aforo y choques de clases:** el cupo de cada clase se bloquea con `bloquearClasesParaCupo` antes de contar u escribir, y
+  los choques de clases (el mismo entrenador o el mismo nivel en un bloque) los decide la base con índices únicos. Las reglas
+  para las historias siguientes están en `docs/arquitectura.md`.
 - **Varias academias:** cada tabla de negocio lleva `academia_id`, y PostgreSQL filtra por academia con seguridad a nivel
   de fila (D-23). Eso ya está en la 001. Las reglas de fechas, transacciones y errores que siguen las historias nuevas
   están en [`docs/arquitectura.md`](docs/arquitectura.md).

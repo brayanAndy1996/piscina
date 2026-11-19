@@ -129,6 +129,11 @@ La primera vez Docker descarga la imagen de PostgreSQL 16, que puede tardar unos
 `docker compose ps` debe aparecer `(healthy)`. Si aparece `starting`, espera unos segundos y repite
 `docker compose ps`.
 
+PostgreSQL tiene que usar un locale UTF-8 en sus bases. `docker-compose.yml` no lo fija: usa la imagen `postgres:16` sin
+cambios, así que si una prueba de nombres con acentos falla, revisa "La base no está en UTF-8" en los problemas
+frecuentes. No crees ni cambies una base a mano con locale `C` o `POSIX`: `npm run db:crear` no fija el locale y las bases
+toman el del servidor.
+
 ### Paso 5: crear el rol y las bases de datos
 
 ```powershell
@@ -144,7 +149,7 @@ Hace cuatro cosas, en este orden:
 4. Ejecuta la semilla. Crea, si no existen, las academias de ejemplo `delfines` ("Academia de Natación Los Delfines") y
    `tiburones` ("Club de Natación Tiburones"), el superadmin de desarrollo, con los datos `SUPERADMIN_*` de tu `.env`, los
    usuarios de ejemplo de cada academia (ver "Entrar como usuario de una academia") y el teléfono de ejemplo de `delfines`
-   (ver "Probar la configuración de la academia").
+   (ver "Probar la configuración de la academia"), y los planes y clases de ejemplo (ver "Probar planes y clases").
 
 Es seguro repetir este comando: no borra nada.
 
@@ -228,6 +233,26 @@ npm run dev
 - La historia 003 no tiene migraciones ni variables nuevas en `.env`, así que `npm run env:completar` no hace falta.
 - `npm run db:preparar` ejecuta la semilla, que agrega a `delfines` un teléfono de ejemplo (`+51 999 000 111`). Si la fila
   del teléfono ya existe, no la toca, aunque la hayas cambiado o quitado. Sin este paso, `delfines` no tiene teléfono.
+
+## Después de traer la historia 004
+
+Si ya tenías el proyecto con la historia 003, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+npm ci
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- `npm ci` instala las dos librerías de fechas que agrega la 004 (`date-fns` y `@date-fns/tz`).
+- `npm run db:preparar` crea las tablas de planes y clases, aplicando sus migraciones a las dos bases, la de desarrollo y la
+  de pruebas, y ejecuta la semilla. Sin este paso no existen las tablas y las pantallas **Planes** y **Clases y horarios**
+  dan error.
+- La semilla agrega a `delfines` un segundo entrenador (Paula Fuentes Ibarra, DNI `10000005`, con la contraseña inicial
+  igual a su DNI), dos planes y cinco clases de ejemplo. Repetirla no duplica nada (ver "Probar planes y clases").
+- La historia 004 no agrega variables a `.env`, así que `npm run env:completar` no hace falta.
 
 ## Entrar a la plataforma y crear una academia de prueba
 
@@ -315,24 +340,26 @@ Cada academia tiene su enlace de ingreso, con su nombre corto en la dirección. 
 
 Usuarios de ejemplo (los DNI y los nombres son inventados):
 
-| Academia    | Usuario (DNI) | Rol           | Nombre              | Contraseña inicial |
-| ----------- | ------------- | ------------- | ------------------- | ------------------ |
-| `delfines`  | 10000001      | Administrador | Rosa Alvarez Prado  | 10000001           |
-| `delfines`  | 10000002      | Secretaria    | Lucia Benites Rojas | 10000002           |
-| `delfines`  | 10000003      | Entrenador    | Mario Castro Vega   | 10000003           |
-| `delfines`  | 10000004      | Alumno        | Diego Delgado Soto  | 10000004           |
-| `tiburones` | 10000001      | Administrador | Elena Espinoza Luna | 10000001           |
+| Academia    | Usuario (DNI) | Rol           | Nombre               | Contraseña inicial |
+| ----------- | ------------- | ------------- | -------------------- | ------------------ |
+| `delfines`  | 10000001      | Administrador | Rosa Alvarez Prado   | 10000001           |
+| `delfines`  | 10000002      | Secretaria    | Lucia Benites Rojas  | 10000002           |
+| `delfines`  | 10000003      | Entrenador    | Mario Castro Vega    | 10000003           |
+| `delfines`  | 10000004      | Alumno        | Diego Delgado Soto   | 10000004           |
+| `delfines`  | 10000005      | Entrenador    | Paula Fuentes Ibarra | 10000005           |
+| `tiburones` | 10000001      | Administrador | Elena Espinoza Luna  | 10000001           |
 
 La contraseña inicial de cada uno es su DNI, y debe cambiarla al entrar. El DNI `10000001` aparece en `delfines` y en
 `tiburones`: son dos cuentas distintas, una por academia (D-28).
 
 `delfines` también tiene un teléfono de ejemplo, `+51 999 000 111`, que se ve en **Configuración** (ver "Probar la
-configuración de la academia").
+configuración de la academia"). Además tiene un segundo entrenador (Paula Fuentes Ibarra), dos planes y cinco clases de
+ejemplo (ver "Probar planes y clases").
 
 Lo que ves en `/panel` depende del rol:
 
-- **Administrador:** **Usuarios** (el personal), **Restablecer contraseña** y **Configuración** (la configuración de la
-  academia, más abajo). En **Usuarios** puedes crear, desactivar,
+- **Administrador:** **Usuarios** (el personal), **Restablecer contraseña**, **Configuración** (la configuración de la
+  academia, más abajo) y **Planes** y **Clases y horarios** (ver "Probar planes y clases"). En **Usuarios** puedes crear, desactivar,
   reactivar y restablecer al personal. No puedes desactivar ni restablecer tu propia cuenta.
 - **Secretaria:** **Restablecer contraseña**, solo para alumnos.
 - **Entrenador y alumno:** solo **Cambiar contraseña**. Las demás pantallas llegan con sus historias.
@@ -384,6 +411,61 @@ Otras comprobaciones:
 - Con una cuenta de secretaria, entrenador o alumno, **Configuración** no aparece en el inicio del panel. Si entran a
   `/panel/configuracion`, la página dice «No tienes permiso para ver esta página».
 - Si borras el teléfono y guardas, la academia deja de tener teléfono: desaparece de la cabecera del panel.
+
+## Probar planes y clases
+
+Los **planes** y las **clases** (historia 004) los configura solo el administrador, desde el inicio del panel. Para
+probarlos con los datos de ejemplo de `delfines`:
+
+1. Entra como administrador de `delfines` en http://localhost:5173/a/delfines/ingresar, con el DNI `10000001`. Si nunca
+   cambiaste la contraseña, la inicial es `10000001` y el sistema te pide cambiarla.
+2. En el inicio del panel (`/panel`), pulsa **Planes**. Verás dos planes de ejemplo, los dos **Vigente**: **3 veces por
+   semana** (12 clases al mes, S/ 120.00, lunes, miércoles y viernes) y **2 veces por semana** (8 clases al mes, S/ 90.00,
+   martes y jueves). Cada precio dice «IGV incluido».
+3. Pulsa **Nuevo plan** y crea un plan de prueba: en **Nombre del plan**, `Plan de prueba`; en **Veces por semana**, `2`;
+   en **Clases por mes**, `8`; **Duración (minutos)** ya trae `60`; en **Precio (S/)**, `90.00`; en **Días permitidos**,
+   martes y jueves; en **Franjas permitidas**, `08:00 a 09:00`, y en **Niveles**, Básico. Pulsa **Crear plan**: debe
+   aparecer **Plan «Plan de prueba» creado.** El precio se escribe con punto: con una coma (`90,00`) aparece un error junto
+   a **Precio (S/)**.
+4. Provoca un nombre repetido: pulsa **Nuevo plan**, escribe `plan de PRUEBA` y completa lo demás igual. Pulsa **Crear
+   plan**: junto a **Nombre del plan** aparece «Ya hay un plan con ese nombre en tu academia (se comparan sin distinguir
+   mayúsculas).». Pulsa **Cancelar**.
+5. Pulsa **Editar** en **Plan de prueba**, quita la marca de **Plan activo** y pulsa **Guardar cambios**. El plan aparece
+   como **Inactivo**: no se borra, y puedes volver a activarlo.
+6. Pulsa **← Volver al inicio** y después **Clases y horarios**. Verás la semana: siete días por bloques de 1 hora, de
+   08:00 a 20:00, y cada clase en su bloque, con su entrenador y su aforo. En `delfines` hay cinco clases de ejemplo, dos
+   de ellas el **lunes a las 18:00**: una Básico con Mario Castro y una Intermedio con Paula Fuentes (dos entrenadores
+   distintos en el mismo bloque).
+7. Pulsa **Nueva clase** y crea una clase que choca: **Nivel** Avanzado, **Día** Lunes, **Bloque** 18:00 a 19:00,
+   **Entrenador** «Castro Vega, Mario» y **Aforo (alumnos)** `25`. Pulsa **Crear clase**: bajo **Entrenador** aparece «Ese
+   entrenador ya tiene otra clase activa a esa hora.», porque Mario ya tiene la Básico del lunes a las 18:00. Ahora cambia
+   **Nivel** a Básico y **Entrenador** a «Fuentes Ibarra, Paula», y pulsa **Crear clase** otra vez: bajo **Nivel** aparece
+   «Ya hay una clase activa de ese nivel el mismo día y a la misma hora.».
+8. Crea una clase que sí cabe: **Nivel** Avanzado, **Día** Viernes, **Bloque** 18:00 a 19:00, **Entrenador** «Fuentes
+   Ibarra, Paula» y **Aforo (alumnos)** `20`. Pulsa **Crear clase**: aparece «Clase creada: Avanzado, viernes de 18:00 a
+   19:00.».
+9. Prueba el aforo: pulsa la clase Avanzado del viernes en la grilla y después **Editar clase**. Escribe `19` en **Aforo
+   (alumnos)** y pulsa **Guardar cambios**: aparece «El aforo debe ser de 20 a 50 alumnos.». Escribe `50`, guarda, y
+   aparece «Clase guardada.». El aforo acepta exactamente de 20 a 50.
+10. Desactiva una clase: en **Editar clase**, quita la marca de **Clase activa** y pulsa **Guardar cambios**. En la grilla,
+    la clase aparece con la insignia **Inactiva**, y su bloque queda libre para otra clase del mismo nivel.
+11. Ver la grilla en el celular: en Chrome o Edge, pulsa **F12**, luego el icono del celular (o **Ctrl+Mayús+M**) y elige
+    un modelo. También sirve reducir la ventana a menos de 768 píxeles de ancho. Verás los días como botones (**Lun**,
+    **Mar**, **Mié**, **Jue**, **Vie**, **Sáb** y **Dom**) y la grilla muestra un solo día; los bloques sin clases dicen
+    «Sin clases». Al abrir la página aparece el día de hoy según la hora de Lima. Pulsa **Vie** para ver las clases del
+    viernes.
+
+Otras comprobaciones:
+
+- Con una cuenta de secretaria, entrenador o alumno, **Planes** y **Clases y horarios** no aparecen en el inicio del
+  panel. Si entran a `/panel/planes` o `/panel/clases`, la página dice «No tienes permiso para ver esta página».
+- Los planes y las clases no tienen botón para borrarlos: se desactivan.
+- Crea o edita un plan con **Vigente desde** en una fecha futura: aparece como **Programado**. Con **Vigente hasta** en una
+  fecha pasada, aparece como **Vencido**.
+- Repetir `npm run db:semilla` no duplica nada ni cambia lo que hayas editado. Los planes de ejemplo se reconocen por su
+  nombre: si cambias el nombre de **3 veces por semana** o de **2 veces por semana**, la siguiente ejecución lo vuelve a
+  crear. Las clases de ejemplo se reconocen por su nivel, día y bloque: si las desactivas o cambias su entrenador, no se
+  vuelven a crear.
 
 ## Día a día
 
@@ -445,7 +527,7 @@ Las pruebas E2E levantan la API y la web en otros puertos (3100 y 5180), así qu
 | `npm run db:crear`                     | Crea solo el rol `aquagestion_app` y las bases que falten. Lo usa `db:preparar`.                         |
 | `npm run db:migrar`                    | Aplica a la base de desarrollo las migraciones pendientes.                                               |
 | `npm run db:migrar:pruebas`            | Aplica las migraciones pendientes a la base de pruebas.                                                  |
-| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines`, si no existen. Repetirla no duplica nada ni cambia las contraseñas ni el teléfono.   |
+| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines` y sus planes y clases de ejemplo, si no existen. Repetirla no duplica nada ni cambia las contraseñas, el teléfono ni lo que hayas editado.   |
 | `npm run db:migracion`                 | Crea una migración nueva a partir de un cambio del esquema. Pide un nombre.                              |
 | `npm run env:completar`                | Agrega a `.env` las variables de `.env.example` que falten. No cambia las que ya tienes.                 |
 | `npm run plataforma:superadmin`        | Crea el superadmin de la plataforma o le restablece la clave (usa `SUPERADMIN_*`; ver arriba).           |
@@ -609,6 +691,23 @@ ayuda antes de cambiar el rol a mano: el mensaje de `db:crear` dice qué quitar.
 Ten en cuenta que `db:crear` no cambia la contraseña de un rol que ya existe. Si cambiaste la de `DATABASE_URL_APP`
 después de crear el rol, la API no podrá entrar a la base; la forma más simple de corregirlo en tu PC también es empezar
 de cero.
+
+### La base no está en UTF-8 (falla la prueba de nombres con acentos)
+
+Síntoma: `npm test` falla en `planes-nombre-letras-acentuadas.test.ts`, porque «Plan Natación» y «PLAN NATACIÓN» se aceptan
+como dos nombres distintos. Esa prueba exige que PostgreSQL ponga en minúsculas las letras acentuadas, y con los locales `C` o
+`POSIX` no lo hace.
+
+Para ver el locale de las bases, con Docker encendido y dentro de la carpeta del proyecto:
+
+```powershell
+docker compose exec postgres psql -U aquagestion -d aquagestion -c "SELECT datname, datctype FROM pg_database WHERE datname LIKE 'aquagestion%';"
+```
+
+Las dos bases, `aquagestion` y `aquagestion_pruebas`, deben salir con un valor UTF-8, como `en_US.utf8` o `C.UTF-8`. Si
+`aquagestion_pruebas` no aparece, ejecuta `npm run db:preparar`. Si alguna sale con `C` o `POSIX`, la forma más simple de
+corregirlo es empezar de cero, como se explica en "Borrar la base de desarrollo y empezar de cero" (se pierden los datos de
+desarrollo). No cambies el locale de una base a mano. Si después de eso sigue igual, pide ayuda.
 
 ### Playwright no encuentra el navegador
 

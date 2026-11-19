@@ -33,6 +33,18 @@ const OPCIONES: readonly Opcion[] = [
       'Ajusta la tolerancia de tardanza, los días por vencer, el bloqueo del inicio de sesión y el teléfono.',
     ruta: '/panel/configuracion',
   },
+  {
+    permiso: 'CONFIGURAR_PLANES_HORARIOS_AFORO',
+    texto: 'Planes',
+    descripcion: 'Define los planes que vende la academia: precio, clases por mes, días, franjas y niveles.',
+    ruta: '/panel/planes',
+  },
+  {
+    permiso: 'CONFIGURAR_PLANES_HORARIOS_AFORO',
+    texto: 'Clases y horarios',
+    descripcion: 'Arma la semana: el nivel, el día, la hora, el entrenador y el aforo de cada clase.',
+    ruta: '/panel/clases',
+  },
 ];
 
 /** `/panel`: inicio con la sesión y el menú según el rol (criterio 48). */
@@ -63,7 +75,7 @@ export function PaginaPanel() {
         <nav aria-label="Opciones">
           <ul className="grid gap-3 sm:grid-cols-2">
             {opciones.map((opcion) => (
-              <li key={opcion.permiso}>
+              <li key={opcion.ruta}>
                 <Link
                   to={opcion.ruta}
                   className="block h-full rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
