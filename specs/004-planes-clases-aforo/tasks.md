@@ -151,7 +151,7 @@ e31f878. Ajustes técnicos de la implementación en la spec, AT-1 a AT-5 de 004 
       cada paso, sin caché, errores con `errorParaRegistro`, registro sin datos sensibles, montos sin `number`, fechas
       en Lima, orden de bloqueos) y las convenciones; verificar la semilla y la documentación (criterios 30 y 31)
 - [ ] T16 · tester · Suite completa, lint y verificación de tipos
-- [ ] T17 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, `bloquearClasesParaCupo` y las
+- [x] T17 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, `bloquearClasesParaCupo` y las
       reglas para las historias siguientes de la spec), `README.md` y guía de uso (criterio 31). _Hecha en el árbol de trabajo; el commit lo hace el orquestador y entonces se marca._
 
 ## Solo ruta crítica
