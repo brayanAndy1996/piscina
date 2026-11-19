@@ -1,6 +1,7 @@
 import {
   type ActualizarPlan,
   type Bloque,
+  type DiaSemana,
   type EstadoPlan,
   MENSAJE_DIAS_INSUFICIENTES,
   MENSAJE_VIGENCIA_INVERTIDA,
@@ -22,7 +23,7 @@ export interface DatosDePlan {
   clasesPorMes: number;
   duracionMinutos: number;
   precio: string;
-  diasPermitidos: number[];
+  diasPermitidos: DiaSemana[];
   franjasPermitidas: Bloque[];
   nivelesAplicables: NivelNatacion[];
   vigenciaInicio: string | null;
@@ -49,7 +50,7 @@ export type CampoDePlan = (typeof CAMPOS_DEL_PLAN)[number];
 const POSICION_DE_NIVEL: ReadonlyMap<string, number> = new Map(NIVELES.map((nivel, posicion) => [nivel, posicion]));
 
 /** Los días ordenados de 1 (lunes) a 7 (domingo), sin repetidos. */
-export function ordenarDias(dias: readonly number[]): number[] {
+export function ordenarDias(dias: readonly DiaSemana[]): DiaSemana[] {
   return [...new Set(dias)].sort((a, b) => a - b);
 }
 

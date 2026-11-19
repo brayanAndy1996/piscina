@@ -1,3 +1,5 @@
+import type { DiaSemana } from '@aquagestion/contratos';
+
 const FORMATO_FECHA = new Intl.DateTimeFormat('es-PE', {
   timeZone: 'America/Lima',
   day: '2-digit',
@@ -32,10 +34,17 @@ export function formatearFechaCalendario(fecha: string): string {
   return anio && mes && dia ? `${dia}/${mes}/${anio}` : fecha;
 }
 
-const DIA_ISO: Readonly<Record<string, number>> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+const DIA_ISO: Readonly<Record<string, DiaSemana>> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
 const DIA_EN_LIMA = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Lima', weekday: 'short' });
 
+/** El número ISO (1 lunes a 7 domingo) de la abreviatura inglesa del día. Si no la reconoce, falla en vez de adivinar un día. */
+export function diaIsoDeAbreviatura(abreviatura: string): DiaSemana {
+  const dia = DIA_ISO[abreviatura];
+  if (dia === undefined) throw new Error(`No se reconoce el día de la semana "${abreviatura}" que devolvió Intl.`);
+  return dia;
+}
+
 /** El día de la semana de un instante en America/Lima, de 1 (lunes) a 7 (domingo), sin depender de la zona del navegador. */
-export function diaDeLaSemanaEnLima(instante: Date = new Date()): number {
-  return DIA_ISO[DIA_EN_LIMA.format(instante)] ?? 1;
+export function diaDeLaSemanaEnLima(instante: Date = new Date()): DiaSemana {
+  return diaIsoDeAbreviatura(DIA_EN_LIMA.format(instante));
 }

@@ -31,12 +31,18 @@ export const NOMBRE_DIA: Readonly<Record<DiaSemana, string>> = {
   7: 'Domingo',
 };
 
+function esDiaSemana(valor: number): valor is DiaSemana {
+  return (DIAS_SEMANA as readonly number[]).includes(valor);
+}
+
 /** Un día de la semana: entero de 1 a 7. Estricto: un texto con dígitos, un decimal o `null` no se convierten. */
 export const diaSemanaSchema = z
   .number('El día debe ser un número entero de 1 a 7.')
   .int('El día debe ser un número entero de 1 a 7.')
   .min(1, 'El día debe ser de 1 (lunes) a 7 (domingo).')
-  .max(7, 'El día debe ser de 1 (lunes) a 7 (domingo).');
+  .max(7, 'El día debe ser de 1 (lunes) a 7 (domingo).')
+  // Solo estrecha el tipo a `DiaSemana` (1 a 7): no agrega mensajes, porque corre únicamente si lo anterior no encontró errores.
+  .refine(esDiaSemana, { when: (carga) => carga.issues === undefined || carga.issues.length === 0 });
 
 /** Horas de inicio de los bloques de 1 hora (RN-09), en el formato `HH:MM` de la API. */
 export const BLOQUES = [

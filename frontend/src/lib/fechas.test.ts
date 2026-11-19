@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { diaDeLaSemanaEnLima, formatearFecha, formatearFechaCalendario, formatearFechaHora } from './fechas';
+import {
+  diaDeLaSemanaEnLima,
+  diaIsoDeAbreviatura,
+  formatearFecha,
+  formatearFechaCalendario,
+  formatearFechaHora,
+} from './fechas';
 
 describe('fechas en America/Lima', () => {
   it('formatea la fecha con dd/MM/yyyy', () => {
@@ -22,5 +28,11 @@ describe('fechas en America/Lima', () => {
     expect(diaDeLaSemanaEnLima(new Date('2026-11-16T04:59:00.000Z'))).toBe(7);
     expect(diaDeLaSemanaEnLima(new Date('2026-11-16T05:00:00.000Z'))).toBe(1);
     expect(diaDeLaSemanaEnLima(new Date('2026-11-18T15:00:00.000Z'))).toBe(3);
+  });
+
+  it('si no se reconoce la abreviatura del día, falla en vez de devolver lunes', () => {
+    expect(diaIsoDeAbreviatura('Sun')).toBe(7);
+    expect(() => diaIsoDeAbreviatura('lun')).toThrow(/No se reconoce el día/);
+    expect(() => diaIsoDeAbreviatura('')).toThrow(/No se reconoce el día/);
   });
 });

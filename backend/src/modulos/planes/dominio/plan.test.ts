@@ -1,3 +1,4 @@
+import type { ActualizarPlan } from '@aquagestion/contratos';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hoyEnLima } from '../../../comun/fechas';
 import {
@@ -61,8 +62,8 @@ describe('planCombinado y validarReglasCruzadas (criterio 12)', () => {
   });
 
   it('menos días que veces por semana: el error va al campo enviado', () => {
-    const subeVeces = { vecesPorSemana: 4 };
-    const bajaDias = { diasPermitidos: [1, 3] };
+    const subeVeces: ActualizarPlan = { vecesPorSemana: 4 };
+    const bajaDias: ActualizarPlan = { diasPermitidos: [1, 3] };
 
     expect(validarReglasCruzadas(planCombinado(GUARDADO, subeVeces), subeVeces).map((p) => p.campo)).toEqual([
       'vecesPorSemana',
@@ -70,7 +71,7 @@ describe('planCombinado y validarReglasCruzadas (criterio 12)', () => {
     expect(validarReglasCruzadas(planCombinado(GUARDADO, bajaDias), bajaDias).map((p) => p.campo)).toEqual([
       'diasPermitidos',
     ]);
-    const ambos = { vecesPorSemana: 5, diasPermitidos: [1, 2, 3] };
+    const ambos: ActualizarPlan = { vecesPorSemana: 5, diasPermitidos: [1, 2, 3] };
     expect(validarReglasCruzadas(planCombinado(GUARDADO, ambos), ambos).map((p) => p.campo)).toEqual([
       'diasPermitidos',
     ]);

@@ -1,4 +1,12 @@
-import { BLOQUES, horaFinDe, NOMBRE_DIA, NOMBRE_NIVEL, type EstadoPlan, type Plan } from '@aquagestion/contratos';
+import {
+  type Bloque,
+  BLOQUES,
+  horaFinDe,
+  NOMBRE_DIA,
+  NOMBRE_NIVEL,
+  type EstadoPlan,
+  type Plan,
+} from '@aquagestion/contratos';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { esErrorDeApi } from '../../api/cliente';
@@ -128,10 +136,10 @@ function ListaPlanes({ planes, alEditar }: { planes: readonly Plan[]; alEditar: 
   );
 }
 
-function franjasEnTexto(franjas: readonly string[]): string {
+function franjasEnTexto(franjas: readonly Bloque[]): string {
   if (franjas.length === BLOQUES.length)
     return `Todas las franjas (${BLOQUES[0]} a ${horaFinDe(BLOQUES[BLOQUES.length - 1] ?? '19:00')})`;
-  return franjas.map((franja) => `${franja} a ${horaFinDe(franja as (typeof BLOQUES)[number])}`).join(', ');
+  return franjas.map((franja) => `${franja} a ${horaFinDe(franja)}`).join(', ');
 }
 
 function vigenciaEnTexto(plan: Plan): string {
@@ -159,9 +167,7 @@ function FilaPlan({ plan, alEditar }: { plan: Plan; alEditar: (plan: Plan) => vo
           {plan.vecesPorSemana} {plan.vecesPorSemana === 1 ? 'vez' : 'veces'} por semana · {plan.clasesPorMes}{' '}
           {plan.clasesPorMes === 1 ? 'clase' : 'clases'} al mes · {plan.duracionMinutos} min
         </p>
-        <p className="text-sm text-slate-700">
-          Días: {plan.diasPermitidos.map((dia) => NOMBRE_DIA[dia as keyof typeof NOMBRE_DIA]).join(', ')}
-        </p>
+        <p className="text-sm text-slate-700">Días: {plan.diasPermitidos.map((dia) => NOMBRE_DIA[dia]).join(', ')}</p>
         <p className="text-sm text-slate-700">Franjas: {franjasEnTexto(plan.franjasPermitidas)}</p>
         <p className="text-sm text-slate-700">
           Niveles: {plan.nivelesAplicables.map((nivel) => NOMBRE_NIVEL[nivel]).join(', ')}

@@ -4,6 +4,7 @@ import {
   type Bloque,
   type Clase,
   type CrearClase,
+  type DiaSemana,
   horaFinDe,
   type NivelNatacion,
   type RespuestaListaClases,
@@ -11,7 +12,12 @@ import {
 import { PinoLogger } from 'nestjs-pino';
 import { ErrorNegocio } from '../../comun/errores';
 import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
-import { BaseDatos, restriccionDeUnicidadViolada, type TransaccionAcademia } from '../../infraestructura/prisma';
+import {
+  BaseDatos,
+  errorParaRegistro,
+  restriccionDeUnicidadViolada,
+  type TransaccionAcademia,
+} from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { AuditoriaService } from '../auditoria';
 import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
@@ -22,7 +28,7 @@ import { bloquearClasesParaCupo } from './cupo';
 interface FilaClase {
   id: string;
   nivel: NivelNatacion;
-  dia_semana: number;
+  dia_semana: DiaSemana;
   hora_inicio: Bloque;
   hora_fin: string;
   aforo: number;
@@ -260,7 +266,11 @@ export class ClasesService {
                             AND id IS DISTINCT FROM ${excluirId}::uuid) AS duplicada`;
         return filas[0]?.duplicada === true;
       });
-    } catch {
+    } catch (error) {
+      this.registro.warn(
+        { error: errorParaRegistro(error) },
+        'No se pudo comprobar si había una clase del mismo nivel; se responde ENTRENADOR_OCUPADO',
+      );
       return false;
     }
   }

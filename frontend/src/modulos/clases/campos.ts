@@ -6,6 +6,8 @@ import {
   crearClaseSchema,
 } from '@aquagestion/contratos';
 
+import { numeroODeTexto } from '../../lib/numeros';
+
 /** Los campos del formulario de una clase. Los selectores guardan el valor de su opción y el aforo, el texto de la entrada. */
 export interface CamposClase {
   nivel: string;
@@ -42,12 +44,6 @@ export function aCamposClase(clase: Clase | null): CamposClase {
     aforo: String(clase.aforo),
     activo: clase.activo,
   };
-}
-
-/** Un texto de enteros como número; cualquier otro texto se deja tal cual para que el esquema compartido lo rechace con su mensaje. */
-function numeroODeTexto(texto: string): number | string {
-  const recortado = texto.trim();
-  return /^-?[0-9]+$/.test(recortado) ? Number(recortado) : recortado;
 }
 
 /** Los campos que el formulario cambió frente a la clase con la que se llenó: solo el entrenador, el aforo y el estado (DR-4 de 004). */

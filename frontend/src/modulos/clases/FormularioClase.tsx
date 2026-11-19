@@ -158,8 +158,8 @@ export function FormularioClase({ clase, alCerrar, alCrear }: Propiedades) {
           {baseDeLlenado ? (
             <div className="rounded-lg bg-sky-50 p-3 text-slate-800">
               <p className="font-medium">
-                {NOMBRE_NIVEL[baseDeLlenado.nivel]} · {NOMBRE_DIA[baseDeLlenado.diaSemana as keyof typeof NOMBRE_DIA]}{' '}
-                de {baseDeLlenado.horaInicio} a {baseDeLlenado.horaFin}
+                {NOMBRE_NIVEL[baseDeLlenado.nivel]} · {NOMBRE_DIA[baseDeLlenado.diaSemana]} de{' '}
+                {baseDeLlenado.horaInicio} a {baseDeLlenado.horaFin}
               </p>
               <p className="text-sm text-slate-700">
                 El nivel, el día y la hora no se cambian. Para mover la clase, desactívala y crea otra.

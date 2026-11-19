@@ -3,6 +3,7 @@ import {
   type ActualizarPlan,
   type Bloque,
   type CrearPlan,
+  type DiaSemana,
   type NivelNatacion,
   type Plan,
   type RespuestaListaPlanes,
@@ -35,7 +36,7 @@ interface FilaPlan {
   clases_por_mes: number;
   duracion_minutos: number;
   precio: string;
-  dias_permitidos: number[];
+  dias_permitidos: DiaSemana[];
   franjas_permitidas: Bloque[];
   niveles_aplicables: NivelNatacion[];
   vigencia_inicio: string | null;

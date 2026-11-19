@@ -10,7 +10,9 @@ import {
   type Plan,
   vigenciaInvertida,
 } from '@aquagestion/contratos';
+
 import { sonMismoMonto } from '../../lib/dinero';
+import { numeroODeTexto } from '../../lib/numeros';
 
 /** Los campos del formulario de un plan: los números y el precio son el texto de la entrada; se convierten al enviar. */
 export interface CamposPlan {
@@ -79,12 +81,6 @@ export function aCamposPlan(plan: Plan | null): CamposPlan {
     vigenciaFin: plan.vigenciaFin ?? '',
     activo: plan.activo,
   };
-}
-
-/** Un texto de enteros como número; cualquier otro texto se deja tal cual para que el esquema compartido lo rechace con su mensaje. */
-function numeroODeTexto(texto: string): number | string {
-  const recortado = texto.trim();
-  return /^-?[0-9]+$/.test(recortado) ? Number(recortado) : recortado;
 }
 
 function mismosValores<T>(a: readonly T[], b: readonly T[]): boolean {

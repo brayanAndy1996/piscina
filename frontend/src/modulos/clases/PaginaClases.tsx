@@ -60,9 +60,8 @@ function ContenidoClases() {
       </p>
       {creada ? (
         <p role="status" className="rounded-2xl bg-emerald-50 p-4 text-emerald-900 ring-1 ring-emerald-200">
-          Clase creada: {NOMBRE_NIVEL[creada.nivel]},{' '}
-          {NOMBRE_DIA[creada.diaSemana as keyof typeof NOMBRE_DIA].toLowerCase()} de {creada.horaInicio} a{' '}
-          {creada.horaFin}.
+          Clase creada: {NOMBRE_NIVEL[creada.nivel]}, {NOMBRE_DIA[creada.diaSemana].toLowerCase()} de{' '}
+          {creada.horaInicio} a {creada.horaFin}.
         </p>
       ) : null}
 
