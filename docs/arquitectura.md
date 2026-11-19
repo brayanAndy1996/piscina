@@ -113,6 +113,52 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
 | `minutosBloqueo` | `minutos_bloqueo` | 15 | de 5 a 60 minutos |
 | `telefono` | `telefono` | sin teléfono (`null`) | de 6 a 20 caracteres: dígitos, espacios, guiones, paréntesis y un `+` al inicio, con al menos 6 dígitos |
 
+- **Lo que construye la historia 004** (planes y clases de cada academia, D-23; migraciones `<marca>_planes_clases` y
+  `<marca>_planes_clases_invariantes`, y los módulos `planes/` y `clases/`):
+  - **Tablas `planes` y `clases` con RLS.** Cada fila lleva `academia_id`. Las dos tienen RLS activada y forzada, con
+    políticas de `SELECT`, `INSERT` y `UPDATE` de la forma de 001: solo se ve y se escribe la academia del contexto. No
+    hay política ni privilegio de `DELETE`: los planes y las clases se desactivan (`activo`), no se borran (D8 de 004).
+  - **Llaves y restricciones.** `UNIQUE (academia_id, id)` en las dos. La llave foránea compuesta
+    `clases (academia_id, entrenador_id)` → `usuarios (academia_id, id)` impide que una clase apunte al entrenador de otra
+    academia, aunque la API fallara. Que el usuario sea un `ENTRENADOR` `ACTIVO` lo comprueba la API, porque una llave no
+    puede hacerlo (D6 de 004).
+  - **Choques del bloque, en la base.** Dos índices únicos parciales (`WHERE activo`: las inactivas no cuentan).
+    `clases_entrenador_bloque_activo_key` sobre (academia, entrenador, día, hora de inicio) da `ENTRENADOR_OCUPADO`, y
+    `clases_nivel_bloque_activo_key` sobre (academia, nivel, día, hora de inicio) da `CLASE_DUPLICADA` (D4 y DR-3 de 004).
+    El nombre del plan es único con `planes_academia_id_nombre_minusculas_key` sobre (academia, `lower(nombre)`), contando
+    los inactivos (DR-8 de 004).
+  - **Invariantes con `CHECK`** (criterios 4 y 33 de 004), para cualquiera que escriba en la base, también el dueño de las
+    tablas: `clases.aforo` de 20 a 50; `dia_semana` de 1 a 7; `hora_inicio` un bloque de 08:00 a 19:00 y `hora_fin` una hora
+    después; `planes.precio` mayor que 0 y distinto de `NaN`; `clases_por_mes` de 1 en adelante; `veces_por_semana` de 1 a 7;
+    `dias_permitidos`, `franjas_permitidas` y `niveles_aplicables` de una sola dimensión que empieza en 1, sin `NULL` y no
+    vacíos, con al menos `veces_por_semana` días; y `vigencia_inicio` y `vigencia_fin` finitas, con `vigencia_fin` no
+    anterior a `vigencia_inicio`. Prisma no genera los `CHECK`: van a mano en la migración.
+  - **Privilegios mínimos.** `aquagestion_app` tiene `SELECT` e `INSERT` en las dos tablas y `UPDATE` solo de las columnas
+    que cambian. En `clases` no puede cambiar el nivel, el día ni la hora (DR-4 de 004): para moverla se desactiva y se crea
+    otra. Ninguna fila cambia de academia.
+  - **Montos.** `precio` es `numeric(10,2)` en la base, `Decimal` en la API y texto en el JSON (`"120.00"`). Ver «Precio y
+    clases del mes» en la sección de reglas de más abajo.
+  - **Nombre del plan.** `normalizarNombrePlan` (`packages/contratos/src/planes.ts`) se aplica antes de validar, guardar y
+    comparar: NFC, espacios Unicode a espacio normal, sin caracteres invisibles (salvo los de control bidireccional, que dan
+    400), espacios seguidos colapsados, extremos recortados y NFC al final (criterios 34, 34 a y 34 b de 004). La web usa la
+    misma función.
+  - **Rutas.** `GET` y `POST /api/planes`, `PATCH /api/planes/{id}`, `GET` y `POST /api/clases` y `PATCH /api/clases/{id}`.
+    Todas con `@Permiso('CONFIGURAR_PLANES_HORARIOS_AFORO')`, así que solo las usa el administrador (DT-2 y DR-7 de 004). El
+    `{id}` de los `PATCH` lo valida el servicio después de `bloquearActorVigente`: un id que no es UUID responde el mismo 404
+    que uno inexistente o de otra academia (AT-2 de 004). El Superadmin no tiene estas rutas (D-29).
+  - **Bloqueo común del cupo.** `bloquearClasesParaCupo(tx, claseIds)`, en `backend/src/modulos/clases/cupo.ts` (sin Nest;
+    reexportada en `clases/index.ts`). Ver «Cupo de una clase» más abajo.
+  - **Estado del plan.** `VIGENTE`, `PROGRAMADO`, `VENCIDO` o `INACTIVO`, calculado al leer con `estadoDelPlan` y la fecha de
+    Lima de `RELOJ` (`hoyEnLima`, D10 de 004). No se guarda.
+  - **Auditoría.** `PLAN_CREADO` y `PLAN_ACTUALIZADO` (entidad `plan`), `CLASE_CREADA` y `CLASE_ACTUALIZADA` (entidad
+    `clase`), con `datosAntes` y `datosDespues` solo de los campos que cambiaron (D9 de 004).
+  - **Web.** `/panel/planes` y `/panel/clases` (grilla semanal; en el celular, un día a la vez), desde el inicio del panel y
+    solo para el administrador. Los formularios validan con los esquemas de `packages/contratos` (`horario.ts`, `dinero.ts`,
+    `planes.ts` y `clases.ts`).
+  - **Semilla.** En `delfines`: un segundo entrenador de ejemplo (DNI `10000005`), dos planes y cinco clases, dos de ellas el
+    lunes a las 18:00 con entrenadores distintos. `tiburones` queda sin planes ni clases. Se puede repetir sin duplicar ni
+    pisar lo editado. Un plan de ejemplo se reconoce por su nombre: si se renombra, la siguiente ejecución lo vuelve a crear.
+
 ## Fechas y horas de negocio (America/Lima)
 
 - Las fechas y horas de negocio (el día de una asistencia o de una caja, el mes de una mensualidad, un vencimiento, si
@@ -125,6 +171,8 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
   `(now() AT TIME ZONE 'America/Lima')::date`.
 - Las pruebas de estos cálculos deberán fijar la hora con `RELOJ` en los bordes: 18:59 y 19:00 de Lima, fin de mes y
   la clase de 19:00 a 20:00.
+- Las horas de las clases de la 004 (`hora_inicio` y `hora_fin`) son `time` locales de Lima, sin zona: ver «Horas de las
+  clases» en «Planes, clases y cupo (004)», más abajo.
 
 ## Reglas para las historias siguientes
 
@@ -256,6 +304,53 @@ en cada historia nueva. Los números entre paréntesis son criterios de `specs/0
   academia y el `id` del usuario (`['mi-academia', nombreCorto, id]`). Así, la respuesta de otra academia o de otra
   persona no se reutiliza al cambiar de sesión en el mismo navegador (criterio 28 de 003). Una consulta nueva con datos
   de la academia que muestre el panel sigue la misma regla.
+
+### Planes, clases y cupo (004)
+
+Salen de la historia 004 y de sus tres rondas del ataque adversarial (criterios 22, 23, 31 y 32 de 004). El texto completo
+está en `specs/004-planes-clases-aforo/spec.md`, sección «Reglas para las historias siguientes».
+
+- **Cupo de una clase.** Toda operación que ocupa, libera o mueve cupos (inscripción y su reserva, renovación,
+  recuperación, cambio de horario, asistencia en otro horario) y todo cambio del aforo o del estado de una clase llama a
+  `bloquearClasesParaCupo(tx, ids)` con todas las clases que toca, en una sola llamada, después de `bloquearActorVigente`
+  (si hay actor) y antes de contar la ocupación o escribir. Así dos operaciones sobre el último cupo se ordenan, y ninguna
+  cuenta con un aforo viejo. Nunca se bloquea una clase y después una fila de `usuarios` con `FOR UPDATE` o `FOR SHARE`.
+  - Es una sola sentencia `… ORDER BY id FOR UPDATE` sobre las clases de `tx.academiaId`. Devuelve `id`, `nivel`,
+    `diaSemana`, `horaInicio`, `horaFin`, `aforo`, `activo` y `entrenadorId` de cada clase que existe en la academia. Los
+    ids de otra academia, los que no existen, los repetidos y los que no son UUID no devuelven nada de más ni fallan; con
+    una lista sin ids válidos no ejecuta ninguna sentencia.
+  - Dos transacciones que piden `[c1, c2]` y `[c2, c1]` a la vez terminan las dos, sin `40P01` (criterio 23 de 004).
+- **Precio y clases del mes.** Los montos son `Decimal`, nunca `number`. En el JSON viajan como texto (`"120.00"`);
+  `montoSchema` (`packages/contratos/src/dinero.ts`) los valida (hasta dos decimales, mayor que 0 y como mucho `"99999.99"`,
+  sin recortar); la API los convierte con `aDecimal` (`backend/src/comun/dinero`) y la base los guarda en `numeric(10,2)`.
+  No se usa `Number(…)`, `parseFloat` ni `+precio` sobre un monto: la coma flotante rompe el cobro (criterio 10 de 004). Una
+  matrícula (005, 007, 010) guardará su propio monto (`monto_calculado`) y sus clases totales (`clases_totales`) al crearse,
+  y nunca los volverá a leer del plan: así un cambio de precio vale solo para inscripciones y renovaciones nuevas (HU-19).
+  `clases_por_mes` es el divisor del cobro proporcional (RN-25); por eso la base lo exige de 1 en adelante. El precio es el
+  monto final con IGV (D-03): ningún cálculo le suma ni le resta nada.
+- **Horas de las clases.** `hora_inicio` y `hora_fin` son horas locales de Lima sin zona (`time(0)`). Para saber si una clase
+  ya empezó, se compone la fecha de Lima (`hoyEnLima`, de `backend/src/comun/fechas`) con esa hora en America/Lima (con
+  `@date-fns/tz`), nunca con la zona del servidor. Se leen con `to_char(hora, 'HH24:MI')`, no con `::text`, que
+  puede dar `08:00:00`.
+- **El 409 de un choque lo decide el nombre de la restricción.** Un `INSERT` o un `UPDATE` que choca con un índice único
+  falla con `23505` y la transacción se revierte. El código sale del nombre de la restricción violada del error de la base
+  (`restriccionDeUnicidadViolada`, en `backend/src/infraestructura/prisma/errores-base.ts`), nunca del texto del mensaje,
+  después del `ROLLBACK` y sin releer las filas: otra transacción pudo cambiarlas entre medio (criterio 32 de 004). Una
+  consulta posterior solo sirve para afinar entre dos 409 (criterio 20 e de 004); si falla, responde `ENTRENADOR_OCUPADO`,
+  nunca un 500. Si un choque puede dar dos códigos, no se usa `ON CONFLICT DO NOTHING`: oculta cuál índice chocó, y la
+  consulta posterior puede no encontrar nada (así llegó el 500 de la ronda 1). Cuando el choque solo puede dar un 409, vale el patrón de
+  «Transacciones» de más arriba: `INSERT … ON CONFLICT DO NOTHING RETURNING` y mirar si volvió una fila (así lo hace el
+  nombre único de los planes).
+- **Entrenador bloqueado junto con el actor (AT-1 de 004).** `POST /api/clases` y `PATCH /api/clases/{id}` con
+  `entrenadorId` llaman a `bloquearActorVigente` con `objetivoId` igual al entrenador: una sola sentencia bloquea las dos
+  filas de `usuarios`, ordenadas por id como la desactivación de 002, antes de cualquier fila de `clases`. Sin eso, el
+  administrador que crea una clase con el entrenador E mientras lo desactiva se interbloquea (`40P01`, un 500). El `PATCH`
+  sin `entrenadorId` bloquea solo al actor (`FOR SHARE`). Excepción: reactivar una clase con el mismo entrenador lee su rol y
+  su estado sin bloqueo, porque no cambia `entrenador_id` (D11 de 004).
+- **Requisito de entorno: `LC_CTYPE` UTF-8.** El índice sobre `lower(nombre)` depende del locale de la base. Con `C` o
+  `POSIX`, `lower('Ó')` no cambia y «NATACIÓN» y «natación» no chocarían (criterio 34 c de 004). Las bases tienen que tener
+  un `LC_CTYPE` UTF-8 (`C.UTF-8` o `en_US.utf8`). La prueba `planes-nombre-letras-acentuadas.test.ts` lo detecta.
+  `npm run db:crear` no fija el locale: las bases heredan el del servidor, así que no se crean a mano con `C` ni `POSIX`.
 
 ## Estructura de carpetas
 

@@ -67,6 +67,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   intentos de inicio de sesión, identidad de la academia (D-22).
 - **004 · Planes y clases.** Planes (HU-19, RN-07) y clases por nivel, día, hora y entrenador, con aforo de 20 a 50
   (HU-17, RN-09 a RN-11). Lo crítico: el aforo.
+  - Estado: construida; pendiente de la revisión (T15), de la suite completa (T16) y del PR. Se marca ✅ al unirse a
+    `main`. Lo que heredan la 005 y las siguientes está en su nota y en «Planes, clases y cupo (004)» de
+    [`docs/arquitectura.md`](../docs/arquitectura.md).
 - **005 · Inscripción pública.** Formulario con datos, ficha médica, apoderado y consentimientos (HU-01, RN-20,
   D-07), elección de días y horario con cupo (HU-02), foto opcional (D-20, D-24), código y enlace de seguimiento
   (D-05), cálculo del cobro proporcional (HU-34, RN-25, D-03).
@@ -86,7 +89,18 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     usando `bloquearClasesParaCupo`. También construye lo decidido en DR-5 de 004: bajar el aforo por debajo de los
     inscritos se permite con una confirmación explícita (nadie pierde su lugar y no entran inscripciones nuevas hasta que
     haya cupo), y no se puede desactivar una clase con inscritos hasta moverlos. Además, aplica la vigencia del plan (DR-2
-    de 004) y los días, franjas y niveles permitidos al ofrecer planes y clases.
+    de 004) y los días, franjas y niveles permitidos al ofrecer planes y clases. El estado del plan (`VIGENTE`,
+    `PROGRAMADO`, `VENCIDO`, `INACTIVO`) se calcula al leer con `estadoDelPlan` y `hoyEnLima(RELOJ.ahora())`, no se guarda
+    (D10 de 004); la 005 decide con él qué planes ofrece (criterio 14 de 004 y «Casos límite»).
+  - Lecciones de la 004 para esta historia (AT-1 y criterio 32 de 004; `docs/arquitectura.md`, «Planes, clases y cupo (004)»):
+    - Si la transacción toca una fila de `usuarios` además de la del actor (por ejemplo, la de un entrenador que se
+      asigna), se pasa como `objetivoId` a `bloquearActorVigente` en una sola sentencia ordenada por id, antes de bloquear
+      cualquier fila de otra tabla. Así no se interbloquea con la desactivación de 002 (en la 004 fue un `40P01` que
+      terminaba en 500).
+    - El 409 de un choque con un índice único sale del nombre de la restricción violada (`restriccionDeUnicidadViolada`),
+      después del `ROLLBACK` y sin releer las filas. No se usa `ON CONFLICT DO NOTHING` cuando el choque puede dar dos
+      códigos: oculta cuál índice chocó.
+    - Cualquier índice sobre `lower()` exige una base con `LC_CTYPE` UTF-8 (criterio 34 c de 004).
 - **006 · Caja.** Apertura, movimientos, egresos, cierre con esperado por método y diferencia, reapertura por el
   administrador, PDF del cierre (HU-25 a HU-27, RN-17).
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de

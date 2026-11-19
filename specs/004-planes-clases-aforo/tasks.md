@@ -18,32 +18,32 @@ implementa. No se empieza T1 sin la aprobación del responsable (dada el 17/11/2
 
 ## Pruebas protegidas (en rojo)
 
-- [ ] T1 · test-writer · Utilidad `backend/test/utilidades/planes-clases.ts` (crear planes, clases y entrenadores en
+- [x] T1 · test-writer · Utilidad `backend/test/utilidades/planes-clases.ts` (crear planes, clases y entrenadores en
       una academia; escribir filas como dueño de las tablas, también inválidas). Pruebas protegidas de las tablas, el
       catálogo, la llave compuesta, los `CHECK`, RLS y los privilegios de `planes` y `clases`; actualización de las
       pruebas protegidas de 001 que comparan la lista exacta de privilegios (y de `scripts/` si las hay) para sumar las
       de `planes` y `clases`, sin quitar nada (criterios 1 a 4)
-- [ ] T2 · test-writer · Pruebas protegidas de las seis rutas: permisos por rol, sin sesión, cambio obligatorio,
+- [x] T2 · test-writer · Pruebas protegidas de las seis rutas: permisos por rol, sin sesión, cambio obligatorio,
       academia suspendida y cookie del Superadmin; aislamiento por id, por cuerpo, por parámetro de consulta y por
       `entrenadorId` de otra academia; carrera determinista del actor vigente en `POST /api/planes` y
       `PATCH /api/clases/{id}` (criterios 5 a 7)
-- [ ] T3 · test-writer · Pruebas protegidas del precio y las clases por mes (unitarias de `montoSchema` y de
+- [x] T3 · test-writer · Pruebas protegidas del precio y las clases por mes (unitarias de `montoSchema` y de
       integración con ida y vuelta exacta), del aforo de 20 a 50 al crear y editar, de la espera del `PATCH` tras el
       bloqueo de la clase (casos a, b y c del criterio 22) y de `bloquearClasesParaCupo` (academia, ids ajenos o
       repetidos, lista vacía, órdenes cruzados sin `40P01`) (criterios 10, 18, 22, 23)
-- [ ] T4 · tester · Confirmar que T1 a T3 fallan por falta de la funcionalidad (tablas, rutas, esquemas o funciones
+- [x] T4 · tester · Confirmar que T1 a T3 fallan por falta de la funcionalidad (tablas, rutas, esquemas o funciones
       inexistentes) y no por sintaxis, importaciones o configuración; y que las pruebas protegidas de 001, 002 y 003
       que no se tocaron siguen pasando. Antes del commit, `git diff --cached --stat` solo con archivos de prueba. Commit
       del orquestador: "Pruebas protegidas (004): planes y clases, aislamiento, permisos y aforo (en rojo)"
-- [ ] T4a · test-writer · Actualizar la prueba protegida de la semilla de 002 (criterio 45,
+- [x] T4a · test-writer · Actualizar la prueba protegida de la semilla de 002 (criterio 45,
       `backend/test/integracion/semilla/semilla-usuarios.test.ts`) para el segundo entrenador del criterio 30: 5
       usuarios en `delfines`, 6 en total, dos `ENTRENADOR` (`10000003` y `10000005`), sin quitar nada de lo que
       comprueba. Commit propio "Pruebas protegidas (004): …", antes de la parte pendiente de T10 (AT-5 de 004)
 
 ## Implementación
 
-_T5 a T9: hechas en el commit be7170a (backend). T10: hecha salvo el segundo entrenador. Ajustes técnicos de la
-implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
+_T5 a T9: hechas en el commit be7170a (backend). T10: hecha en 46a15fb (el segundo entrenador). T11 (web): hecha en
+e31f878. Ajustes técnicos de la implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
 
 - [x] T5 · backend · Contratos `horario.ts`, `dinero.ts`, `planes.ts` y `clases.ts` con pruebas unitarias de sus
       bordes (bloques, fechas reales, montos, arreglos sin repetidos, reglas cruzadas del `POST`) (criterios 8 a 10,
@@ -66,18 +66,17 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
       creaciones simultáneas, edición, lista y entrenador desactivado (criterios 16, 17, 19 a 21, 24, 25) _(entrenador
       bloqueado junto con el actor al crear o reasignar, con su prueba no protegida
       `backend/test/integracion/planes-clases/clases-interbloqueo.test.ts`: AT-1; id del `PATCH` en el servicio: AT-2)_
-- [ ] T10 · backend · Semilla: segundo entrenador, planes y clases de `delfines`, repetible (criterio 30) _(planes y
-      clases hechos en be7170a; falta el segundo entrenador (DNI `10000005`) y las dos clases del mismo bloque con
-      entrenadores distintos, que esperan al commit "Pruebas protegidas (004)" con la actualización de la prueba
-      protegida del criterio 45 de 002: AT-5)_
-- [ ] T11 · frontend · `/panel/planes` y `/panel/clases` (grilla semanal), opciones del inicio, formularios con la base
+- [x] T10 · backend · Semilla: segundo entrenador, planes y clases de `delfines`, repetible (criterio 30) _(hecha: planes
+      y clases en be7170a; el segundo entrenador (DNI `10000005`) y las dos clases del mismo bloque con entrenadores
+      distintos en 46a15fb, después del commit de pruebas protegidas de T4a (a5f797e): AT-5)_
+- [x] T11 · frontend · `/panel/planes` y `/panel/clases` (grilla semanal), opciones del inicio, formularios con la base
       de llenado, `fieldset` desactivado al guardar y claves con la identidad de la sesión; `lib/dinero.ts`; pruebas de
       componentes (criterios 26 a 29)
 - [ ] T12 · tester · Pruebas protegidas en verde y suite completa
 
 ## Ataque
 
-- [ ] T13 · adversarial · Atacar los criterios críticos con la spec y el código (sin el razonamiento de quien
+- [x] T13 · adversarial · Atacar los criterios críticos con la spec y el código (sin el razonamiento de quien
       implementó): leer o cambiar planes y clases de otra academia (ids, campos de más, parámetros de consulta,
       `entrenadorId` de otra academia, escrituras directas que se salten RLS o la llave compuesta); roles sin permiso,
       cambio obligatorio pendiente, academia suspendida, administrador desactivado o con la sesión cerrada mientras
@@ -95,25 +94,25 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
 
 ### Ronda 1 adversarial
 
-- [ ] T13a · test-writer · Pruebas protegidas en rojo del criterio 32: `POST /api/clases` y `PATCH /api/clases/{id}`
+- [x] T13a · test-writer · Pruebas protegidas en rojo del criterio 32: `POST /api/clases` y `PATCH /api/clases/{id}`
       (reactivar y cambiar entrenador) que chocan con una clase C mientras otra transacción confirmada la desactiva o
       reactiva otra entre medio (espera comprobada en `pg_locks`, sin depender de tiempos); siempre 201/200 o 409
       `CLASE_DUPLICADA`/`ENTRENADOR_OCUPADO`, nunca 500, con filas y auditoría coherentes (criterio 32)
-- [ ] T13b · test-writer · Pruebas protegidas en rojo del criterio 33: `INSERT` y `UPDATE` directos como
+- [x] T13b · test-writer · Pruebas protegidas en rojo del criterio 33: `INSERT` y `UPDATE` directos como
       `aquagestion_app` en su academia con `precio = 'NaN'`, los tres arreglos con dos dimensiones y con un `NULL`, y
       `vigencia_inicio`/`vigencia_fin` en `'infinity'` y `'-infinity'`, todos con `23514` exacto (criterio 33)
-- [ ] T13c · tester · Confirmar que T13a y T13b fallan por la razón esperada (500 en la carrera; la fila se escribe en
+- [x] T13c · tester · Confirmar que T13a y T13b fallan por la razón esperada (500 en la carrera; la fila se escribe en
       vez de dar `23514`) y no por la prueba; que las demás protegidas siguen como estaban. Commit del orquestador:
       "Pruebas protegidas (004): ronda 1 adversarial, choques de clases e invariantes de planes (en rojo)"
-- [ ] T13d · backend · Corrección del criterio 32 en `ClasesService`: `INSERT` sin `ON CONFLICT` y 409 por el nombre
+- [x] T13d · backend · Corrección del criterio 32 en `ClasesService`: `INSERT` sin `ON CONFLICT` y 409 por el nombre
       de la restricción después del `ROLLBACK` en `POST` y `PATCH`, sin releer para decidir; la consulta del 20 e solo
       elige entre los dos 409 (plan, sección 9.1). Sin tocar las pruebas protegidas (criterios 20 e, 20 f, 21, 32)
-- [ ] T13e · backend · Migración `<marca>_planes_clases_invariantes` con los `CHECK` de `NaN`, dimensiones, `NULL` y
+- [x] T13e · backend · Migración `<marca>_planes_clases_invariantes` con los `CHECK` de `NaN`, dimensiones, `NULL` y
       fechas finitas (plan, sección 9.2); comprobar que las pruebas de catálogo de 001 siguen pasando (criterios 4, 33)
-- [ ] T13f · backend · `normalizarNombrePlan` en `packages/contratos` y `nombrePlanSchema` que normaliza antes de
+- [x] T13f · backend · `normalizarNombrePlan` en `packages/contratos` y `nombrePlanSchema` que normaliza antes de
       validar; prueba no protegida: unitarias de la normalización e integración de los 409 de `POST` y `PATCH` y del
       `PATCH` sin cambios (plan, sección 9.3; criterios 11, 12, 34)
-- [ ] T13g · tester · Pruebas protegidas en verde (T13a, T13b) y suite completa; después, el orquestador vuelve a
+- [x] T13g · tester · Pruebas protegidas en verde (T13a, T13b) y suite completa; después, el orquestador vuelve a
       lanzar el ataque (ronda 2)
 
 ### Ronda 2 adversarial
@@ -121,16 +120,16 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
 **Ronda 2 adversarial: 2 fallas en el 34 (no crítico), ninguna en ruta crítica**; agregadas a la spec como criterios
 34 a y 34 b ("H. Ronda 2 adversarial") y DT-7. Sin pruebas protegidas nuevas (no son de ruta crítica).
 
-- [ ] T13h · backend · Corrección en `packages/contratos/src/planes.ts`: `normalizarNombrePlan` quita `Cf` y
+- [x] T13h · backend · Corrección en `packages/contratos/src/planes.ts`: `normalizarNombrePlan` quita `Cf` y
       `Default_Ignorable_Code_Point` salvo `Bidi_Control`, pasa `Zs` y U+2800 a espacio, colapsa, recorta y aplica NFC
       al final (plan, sección 10). Prueba no protegida en `planes-nombre-normalizado.test.ts` (invisible entre letra y
       tilde, U+034F, U+2800, selectores de variación y mongoles, bidi y U+2028/U+2029 siguen con error, idempotencia y
       resultado en NFC) e integración de los 409 y del nombre guardado en NFC en `POST` y `PATCH` (criterios 34 a, 34 b)
-- [ ] T13i · frontend · `frontend/src/modulos/planes/campos.ts` usa `normalizarNombrePlan` en lugar de `trim()` para el
+- [x] T13i · frontend · `frontend/src/modulos/planes/campos.ts` usa `normalizarNombrePlan` en lugar de `trim()` para el
       nombre que envía y para decidir si cambió frente a la base del formulario; prueba no protegida (un nombre con
       invisibles se envía normalizado; un cambio solo de invisibles o de NFD no manda `nombre` en el `PATCH`)
       (criterios 29 y 34 a d)
-- [ ] T13j · tester · Suite completa (contratos, backend y web), lint y verificación de tipos; después, el orquestador
+- [x] T13j · tester · Suite completa (contratos, backend y web), lint y verificación de tipos; después, el orquestador
       decide si relanza el ataque sobre el 34 o pasa a la revisión (T14)
 
 ### Ronda 3 adversarial (de confirmación)
@@ -138,12 +137,12 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
 **Ronda 3 adversarial: sin fallas en ruta crítica ni regresiones; una falla menor en 11 + 34 aceptada como riesgo**
 (spec, "I. Ronda 3 adversarial" y "Riesgos aceptados"; plan, sección 11). Sin pruebas protegidas nuevas.
 
-- [ ] T13k · backend · Prueba de integración no protegida del criterio 34 c (mayúsculas acentuadas en `POST` y `PATCH`,
+- [x] T13k · backend · Prueba de integración no protegida del criterio 34 c (mayúsculas acentuadas en `POST` y `PATCH`,
       409 sin escribir ni auditar; falla con una base de `LC_CTYPE` `C` o `POSIX`); ajustar la prueba de contratos de
       U+2028 y U+2029 a los dos casos del 34 b (en medio, error; en los extremos, recortados); AT-6 (aviso en
       `hayClaseDelMismoNivel`) y AT-7 (`diaSemanaSchema` tipado como `DiaSemana`) (criterios 11, 17, 32, 34 b, 34 c)
-- [ ] T13l · frontend · AT-8: `diaDeLaSemanaEnLima` sin `?? 1` silencioso, con su prueba (criterio 28)
-- [ ] T13m · tester · Suite completa (contratos, backend y web), lint y verificación de tipos
+- [x] T13l · frontend · AT-8: `diaDeLaSemanaEnLima` sin `?? 1` silencioso, con su prueba (criterio 28)
+- [x] T13m · tester · Suite completa (contratos, backend y web), lint y verificación de tipos
 
 ## Revisión y cierre
 
@@ -153,10 +152,10 @@ implementación en la spec, AT-1 a AT-5 de 004 ("Decisiones")._
       en Lima, orden de bloqueos) y las convenciones; verificar la semilla y la documentación (criterios 30 y 31)
 - [ ] T16 · tester · Suite completa, lint y verificación de tipos
 - [ ] T17 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, `bloquearClasesParaCupo` y las
-      reglas para las historias siguientes de la spec), `README.md` y guía de uso (criterio 31)
+      reglas para las historias siguientes de la spec), `README.md` y guía de uso (criterio 31). _Hecha en el árbol de trabajo; el commit lo hace el orquestador y entonces se marca._
 
 ## Solo ruta crítica
 
-- [ ] Pruebas escritas por test-writer y confirmadas en rojo
+- [x] Pruebas escritas por test-writer y confirmadas en rojo
 - [ ] Pruebas en verde tras la implementación
-- [ ] Ataque adversarial sin fallas abiertas
+- [x] Ataque adversarial sin fallas abiertas

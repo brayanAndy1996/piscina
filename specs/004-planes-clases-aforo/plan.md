@@ -179,6 +179,8 @@ Con `ids` sin repetidos, en minúsculas, solo UUID válidos; con la lista vacía
    activa del mismo nivel en el bloque → `CLASE_DUPLICADA`; si no, una del mismo entrenador → `ENTRENADOR_OCUPADO`).
    `ON CONFLICT DO NOTHING` sin destino espera a la transacción que tiene la fila en conflicto, así que la consulta
    posterior ve la fila confirmada (criterio 20 f).
+   **Reemplazado en la ronda 1 (criterio 32, sección 9.1):** ahora es `INSERT … RETURNING …` sin `ON CONFLICT`, y el
+   409 se decide por el nombre de la restricción violada, después del `ROLLBACK`.
 4. Auditoría `CLASE_CREADA`.
 
 **`PATCH /api/clases/{id}`:**

@@ -760,6 +760,7 @@ Propuestas del especificador, aprobadas con la spec (17/11/2026).
 - **D4. Los choques del bloque los decide la base** con índices únicos parciales (`WHERE activo`) e
   `INSERT … ON CONFLICT DO NOTHING`, y después se averigua qué índice chocó para elegir el código. Alternativa
   descartada: consultar antes de insertar (dos creaciones simultáneas pasarían las dos).
+  _Modificada en la ronda 1 (criterio 32): sin `ON CONFLICT`; el código sale del nombre de la restricción violada._
 - **D5. Un bloqueo común para el cupo:** la fila de la clase (`FOR UPDATE`, ordenado por id). Alternativa descartada: un
   `pg_advisory_xact_lock` por clase (no se ve en la fila, y cada historia tendría que recordar la clave) o un contador
   de inscritos en la fila de la clase (se desincroniza con las reservas y rechazos de la 005 a la 010).
