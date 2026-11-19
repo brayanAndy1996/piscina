@@ -14,7 +14,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 001 | Academias y aislamiento | Sí | ✅ |
 | 002 | Autenticación y roles por academia | Sí | ✅ |
 | 003 | Configuración de la academia | En parte | ✅ |
-| 004 | Planes y clases con aforo | En parte | 🟨 |
+| 004 | Planes y clases con aforo | En parte | ✅ |
 | 005 | Inscripción pública y seguimiento de la solicitud | Sí | ⬜ |
 | 006 | Caja | Sí | ⬜ |
 | 007 | Pagos, verificación y paso de cliente a alumno | Sí | ⬜ |
@@ -67,8 +67,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   intentos de inicio de sesión, identidad de la academia (D-22).
 - **004 · Planes y clases.** Planes (HU-19, RN-07) y clases por nivel, día, hora y entrenador, con aforo de 20 a 50
   (HU-17, RN-09 a RN-11). Lo crítico: el aforo.
-  - Estado: construida; pendiente de la revisión (T15), de la suite completa (T16) y del PR. Se marca ✅ al unirse a
-    `main`. Lo que heredan la 005 y las siguientes está en su nota y en «Planes, clases y cupo (004)» de
+  - Estado: unida a `main` el 19/11/2026 (PR #7), tras tres rondas adversariales. Lo que heredan la 005 y las siguientes está en su nota y en «Planes, clases y cupo (004)» de
     [`docs/arquitectura.md`](../docs/arquitectura.md).
 - **005 · Inscripción pública.** Formulario con datos, ficha médica, apoderado y consentimientos (HU-01, RN-20,
   D-07), elección de días y horario con cupo (HU-02), foto opcional (D-20, D-24), código y enlace de seguimiento
