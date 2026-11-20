@@ -19,6 +19,15 @@ migración completa (con `alumnos.foto_clave`, su privilegio de `UPDATE` y los e
 `vistaSolicitudSchema` (en la 005a siempre `false`) y `contarInscritos`. La regla del límite de la foto (sección 8) y su
 prueba entran con la ruta, en la 005b. Detalle en "División en 005a y 005b" de `spec.md`.
 
+**Ronda 1 del ataque de la 005a (20/11/2026):** criterios 49 a 53 y ajuste del 47. Cambian las secciones 1 (monto
+cotizado), 6 (pasos 12 y 13), 8 (`HEAD`), 10 (correo sin esperar y su registro), 13 (semilla) y la nueva 14 (registro
+técnico); y P10 (llaves primarias con `academia_id`, ya aplicada) en la sección 2.
+
+**Respuestas del responsable a la ronda 1 (20/11/2026, DR-12 a DR-15):** criterios 54 a 60 y ajuste del 47 d. Cambian
+las secciones 1 (vista reducida), 2 (migración nueva con el `CHECK`), 3 (`vencimientoDeReserva`), 6 (pasos 1, 7, 12 y
+13), 7 (vista reducida), 8 (`claveDeConexion`), 10 (destinatarios), 12 (seguimiento sin nombre) y 13 (semilla), y la
+nueva 15 (pruebas con IP fijada).
+
 ## Módulos afectados
 
 ```
@@ -34,6 +43,8 @@ piscina/
 │   ├── package.json                      [005b] + sharp (D-25; DT-6)
 │   ├── prisma/schema.prisma              + tipos y las siete tablas
 │   ├── prisma/migrations/<marca>_inscripcion_publica/   tipos, tablas, CHECK, índices, RLS, políticas, privilegios
+│   ├── prisma/migrations/<marca>_reserva_dentro_del_mes/   CHECK matriculas_reserva_dentro_del_mes (criterio 56)
+│   ├── src/comun/http/conexion.ts (+ .test.ts)         claveDeConexion (criterio 59)
 │   ├── prisma/seed.ts                    + solicitudes de ejemplo en delfines (criterio 47)
 │   ├── src/infraestructura/prisma/privilegios-app.ts   + privilegios de las siete tablas
 │   ├── src/infraestructura/almacen-archivos/          [005b] nuevo: interfaz, disco local, módulo, claves
@@ -46,6 +57,7 @@ piscina/
 │   ├── src/modulos/auditoria/insercion.ts             actorTipo + 'PUBLICO'
 │   ├── src/modulos/matriculas/                        nuevo (sin controlador)
 │   │   ├── dominio/cobro.ts (+ .test.ts)              clasesRestantes, montoProporcional, calcularTotal (racional)
+│   │   ├── dominio/reserva.ts (+ .test.ts)            finDelMesEnLima, vencimientoDeReserva (criterio 54)
 │   │   ├── ocupacion.ts                               contarOcupacion, contarInscritos (sin Nest)
 │   │   └── index.ts
 │   ├── src/modulos/inscripciones/                     nuevo
@@ -93,14 +105,25 @@ piscina/
   - `enviarInscripcionSchema` con un `superRefine` que exige `apoderado` si es menor y lo prohíbe si es mayor no puede
     saber "hoy"; por eso esa regla también la aplica el servicio (400 en `apoderado`), y el esquema solo comprueba la
     forma de `apoderado` cuando viene.
-  - `claseIds`: arreglo de 1 a 7 UUID sin repetidos; `mes`: `^\d{4}-(0[1-9]|1[0-2])$`; `montoMostrado`: `montoSchema`;
-    `claveIdempotencia`: `z.uuid()`.
+  - `claseIds`: arreglo de 1 a 7 UUID sin repetidos; `mes`: `^\d{4}-(0[1-9]|1[0-2])$`; `montoMostrado`:
+    `montoCotizadoSchema` (ronda 1, criterio 50); `claveIdempotencia`: `z.uuid()`.
+- `dinero.ts` (ronda 1, criterio 50): `MONTO_COTIZADO_MAXIMO = '100000.00'` y `montoCotizadoSchema`: el mismo patrón de
+  forma que `montoSchema` pero con hasta seis dígitos enteros (`^(?:0|[1-9][0-9]{0,5})(?:\.[0-9]{1,2})?$`), mayor que 0
+  (algún dígito distinto de cero, sobre el texto) y, si la parte entera tiene seis dígitos, que sea `100000` con
+  decimales en cero (comparación sobre el texto, sin `Number`). `montoSchema` y `MONTO_MAXIMO` no se tocan (pruebas
+  protegidas de 004). El máximo sale de `techo(99999.99 × n ÷ n) = 100000`; ninguna otra combinación lo supera porque
+  `clasesTotales <= clasesPorMes`.
 - `consentimientos.ts`: `VERSION_CONSENTIMIENTOS = '2026-11-v1-provisional'`; `textosConsentimiento(nombreAcademia,
   { menor })` devuelve los tres textos (el de datos personales nombra los datos de salud y, si es menor, los de menores y
   al apoderado como quien acepta). Textos inventados y genéricos (repositorio público).
 - `solicitudes.ts`: `ALFABETO_CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'`; `codigoSolicitudSchema` recorta y pasa a
   mayúsculas antes del `regex`; `consultarSolicitudSchema = z.union([z.strictObject({ token }), z.strictObject({
-  codigo, dni })])`; `vistaSolicitudSchema` estricto con los campos del criterio 32.
+  codigo, dni })])`; `vistaSolicitudSchema` estricto con los campos del criterio 32. **Respuesta R3 (criterio 58):**
+  `vistaSolicitudSchema = z.discriminatedUnion('estado', [vistaCompleta, vistaReducida])`, con `vistaCompleta`
+  (`estado: z.literal('PENDIENTE_PAGO')`, con `reservaVenceEn`, `nombres` y `fotoCargada`) y `vistaReducida`
+  (`estado: z.enum(['VENCIDA', 'CANCELADA'])`, sin esas tres claves), las dos con `z.strictObject` y una base común
+  (`codigo`, `creadaEn`, `plan`, `clases`, `mes`, `clasesTotales`, `monto`, `esProporcional`). La 007 suma sus estados
+  a una de las dos ramas según la regla "Vista de seguimiento" de la spec.
 - `clases.ts`: `confirmarAforoMenor: z.boolean().optional()` en `actualizarClaseSchema`; el `refine` "al menos un campo"
   cuenta solo `entrenadorId`, `aforo` y `activo`.
 
@@ -132,6 +155,24 @@ Ampliar en el mismo cambio `PRIVILEGIOS_APP`, `scripts/lib/rol-app.mjs` y `TABLA
 Precisiones de la spec (P4 y P5): `consentimientos` lleva `UNIQUE (academia_id, id)`, y el `GRANT UPDATE` de
 `apoderados` y `fichas_medicas` no incluye `creado_en`.
 
+P10 (decisión del orquestador, ya aplicada): PK `(academia_id, alumno_id)` en `apoderados` y `fichas_medicas`, y
+`(academia_id, matricula_id, clase_id)` en `matricula_clases` (criterios 126, 131 y 142 de 001).
+
+**Respuesta R1 (criterio 56, AT1-6): migración nueva `<marca>_reserva_dentro_del_mes`** (no se edita la de la 005a, ya
+aplicada en las bases de desarrollo de la rama):
+
+```sql
+ALTER TABLE matriculas ADD CONSTRAINT matriculas_reserva_dentro_del_mes CHECK (
+  reserva_vence_en IS NULL OR (
+    CASE WHEN anio BETWEEN 2000 AND 9999 AND mes BETWEEN 1 AND 12
+         THEN reserva_vence_en < ((make_date(anio, mes, 1) + interval '1 month')::timestamp AT TIME ZONE 'America/Lima')
+         ELSE false END));
+```
+
+`timestamp AT TIME ZONE 'America/Lima'` da un `timestamptz` que no depende del `TimeZone` de la sesión (la prueba lo
+comprueba con `SET TIME ZONE`). El `CASE` evita que `make_date` falle con `22008` antes de los `CHECK` de `anio` y `mes`
+(mismo cuidado que `matriculas_fechas_del_mes`). Sin `GRANT` nuevos.
+
 ### 3. Dominio (funciones puras)
 
 - `matriculas/dominio/cobro.ts`:
@@ -146,6 +187,12 @@ Precisiones de la spec (P4 y P5): `consentimientos` lleva `UNIQUE (academia_id, 
     `p` → `base × (100 − p) / 100`; fijo `f` → `max(0, base − f)`; techo al final. Devuelve `Decimal` con `.00`.
   - Pruebas: tabla de D-03; los casos del criterio 9; propiedades con `fast-check` si ya está en el repositorio, o una
     lista amplia generada en la prueba (precios de `0.01` a `99999.99`, clases de 1 a 31).
+- `matriculas/dominio/reserva.ts` (respuesta R1, criterio 54): `finDelMesEnLima(ahora)` toma el mes de
+  `hoyEnLima(ahora)`, arma el primer instante del mes siguiente con `new TZDate(anio, mes, 1, 'America/Lima')` (el
+  `mes` de 1 a 12, usado como índice de 0 a 11, ya es el mes siguiente; el 12 pasa a enero del año siguiente) y le resta
+  1 ms; `vencimientoDeReserva(ahora) = min(ahora + 24 h, finDelMesEnLima(ahora))`, comparando
+  `getTime()`. Sin `getMonth`, `getDate` ni la zona del proceso. `RESERVA_SIN_PAGO_MS = 24 * 60 * 60 * 1000` queda en
+  ese archivo, junto a la función.
 - `inscripciones/dominio/edad.ts`: reexporta `esMenorDeEdad` y `validarFechaNacimiento` de los contratos y las prueba en
   los bordes del criterio 13.
 - `inscripciones/dominio/seleccion.ts`: `validarSeleccion(plan, nivel, clasesBloqueadas, claseIds)` → lista de errores
@@ -186,8 +233,8 @@ Middleware: límite "envío" por IP (sección 8). Controlador: pipe de la academ
 `ahora = RELOJ.ahora()`, `hoy` y `mes en curso`. Comprobaciones sin base: fecha de nacimiento (400), apoderado según la
 edad (400). Después, un `conAcademia(academia.id, …)`:
 
-1. Bloqueos consultivos, en este orden: IP de origen y DNI (`pg_advisory_xact_lock(hashtextextended(…, 0))` con
-   `$executeRaw`, criterio 155 de 001).
+1. Bloqueos consultivos, en este orden: conexión de origen (`claveDeConexion(ip)`, respuesta R4, criterio 60) y DNI
+   (`pg_advisory_xact_lock(hashtextextended(…, 0))` con `$executeRaw`, criterio 155 de 001).
 2. Idempotencia: `SELECT s.codigo, a.dni FROM solicitudes_inscripcion s JOIN alumnos a … WHERE s.clave_idempotencia =
    …`. Si existe: con el mismo DNI, 409 `SOLICITUD_YA_REGISTRADA` con el código; con otro, sin `detalles`.
 3. `version` de los consentimientos frente a `VERSION_CONSENTIMIENTOS` → 409 `TEXTOS_ACTUALIZADOS`.
@@ -199,27 +246,33 @@ edad (400). Después, un `conAcademia(academia.id, …)`:
    academia_id = … AND dni = …` (sin bloqueo); si hay alumno `CLIENTE`, sus solicitudes `PENDIENTE_PAGO` y matrículas
    `RESERVADA` con `FOR UPDATE`. Alumno que no es `CLIENTE`, usuario del personal o solicitud activa → 409
    `DNI_YA_REGISTRADO`.
-7. Límite por conexión: `count(*)` de solicitudes activas con `ip_origen` igual (con la matrícula que ocupa cupo) → 409
-   `LIMITE_DE_RESERVAS_PENDIENTES` si llega a 5.
+7. Límite por conexión: `count(*)` de solicitudes activas de la misma clave de conexión (con la matrícula que ocupa
+   cupo) → 409 `LIMITE_DE_RESERVAS_PENDIENTES` si llega a 5. **Respuesta R4 (criterio 60):** la condición sobre
+   `ip_origen` sale de la clave: si es una IPv4 `a.b.c.d`, `s.ip_origen IN ('a.b.c.d'::inet, '::ffff:a.b.c.d'::inet)`
+   (la fila puede guardar cualquiera de las dos formas, porque `ipParaAuditoria` no convierte la mapeada); si es un
+   bloque `p::/64`, `s.ip_origen <<= 'p::/64'::cidr AND NOT s.ip_origen <<= '::ffff:0:0/96'::cidr` (las mapeadas son
+   IPv4, aunque caigan en `::/64`). Una `inet` IPv4 nunca está contenida en un `cidr` IPv6. Los valores van como
+   parámetros, nunca concatenados.
 8. `bloquearClasesParaCupo(tx, claseIds)`, una sola llamada.
 9. `validarSeleccion` → 409 `SELECCION_NO_VALIDA`; `clasesRestantes` → 409 `SIN_CLASES_EN_EL_MES`.
 10. `contarOcupacion` del mes en curso → 409 `SIN_CUPO` con todas las clases llenas.
 11. `montoProporcional` y comparación con `montoMostrado` (`montosIguales`) → 409 `MONTO_CAMBIO` con la cotización.
 12. Escrituras (una sentencia por tabla, sin bucles de escrituras de modelos):
     - solicitudes vencidas del cliente → `VENCIDA`; sus matrículas `RESERVADA` vencidas → `CANCELADA`;
-    - alumno: `INSERT` (nuevo) o `UPDATE` de sus datos (cliente que vuelve); ficha: `INSERT … ON CONFLICT (alumno_id) DO
-      UPDATE`; apoderado: lo mismo, o `DELETE` si ya es mayor;
+    - alumno: `INSERT` (nuevo) o `UPDATE` de sus datos (cliente que vuelve); ficha: `INSERT … ON CONFLICT (academia_id,
+      alumno_id) DO UPDATE` (P10); apoderado: lo mismo, o `DELETE` si ya es mayor;
     - solicitud: `INSERT … ON CONFLICT ON CONSTRAINT solicitudes_inscripcion_academia_id_codigo_key DO NOTHING
       RETURNING id`, con hasta 5 códigos nuevos si no vuelve fila (el choque de código solo da un resultado posible, así
       que vale el patrón de "Transacciones"); los demás índices únicos fallan con `23505`, y el 409 sale después del
       `ROLLBACK` por el nombre de la restricción (`restriccionDeUnicidadViolada`): `…_clave_idempotencia_key` →
       `SOLICITUD_YA_REGISTRADA` sin `detalles`; `alumnos_academia_id_dni_key` → `DNI_YA_REGISTRADO`;
-    - matrícula `RESERVADA` (`reserva_vence_en = ahora + 24 h`) y `matricula_clases` en un solo `INSERT … SELECT
-      unnest(…)`;
+    - matrícula `RESERVADA` (`reserva_vence_en = vencimientoDeReserva(ahora)`, respuesta R1, criterio 54) y
+      `matricula_clases` en un solo `INSERT … SELECT unnest(…)`;
     - consentimientos en un solo `INSERT` de varias filas;
     - auditoría `SOLICITUD_INSCRIPCION_CREADA` (actor `PUBLICO`) con `insertarEnAuditoriaDeAcademia`.
-13. Confirmar. Después: `EnviadorCorreo.enviar` si hay correo, dentro de un `try/catch` que registra el fallo con
-    `errorParaRegistro` y sin datos personales; la respuesta 201 no espera más que eso.
+13. Confirmar. Después, si hay correo, se inicia el envío **sin esperarlo** y se responde el 201 (ronda 1, criterios 51
+    y 52; sección 10): la respuesta no depende del correo. Desde la respuesta R2 (criterio 57), un envío sin esperar por
+    cada destinatario distinto (alumno y apoderado), con los correos del formulario.
 
 Las respuestas 409 con `detalles` (código, clases sin cupo, cotización) se arman con datos leídos dentro de la
 transacción antes de lanzar el error; nada se relee después del `ROLLBACK`, salvo la consulta de la idempotencia del
@@ -238,6 +291,11 @@ lectura busca el código con la misma clave y el mismo DNI, y si falla responde 
   (P2); `mes` va como `AAAA-MM` y `monto` como texto con dos decimales (P8).
 - `fotoCargada` = `alumnos.foto_clave IS NOT NULL`. En la 005a siempre es `false` (no hay ruta para subirla), pero el
   campo ya está en el esquema estricto para que la 005b no lo cambie.
+- **Respuesta R3 (criterio 58): vista reducida.** Con el estado visible `VENCIDA` o `CANCELADA`, la vista se arma sin
+  `nombres`, `fotoCargada` ni `reservaVenceEn` (las claves no se crean; no se borran después de armarlas con datos). En
+  la 005a eso coincide con "no es la vigente del cliente" (spec, criterio 58), así que no hace falta otra consulta. El
+  plan, las clases, el mes y el monto salen de la matrícula de esa solicitud (`m.solicitud_id = s.id`), nunca de otra
+  del mismo alumno.
 - Sin auditoría (es una lectura). El registro técnico no lleva el código junto con el DNI ni el token.
 
 ### 8. Límites por IP (`instalarProteccionDePrefijos`)
@@ -248,6 +306,24 @@ la regla "lectura"; `POST …/inscripcion/cotizacion`, `POST …/inscripcion` y 
 suya (005a); la regla de `PUT …/solicitudes/foto` se suma a la tabla en la 005b, con su ruta. Cuenta con `almacenLimite.increment(`publico-${nombre}:${ip}`, …)` antes de
 `comprobarDireccion` y antes de leer el cuerpo, como el ingreso. Sin coincidencia, sigue como hoy. Las pruebas usan un
 almacén limpio por prueba (como las de 002).
+
+**Ronda 1 (criterio 49):** la comparación del método trata `HEAD` como `GET` (por ejemplo, una función
+`metodoParaLimite(solicitud.method)` que devuelve `'GET'` para `HEAD`), así que `HEAD` cae en la misma regla y en la
+misma clave del almacén (`publico-lectura:${ip}`). No se suma una regla por `HEAD` en `LIMITES_PUBLICOS` (contaría
+aparte). La 005b, al sumar la foto (`PUT`), no necesita nada más.
+
+**Respuesta R4 (criterio 59): clave de conexión.** La clave del almacén pasa a ser
+`publico-${nombre}:${claveDeConexion(solicitud.ip ?? '')}`. `claveDeConexion` (`comun/http/conexion.ts`, pura):
+
+- quita la zona (`%…`) si la hay; con `net.isIPv4`, devuelve la IPv4;
+- con `net.isIPv6`, expande la dirección a sus 16 bytes con un analizador propio (o `net.SocketAddress`/`BlockList` si
+  alcanza; sin dependencias nuevas): si los primeros 10 bytes son 0 y los dos siguientes `ff ff`, devuelve la IPv4 de
+  los últimos 4; si no, toma los primeros 8 bytes y los escribe en forma canónica de RFC 5952 (minúsculas, sin ceros a
+  la izquierda, la racha más larga de grupos en cero como `::`) seguida de `/64`;
+- con cualquier otro texto, lo devuelve tal cual (como hoy, sin lanzar).
+
+El límite del ingreso (`LIMITE_INICIO_SESION`) no cambia (pregunta R6). La regla de la foto de la 005b usa la misma
+clave sin cambios.
 
 ### 9. [005b] Foto (`FotoService`, `AlmacenArchivos`)
 
@@ -284,6 +360,22 @@ Toda esta sección es de la 005b.
   código y el enlace absoluto (`URL_PUBLICA_WEB` si existe; si no, solo la ruta: la decisión de la variable se toma con
   el hosting).
 - Se llama después de `conAcademia` (efecto después de confirmar) y nunca dentro de `trabajo`.
+- **Ronda 1 (criterio 51): sin esperar.** Una función `enviarSinEsperar(correo, mensaje, registro)` que hace
+  `void Promise.resolve().then(() => correo.enviar(mensaje)).catch((error) => registrarFallo(error))`: el `then`
+  convierte un error síncrono en rechazo, el `catch` impide un `unhandledRejection`, y el servicio no hace `await` de
+  esa promesa. Límite fijo: **la respuesta no espera nada** (0 ms) al correo; la prueba usa 2 s solo como margen. Sin
+  temporizadores que mantengan vivo el proceso. El correo se arma (asunto, cuerpo y enlace) antes de iniciar el envío,
+  con datos ya leídos, sin volver a la base.
+- **Ronda 1 (criterio 52): registro del fallo.** `registrarFallo` escribe
+  `registro.warn({ academiaId, plantilla, error: { tipo: tipoDeError(error) } }, 'No se pudo enviar el correo')`, con
+  `tipoDeError(valor)`: si es un `Error`, `Object.getPrototypeOf(valor)?.constructor?.name` si cumple
+  `^[A-Za-z_$][A-Za-z0-9_$]{0,63}$` y si no `'Error'` (nunca `valor.name`, que puede ser una propiedad propia con datos);
+  si no es un `Error`, `typeof valor`. Nunca `errorParaRegistro`, el mensaje, la pila, la `cause` ni las propiedades.
+  La lectura del constructor va en un `try` (un `Proxy` o un getter que lanza devuelven `'Error'`).
+- **Respuesta R2 (criterio 57): destinatarios.** `destinatariosDelEnlace(cuerpo)` devuelve, sin repetir, el
+  `alumno.correo` y el `apoderado.correo` que vengan (ya recortados y en minúsculas por el esquema), comparando el texto
+  exacto. Por cada uno, una llamada a `enviarSinEsperar` con el mismo mensaje salvo `para`; cada una atrapa y registra
+  su propio fallo, así que una no detiene a la otra. Sin `Promise.all` ni `await`.
 
 ### 11. Panel
 
@@ -317,7 +409,9 @@ De esta sección, solo "`ClasesService` (DR-5)" es de la 005a; la lista, la canc
   seguimiento ofrece reintentarla.
 - **Seguimiento:** el token se lee del parámetro de la ruta, se manda en el cuerpo y se mantiene solo en memoria; la
   consulta no usa persistencia de TanStack Query. `<meta name="referrer" content="no-referrer">` en `index.html` (vale
-  para toda la web; no afecta a la API, que está en el mismo dominio).
+  para toda la web; no afecta a la API, que está en el mismo dominio). **Respuesta R3 (criterio 58):** con la vista
+  reducida, `VistaSeguimiento` no muestra el saludo con el nombre (hoy "Hola, {nombres}") y su prueba de componentes
+  cubre los dos casos.
 - **[005b] Panel:** `PaginaSolicitudes` con filtro y diálogo de cancelación; `GrillaSemanal` muestra "inscritos / aforo" con
   `GET /api/clases/ocupacion`; `FormularioClase` maneja `AFORO_MENOR_QUE_INSCRITOS` con un diálogo que reenvía con
   `confirmarAforoMenor: true`, y `CLASE_CON_INSCRITOS` con un mensaje. Claves con la identidad de la sesión. En la
@@ -329,8 +423,48 @@ De esta sección, solo "`ClasesService` (DR-5)" es de la 005a; la lista, la canc
 En `delfines`, con `enAcademia`: tres clientes inventados (DNI `20000001` a `20000003`), uno menor con apoderado, con
 solicitudes y matrículas sobre los planes y clases de la 004; el código y el hash del token se generan de forma fija a
 partir de un texto de ejemplo (`hashToken('semilla-…')`), y el token no se imprime. Repetible con `ON CONFLICT DO
-NOTHING` sobre `(academia_id, dni)` y `(academia_id, codigo)`. La reserva vigente se crea con `reserva_vence_en` lejana
-(la semilla no usa `RELOJ`) y la vencida con una fecha pasada.
+NOTHING` sobre `(academia_id, dni)` y `(academia_id, codigo)`. **Respuesta R1 (criterio 47 d, AT1-10; reemplaza la
+reserva vigente "con `reserva_vence_en` lejana" de la versión anterior):** las matrículas de ejemplo son del mes en curso según
+`hoyEnLima(new Date())` (la semilla no usa `RELOJ`); la reserva vigente vence en `finDelMesEnLima(new Date())` y la
+vencida en un instante anterior al de sembrar (por ejemplo, una hora antes). El `CHECK` del criterio 56 rechaza
+cualquier otra cosa.
+
+**Ronda 1 (criterio 47, ajustado).** Propuesta concreta, que cumple 47 a) a c):
+
+- `CLASES_DE_EJEMPLO` suma tres clases de Básico con el entrenador `10000005` y aforo 30: miércoles 18:00, martes 18:00
+  y jueves 18:00. Así el plan de 3 veces (lunes, miércoles y viernes) tiene Básico lunes, miércoles y viernes a las
+  18:00, y el de 2 veces (martes y jueves), Básico martes y jueves a las 18:00.
+- La prueba de la semilla de 004 sigue pasando: el bloque del miércoles a las 18:00 queda con dos clases (Avanzado con
+  `10000003` y Básico con `10000005`: niveles y entrenadores distintos, también para `clases_entrenador_bloque_activo_key`);
+  el lunes sigue teniendo una sola clase de Básico (la que la prueba desactiva); no se suman usuarios (002).
+- `CLASES_DE_LOS_CLIENTES` pasa a lunes, miércoles y viernes a las 18:00 (tres clases para el plan de 3 veces), y
+  `monto_calculado` se calcula con `montoProporcional` del dominio (no un literal), con `clases_totales` 8 de 12.
+- Una base de desarrollo sembrada antes de este cambio conserva sus clientes de ejemplo con dos clases (la semilla no
+  pisa lo existente); las clases nuevas sí se agregan, porque faltan.
+- Prueba no protegida en `backend/test/integracion/semilla/` (como la de 004): después de `db:semilla`, para cada plan de
+  ejemplo, con `RELOJ` fijo en el día 1 del mes en curso a las 00:00 de Lima, cotizar y enviar un formulario con una
+  selección de las clases sembradas (DNI nuevo, inventado) responde 201.
+
+### 14. Registro técnico (ronda 1, criterio 53)
+
+- `RUTAS_REDACTADAS` (`infraestructura/registro/opciones-registro.ts`) suma `'req.headers.referer'`, con el mismo
+  `TEXTO_REDACTADO`. Vale para toda la API y todos los niveles, porque la redacción de `pino` se aplica al serializar.
+- La prueba no protegida `opciones-registro.test.ts` cambia el largo esperado de 3 a 4 y comprueba la nueva ruta.
+- **[005b]** Al sumar `PUT …/solicitudes/foto`, se suma `'req.headers["x-token-solicitud"]'` a la misma lista (criterio
+  28, parte de la 005b).
+- No se usa un serializador propio de `req` (alternativa descartada): cambiaría la forma de la línea de petición que ya
+  revisan las pruebas de 002 y dejaría fuera los registros que no pasan por ese serializador.
+
+### 15. Pruebas con la IP fijada (respuesta R4, criterios 59 y 60)
+
+- Hoy todas las pruebas llegan desde `127.0.0.1` o `::ffff:127.0.0.1`. Para probar bloques /64 y formas mapeadas, la
+  utilidad de pruebas crea la app con una opción (por ejemplo `crearAppInscripciones({ conLimites: true, ipPorCabecera:
+  true })`) que hace `app.getHttpAdapter().getInstance().set('trust proxy', 'loopback')`; así `req.ip` sale de
+  `X-Forwarded-For` (Express no la normaliza, así que llegan tal cual las formas con mayúsculas o ceros). La app real no
+  cambia: `trust proxy` se decide con el hosting (DT-9).
+- El código de producción debe tomar la IP solo de `req.ip` (nunca de `req.socket.remoteAddress` ni de cabeceras), para
+  que esa opción la controle. Hoy ya es así en `proteccion-de-prefijos.ts` y en los controladores.
+- Las pruebas unitarias de `claveDeConexion` y `vencimientoDeReserva` no necesitan la app.
 
 ## Decisiones
 
@@ -350,12 +484,28 @@ NOTHING` sobre `(academia_id, dni)` y `(academia_id, codigo)`. La reserva vigent
 | [005b] Ocupación en ruta aparte (D8, DT-5) | Campo en `claseSchema` | No tocar el contrato ni las pruebas protegidas de 004 |
 | Límites por IP en el middleware de `/api/a` (criterio 33) | Guard de Nest | Cuentan antes de leer el cuerpo y de abrir transacciones, como el ingreso de 002 |
 | Correo simulado sin destinatario ni enlace (DT-8) | Registrar el mensaje completo | El enlace es una credencial |
+| `HEAD` comparte la regla y el contador de `GET` (ronda 1, AT1-1) | Regla aparte para `HEAD`; 405 a `HEAD` | Un solo límite real de lectura; no cambia Express en toda la API |
+| `montoCotizadoSchema` con tope 100000.00 (ronda 1, AT1-2) | Subir `MONTO_MAXIMO` de 004 | No permite precios de 100000 ni toca pruebas protegidas de 004 |
+| El 201 no espera al correo (ronda 1, AT1-3) | Esperar con un tiempo máximo | Un proveedor lento retendría cada 201; el resultado del correo no cambia la respuesta |
+| Fallo del correo con solo el tipo del error (ronda 1, AT1-4) | `errorParaRegistro` | Devuelve el `Error` completo, con mensaje y propiedades del proveedor |
+| `Referer` redactado en toda la API (ronda 1, AT1-5) | Solo en las rutas públicas; serializador propio | El navegador lo manda a cualquier ruta; la redacción de `pino` cubre todos los registros |
+| Vencimiento con tope de fin de mes en una función pura y `CHECK` en una migración nueva (DR-12, AT1-6) | Solo la función; tarea programada; editar la migración de la 005a | La base garantiza "nunca una reserva vigente de un mes cerrado"; sin tareas; no cambia una migración ya aplicada |
+| Un `enviar` por destinatario distinto (DR-13, AT1-7) | Una llamada con varios destinatarios | La interfaz no cambia y un fallo no arrastra al otro envío |
+| Vista reducida sin `nombres` ni `fotoCargada`, unión por estado (DR-14, AT1-8) | `nombres: null`; dejar `fotoCargada` | P3 quita claves; `fotoCargada` describe al alumno actual, no a esa solicitud |
+| `claveDeConexion` en el almacén, el bloqueo y el conteo; `ip_origen` exacta (DR-15, AT1-9) | Columna nueva con la clave; guardar solo el /64 | Sin migración de columnas ni cambios en pruebas de catálogo; se conserva la dirección exacta |
+| Reserva de la semilla hasta el fin del mes (AT1-10) | 24 horas, como el formulario | El ejemplo dura lo más posible sin cruzar el mes |
 
 ## Migraciones
 
 - `<marca>_inscripcion_publica`: tipos nuevos, `tipo_actor` + `PUBLICO`, las siete tablas con `CHECK`, llaves
   compuestas, índices (únicos, parciales y de búsqueda), RLS forzada, políticas y privilegios (spec, "Cambios al modelo
   de datos"). Sin datos.
+- `<marca>_reserva_dentro_del_mes` (respuesta R1, criterio 56): solo el `CHECK matriculas_reserva_dentro_del_mes`
+  (sección 2), validado (sin `NOT VALID`). Una base de desarrollo de esta rama sembrada con la semilla anterior (reserva
+  vigente con vencimiento lejano) hará fallar la migración al validar el `CHECK`; un `UPDATE` previo en la migración no
+  sirve, porque el dueño de las tablas también está sujeto a RLS forzada y no ve las filas sin contexto de academia. Como
+  la 005a no está en `main`, se acepta: esas bases se recrean (`npm run db:preparar` o borrar y crear la base) y se
+  vuelve a sembrar; la base de pruebas y las bases nuevas no se ven afectadas. El documentador lo avisa en el PR.
 
 ## Riesgos
 
@@ -382,6 +532,14 @@ NOTHING` sobre `(academia_id, dni)` y `(academia_id, codigo)`. La reserva vigent
   si alguna lo fija, el lector de cuerpos (criterio 74 de 001). Si el tester encuentra otra, decide el orquestador.
 - **IP detrás de un proxy** (DT-9): los límites de los criterios 25 y 33 dependen de `req.ip`. `trust proxy` se
   configura con el hosting antes de publicar el formulario (aviso en las notas de hosting de `specs/backlog.md`).
+- **Correo sin esperar (ronda 1):** una promesa de `enviar` colgada queda pendiente en memoria; con muchas, crece el
+  uso de memoria. El límite de 10 envíos por hora y por IP lo acota; un proveedor real (D-19) debe tener su propio
+  tiempo máximo de conexión. Si el proceso se detiene después del 201, el correo se pierde (riesgo aceptado en la spec).
+- **IPv6 por /64 (DR-15):** un analizador propio de IPv6 es un lugar fácil para errores (formas con `::` al inicio o
+  al final, IPv4 embebida, zonas). Las pruebas unitarias del criterio 59 cubren esas formas; el adversarial de la ronda
+  siguiente debe atacar `claveDeConexion` con textos raros.
+- **Fin de mes (DR-12):** el `CHECK` y la función deben dar el mismo límite; la prueba del criterio 56 usa los mismos
+  instantes que las del 54.
 - **Entre los dos PR:** la 005a se puede unir a `main` sin la 005b. Mientras tanto no hay foto, la secretaria no lista
   ni cancela solicitudes desde el panel (las reservas sin pagar se liberan solas al vencer) y el administrador no puede
   bajar el aforo por debajo de los inscritos desde la web (la API lo permite con `confirmarAforoMenor`).

@@ -4,8 +4,10 @@ Cada tarea indica su rol y los criterios de aceptación de [`spec.md`](spec.md) 
 PR desde esta carpeta (DR-11 de 005, "División en 005a y 005b" de la spec), las dos de ruta crítica y cada una con su
 propio rojo, su ataque y su cierre:
 
-- **005a · inscripción, reserva y seguimiento** (primero): criterios 1 a 33, 41 a 45, 47 y 48. Críticos con pruebas
-  protegidas: 1 a 10, 12 a 33, 41 y 42. Prueba obligatoria: 11, 43, 44 y 45. Revisor: 47 y 48.
+- **005a · inscripción, reserva y seguimiento** (primero): criterios 1 a 33, 41 a 45 y 47 a 60. Críticos con pruebas
+  protegidas: 1 a 10, 12 a 33, 41, 42 y 49 a 60 (49 a 53, de la ronda 1 del ataque; 54 a 60, de las respuestas del
+  responsable a la ronda 1). Prueba obligatoria: 11, 43, 44 y 45. Revisor: 47 (con prueba no protegida desde la ronda
+  1) y 48.
 - **005b · foto y panel de solicitudes** (siguiente PR): criterios 34 a 40 y 46, más las partes de 28, 33, 43, 44 y 48
   que tratan de la foto o del panel. Críticos con pruebas protegidas: 34 a 39 y esas partes de 28 y 33. Prueba
   obligatoria: 40 y 46.
@@ -107,6 +109,107 @@ protegidas de la 005a.
       la ruta). Por cada falla: el especificador agrega el criterio a `spec.md`, test-writer la prueba protegida en
       rojo, se corrige y se vuelve a atacar, hasta una ronda sin fallas.
 
+#### Ronda 1 del ataque (005a)
+
+Fallas F1 a F5 y el defecto de la semilla (criterios 49 a 53 y ajuste del 47, sección K de la spec). Las pruebas
+protegidas de la ronda van en archivos nuevos (por ejemplo `…-ronda1.test.ts`), sin modificar las protegidas ya
+escritas.
+
+- [x] T25 · especificador · Criterios 49 a 53 en `spec.md` (sección K), ajustes de los criterios 12, 19, 27, 28 y 47,
+      P10 (llaves primarias con `academia_id`, ya aplicada), AT1-1 a AT1-5, preguntas pendientes R1 a R5 y plan
+      (secciones 1, 6, 8, 10, 13 y 14) (criterios 47, 49 a 53)
+- [ ] T26 · test-writer · Pruebas protegidas en rojo de la ronda 1, desde la spec y los contratos públicos: `HEAD` y
+      `GET` en el mismo contador de lectura (60 `HEAD` y un `GET`, 60 `GET` y un `HEAD`, mezcla con la petición 61, el
+      mismo 429 para una academia que existe y otra que no, sin tocar los demás contadores) (criterio 49);
+      `montoCotizadoSchema` (bordes `"100000"`, `"100000.00"`, `"100000.01"`, `"100001"`), cotización y envío con planes
+      de 99999.01 y 99999.99 a mes completo (201 con `monto_calculado` 100000.00) y la propiedad sobre todo precio válido
+      (criterio 50); correo colgado, que lanza y que rechaza, con el 201 en menos de 2 s, la llamada después de confirmar,
+      un segundo envío sin demora y sin `unhandledRejection` (criterio 51); registro en memoria del fallo del correo con
+      errores que llevan el destinatario, el enlace y el token en el mensaje, en propiedades propias, en `cause` y en
+      `name`, y con valores que no son `Error` (criterio 52); registro en memoria en `trace` con `Referer` que lleva el
+      token en las rutas públicas, en errores 400, 404, 409 y 429 y en una ruta inexistente (criterio 53)
+- [ ] T27 · tester · Confirmar que T26 falla por la razón esperada (límite que no cuenta `HEAD`, 400 en
+      `montoMostrado`, 201 retenido, mensaje o propiedades del error en el registro, `Referer` sin redactar) y no por
+      sintaxis, importaciones o configuración; y que las demás protegidas siguen igual. `git diff --cached --stat` solo
+      con archivos de prueba. Commit del orquestador: "Pruebas protegidas (005a, ronda 1): HEAD, monto cotizado, correo
+      y registro (en rojo)"
+- [ ] T28 · backend · `HEAD` como `GET` al elegir la regla de `LIMITES_PUBLICOS` en `instalarProteccionDePrefijos`, con
+      la misma clave del almacén (criterio 49; plan, sección 8)
+- [ ] T29 · backend · `MONTO_COTIZADO_MAXIMO` y `montoCotizadoSchema` en `packages/contratos/src/dinero.ts`, con pruebas
+      unitarias de sus bordes; `montoMostrado` de `enviarInscripcionSchema` con ese esquema; sin tocar `montoSchema` ni
+      `MONTO_MAXIMO` (criterios 12, 19 y 50; plan, sección 1)
+- [ ] T30 · backend · Correo sin esperar (`enviarSinEsperar`) y registro del fallo solo con `tipoDeError`, sin
+      `errorParaRegistro` (criterios 27, 51 y 52; plan, sección 10)
+- [ ] T31 · backend · `req.headers.referer` en `RUTAS_REDACTADAS` y ajuste de la prueba no protegida
+      `opciones-registro.test.ts` (largo 4) (criterios 28 y 53; plan, sección 14)
+- [ ] T32 · backend · Semilla: Básico martes, miércoles y jueves a las 18:00 con el entrenador `10000005`; clientes de
+      ejemplo con lunes, miércoles y viernes y `monto_calculado` de `montoProporcional`; prueba no protegida de la
+      semilla con un envío 201 por cada plan de ejemplo (`RELOJ` en el día 1 del mes en curso); las pruebas de la
+      semilla de 002 y 004 siguen pasando (criterio 47; plan, sección 13)
+- [ ] T33 · tester · Pruebas protegidas de la 005a (también las de la ronda 1) en verde y suite completa
+
+#### Respuestas del responsable a la ronda 1 (005a)
+
+DR-12 a DR-16 del 20/11/2026 (criterios 54 a 60 y ajuste del 47 d, sección L de la spec). Las pruebas protegidas nuevas
+van en archivos nuevos (por ejemplo `…-respuestas-ronda1.test.ts`); la única protegida existente que cambia es la del
+criterio 32 para `VENCIDA` y `CANCELADA` ("Impacto en especificaciones anteriores"). Se pueden hacer junto con T26 a
+T33 o después; T34 ataca todo.
+
+- [x] T35 · especificador · Criterios 54 a 60 (sección L), ajustes de 16, 25, 27, 32, 33, 44 y 47 d, DR-12 a DR-16,
+      AT1-6 a AT1-10, riesgos aceptados (regreso por un tercero, IPv6 por /64), pregunta R6, R5 trasladada a la 007 en
+      `specs/backlog.md`, y plan (secciones 1, 2, 3, 6, 7, 8, 10, 12, 13 y 15) (criterios 47 y 54 a 60)
+- [ ] T36 · test-writer · Pruebas protegidas en rojo, desde la spec y los contratos públicos:
+      `vencimientoDeReserva` con los instantes del criterio 54 (a a h, en `TZ=Asia/Tokyo` y `TZ=UTC`) y la integración
+      del 30 y del 29 de noviembre (201, matrícula, auditoría y seguimiento) (criterio 54); fin de mes con `RELOJ`: un
+      milisegundo antes y en el instante, regreso con el mismo DNI el 1 de diciembre, límite por conexión antes y
+      después de medianoche, nada de noviembre en la ocupación de diciembre (criterio 55); `CHECK
+      matriculas_reserva_dentro_del_mes` como app y como dueño, en `INSERT` y `UPDATE`, con `SET TIME ZONE` distinto y en
+      diciembre (criterio 56); destinatarios del enlace con un `EnviadorCorreo` que registra (a a g, también colgado y
+      fallando a la vez) (criterio 57); vista reducida por token y por código con DNI, regreso por un tercero con
+      "Valeria" e "Intrusa", y `vistaSolicitudSchema` (criterio 58); `claveDeConexion` con todas las formas del criterio
+      59 y límites por /64 y por IPv4 mapeada en lecturas, cotización, envío y consulta, con la opción de la utilidad que
+      fija la IP por `X-Forwarded-For` (plan, sección 15) (criterio 59); límite de 5 por /64, mapeada, filas escritas
+      como dueño y dos envíos simultáneos desde el mismo /64 (criterio 60). Además, ajustar en
+      `backend/test/integracion/inscripciones/seguimiento.test.ts` solo la prueba "criterio 32: una solicitud VENCIDA o
+      CANCELADA muestra lo mismo sin reservaVenceEn" para exigir la vista reducida (sin `nombres` ni `fotoCargada`), con
+      la aprobación del orquestador
+- [ ] T37 · tester · Confirmar que T36 falla por la razón esperada (función o `CHECK` inexistentes, vencimiento de 24
+      horas que cruza el mes, un solo correo, `nombres` en la vista reducida, límites por dirección exacta) y no por
+      sintaxis, importaciones o configuración; que las demás protegidas siguen igual; y que el único cambio en una
+      protegida existente es el de `seguimiento.test.ts` descrito en T36. `git diff --cached --stat` solo con archivos
+      de prueba. Commit del orquestador: "Pruebas protegidas (005a, respuestas de la ronda 1): reserva hasta fin de mes,
+      correo al apoderado, vista reducida e IPv6 (en rojo)"
+- [ ] T38 · backend · `matriculas/dominio/reserva.ts` (`finDelMesEnLima`, `vencimientoDeReserva`) con pruebas unitarias
+      no protegidas de apoyo; el envío la usa para `reserva_vence_en`; migración `<marca>_reserva_dentro_del_mes` con el
+      `CHECK` (criterios 16, 54 a 56; plan, secciones 2, 3 y 6)
+- [ ] T39 · backend · Destinatarios del enlace: `destinatariosDelEnlace` y un `enviarSinEsperar` por cada uno
+      (criterios 27 y 57; plan, sección 10)
+- [ ] T40 · backend · Vista reducida en `SeguimientoService` y `vistaSolicitudSchema` como unión por estado; ajuste de la
+      prueba no protegida `packages/contratos/src/solicitudes.test.ts` (criterios 32 y 58; plan, secciones 1 y 7)
+- [ ] T41 · backend · `comun/http/conexion.ts` (`claveDeConexion`) con pruebas unitarias no protegidas de apoyo; clave
+      del almacén en `instalarProteccionDePrefijos` para las reglas de `LIMITES_PUBLICOS` (no la del ingreso); bloqueo
+      consultivo y conteo del límite por conexión con la clave (criterios 25, 33, 59 y 60; plan, secciones 6 y 8)
+- [ ] T42 · backend · Semilla: matrículas del mes en curso, reserva vigente hasta `finDelMesEnLima`, vencida en un
+      instante anterior; la prueba no protegida de la semilla comprueba que ninguna `reserva_vence_en` pasa del fin de su
+      mes (criterio 47 d; plan, sección 13)
+- [ ] T43 · frontend · `VistaSeguimiento` sin el saludo con el nombre en la vista reducida, con su prueba de componentes
+      (criterios 44 y 58; plan, sección 12)
+- [ ] T44 · tester · Pruebas protegidas de la 005a (también las de T36) en verde, suite completa, lint y verificación
+      de tipos
+
+#### Ronda 2 del ataque (005a)
+
+- [ ] T34 · adversarial · Ronda 2 sobre los criterios críticos de la 005a, con la spec y el código (sin el
+      razonamiento de quien implementó), incluidos 49 a 60: otros métodos (`OPTIONS`, métodos en minúsculas o
+      desconocidos) que se salten límites, montos en el borde de 100000.00 y comparaciones de `montoMostrado` con ceros
+      de más, proveedores de correo lentos o maliciosos (getters que lanzan, `Proxy`, errores sin prototipo) y otras
+      cabeceras que lleven el token al registro; reservas en el último milisegundo del mes, cambio de año y servidores
+      en otra zona, y filas que intenten saltarse el `CHECK` del fin de mes; correos del alumno y del apoderado que se
+      escriben distinto pero son el mismo, o que colisionan; vistas de seguimiento de solicitudes antiguas que filtren
+      datos de la nueva (nombre, foto, plan); `claveDeConexion` con formas raras de IPv6 (`::` al inicio o al final, IPv4
+      embebida, zonas, ceros, mayúsculas, textos que no son IP) y envíos simultáneos desde el mismo /64. Mismo ciclo por
+      cada falla, hasta una ronda sin fallas.
+
 ### Revisión y cierre
 
 - [ ] T21 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
@@ -117,8 +220,9 @@ protegidas de la 005a.
 - [ ] T23 · tester · Suite completa, lint y verificación de tipos
 - [ ] T24 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, ocupación, orden de bloqueos,
       `EnviadorCorreo`, límites públicos y las reglas para las historias siguientes, salvo "Archivos"), `README.md` y
-      guía de uso (inscripción y seguimiento); notas para la 007 y la 010 en `specs/backlog.md`; 005a como ✅ al unirla
-      (criterio 48, parte de la 005a)
+      guía de uso (inscripción y seguimiento); notas para la 007 y la 010 en `specs/backlog.md`; en el PR, el aviso de
+      recrear las bases de desarrollo de la rama sembradas antes del `CHECK` del criterio 56 (plan, "Migraciones"); 005a
+      como ✅ al unirla (criterio 48, parte de la 005a)
 
 ### Solo ruta crítica (005a)
 
@@ -150,7 +254,8 @@ los estados `CANCELADA`).
 
 - [ ] T15 · backend · **[005b]** `infraestructura/almacen-archivos` (interfaz y disco local, `ALMACEN_DIRECTORIO` en el
       entorno y en `.env.example`), `sharp` en `backend/package.json` y en `scripts/lib/dependencias-backend.mjs`,
-      lector binario de la foto fuera del lector JSON, regla del límite de la foto en `instalarProteccionDePrefijos`,
+      lector binario de la foto fuera del lector JSON, regla del límite de la foto en `instalarProteccionDePrefijos`
+      (con la clave de conexión del criterio 59),
       `FotoService` y `PUT …/solicitudes/foto` (criterios 33 parte de la foto, 34 a 37)
 - [ ] T16b · backend · **[005b]** Contratos del panel (`solicitudPanelSchema`, `respuestaListaSolicitudesSchema`,
       `cancelarSolicitudSchema`, `filtroEstadoSolicitudesSchema`, `respuestaOcupacionSchema`); `GET /api/solicitudes` y
