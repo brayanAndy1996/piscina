@@ -199,7 +199,7 @@ T33 o después; T34 ataca todo.
 
 #### Ronda 2 del ataque (005a)
 
-- [ ] T34 · adversarial · Ronda 2 sobre los criterios críticos de la 005a, con la spec y el código (sin el
+- [x] T34 · adversarial · Ronda 2 sobre los criterios críticos de la 005a, con la spec y el código (sin el
       razonamiento de quien implementó), incluidos 49 a 60: otros métodos (`OPTIONS`, métodos en minúsculas o
       desconocidos) que se salten límites, montos en el borde de 100000.00 y comparaciones de `montoMostrado` con ceros
       de más, proveedores de correo lentos o maliciosos (getters que lanzan, `Proxy`, errores sin prototipo) y otras
@@ -209,6 +209,12 @@ T33 o después; T34 ataca todo.
       datos de la nueva (nombre, foto, plan); `claveDeConexion` con formas raras de IPv6 (`::` al inicio o al final, IPv4
       embebida, zonas, ceros, mayúsculas, textos que no son IP) y envíos simultáneos desde el mismo /64. Mismo ciclo por
       cada falla, hasta una ronda sin fallas.
+      _Hecha el 20/11/2026 sobre el commit `cf93533`: sin fallas reproducibles en 49 a 60 ni regresiones en la ruta
+      crítica (sección M de la spec). Deja tres riesgos aceptados (IPv6 con un bloque mayor que /64, reintento con la
+      reserva vencida, `tipoDeError`) y la pregunta R7, que no bloquea._
+- [x] T46 · especificador · Registro de la ronda 2: sección M, estado, riesgos aceptados nuevos y pregunta R7 en la
+      spec; nota operativa de la migración `20261120190000_reserva_dentro_del_mes` y riesgos en el plan; T45; nota R7 en
+      las notas de hosting de `specs/backlog.md`
 
 ### Revisión y cierre
 
@@ -221,8 +227,14 @@ T33 o después; T34 ataca todo.
 - [ ] T24 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, ocupación, orden de bloqueos,
       `EnviadorCorreo`, límites públicos y las reglas para las historias siguientes, salvo "Archivos"), `README.md` y
       guía de uso (inscripción y seguimiento); notas para la 007 y la 010 en `specs/backlog.md`; en el PR, el aviso de
-      recrear las bases de desarrollo de la rama sembradas antes del `CHECK` del criterio 56 (plan, "Migraciones"); 005a
-      como ✅ al unirla (criterio 48, parte de la 005a)
+      recrear las bases de desarrollo de la rama sembradas antes del `CHECK` del criterio 56 (T45; plan, "Migraciones");
+      005a como ✅ al unirla (criterio 48, parte de la 005a)
+- [ ] T45 · documentador · Nota operativa de la ronda 2 (plan, "Migraciones"): en `docs/guia-local-windows.md`, un
+      problema conocido "La migración `20261120190000_reserva_dentro_del_mes` falla con 23514", que explique que pasa en
+      una base de desarrollo sembrada con una versión anterior de la rama (reservas de ejemplo a 365 días), que
+      `db:preparar` solo no lo arregla y que la solución es "Borrar la base de desarrollo y empezar de cero" (con el
+      enlace a esa sección y el aviso de que se pierden los datos de desarrollo); y el mismo aviso en la descripción del
+      PR de la 005a, para quien tenga una base de la rama (criterio 48, parte de la 005a)
 
 ### Solo ruta crítica (005a)
 

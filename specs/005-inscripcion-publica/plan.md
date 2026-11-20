@@ -28,6 +28,10 @@ las secciones 1 (vista reducida), 2 (migración nueva con el `CHECK`), 3 (`venci
 13), 7 (vista reducida), 8 (`claveDeConexion`), 10 (destinatarios), 12 (seguimiento sin nombre) y 13 (semilla), y la
 nueva 15 (pruebas con IP fijada).
 
+**Ronda 2 del ataque de la 005a (20/11/2026, commit `cf93533`):** sin fallas; el diseño no cambia. Suma tres riesgos
+aceptados en la spec (y su eco en "Riesgos"), la pregunta R7 y, en "Migraciones", la nota operativa para la guía de
+Windows y el PR (tarea T45 del documentador).
+
 ## Módulos afectados
 
 ```
@@ -504,8 +508,19 @@ cualquier otra cosa.
   (sección 2), validado (sin `NOT VALID`). Una base de desarrollo de esta rama sembrada con la semilla anterior (reserva
   vigente con vencimiento lejano) hará fallar la migración al validar el `CHECK`; un `UPDATE` previo en la migración no
   sirve, porque el dueño de las tablas también está sujeto a RLS forzada y no ve las filas sin contexto de academia. Como
-  la 005a no está en `main`, se acepta: esas bases se recrean (`npm run db:preparar` o borrar y crear la base) y se
+  la 005a no está en `main`, se acepta: esas bases se borran y se crean de nuevo (ver la nota operativa siguiente) y se
   vuelve a sembrar; la base de pruebas y las bases nuevas no se ven afectadas. El documentador lo avisa en el PR.
+- **Nota operativa (ronda 2), tarea T45 del documentador.** La migración se llama
+  `20261120190000_reserva_dentro_del_mes` y valida las filas existentes al crear el `CHECK`. Una base de desarrollo
+  sembrada con una versión anterior de la rama (reservas de ejemplo con vencimiento a 365 días) hace fallar
+  `npm run db:preparar` (o `db:migrar`) con el código `23514` (`check_violation`) sobre
+  `matriculas_reserva_dentro_del_mes`. `db:preparar` solo no basta, porque migra sobre la base existente: hay que
+  borrarla y crearla. En Windows, con la sección ya existente "Borrar la base de desarrollo y empezar de cero" de
+  `docs/guia-local-windows.md` (`docker compose down -v`, `docker compose up -d`, `npm run db:preparar`, que vuelve a
+  crear el rol y la semilla); se pierden los datos de desarrollo. Va como problema conocido en
+  `docs/guia-local-windows.md` (el responsable prueba en Windows con PostgreSQL en Docker, D-26), con el mensaje que se
+  ve y el enlace a esa sección, y en la descripción del PR de la 005a. No aplica a la base de pruebas ni a quien cree la
+  base desde cero (o desde `main` después de unir la 005a).
 
 ## Riesgos
 
@@ -537,7 +552,15 @@ cualquier otra cosa.
   tiempo máximo de conexión. Si el proceso se detiene después del 201, el correo se pierde (riesgo aceptado en la spec).
 - **IPv6 por /64 (DR-15):** un analizador propio de IPv6 es un lugar fácil para errores (formas con `::` al inicio o
   al final, IPv4 embebida, zonas). Las pruebas unitarias del criterio 59 cubren esas formas; el adversarial de la ronda
-  siguiente debe atacar `claveDeConexion` con textos raros.
+  siguiente debe atacar `claveDeConexion` con textos raros. _(Ronda 2: atacada sin fallas.)_ Lo que queda abierto es
+  el bloque mayor: con un /56 se multiplican por 256 los límites (riesgo aceptado de la spec y pregunta R7, propuesta
+  de un segundo contador por /56 o /48 en el mismo almacén, con su propia clave).
+- **Reintento con la reserva vencida (ronda 2):** el 409 `SOLICITUD_YA_REGISTRADA` de un reintento con la misma
+  `claveIdempotencia` puede traer el código de una solicitud `VENCIDA`; la web no genera otra clave hasta recargar
+  (riesgo aceptado de la spec; cumple el criterio 23). Si se quiere evitar, la web podría generar una clave nueva al
+  recibir ese 409, pero eso es un cambio de comportamiento que no pide ningún criterio.
+- **`tipoDeError` (ronda 2):** registra cualquier `constructor.name` con forma de identificador de hasta 64 caracteres
+  (criterio 52). Al elegir el proveedor real de correo (D-19), comprobar que sus clases de error tienen nombres fijos.
 - **Fin de mes (DR-12):** el `CHECK` y la función deben dar el mismo límite; la prueba del criterio 56 usa los mismos
   instantes que las del 54.
 - **Entre los dos PR:** la 005a se puede unir a `main` sin la 005b. Mientras tanto no hay foto, la secretaria no lista

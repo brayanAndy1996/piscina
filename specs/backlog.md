@@ -86,6 +86,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     - **005b · foto y panel de solicitudes** (siguiente PR, con la 005a unida): criterios 34 a 40 y 46 (`AlmacenArchivos`,
       `sharp` y la foto; lista, cancelación y ocupación en el panel), más la foto en 28, 33, 43 y 44 y su parte de 48.
   - Antes de publicar el formulario: `trust proxy` con el hosting (DT-9 de 005; aviso en las notas de hosting de la 002).
+  - Hosting (D-21), pregunta R7 de 005 (ronda 2 del ataque de la 005a, no bloquea): la agrupación de IPv6 por /64 no
+    frena a quien controla un /56 o un /48 (con un /56, hasta 256 × 5 reservas sin pagar a la vez). Propuesta: un
+    segundo límite, más alto, por /56 o /48, decidido junto a `trust proxy`. Detalle en "Preguntas abiertas" de la spec.
   - Respuestas de Bryan a la ronda 1 de la 005a (20/11/2026, DR-12 a DR-16 de 005; criterios 54 a 60): la reserva vence
     a las 24 horas o al fin del mes en Lima, lo que ocurra primero; el enlace de seguimiento llega también al correo del
     apoderado; la vista de una solicitud vencida, cancelada o que ya no es la vigente no muestra el nombre; los límites

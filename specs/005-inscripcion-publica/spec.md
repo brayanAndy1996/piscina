@@ -29,7 +29,10 @@
   los criterios 12, 19, 27, 28 y 47, y preguntas de negocio para el responsable (R1 a R5). **Respuestas del responsable
   a la ronda 1 (20/11/2026):** decisiones DR-12 a DR-16 y criterios nuevos 54 a 60 (sección L), con ajustes de los
   criterios 16, 25, 27, 32, 33, 44 y 47; R5 pasa a la 007 (DR-16). Queda una pregunta nueva que no bloquea (R6, en
-  "Preguntas abiertas").
+  "Preguntas abiertas"). **Ronda 2 del ataque de la 005a (20/11/2026, sobre el commit `cf93533`):** sin fallas
+  reproducibles en los criterios 49 a 60 ni regresiones en los demás criterios críticos; no agrega ni cambia criterios.
+  Suma tres riesgos aceptados (IPv6 con un bloque mayor que /64, reintento con la reserva ya vencida y el tipo del error
+  del correo) y una pregunta que no bloquea (R7, en "Preguntas abiertas").
 - **División (DR-11):** la historia se entrega en dos PR desde esta misma carpeta, las dos de ruta crítica, cada una con
   sus pruebas protegidas, su ataque y su cierre (ver "División en 005a y 005b"):
   - **005a · Inscripción, reserva y seguimiento** (se construye primero): criterios 1 a 33, 41 a 45, 47 a 60, salvo las
@@ -74,6 +77,7 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   después de confirmar, con datos de menores); la vista sin nombre de una solicitud que ya no es la vigente (datos
   sensibles); y los límites por conexión con IPv6 por bloque /64 (entradas públicas: sin ellos, el límite de 5 reservas
   y los límites por minuto se saltan cambiando de dirección).
+- **Ronda 2 del ataque de la 005a:** sin fallas; no agrega criterios (sección M).
 
 No son críticos, pero llevan _(prueba obligatoria)_: 11 (cotización, salvo lo que cubren 8 a 10) y 40 (API), y 43 a
 46 (web, con pruebas de componentes). Los 47 y 48 (semilla y documentación) los verifica el revisor. _(Aprobado por el
@@ -793,6 +797,13 @@ Rn, ronda 1".
 
     _(crítico)_ (DR-8, DR-15, riesgo de 11.4; criterio 25; respuesta R4, ronda 1)
 
+### M. Ronda 2 adversarial (005a)
+
+Ronda 2 del ataque de la 005a (T34, 20/11/2026), sobre el commit `cf93533`, con la spec y el código: **sin fallas
+reproducibles** en los criterios 49 a 60 ni regresiones en los demás criterios críticos de la 005a. No se agregan ni se
+ajustan criterios. Lo que encontró sin llegar a falla queda en "Riesgos aceptados" (IPv6 con un bloque mayor que /64,
+reintento con la reserva ya vencida y tipo del error del correo) y en la pregunta R7.
+
 ## Casos límite
 
 - **La clase de 19:00 a 20:00 de hoy:** a las 18:59:59 de Lima cuenta como clase restante; a las 19:00:00 ya no
@@ -1198,7 +1209,28 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
 - **IPv6 agrupada por /64 (DR-15, respuesta R4, ronda 1):** una conexión con un bloque mayor (un /56 o un /48, que
   algunos proveedores entregan) puede repartir sus peticiones entre muchos /64 y multiplicar los límites; un proveedor
   que comparte un /64 entre muchos clientes, o una red NAT64, los junta en un solo límite. Aceptado: es el mismo
-  compromiso que con IPv4 detrás de un router.
+  compromiso que con IPv4 detrás de un router. Lo que eso permite con un bloque mayor está cuantificado en el riesgo
+  siguiente (ronda 2).
+- **IPv6 con un bloque mayor que /64 (ataque ronda 2):** la agrupación por /64 (criterios 59 y 60) no frena a quien
+  controla un /56 o un /48. Un /56 contiene 256 bloques /64, así que un solo atacante podría tener hasta 256 × 5 = 1280
+  reservas sin pagar a la vez (criterio 25) y multiplicar por 256 los límites por minuto y por hora del criterio 33
+  (con un /48, por 65 536). Con aforos de 20 a 50, eso basta para llenar todas las clases de una academia durante la
+  reserva (hasta 24 horas o el fin del mes, criterio 54). Se mitiga con la cancelación por la secretaria (criterio 39,
+  desde la 005b) y el vencimiento. Aceptado por ahora; un segundo límite por bloque mayor queda como pregunta para el
+  responsable junto a las decisiones de hosting (R7, en "Preguntas abiertas").
+- **Reintento con la reserva ya vencida (ataque ronda 2):** si el 201 de un envío se pierde (corte de red) y la persona
+  reintenta desde la misma pestaña cuando su reserva ya venció, el reintento lleva la misma `claveIdempotencia` y el
+  mismo DNI, así que responde 409 `SOLICITUD_YA_REGISTRADA` con el código de esa solicitud, que ya está `VENCIDA`. La
+  web muestra "ya se registró" con ese código, y para inscribirse de nuevo hay que recargar la página (que genera otra
+  `claveIdempotencia`). Cumple el criterio 23 (la clave identifica el envío, no su estado) y no reserva ni escribe
+  nada. Aceptado: es raro (exige perder el 201 y esperar el vencimiento con la pestaña abierta) y la consulta con el
+  código y el DNI (criterio 30) muestra que venció.
+- **Tipo del error del correo (ataque ronda 2):** el criterio 52 registra como `tipo` el `name` del constructor del
+  error si es un identificador de hasta 64 caracteres, sea cual sea su origen. Un nombre de clase puesto a propósito
+  (por ejemplo, una clase creada al vuelo cuyo nombre es la parte del correo antes de la `@`, o un nombre de persona)
+  pasaría al registro técnico. Es un riesgo teórico:
+  exigiría que una librería de correo nombre sus clases de error con datos del mensaje, lo que ninguna conocida hace.
+  Aceptado; se revisa al elegir el proveedor real de correo (D-19), comprobando cómo nombra sus errores.
 - **Textos legales provisionales:** los consentimientos y el deslinde llevan un texto genérico hasta que la academia
   los revise con un abogado (N7).
 - **[005b] Foto sin dueño visible:** en esta historia nadie ve la foto; un error al guardarla solo se nota en la 008. Las
@@ -1467,3 +1499,18 @@ criterio nuevo con su origen.
   /64, pero sin fecha. ¿Se aplica también ahí la clave de conexión? _Propuesta:_ sí, con la misma función
   `claveDeConexion`, en un cambio pequeño con su prueba protegida, dentro de la 005a (el middleware es el mismo) o en
   una historia aparte si se prefiere no tocar la 002 ahora. _Mientras tanto:_ el ingreso no cambia.
+
+### Pendientes de respuesta del responsable (ronda 2 del ataque)
+
+No bloquea la 005a: **mientras no haya respuesta, rige lo que ya dice la spec** (criterios 25, 33, 59 y 60, solo por
+/64). Se decide junto a las demás decisiones de hosting (D-21 y `trust proxy`, DT-9), antes de publicar el formulario;
+anotada en las notas de hosting de `specs/backlog.md`.
+
+- **R7. IPv6 con un bloque mayor que /64.** La agrupación por /64 (DR-15) no frena a quien controla un /56 o un /48:
+  con un /56 podría tener hasta 256 × 5 = 1280 reservas sin pagar a la vez y llenar las clases de la academia (riesgo
+  "IPv6 con un bloque mayor que /64"). ¿Se agrega un segundo límite, más alto, por bloque mayor? _Propuesta:_ sí, un
+  segundo contador por /56 (o por /48, según lo que entregue el hosting y los proveedores de internet de los clientes)
+  que se suma al de /64, con valores más altos para no bloquear a vecinos que comparten proveedor; como punto de
+  partida, 4 veces los del /64 (20 reservas sin pagar a la vez y 4 veces cada límite del criterio 33), a ajustar con
+  los datos reales del hosting. Si se aprueba, entra como criterio nuevo con su prueba protegida, en la 005b o en una
+  historia propia. _Mientras tanto:_ solo el límite por /64.
