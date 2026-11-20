@@ -256,14 +256,15 @@ describe('lectura de la configuración (criterios 1 a 3, 6, 20 y 21)', () => {
       }
     });
 
-    it('criterio 21: GET /api/a/{nombreCorto} sigue respondiendo solo nombreCorto y nombre, aunque haya teléfono', async () => {
+    // Desde la 005 (DR-4 de 003, criterio 5 de 005) la ruta pública SÍ publica el teléfono efectivo de la configuración: solo eso se
+    // suma, sin id, estado ni motivo. `GET /api/mi-academia` (criterio 20) no cambia.
+    it('criterio 21 (ampliado por el criterio 5 de 005): GET /api/a/{nombreCorto} responde nombreCorto, nombre y el teléfono efectivo', async () => {
       await fijarConfiguracion(e.A.id, { telefono: '(01) 555-0199' });
 
       const respuesta = await pedir(app, 'get', '/api/a/academia-a');
 
       expect(respuesta.status).toBe(200);
-      expect(respuesta.body).toEqual({ nombreCorto: 'academia-a', nombre: 'Academia A' });
-      expect(JSON.stringify(respuesta.body)).not.toContain('555');
+      expect(respuesta.body).toEqual({ nombreCorto: 'academia-a', nombre: 'Academia A', telefono: '(01) 555-0199' });
     });
   });
 });

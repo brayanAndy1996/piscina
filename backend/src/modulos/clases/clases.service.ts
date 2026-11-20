@@ -21,6 +21,7 @@ import {
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { AuditoriaService } from '../auditoria';
 import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
+import { contarInscritos } from '../matriculas';
 import type { SesionVerificada } from '../autenticacion/tipos';
 import { cambiosPedidosClase, esReactivacion, ordenDeClases } from './dominio/clase';
 import { bloquearClasesParaCupo } from './cupo';
@@ -67,6 +68,26 @@ function entrenadorNoValido(): ErrorNegocio {
 /** ¿La fila bloqueada de `usuarios` es un entrenador activo? Sin fila (no existe o es de otra academia): no. */
 function esEntrenadorActivo(fila: { rol: string; estado: string } | undefined): boolean {
   return fila !== undefined && fila.rol === 'ENTRENADOR' && fila.estado === 'ACTIVO';
+}
+
+/** 409 de DR-5 (criterio 41): bajar el aforo por debajo de los inscritos pide `confirmarAforoMenor: true`. */
+function aforoMenorQueInscritos(inscritos: number): ErrorNegocio {
+  return new ErrorNegocio(
+    409,
+    'AFORO_MENOR_QUE_INSCRITOS',
+    'El aforo es menor que los alumnos inscritos en la clase. Confirma el cambio para guardarlo: nadie pierde su lugar.',
+    { inscritos },
+  );
+}
+
+/** 409 de DR-5 (criterio 42): una clase con inscritos no se desactiva. */
+function claseConInscritos(inscritos: number): ErrorNegocio {
+  return new ErrorNegocio(
+    409,
+    'CLASE_CON_INSCRITOS',
+    'La clase tiene alumnos inscritos: primero muévelos o cancela sus solicitudes.',
+    { inscritos },
+  );
 }
 
 function errorDeChoque(choque: Choque): ErrorNegocio {
@@ -318,7 +339,25 @@ export class ClasesService {
       if (choque) throw errorDeChoque(choque);
     }
 
+    // DR-5 de 004 (criterios 41 y 42 de 005): los inscritos se cuentan DESPUÉS de bloquear la clase (arriba), así que un envío público
+    // simultáneo se ordena con este cambio: o entra primero y se cuenta, o entra después y ya ve el aforo nuevo o la clase inactiva.
+    const despues: Record<string, unknown> = { ...cambios.despues };
     const ahora = this.reloj.ahora();
+    const desactiva = guardada.activo && !cambios.resultante.activo;
+    const cambiaElAforo = cambios.campos.includes('aforo');
+    if (desactiva || cambiaElAforo) {
+      const inscritos = (await contarInscritos(tx, [id], ahora)).get(id) ?? 0;
+      // No se desactiva una clase con inscritos: primero hay que moverlos o cancelar sus solicitudes.
+      if (desactiva && inscritos > 0) throw claseConInscritos(inscritos);
+      // Bajar el aforo por debajo de los inscritos pide confirmación; con ella nadie pierde su lugar y la clase no recibe más
+      // inscripciones hasta que su ocupación baje del aforo.
+      if (cambiaElAforo && cambios.resultante.aforo < inscritos) {
+        if (pedido.confirmarAforoMenor !== true) throw aforoMenorQueInscritos(inscritos);
+        despues['inscritos'] = inscritos;
+        despues['confirmacion'] = 'AFORO_MENOR_QUE_INSCRITOS';
+      }
+    }
+
     const actualizadas = await tx.cliente.$queryRaw<{ id: string }[]>`
       UPDATE clases
          SET entrenador_id = ${cambios.resultante.entrenadorId}::uuid, aforo = ${cambios.resultante.aforo}::smallint,
@@ -334,7 +373,7 @@ export class ClasesService {
       entidad: 'clase',
       entidadId: id,
       datosAntes: cambios.antes,
-      datosDespues: cambios.despues,
+      datosDespues: despues,
       ip,
     });
     return clase;

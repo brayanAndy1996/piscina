@@ -162,14 +162,28 @@ describe('esquemas de respuesta', () => {
     expect(respuestaListaAcademiasSchema.safeParse({ academias: [{ ...resumen, usuarios: [] }] }).success).toBe(false);
   });
 
-  it('academiaPublicaSchema solo tiene nombreCorto y nombre', () => {
-    expect(academiaPublicaSchema.parse({ nombreCorto: 'delfines', nombre: 'Los Delfines' })).toEqual({
+  it('academiaPublicaSchema solo tiene nombreCorto, nombre y telefono (criterio 5 de 005)', () => {
+    expect(
+      academiaPublicaSchema.parse({ nombreCorto: 'delfines', nombre: 'Los Delfines', telefono: '+51 987 654 321' }),
+    ).toEqual({
       nombreCorto: 'delfines',
       nombre: 'Los Delfines',
+      telefono: '+51 987 654 321',
     });
-    expect(academiaPublicaSchema.safeParse({ nombreCorto: 'delfines', nombre: 'x', id: ID }).success).toBe(false);
-    expect(academiaPublicaSchema.safeParse({ nombreCorto: 'delfines', nombre: 'x', estado: 'ACTIVA' }).success).toBe(
-      false,
-    );
+    expect(academiaPublicaSchema.parse({ nombreCorto: 'delfines', nombre: 'Los Delfines', telefono: null })).toEqual({
+      nombreCorto: 'delfines',
+      nombre: 'Los Delfines',
+      telefono: null,
+    });
+    // El teléfono es obligatorio (texto o null): una respuesta sin él no cumple el contrato.
+    expect(academiaPublicaSchema.safeParse({ nombreCorto: 'delfines', nombre: 'Los Delfines' }).success).toBe(false);
+    expect(academiaPublicaSchema.safeParse({ nombreCorto: 'delfines', nombre: 'x', telefono: 5 }).success).toBe(false);
+    expect(
+      academiaPublicaSchema.safeParse({ nombreCorto: 'delfines', nombre: 'x', telefono: null, id: ID }).success,
+    ).toBe(false);
+    expect(
+      academiaPublicaSchema.safeParse({ nombreCorto: 'delfines', nombre: 'x', telefono: null, estado: 'ACTIVA' })
+        .success,
+    ).toBe(false);
   });
 });

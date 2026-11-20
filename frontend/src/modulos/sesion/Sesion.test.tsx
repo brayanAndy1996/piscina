@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { error, llamadas, mostrar, rutaActual, sesionDe, simularApi } from '../../pruebas-api';
 
-const ACADEMIA = { nombreCorto: 'delfines', nombre: 'Academia de Natación Los Delfines' };
+const ACADEMIA = { nombreCorto: 'delfines', nombre: 'Academia de Natación Los Delfines', telefono: null };
 
 beforeEach(() => {
   localStorage.clear();

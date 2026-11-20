@@ -4,6 +4,7 @@ import { LoggerModule } from 'nestjs-pino';
 import type { DestinationStream } from 'pino';
 import { FiltroErrores } from './comun/filtros/filtro-errores';
 import { type Entorno, EntornoModule } from './infraestructura/entorno';
+import { CorreoModule } from './infraestructura/correo';
 import { PrismaModule } from './infraestructura/prisma';
 import { crearOpcionesRegistro } from './infraestructura/registro';
 import { RelojModule } from './infraestructura/reloj';
@@ -12,6 +13,7 @@ import { AuditoriaModule } from './modulos/auditoria';
 import { AutenticacionModule } from './modulos/autenticacion';
 import { ClasesModule } from './modulos/clases';
 import { ConfiguracionModule } from './modulos/configuracion';
+import { InscripcionesModule } from './modulos/inscripciones';
 import { PlanesModule } from './modulos/planes';
 import { SaludModule } from './modulos/salud/salud.module';
 import { UsuariosModule } from './modulos/usuarios';
@@ -39,6 +41,7 @@ export class AppModule {
           }),
         ),
         RelojModule,
+        CorreoModule,
         PrismaModule,
         AuditoriaModule,
         AcademiasModule,
@@ -47,6 +50,7 @@ export class AppModule {
         ConfiguracionModule,
         PlanesModule,
         ClasesModule,
+        InscripcionesModule,
         SaludModule,
       ],
       // El filtro también es un proveedor normal: el middleware de `/api/plataforma` lo reutiliza para sus respuestas.

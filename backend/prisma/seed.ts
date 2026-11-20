@@ -1,6 +1,7 @@
 // Semilla de datos de ejemplo para desarrollo (spec 001, criterio 61): las academias `delfines` y `tiburones` y el
 // superadmin de desarrollo. Solo agrega lo que falta: repetirla no falla ni duplica ni modifica lo que ya existe.
 // Nunca corre con NODE_ENV=production. No imprime la contraseña.
+import { createHash } from 'node:crypto';
 import {
   cargarEnvDeLaRaiz,
   crearClienteDelDueno,
@@ -10,6 +11,7 @@ import {
   problemaDeUrlDeConexion,
 } from '../src/cli/conexion';
 import { mensajeSeguro } from '../src/cli/mensaje-seguro';
+import { hoyEnLima } from '../src/comun/fechas';
 import { guardarSuperadmin, hayDatosDeSuperadmin, leerDatosSuperadmin } from '../src/cli/superadmin-datos';
 import { leerNodeEnv } from '../src/infraestructura/entorno/node-env';
 import { hashearClave } from '../src/infraestructura/seguridad/claves';
@@ -74,6 +76,59 @@ const CLASES_DE_EJEMPLO = [
   { nivel: 'AVANZADO', diaSemana: 3, horaInicio: '18:00', aforo: 20, dniEntrenador: '10000003' },
   { nivel: 'BASICO', diaSemana: 5, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000003' },
 ] as const;
+
+/**
+ * Clientes de ejemplo de `delfines` (spec 005, criterio 47), inventados, sobre los planes y las clases de la 004: uno con una solicitud
+ * en espera de pago con su reserva vigente, uno con la reserva vencida y uno menor de edad con apoderado. `tiburones` queda sin
+ * solicitudes. Cada cliente se reconoce por su DNI: repetir la semilla no duplica ni pisa lo que ya existe. Del token solo se guarda su
+ * SHA-256 (de un texto de ejemplo que no tiene el formato de un token, así que ningún enlace los abre); nada se imprime. Los datos
+ * médicos son inventados y neutros. La semilla no usa `RELOJ`: la reserva vigente vence dentro de un año y la vencida, ayer.
+ */
+const VERSION_DE_CONSENTIMIENTOS_DE_LA_SEMILLA = '2026-11-v1-provisional';
+const CLIENTES_DE_EJEMPLO = [
+  {
+    dni: '20000001',
+    nombres: 'Valeria Andrea',
+    apellidos: 'Mendoza Salas',
+    fechaNacimiento: '1996-04-12',
+    codigo: 'AQ-SM0001',
+    textoDelToken: 'semilla-delfines-solicitud-1',
+    estado: 'VIGENTE',
+    apoderado: null,
+  },
+  {
+    dni: '20000002',
+    nombres: 'Rodrigo',
+    apellidos: 'Paredes Linares',
+    fechaNacimiento: '1989-09-30',
+    codigo: 'AQ-SM0002',
+    textoDelToken: 'semilla-delfines-solicitud-2',
+    estado: 'VENCIDA',
+    apoderado: null,
+  },
+  {
+    dni: '20000003',
+    nombres: 'Mateo',
+    apellidos: 'Quispe Rojas',
+    fechaNacimiento: '2014-03-10',
+    codigo: 'AQ-SM0003',
+    textoDelToken: 'semilla-delfines-solicitud-3',
+    estado: 'VIGENTE',
+    apoderado: {
+      dni: '20000013',
+      nombres: 'Rosa',
+      apellidos: 'Rojas Vega',
+      telefono: '955123456',
+      parentesco: 'MADRE',
+    },
+  },
+] as const;
+/** Las clases de ejemplo que eligen los clientes (BASICO, lunes y viernes a las 18:00) y el plan de 12 clases al mes. */
+const CLASES_DE_LOS_CLIENTES = [
+  { dia: 1, hora: '18:00' },
+  { dia: 5, hora: '18:00' },
+] as const;
+const PLAN_DE_LOS_CLIENTES = '3 veces por semana';
 
 async function sembrar(): Promise<number> {
   cargarEnvDeLaRaiz();
@@ -261,6 +316,101 @@ async function sembrar(): Promise<number> {
       clasesCreadas > 0
         ? `Clases de ejemplo agregadas a delfines: ${clasesCreadas}`
         : 'Las clases de ejemplo de delfines ya existían',
+    );
+    // Los clientes de ejemplo van en la transacción de su academia (RLS forzada), uno por transacción: solo se agregan si faltan.
+    const hoy = hoyEnLima(ahora);
+    const [anioTexto = '0', mesTexto = '0'] = hoy.split('-');
+    const anio = Number(anioTexto);
+    const mes = Number(mesTexto);
+    const ultimoDia = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+    const inicioDelMes = `${anioTexto}-${mesTexto}-01`;
+    const finDelMes = `${anioTexto}-${mesTexto}-${String(ultimoDia).padStart(2, '0')}`;
+    // Los clientes cuelgan del plan de ejemplo (se reconoce por su nombre): si el administrador lo renombró, no se agregan.
+    const planes = await enAcademia(
+      cliente,
+      delfinesId,
+      (tx) =>
+        tx.$queryRaw<{ id: string; precio: string; clases_por_mes: number }[]>`
+          SELECT id::text AS id, precio::text AS precio, clases_por_mes::int AS clases_por_mes
+            FROM planes WHERE academia_id = ${delfinesId}::uuid AND nombre = ${PLAN_DE_LOS_CLIENTES}`,
+    );
+    const plan = planes[0];
+    // 8 de las 12 clases del plan (a mitad de mes), nunca más que las del plan si el administrador lo cambió.
+    const clasesTotales = Math.min(8, plan?.clases_por_mes ?? 8);
+    let clientesCreados = 0;
+    for (const ejemplo of plan ? CLIENTES_DE_EJEMPLO : []) {
+      const hashDelToken = createHash('sha256').update(ejemplo.textoDelToken).digest('hex');
+      const vence =
+        ejemplo.estado === 'VIGENTE'
+          ? new Date(ahora.getTime() + 365 * 24 * 60 * 60 * 1000)
+          : new Date(ahora.getTime() - 24 * 60 * 60 * 1000);
+      const creado = await enAcademia(cliente, delfinesId, async (tx) => {
+        const alumnos = await tx.$queryRaw<{ id: string }[]>`
+          INSERT INTO alumnos (id, academia_id, dni, nombres, apellidos, fecha_nacimiento, telefono, nivel, estado, creado_en,
+                               actualizado_en)
+          VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${ejemplo.dni}, ${ejemplo.nombres}, ${ejemplo.apellidos},
+                  ${ejemplo.fechaNacimiento}::date, '987000111', 'BASICO'::nivel_natacion, 'CLIENTE'::estado_alumno,
+                  ${ahora}::timestamptz, ${ahora}::timestamptz)
+          ON CONFLICT (academia_id, dni) DO NOTHING
+          RETURNING id::text AS id`;
+        const alumno = alumnos[0];
+        if (!alumno) return false;
+        await tx.$executeRaw`
+          INSERT INTO fichas_medicas (alumno_id, academia_id, tipo_sangre, alergias, contacto_emergencia_nombre,
+                                      contacto_emergencia_telefono, creado_en, actualizado_en)
+          VALUES (${alumno.id}::uuid, ${delfinesId}::uuid, 'O_POSITIVO'::tipo_sangre, 'Ninguna conocida', 'Contacto de ejemplo',
+                  '987000222', ${ahora}::timestamptz, ${ahora}::timestamptz)`;
+        if (ejemplo.apoderado) {
+          await tx.$executeRaw`
+            INSERT INTO apoderados (alumno_id, academia_id, nombres, apellidos, dni, telefono, parentesco, creado_en, actualizado_en)
+            VALUES (${alumno.id}::uuid, ${delfinesId}::uuid, ${ejemplo.apoderado.nombres}, ${ejemplo.apoderado.apellidos},
+                    ${ejemplo.apoderado.dni}, ${ejemplo.apoderado.telefono}, ${ejemplo.apoderado.parentesco}::parentesco,
+                    ${ahora}::timestamptz, ${ahora}::timestamptz)`;
+        }
+        const solicitudes = await tx.$queryRaw<{ id: string }[]>`
+          INSERT INTO solicitudes_inscripcion (id, academia_id, alumno_id, codigo, token_hash, clave_idempotencia, estado,
+                                               creado_en, actualizado_en)
+          VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${alumno.id}::uuid, ${ejemplo.codigo}, decode(${hashDelToken}::text, 'hex'),
+                  gen_random_uuid(), 'PENDIENTE_PAGO'::estado_solicitud, ${ahora}::timestamptz, ${ahora}::timestamptz)
+          RETURNING id::text AS id`;
+        const solicitud = solicitudes[0];
+        if (!solicitud) throw new Error('No se pudo crear una solicitud de ejemplo.');
+        const matriculas = await tx.$queryRaw<{ id: string }[]>`
+          INSERT INTO matriculas (id, academia_id, alumno_id, plan_id, solicitud_id, anio, mes, fecha_inicio, fecha_fin, clases_totales,
+                                  clases_usadas, es_proporcional, precio_plan, clases_por_mes_plan, monto_calculado, estado,
+                                  reserva_vence_en, creado_en, actualizado_en)
+          VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${alumno.id}::uuid, ${plan?.id}::uuid, ${solicitud.id}::uuid,
+                  ${anio}::smallint, ${mes}::smallint, ${inicioDelMes}::date, ${finDelMes}::date, ${clasesTotales}::smallint, 0, ${clasesTotales < (plan?.clases_por_mes ?? 0)},
+                  ${plan?.precio}::numeric(10,2), ${plan?.clases_por_mes}::smallint, 80.00, 'RESERVADA'::estado_matricula,
+                  ${vence}::timestamptz, ${ahora}::timestamptz, ${ahora}::timestamptz)
+          RETURNING id::text AS id`;
+        const matricula = matriculas[0];
+        if (!matricula) throw new Error('No se pudo crear la matrícula de un cliente de ejemplo.');
+        for (const clase of CLASES_DE_LOS_CLIENTES) {
+          await tx.$executeRaw`
+            INSERT INTO matricula_clases (academia_id, matricula_id, clase_id)
+            SELECT ${delfinesId}::uuid, ${matricula.id}::uuid, c.id
+              FROM clases c
+             WHERE c.academia_id = ${delfinesId}::uuid AND c.nivel = 'BASICO'::nivel_natacion AND c.dia_semana = ${clase.dia}::smallint
+               AND c.hora_inicio = ${clase.hora}::time(0)`;
+        }
+        const otorgante = ejemplo.apoderado ? 'APODERADO' : 'TITULAR';
+        for (const tipo of ['DATOS_PERSONALES', 'DESLINDE'] as const) {
+          await tx.$executeRaw`
+            INSERT INTO consentimientos (id, academia_id, alumno_id, solicitud_id, tipo, version, aceptado_en, otorgado_por, aceptado)
+            VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${alumno.id}::uuid, ${solicitud.id}::uuid, ${tipo}::tipo_consentimiento,
+                    ${VERSION_DE_CONSENTIMIENTOS_DE_LA_SEMILLA}, ${ahora}::timestamptz, ${otorgante}::otorgante_consentimiento, true)`;
+        }
+        return true;
+      });
+      if (creado) clientesCreados += 1;
+    }
+    console.log(
+      !plan
+        ? 'No se agregaron clientes de ejemplo a delfines: falta el plan de ejemplo'
+        : clientesCreados > 0
+          ? `Clientes de ejemplo con solicitud agregados a delfines: ${clientesCreados}`
+          : 'Los clientes de ejemplo de delfines ya existían',
     );
     return 0;
   } catch (error) {

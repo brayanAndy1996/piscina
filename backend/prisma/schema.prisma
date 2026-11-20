@@ -27,6 +27,7 @@ enum TipoActor {
   USUARIO
   SUPERADMIN
   SISTEMA
+  PUBLICO
 
   @@map("tipo_actor")
 }
@@ -71,6 +72,13 @@ model Academia {
   usuarios        Usuario[]
   planes          Plan[]
   clases          Clase[]
+  alumnos         Alumno[]
+  apoderados      Apoderado[]
+  fichasMedicas   FichaMedica[]
+  consentimientos Consentimiento[]
+  solicitudes     SolicitudInscripcion[]
+  matriculas      Matricula[]
+  matriculaClases MatriculaClase[]
 
   @@map("academias")
 }
@@ -166,6 +174,7 @@ model Usuario {
 
   academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   clases   Clase[]
+  alumnos  Alumno[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
@@ -194,7 +203,8 @@ model Plan {
   creadoEn          DateTime        @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn     DateTime        @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
-  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  academia   Academia    @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  matriculas Matricula[]
 
   @@unique([academiaId, id])
   @@map("planes")
@@ -217,10 +227,277 @@ model Clase {
   creadoEn      DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
-  academia   Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  entrenador Usuario  @relation(fields: [academiaId, entrenadorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  academia        Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  entrenador      Usuario          @relation(fields: [academiaId, entrenadorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  matriculaClases MatriculaClase[]
 
   @@unique([academiaId, id])
   @@index([academiaId, diaSemana, horaInicio])
   @@map("clases")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Historia 005a · Inscripción pública, reserva y seguimiento (D-05, D-07, D-23, D-28). Las políticas de RLS, los CHECK, los índices
+// parciales y los privilegios van a mano en la migración `inscripcion_publica`; Prisma no los conoce.
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/// Sección 8.8 de los requerimientos. La 005 solo escribe `CLIENTE`; la 007 suma las transiciones.
+enum EstadoAlumno {
+  CLIENTE
+  ALUMNO_ACTIVO
+  ALUMNO_VENCIDO
+  INACTIVO
+
+  @@map("estado_alumno")
+}
+
+/// La 007 suma los estados de la verificación del pago.
+enum EstadoSolicitud {
+  PENDIENTE_PAGO
+  VENCIDA
+  CANCELADA
+
+  @@map("estado_solicitud")
+}
+
+enum EstadoMatricula {
+  RESERVADA
+  VIGENTE
+  FINALIZADA
+  CANCELADA
+
+  @@map("estado_matricula")
+}
+
+enum TipoConsentimiento {
+  DATOS_PERSONALES
+  DESLINDE
+  IMAGEN
+
+  @@map("tipo_consentimiento")
+}
+
+enum OtorganteConsentimiento {
+  TITULAR
+  APODERADO
+
+  @@map("otorgante_consentimiento")
+}
+
+enum TipoSangre {
+  A_POSITIVO
+  A_NEGATIVO
+  B_POSITIVO
+  B_NEGATIVO
+  AB_POSITIVO
+  AB_NEGATIVO
+  O_POSITIVO
+  O_NEGATIVO
+  NO_SABE
+
+  @@map("tipo_sangre")
+}
+
+enum GradoColegio {
+  INICIAL
+  PRIMARIA_1
+  PRIMARIA_2
+  PRIMARIA_3
+  PRIMARIA_4
+  PRIMARIA_5
+  PRIMARIA_6
+  SECUNDARIA_1
+  SECUNDARIA_2
+  SECUNDARIA_3
+  SECUNDARIA_4
+  SECUNDARIA_5
+  NO_ESTUDIA
+
+  @@map("grado_colegio")
+}
+
+enum Parentesco {
+  PADRE
+  MADRE
+  OTRO_APODERADO
+
+  @@map("parentesco")
+}
+
+/// La persona que se inscribe (RN-01: es cliente hasta que su primer pago se confirme). El DNI es único por academia (D-28). El rol de la
+/// API no cambia el DNI, el estado ni la academia, y no borra filas. `fotoClave` es la clave del archivo en `AlmacenArchivos` (005b).
+model Alumno {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId      String        @map("academia_id") @db.Uuid
+  dni             String
+  nombres         String
+  apellidos       String
+  fechaNacimiento DateTime      @map("fecha_nacimiento") @db.Date
+  telefono        String
+  correo          String?
+  direccion       String?
+  gradoColegio    GradoColegio? @map("grado_colegio")
+  nivel           NivelNatacion
+  fotoClave       String?       @map("foto_clave")
+  estado          EstadoAlumno  @default(CLIENTE)
+  usuarioId       String?       @map("usuario_id") @db.Uuid
+  creadoEn        DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn   DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia        Academia               @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  usuario         Usuario?               @relation(fields: [academiaId, usuarioId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  apoderados      Apoderado[]
+  fichasMedicas   FichaMedica[]
+  consentimientos Consentimiento[]
+  solicitudes     SolicitudInscripcion[]
+  matriculas      Matricula[]
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, dni])
+  @@index([academiaId, estado])
+  @@map("alumnos")
+}
+
+/// Un apoderado por alumno (D9 de 005). Es la única tabla de la 005 de la que el rol de la API puede borrar filas.
+model Apoderado {
+  alumnoId      String     @map("alumno_id") @db.Uuid
+  academiaId    String     @map("academia_id") @db.Uuid
+  nombres       String
+  apellidos     String
+  dni           String
+  telefono      String
+  parentesco    Parentesco
+  correo        String?
+  creadoEn      DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime   @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno   Alumno   @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([academiaId, alumnoId])
+  @@map("apoderados")
+}
+
+/// Datos de salud: sensibles (Ley 29733, RN-21). Una ficha por alumno.
+model FichaMedica {
+  alumnoId                   String     @map("alumno_id") @db.Uuid
+  academiaId                 String     @map("academia_id") @db.Uuid
+  tipoSangre                 TipoSangre @map("tipo_sangre")
+  enfermedades               String?
+  alergias                   String?
+  medicamentos               String?
+  seguro                     String?
+  contactoEmergenciaNombre   String     @map("contacto_emergencia_nombre")
+  contactoEmergenciaTelefono String     @map("contacto_emergencia_telefono")
+  creadoEn                   DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn              DateTime   @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno   Alumno   @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([academiaId, alumnoId])
+  @@map("fichas_medicas")
+}
+
+/// Evidencia de los consentimientos (D-07, RNF-05): solo se agrega, nunca se modifica ni se borra.
+model Consentimiento {
+  id          String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId  String                  @map("academia_id") @db.Uuid
+  alumnoId    String                  @map("alumno_id") @db.Uuid
+  solicitudId String                  @map("solicitud_id") @db.Uuid
+  tipo        TipoConsentimiento
+  version     String
+  aceptadoEn  DateTime                @map("aceptado_en") @db.Timestamptz(3)
+  ip          String?                 @db.Inet
+  otorgadoPor OtorganteConsentimiento @map("otorgado_por")
+  aceptado    Boolean
+
+  academia  Academia             @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno    Alumno               @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  solicitud SolicitudInscripcion @relation(fields: [academiaId, solicitudId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@index([academiaId, solicitudId])
+  @@map("consentimientos")
+}
+
+/// La solicitud que sigue la persona con su código y su enlace (D-05, D-07). Del token solo se guarda su SHA-256 (`tokenHash`). El rol
+/// de la API solo cambia el estado.
+model SolicitudInscripcion {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId        String          @map("academia_id") @db.Uuid
+  alumnoId          String          @map("alumno_id") @db.Uuid
+  codigo            String
+  tokenHash         Bytes           @map("token_hash")
+  claveIdempotencia String          @map("clave_idempotencia") @db.Uuid
+  estado            EstadoSolicitud @default(PENDIENTE_PAGO)
+  ipOrigen          String?         @map("ip_origen") @db.Inet
+  creadoEn          DateTime        @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn     DateTime        @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia        Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno          Alumno           @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  consentimientos Consentimiento[]
+  matriculas      Matricula[]
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, codigo])
+  @@unique([academiaId, tokenHash])
+  @@unique([academiaId, claveIdempotencia])
+  @@index([academiaId, alumnoId])
+  @@index([academiaId, ipOrigen, estado])
+  @@map("solicitudes_inscripcion")
+}
+
+/// La mensualidad de un alumno en un mes (RN-27). La reserva de la 005 es una matrícula `RESERVADA` con vencimiento (D1 de 005). Guarda su
+/// propio precio y clases: un cambio del plan no la afecta (HU-19). El índice único parcial de la matrícula que ocupa cupo va a mano.
+model Matricula {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId       String          @map("academia_id") @db.Uuid
+  alumnoId         String          @map("alumno_id") @db.Uuid
+  planId           String          @map("plan_id") @db.Uuid
+  solicitudId      String?         @map("solicitud_id") @db.Uuid
+  anio             Int             @db.SmallInt
+  mes              Int             @db.SmallInt
+  fechaInicio      DateTime        @map("fecha_inicio") @db.Date
+  fechaFin         DateTime        @map("fecha_fin") @db.Date
+  clasesTotales    Int             @map("clases_totales") @db.SmallInt
+  clasesUsadas     Int             @default(0) @map("clases_usadas") @db.SmallInt
+  esProporcional   Boolean         @map("es_proporcional")
+  precioPlan       Decimal         @map("precio_plan") @db.Decimal(10, 2)
+  clasesPorMesPlan Int             @map("clases_por_mes_plan") @db.SmallInt
+  montoCalculado   Decimal         @map("monto_calculado") @db.Decimal(10, 2)
+  montoAjustado    Decimal?        @map("monto_ajustado") @db.Decimal(10, 2)
+  motivoAjuste     String?         @map("motivo_ajuste")
+  estado           EstadoMatricula
+  reservaVenceEn   DateTime?       @map("reserva_vence_en") @db.Timestamptz(3)
+  creadoEn         DateTime        @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn    DateTime        @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia  Academia              @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno    Alumno                @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  plan      Plan                  @relation(fields: [academiaId, planId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  solicitud SolicitudInscripcion? @relation(fields: [academiaId, solicitudId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  clases    MatriculaClase[]
+
+  @@unique([academiaId, id])
+  @@index([academiaId, anio, mes, estado])
+  @@index([academiaId, alumnoId])
+  @@index([academiaId, solicitudId])
+  @@map("matriculas")
+}
+
+/// Las clases elegidas de cada matrícula; de aquí se cuenta la ocupación de una clase.
+model MatriculaClase {
+  academiaId  String @map("academia_id") @db.Uuid
+  matriculaId String @map("matricula_id") @db.Uuid
+  claseId     String @map("clase_id") @db.Uuid
+
+  academia  Academia  @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  matricula Matricula @relation(fields: [academiaId, matriculaId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  clase     Clase     @relation(fields: [academiaId, claseId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([academiaId, matriculaId, claseId])
+  @@index([academiaId, claseId])
+  @@map("matricula_clases")
 }

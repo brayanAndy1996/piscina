@@ -28,14 +28,18 @@ export const crearClaseSchema = z.strictObject({
 });
 export type CrearClase = z.infer<typeof crearClaseSchema>;
 
-/** `PATCH /api/clases/{id}`: estricto; el nivel, el día y la hora no se cambian (DR-4). Debe venir al menos un campo. */
+/**
+ * `PATCH /api/clases/{id}`: estricto; el nivel, el día y la hora no se cambian (DR-4). Debe venir al menos un campo de la clase.
+ * `confirmarAforoMenor` (005, DR-5 de 004) confirma bajar el aforo por debajo de los inscritos; no cuenta como "un campo".
+ */
 export const actualizarClaseSchema = z
   .strictObject({
     entrenadorId: entrenadorIdSchema.optional(),
     aforo: aforoSchema.optional(),
     activo: z.boolean('El estado debe ser verdadero o falso.').optional(),
+    confirmarAforoMenor: z.boolean('La confirmación debe ser verdadera o falsa.').optional(),
   })
-  .refine((cuerpo) => Object.values(cuerpo).some((valor) => valor !== undefined), {
+  .refine((cuerpo) => [cuerpo.entrenadorId, cuerpo.aforo, cuerpo.activo].some((valor) => valor !== undefined), {
     message: 'Envía al menos un campo de la clase.',
   });
 export type ActualizarClase = z.infer<typeof actualizarClaseSchema>;

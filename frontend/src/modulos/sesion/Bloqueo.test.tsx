@@ -38,7 +38,10 @@ describe('mensaje del 423 de la academia (criterio 19)', () => {
 
   it('el ingreso lo muestra y no dice "15 minutos" fijo', async () => {
     simularApi({
-      'GET /api/a/delfines': () => ({ estado: 200, cuerpo: { nombreCorto: 'delfines', nombre: 'Los Delfines' } }),
+      'GET /api/a/delfines': () => ({
+        estado: 200,
+        cuerpo: { nombreCorto: 'delfines', nombre: 'Los Delfines', telefono: null },
+      }),
       'POST /api/a/delfines/sesion': () => BLOQUEADA,
     });
     mostrar('/a/delfines/ingresar');
