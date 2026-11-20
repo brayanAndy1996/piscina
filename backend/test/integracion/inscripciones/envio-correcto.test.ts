@@ -1,6 +1,6 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { crearPlanDePrueba } from '../../utilidades/planes-clases';
+import { crearClaseDePrueba, crearEntrenadorDePrueba, crearPlanDePrueba } from '../../utilidades/planes-clases';
 import { leerAuditoriaDeAcademia } from '../../utilidades/datos';
 import { leerUsuarios } from '../../utilidades/usuarios';
 import {
@@ -113,7 +113,17 @@ describe('envío correcto: lo que se crea y lo que se responde (criterios 16, 24
 
   describe('criterio 16: las filas que se crean', () => {
     it('criterio 16: crea el alumno CLIENTE con su nivel y sus datos, sin foto, sin usuario y sin estado de alumno activo', async () => {
+      // Las clases deben ser del nivel elegido (criterio 15 b): lunes, miércoles y viernes INTERMEDIO a las 18:00.
+      const entrenador = await crearEntrenadorDePrueba(e.A.id);
+      const intermedio = (dia: number) =>
+        crearClaseDePrueba(e.A.id, entrenador.id, {
+          nivel: 'INTERMEDIO',
+          dia_semana: dia,
+          hora_inicio: '18:00',
+          aforo: 20,
+        });
       const cuerpo = await cuerpoInscripcion(e, {
+        clases: [e.intermedioLunes, await intermedio(3), await intermedio(5)],
         sobre: { alumno: { nivel: 'INTERMEDIO', correo: 'camila@ejemplo.test', direccion: 'Jr. Los Pinos 123' } },
       });
 
@@ -386,8 +396,8 @@ describe('envío correcto: lo que se crea y lo que se responde (criterios 16, 24
         'clasesTotales',
         'codigo',
         'esProporcional',
-        'mes',
         'menorDeEdad',
+        'mes',
         'montoCalculado',
         'planId',
         'reservaVenceEn',

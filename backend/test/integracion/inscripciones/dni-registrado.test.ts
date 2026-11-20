@@ -27,6 +27,7 @@ import {
   rutaPublica,
   sembrarSolicitud,
   solicitudDe,
+  variante,
 } from '../../utilidades/inscripciones';
 
 // Criterio 21 (crítico, HU-01, RN-03, D-28): DNI ya registrado.
@@ -62,7 +63,8 @@ describe('envío: DNI ya registrado (criterio 21)', () => {
     auditoria: await contarAuditoria(e.A.id),
     correos: correo.mensajes.length,
   });
-  const conDni = (dni: string, sobre: Objeto = {}) => cuerpoInscripcion(e, { sobre: { alumno: { dni }, ...sobre } });
+  const conDni = (dni: string, sobre: Objeto = {}) =>
+    cuerpoInscripcion(e, { sobre: variante({ alumno: { dni } }, sobre) });
 
   describe('a) se rechaza sin decir por qué', () => {
     it('criterio 21 a: el DNI de un alumno que no es cliente, el de un cliente con solicitud activa y el de un usuario del personal responden 409 DNI_YA_REGISTRADO con el mismo cuerpo, sin escribir ni enviar correo', async () => {
@@ -159,7 +161,8 @@ describe('envío: DNI ya registrado (criterio 21)', () => {
           estado: estadoPrevio,
           nombres: 'Nombre Viejo',
           apellidos: 'Apellido Viejo',
-          nivel: 'BASICO',
+          // El nivel nuevo es BASICO (las clases elegidas son BASICO, criterio 15 b): el viejo es otro para ver que se actualiza.
+          nivel: 'AVANZADO',
         });
 
         const respuesta = await enviar(
@@ -169,7 +172,7 @@ describe('envío: DNI ya registrado (criterio 21)', () => {
               apellidos: 'Apellido Nuevo',
               telefono: '911223344',
               fechaNacimiento: '1990-03-04',
-              nivel: 'AVANZADO',
+              nivel: 'BASICO',
               correo: 'nuevo@ejemplo.test',
             },
           }),
@@ -185,7 +188,7 @@ describe('envío: DNI ya registrado (criterio 21)', () => {
           apellidos: 'Apellido Nuevo',
           telefono: '911223344',
           fecha_nacimiento: '1990-03-04',
-          nivel: 'AVANZADO',
+          nivel: 'BASICO',
           correo: 'nuevo@ejemplo.test',
           estado: 'CLIENTE',
         });

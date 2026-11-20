@@ -276,12 +276,14 @@ describe('criterio 1: claves, índices y llaves foráneas', () => {
 
   it.each([
     ['alumnos', ['id']],
-    ['apoderados', ['alumno_id']],
-    ['fichas_medicas', ['alumno_id']],
+    // El criterio 126 de la 001 exige `academia_id` en toda llave primaria que no sea solo `id uuid gen_random_uuid()`: la spec dice
+    // "`alumno_id` PK", y esa PK es (academia_id, alumno_id), igual que la de `matricula_clases`.
+    ['apoderados', ['academia_id', 'alumno_id']],
+    ['fichas_medicas', ['academia_id', 'alumno_id']],
     ['consentimientos', ['id']],
     ['solicitudes_inscripcion', ['id']],
     ['matriculas', ['id']],
-    ['matricula_clases', ['matricula_id', 'clase_id']],
+    ['matricula_clases', ['academia_id', 'matricula_id', 'clase_id']],
   ] as const)('criterio 1: %s tiene su clave primaria', async (tabla, columnas) => {
     const primaria = (await indicesDe(tabla)).find((indice) => indice.primaria);
 

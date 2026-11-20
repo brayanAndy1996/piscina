@@ -1,4 +1,5 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CLAVE_EN_BASE, fijarConfiguracion, fijarFilaConfiguracion } from '../../utilidades/configuracion';
 import { leerAuditoriaDeAcademia } from '../../utilidades/datos';
@@ -103,11 +104,12 @@ describe('GET /api/a/{nombreCorto}: el teléfono público (criterio 5)', () => {
     ['dos puntos', '..'],
     ['con un porcentaje mal formado', '%25'],
   ])('criterio 5 (58 a 60 de 001): %s responde 404 ACADEMIA_NO_ENCONTRADA con no-store', async (_caso, nombreCorto) => {
-    const respuesta = await leer(nombreCorto);
+    // Con supertest la ruta viaja literal: `fetch` normaliza `/api/a/..` a `/api/` y nunca llegaría `..` a la API (como en el criterio 59 de 001).
+    const respuesta = await request(ctx.app.getHttpServer()).get(rutaPublica(nombreCorto));
 
     expect(respuesta.status).toBe(404);
-    expect(codigoDe(respuesta)).toBe('ACADEMIA_NO_ENCONTRADA');
-    expect(respuesta.cacheControl).toBe('no-store');
+    expect((respuesta.body as { codigo?: string }).codigo).toBe('ACADEMIA_NO_ENCONTRADA');
+    expect(respuesta.headers['cache-control']).toBe('no-store');
   });
 
   it('criterio 5 (58 a 60 de 001): una academia suspendida responde 403 ACADEMIA_SUSPENDIDA y no dice su teléfono', async () => {

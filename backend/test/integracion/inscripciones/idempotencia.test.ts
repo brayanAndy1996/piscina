@@ -7,6 +7,7 @@ import {
   type AppInscripciones,
   AHORA_005,
   buscarTextoEnBase,
+  cancelarTodasLasReservas,
   codigoDe,
   conRetencion,
   crearAppInscripciones,
@@ -181,6 +182,9 @@ describe('envío: envíos repetidos (criterio 23)', () => {
       ).toEqual([201, 409]);
       const rechazada = respuestas.find((r) => r.status === 409);
       expect(rechazada && codigoDe(rechazada)).toBe('SOLICITUD_YA_REGISTRADA');
+      expect(await leerSolicitudes(e.A.id), `ronda ${ronda}: una sola solicitud nueva`).toHaveLength(ronda + 1);
+      // Todas las rondas salen de la misma IP: se cancelan las reservas para no chocar con el límite del criterio 25 (5 activas por IP).
+      await cancelarTodasLasReservas(e.A.id);
     }
     expect(await leerSolicitudes(e.A.id)).toHaveLength(6);
   });

@@ -184,25 +184,27 @@ describe('aforo menor que los inscritos y desactivar con inscritos (criterios 41
     });
 
     it('criterio 41: las reservas vencidas y las canceladas no cuentan como inscritos; las vigentes y las sin vencimiento sí', async () => {
-      await llenarClase(e.A.id, e.lunes.id, e.plan.id, 10, {
+      await llenarClase(e.A.id, e.lunes.id, e.plan.id, 25, {
         estado: 'RESERVADA',
         reservaVenceEn: new Date(AHORA_005.getTime() - 1000),
       });
       await sembrarSolicitud(e.A.id, { planId: e.plan.id, claseIds: [e.lunes.id], estado: 'CANCELADA' });
       await sembrarSolicitud(e.A.id, { planId: e.plan.id, claseIds: [e.lunes.id], estado: 'VENCIDA' });
+      // El aforo mínimo es 20 (RN-11): 20 es menor que las 25 reservas vencidas, así que si contaran como inscritos sería 409.
       const libre = await patch({ aforo: 20 });
       expect(libre.status, 'con todas las reservas vencidas o canceladas no hay inscritos').toBe(200);
 
       await actualizarFila('propietario', 'clases', e.A.id, e.lunes.id, { aforo: 30 });
-      await llenarClase(e.A.id, e.lunes.id, e.plan.id, 12, {
+      await llenarClase(e.A.id, e.lunes.id, e.plan.id, 15, {
         estado: 'RESERVADA',
         reservaVenceEn: new Date(AHORA_005.getTime() + VEINTICUATRO_HORAS),
       });
-      await llenarClase(e.A.id, e.lunes.id, e.plan.id, 6, { estado: 'RESERVADA', reservaVenceEn: null });
+      await llenarClase(e.A.id, e.lunes.id, e.plan.id, 8, { estado: 'RESERVADA', reservaVenceEn: null });
+      // 20 es menor que los 23 que sí cuentan (15 con vencimiento futuro + 8 sin vencimiento); con las 25 vencidas serían 48.
       const conInscritos = await patch({ aforo: 20 });
 
       expect([conInscritos.status, codigoDe(conInscritos)]).toEqual([409, 'AFORO_MENOR_QUE_INSCRITOS']);
-      expect(detallesDe(conInscritos)['inscritos']).toBe(18);
+      expect(detallesDe(conInscritos)['inscritos']).toBe(23);
     });
 
     it('criterio 41: los inscritos de otra academia no cuentan', async () => {
