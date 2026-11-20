@@ -2,6 +2,7 @@ import type { RespuestaSesionAcademia, UsuarioSesion } from '@aquagestion/contra
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { esErrorDeApi } from '../../api/cliente';
+import { useIdDeVisita } from '../../lib/visita';
 import * as api from './api';
 import { useUsuario } from './contexto';
 
@@ -103,11 +104,20 @@ export function useConfirmarSesion(opciones: OpcionesConfirmarSesion = {}): () =
   }, [cliente, mostrada, permitirCambioPendiente]);
 }
 
+/**
+ * Lo público de una academia (nombre y teléfono). No se guarda entre visitas: la clave lleva el identificador de la visita, así que cada
+ * vez que se abre una página pública se pide de nuevo y al salir de ella la respuesta se descarta (criterio 45 de 005, DR-4 de 003): un
+ * teléfono que la academia cambió se ve enseguida.
+ */
 export function useAcademiaPublica(nombreCorto: string) {
+  const visita = useIdDeVisita();
   return useQuery({
-    queryKey: [CLAVE_ACADEMIA_PUBLICA, nombreCorto],
+    queryKey: [CLAVE_ACADEMIA_PUBLICA, nombreCorto, visita],
     queryFn: () => api.obtenerAcademiaPublica(nombreCorto),
     retry: false,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
   });
 }

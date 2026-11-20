@@ -12,4 +12,15 @@ describe('index.html', () => {
   it('tiene el título de pestaña "AquaGestión"', () => {
     expect(html).toMatch(/<title>AquaGestión<\/title>/);
   });
+
+  // Spec 005, criterio 44: el enlace de seguimiento lleva un token secreto; ninguna petición ni enlace lo manda como referente.
+  it('declara <meta name="referrer" content="no-referrer"> para que el enlace de seguimiento no salga como referente', () => {
+    expect(html).toMatch(/<meta\s+name="referrer"\s+content="no-referrer"\s*\/?>/);
+  });
+
+  it('no carga recursos de otros dominios (fuentes, scripts, estilos ni imágenes)', () => {
+    const recursos = [...html.matchAll(/\s(?:src|href)="([^"]*)"/g)].map((coincidencia) => coincidencia[1] ?? '');
+    expect(recursos.length).toBeGreaterThan(0);
+    for (const recurso of recursos) expect(recurso).not.toMatch(/^(?:[a-z]+:)?\/\//i);
+  });
 });

@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import type { z } from 'zod';
 import { esErrorDeApi } from '../../api/cliente';
+import { TelefonoAcademia } from '../../componentes/Telefono';
 import { Alerta, CampoTexto, ESTILO_BOTON } from '../../componentes/ui';
 import { mensajeGeneral } from '../../lib/errores';
 import { MENSAJE_ACADEMIA_SUSPENDIDA, RUTA_CAMBIAR_CLAVE, useAcademiaPublica, useIniciarSesionAcademia } from './hooks';
@@ -86,6 +87,7 @@ export function PaginaIngresarAcademia() {
     <Tarjeta>
       <h1 className="text-2xl font-semibold text-sky-900">{academia.data.nombre}</h1>
       <p className="mt-1 text-slate-600">Ingresa con tu DNI</p>
+      <TelefonoAcademia telefono={academia.data.telefono} />
       <form onSubmit={(evento) => void enviar(evento)} noValidate className="mt-6 space-y-4">
         <CampoTexto
           etiqueta="DNI"

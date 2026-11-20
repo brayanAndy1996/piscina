@@ -48,3 +48,25 @@ export function diaIsoDeAbreviatura(abreviatura: string): DiaSemana {
 export function diaDeLaSemanaEnLima(instante: Date = new Date()): DiaSemana {
   return diaIsoDeAbreviatura(DIA_EN_LIMA.format(instante));
 }
+
+const NOMBRE_MES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+] as const;
+
+/** Un mes `AAAA-MM` como "noviembre de 2026". Es texto: no pasa por zona horaria. Si no es un mes, se muestra tal cual. */
+export function formatearMes(mes: string): string {
+  const partes = /^([0-9]{4})-(0[1-9]|1[0-2])$/.exec(mes);
+  const nombre = partes ? NOMBRE_MES[Number(partes[2]) - 1] : undefined;
+  return partes && nombre ? `${nombre} de ${partes[1]}` : mes;
+}

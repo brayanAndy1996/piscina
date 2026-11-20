@@ -19,6 +19,15 @@ export function Alerta({ children }: { children: ReactNode }) {
   );
 }
 
+/** Un aviso que no es un error (un monto que cambió, textos que se actualizaron): se anuncia sin interrumpir. */
+export function Aviso({ children }: { children: ReactNode }) {
+  return (
+    <div role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+      {children}
+    </div>
+  );
+}
+
 interface PropiedadesCampo extends Omit<ComponentProps<'input'>, 'className'> {
   etiqueta: string;
   error?: string | undefined;
@@ -41,6 +50,45 @@ export function CampoTexto({ etiqueta, error, ayuda, ...entrada }: PropiedadesCa
         aria-invalid={error ? true : undefined}
         aria-describedby={descripcion}
         className="mt-1 block min-h-11 w-full rounded-lg border-0 bg-white px-3 py-2 text-base text-slate-900 ring-1 ring-slate-300 focus:outline-2 focus:outline-sky-700 aria-invalid:ring-red-500"
+        {...entrada}
+      />
+      {ayuda ? (
+        <p id={idAyuda} className="mt-1 text-sm text-slate-600">
+          {ayuda}
+        </p>
+      ) : null}
+      {error ? (
+        <p id={idError} role="alert" className="mt-1 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+interface PropiedadesAreaTexto extends Omit<ComponentProps<'textarea'>, 'className'> {
+  etiqueta: string;
+  error?: string | undefined;
+  ayuda?: string;
+}
+
+/** Texto de varias líneas con etiqueta y mensaje de error enlazados, con el mismo aspecto que `CampoTexto`. */
+export function CampoAreaTexto({ etiqueta, error, ayuda, ...entrada }: PropiedadesAreaTexto) {
+  const id = useId();
+  const idError = `${id}-error`;
+  const idAyuda = `${id}-ayuda`;
+  const descripcion = [error ? idError : null, ayuda ? idAyuda : null].filter(Boolean).join(' ') || undefined;
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-slate-800">
+        {etiqueta}
+      </label>
+      <textarea
+        id={id}
+        rows={3}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={descripcion}
+        className="mt-1 block w-full rounded-lg border-0 bg-white px-3 py-2 text-base text-slate-900 ring-1 ring-slate-300 focus:outline-2 focus:outline-sky-700 aria-invalid:ring-red-500"
         {...entrada}
       />
       {ayuda ? (
