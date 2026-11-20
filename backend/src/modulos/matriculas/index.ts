@@ -13,3 +13,4 @@ export {
   type Descuento,
   type Racional,
 } from './dominio/cobro';
+export { finDelMesEnLima, RESERVA_SIN_PAGO_MS, vencimientoDeReserva } from './dominio/reserva';

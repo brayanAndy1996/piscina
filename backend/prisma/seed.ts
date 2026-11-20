@@ -12,6 +12,9 @@ import {
 } from '../src/cli/conexion';
 import { mensajeSeguro } from '../src/cli/mensaje-seguro';
 import { hoyEnLima } from '../src/comun/fechas';
+import { Decimal } from '../src/infraestructura/prisma';
+import { montoProporcional } from '../src/modulos/matriculas/dominio/cobro';
+import { finDelMesEnLima } from '../src/modulos/matriculas/dominio/reserva';
 import { guardarSuperadmin, hayDatosDeSuperadmin, leerDatosSuperadmin } from '../src/cli/superadmin-datos';
 import { leerNodeEnv } from '../src/infraestructura/entorno/node-env';
 import { hashearClave } from '../src/infraestructura/seguridad/claves';
@@ -66,8 +69,10 @@ const FRANJAS_DE_EJEMPLO = [
 const NIVELES_DE_EJEMPLO = ['BASICO', 'INTERMEDIO', 'AVANZADO'];
 
 /**
- * Clases de ejemplo de `delfines` (spec 004, criterio 30): los tres niveles y, el lunes a las 18:00, dos clases en el mismo bloque con
- * entrenadores distintos (10000003 y 10000005; RN-10, HU-17).
+ * Clases de ejemplo de `delfines` (spec 004, criterio 30; spec 005, criterio 47 a): los tres niveles y, el lunes a las 18:00, dos clases en
+ * el mismo bloque con entrenadores distintos (10000003 y 10000005; RN-10, HU-17). Además, Básico martes, miércoles y jueves a las 18:00
+ * con el entrenador 10000005: así el plan de 3 veces (lunes, miércoles y viernes) tiene Básico los tres días y el de 2 veces (martes y
+ * jueves), Básico los dos, y se puede completar una inscripción con cada plan de ejemplo.
  */
 const CLASES_DE_EJEMPLO = [
   { nivel: 'BASICO', diaSemana: 1, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000003' },
@@ -75,6 +80,9 @@ const CLASES_DE_EJEMPLO = [
   { nivel: 'INTERMEDIO', diaSemana: 1, horaInicio: '19:00', aforo: 25, dniEntrenador: '10000003' },
   { nivel: 'AVANZADO', diaSemana: 3, horaInicio: '18:00', aforo: 20, dniEntrenador: '10000003' },
   { nivel: 'BASICO', diaSemana: 5, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000003' },
+  { nivel: 'BASICO', diaSemana: 2, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000005' },
+  { nivel: 'BASICO', diaSemana: 3, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000005' },
+  { nivel: 'BASICO', diaSemana: 4, horaInicio: '18:00', aforo: 30, dniEntrenador: '10000005' },
 ] as const;
 
 /**
@@ -82,7 +90,9 @@ const CLASES_DE_EJEMPLO = [
  * en espera de pago con su reserva vigente, uno con la reserva vencida y uno menor de edad con apoderado. `tiburones` queda sin
  * solicitudes. Cada cliente se reconoce por su DNI: repetir la semilla no duplica ni pisa lo que ya existe. Del token solo se guarda su
  * SHA-256 (de un texto de ejemplo que no tiene el formato de un token, así que ningún enlace los abre); nada se imprime. Los datos
- * médicos son inventados y neutros. La semilla no usa `RELOJ`: la reserva vigente vence dentro de un año y la vencida, ayer.
+ * médicos son inventados y neutros. La semilla no usa `RELOJ`: las matrículas son del mes en curso en Lima, la reserva vigente vence al
+ * fin de ese mes (el tope de DR-12: el `CHECK` `matriculas_reserva_dentro_del_mes` no deja una reserva que cruce el mes) y la vencida,
+ * una hora antes de sembrar.
  */
 const VERSION_DE_CONSENTIMIENTOS_DE_LA_SEMILLA = '2026-11-v1-provisional';
 const CLIENTES_DE_EJEMPLO = [
@@ -123,9 +133,10 @@ const CLIENTES_DE_EJEMPLO = [
     },
   },
 ] as const;
-/** Las clases de ejemplo que eligen los clientes (BASICO, lunes y viernes a las 18:00) y el plan de 12 clases al mes. */
+/** Las clases de ejemplo que eligen los clientes (BASICO, lunes, miércoles y viernes a las 18:00: las del plan de 3 veces por semana). */
 const CLASES_DE_LOS_CLIENTES = [
   { dia: 1, hora: '18:00' },
+  { dia: 3, hora: '18:00' },
   { dia: 5, hora: '18:00' },
 ] as const;
 const PLAN_DE_LOS_CLIENTES = '3 veces por semana';
@@ -337,13 +348,15 @@ async function sembrar(): Promise<number> {
     const plan = planes[0];
     // 8 de las 12 clases del plan (a mitad de mes), nunca más que las del plan si el administrador lo cambió.
     const clasesTotales = Math.min(8, plan?.clases_por_mes ?? 8);
+    // El monto es el que habría cotizado el formulario (criterio 47 b): la misma función del dominio, sin literales.
+    const montoCalculado = plan
+      ? montoProporcional(new Decimal(plan.precio), plan.clases_por_mes, clasesTotales).toFixed(2)
+      : '0.00';
     let clientesCreados = 0;
     for (const ejemplo of plan ? CLIENTES_DE_EJEMPLO : []) {
       const hashDelToken = createHash('sha256').update(ejemplo.textoDelToken).digest('hex');
-      const vence =
-        ejemplo.estado === 'VIGENTE'
-          ? new Date(ahora.getTime() + 365 * 24 * 60 * 60 * 1000)
-          : new Date(ahora.getTime() - 24 * 60 * 60 * 1000);
+      // La reserva vigente dura hasta el fin del mes en Lima (criterio 47 d); la vencida venció una hora antes de sembrar.
+      const vence = ejemplo.estado === 'VIGENTE' ? finDelMesEnLima(ahora) : new Date(ahora.getTime() - 60 * 60 * 1000);
       const creado = await enAcademia(cliente, delfinesId, async (tx) => {
         const alumnos = await tx.$queryRaw<{ id: string }[]>`
           INSERT INTO alumnos (id, academia_id, dni, nombres, apellidos, fecha_nacimiento, telefono, nivel, estado, creado_en,
@@ -381,7 +394,7 @@ async function sembrar(): Promise<number> {
                                   reserva_vence_en, creado_en, actualizado_en)
           VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${alumno.id}::uuid, ${plan?.id}::uuid, ${solicitud.id}::uuid,
                   ${anio}::smallint, ${mes}::smallint, ${inicioDelMes}::date, ${finDelMes}::date, ${clasesTotales}::smallint, 0, ${clasesTotales < (plan?.clases_por_mes ?? 0)},
-                  ${plan?.precio}::numeric(10,2), ${plan?.clases_por_mes}::smallint, 80.00, 'RESERVADA'::estado_matricula,
+                  ${plan?.precio}::numeric(10,2), ${plan?.clases_por_mes}::smallint, ${montoCalculado}::numeric(10,2), 'RESERVADA'::estado_matricula,
                   ${vence}::timestamptz, ${ahora}::timestamptz, ${ahora}::timestamptz)
           RETURNING id::text AS id`;
         const matricula = matriculas[0];

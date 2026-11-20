@@ -46,6 +46,8 @@ function Explicacion({ respuesta }: { respuesta: RespuestaConsultaSolicitud }) {
 export function VistaSeguimiento({ respuesta }: { respuesta: RespuestaConsultaSolicitud }) {
   const { solicitud } = respuesta;
   const estado = ESTADO_EN_PALABRAS[solicitud.estado];
+  // La vista reducida (VENCIDA y CANCELADA, criterio 58) no trae el nombre ni el vencimiento: solo la completa los lleva.
+  const completa = solicitud.estado === 'PENDIENTE_PAGO' ? solicitud : null;
   return (
     <article
       aria-label="Tu solicitud"
@@ -53,7 +55,7 @@ export function VistaSeguimiento({ respuesta }: { respuesta: RespuestaConsultaSo
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm text-slate-700">Hola, {solicitud.nombres}</p>
+          {completa ? <p className="text-sm text-slate-700">Hola, {completa.nombres}</p> : null}
           <p className="text-sm text-slate-700">Código de la solicitud</p>
           <p className="font-mono text-2xl font-semibold tracking-wider text-slate-900">{solicitud.codigo}</p>
         </div>
@@ -86,10 +88,10 @@ export function VistaSeguimiento({ respuesta }: { respuesta: RespuestaConsultaSo
         </dd>
         <dt className="font-medium text-slate-600 sm:text-slate-800">Monto</dt>
         <dd className="text-slate-900 mb-2 sm:mb-0">{formatearSoles(solicitud.monto)} (el precio ya incluye IGV)</dd>
-        {solicitud.reservaVenceEn ? (
+        {completa?.reservaVenceEn ? (
           <>
             <dt className="font-medium text-slate-600 sm:text-slate-800">Reserva hasta</dt>
-            <dd className="text-slate-900 mb-2 sm:mb-0">{formatearFechaHora(solicitud.reservaVenceEn)}</dd>
+            <dd className="text-slate-900 mb-2 sm:mb-0">{formatearFechaHora(completa.reservaVenceEn)}</dd>
           </>
         ) : null}
       </dl>

@@ -16,24 +16,28 @@ import {
   VERSION_CONSENTIMIENTOS,
 } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
+import { isIPv4 } from 'node:net';
 import { aDecimal, montosIguales } from '../../comun/dinero';
 import { hoyEnLima } from '../../comun/fechas';
+import { claveDeConexion } from '../../comun/http/conexion';
 import {
   BaseDatos,
   errorParaRegistro,
   type AcademiaResuelta,
   restriccionDeUnicidadViolada,
+  sql,
   type TransaccionAcademia,
 } from '../../infraestructura/prisma';
-import { ENVIADOR_CORREO, type EnviadorCorreo } from '../../infraestructura/correo';
+import { ENVIADOR_CORREO, enviarSinEsperar, type EnviadorCorreo } from '../../infraestructura/correo';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { AuditoriaService, ipParaAuditoria } from '../auditoria';
 import { bloquearClasesParaCupo } from '../clases';
 import { leerConfiguracion } from '../configuracion/lectura';
-import { type ClaseElegida, contarOcupacion } from '../matriculas';
+import { type ClaseElegida, contarOcupacion, vencimientoDeReserva } from '../matriculas';
 import { estadoDelPlan, compararPlanes } from '../planes/dominio/plan';
 import { cotizarInscripcion } from './dominio/cotizacion';
 import { hashDeToken, nuevoCodigo, nuevoToken } from './dominio/codigos';
+import { destinatariosDelEnlace } from './dominio/destinatarios';
 import { planAplicaAlNivel, validarSeleccion } from './dominio/seleccion';
 import {
   dniYaRegistrado,
@@ -51,10 +55,7 @@ import {
 import { leerClasesActivas, leerClasesPorIds, leerPlan, leerPlanes, type PlanLeido } from './lectura';
 import { ordenDeClases } from '../clases/dominio/clase';
 
-/** Cuánto dura la reserva del cupo antes de pagar (DR-1 de 005, aprobado: 24 horas). Fija en esta historia. */
-export const DURACION_RESERVA_MS = 24 * 60 * 60 * 1000;
-
-/** Cuántas solicitudes sin pagar puede tener a la vez una misma conexión en una academia (DR-8 de 005). */
+/** Cuántas solicitudes sin pagar puede tener a la vez una misma conexión (criterio 59) en una academia (DR-8 de 005). */
 export const LIMITE_RESERVAS_POR_CONEXION = 5;
 
 /** Cuántos códigos nuevos se prueban si el elegido ya existe en la academia (con 32^6 posibles, casi nunca pasa del primero). */
@@ -230,8 +231,8 @@ export class InscripcionesService {
         cotizacion: creada.cotizacion,
       },
     };
-    // Después de confirmar (D-05, D-19): un fallo del correo nunca cambia la respuesta ni deja de registrarse.
-    await this.enviarCorreo(academia, datos, respuesta.solicitud.codigo, respuesta.solicitud.enlace);
+    // Después de confirmar (D-05, D-19) y sin esperar: ni un proveedor lento ni un fallo del correo cambian la respuesta.
+    this.enviarCorreos(academia, datos, respuesta.solicitud.codigo, respuesta.solicitud.enlace);
     return respuesta;
   }
 
@@ -275,10 +276,13 @@ export class InscripcionesService {
     const [anioTexto = '0', mesTexto = '0'] = hoy.split('-');
     const mesActual = `${anioTexto}-${mesTexto}`;
 
-    // 1. Bloqueos consultivos, siempre en este orden: la IP de origen y después el DNI. Ordenan los envíos de una misma conexión (el
-    //    límite del criterio 25) y de una misma persona (el DNI único, el reuso de un cliente y la idempotencia) sin llegar a `23505`.
+    // 1. Bloqueos consultivos, siempre en este orden: la conexión de origen y después el DNI. Ordenan los envíos de una misma conexión
+    //    (el límite del criterio 25) y de una misma persona (el DNI único, el reuso de un cliente y la idempotencia) sin llegar a
+    //    `23505`. La conexión es la clave del criterio 59 (una IPv4 por dirección, una IPv6 por bloque /64), así que dos envíos del
+    //    mismo /64 también se ordenan (criterio 60).
+    const conexion = claveDeConexion(ipOrigen ?? '');
     await tx.cliente.$executeRaw`
-      SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`inscripcion-ip:${tx.academiaId}:${ipOrigen ?? ''}`}::text, 0))`;
+      SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`inscripcion-ip:${tx.academiaId}:${conexion}`}::text, 0))`;
     await tx.cliente.$executeRaw`
       SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`inscripcion-dni:${tx.academiaId}:${dni}`}::text, 0))`;
 
@@ -308,7 +312,7 @@ export class InscripcionesService {
     // 6. Límite de reservas sin pagar por conexión (criterio 25).
     if (
       ipOrigen !== null &&
-      (await this.reservasActivasDeLaConexion(tx, ipOrigen, ahora)) >= LIMITE_RESERVAS_POR_CONEXION
+      (await this.reservasActivasDeLaConexion(tx, ipOrigen, conexion, ahora)) >= LIMITE_RESERVAS_POR_CONEXION
     ) {
       throw limiteDeReservasPendientes();
     }
@@ -331,7 +335,8 @@ export class InscripcionesService {
     if (!montosIguales(datos.inscripcion.montoMostrado, cotizacion.monto)) throw montoCambio(cotizacion);
 
     // 10. Escrituras.
-    const reservaVenceEn = new Date(ahora.getTime() + DURACION_RESERVA_MS);
+    // Las 24 horas o el fin del mes en Lima, lo que ocurra primero (criterio 54): nunca una reserva que cruce el mes.
+    const reservaVenceEn = vencimientoDeReserva(ahora);
     const alumnoId = await this.escribirPersona(tx, datos, cliente, menor, ahora);
     const token = nuevoToken();
     const { id: solicitudId, codigo } = await this.crearSolicitud(tx, {
@@ -406,13 +411,28 @@ export class InscripcionesService {
     return { id: alumno.id };
   }
 
-  /** Cuántas solicitudes activas se crearon desde esa IP en la academia (las vencidas y las canceladas no cuentan). */
-  private async reservasActivasDeLaConexion(tx: TransaccionAcademia, ip: string, ahora: Date): Promise<number> {
+  /**
+   * Cuántas solicitudes activas se crearon desde la misma conexión en la academia (criterio 60; las vencidas y las canceladas no
+   * cuentan). La conexión es la clave del criterio 59: una IPv4 cuenta las filas con esa dirección (también escrita como IPv6 mapeada,
+   * porque `ip_origen` guarda la dirección exacta tal como llegó) y un bloque /64 cuenta las filas dentro del bloque, salvo las IPv6
+   * mapeadas (que son IPv4 aunque caigan en `::/64`). Los valores van como parámetros, nunca concatenados en el texto de la consulta.
+   */
+  private async reservasActivasDeLaConexion(
+    tx: TransaccionAcademia,
+    ip: string,
+    conexion: string,
+    ahora: Date,
+  ): Promise<number> {
+    const mismaConexion = isIPv4(conexion)
+      ? sql`s.ip_origen IN (${conexion}::inet, ${`::ffff:${conexion}`}::inet)`
+      : conexion.endsWith('/64')
+        ? sql`(s.ip_origen <<= ${conexion}::cidr AND NOT s.ip_origen <<= '::ffff:0:0/96'::cidr)`
+        : sql`s.ip_origen = ${ip}::inet`;
     const filas = await tx.cliente.$queryRaw<{ n: number }[]>`
       SELECT count(*)::int AS n
         FROM solicitudes_inscripcion s
         JOIN matriculas m ON m.academia_id = s.academia_id AND m.solicitud_id = s.id
-       WHERE s.academia_id = ${tx.academiaId}::uuid AND s.ip_origen = ${ip}::inet AND s.estado = 'PENDIENTE_PAGO'::estado_solicitud
+       WHERE s.academia_id = ${tx.academiaId}::uuid AND ${mismaConexion} AND s.estado = 'PENDIENTE_PAGO'::estado_solicitud
          AND m.estado = 'RESERVADA'::estado_matricula AND (m.reserva_vence_en IS NULL OR m.reserva_vence_en > ${ahora}::timestamptz)`;
     return filas[0]?.n ?? 0;
   }
@@ -615,26 +635,22 @@ export class InscripcionesService {
     }
   }
 
-  /** El correo con el enlace de seguimiento, después de confirmar. Un fallo se registra sin el destinatario ni el enlace. */
-  private async enviarCorreo(
-    academia: AcademiaResuelta,
-    datos: EnviarInscripcion,
-    codigo: string,
-    enlace: string,
-  ): Promise<void> {
-    const para = datos.alumno.correo;
-    if (para === undefined) return;
-    try {
-      await this.correo.enviar({
-        academiaId: academia.id,
-        para,
-        plantilla: 'SEGUIMIENTO_SOLICITUD',
-        datos: { nombreAcademia: academia.nombre, codigo, enlace },
-      });
-    } catch (error) {
-      this.registro.warn(
-        { academiaId: academia.id, plantilla: 'SEGUIMIENTO_SOLICITUD', error: errorParaRegistro(error) },
-        'No se pudo enviar el correo de seguimiento de la solicitud',
+  /**
+   * El correo con el enlace de seguimiento, después de confirmar (criterios 27, 51, 52 y 57; DR-13): un envío por cada destinatario
+   * distinto (el correo de la persona y el del apoderado), todos con el mismo código y el mismo enlace. Ninguno se espera: la respuesta
+   * no depende del proveedor, y cada fallo se registra solo con su tipo (sin el destinatario, el enlace ni el token) y no detiene al otro.
+   */
+  private enviarCorreos(academia: AcademiaResuelta, datos: EnviarInscripcion, codigo: string, enlace: string): void {
+    for (const para of destinatariosDelEnlace(datos)) {
+      enviarSinEsperar(
+        this.correo,
+        {
+          academiaId: academia.id,
+          para,
+          plantilla: 'SEGUIMIENTO_SOLICITUD',
+          datos: { nombreAcademia: academia.nombre, codigo, enlace },
+        },
+        this.registro,
       );
     }
   }

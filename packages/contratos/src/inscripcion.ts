@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { montoSchema } from './dinero';
+import { montoCotizadoSchema } from './dinero';
 import { fechaSchema, diaSemanaSchema, horaBloqueSchema, nivelNatacionSchema } from './horario';
 import { dniSchema } from './sesion';
 import { sinControles, textoVisibleSchema } from './texto';
@@ -217,7 +217,7 @@ const inscripcionSchema = z.strictObject({
   planId: z.uuid('El plan no es válido.'),
   claseIds: claseIdsSchema,
   mes: mesSchema,
-  montoMostrado: montoSchema,
+  montoMostrado: montoCotizadoSchema,
 });
 
 const consentimientosSchema = z.strictObject({

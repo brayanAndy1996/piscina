@@ -114,26 +114,34 @@ function estadoVisible(fila: FilaVista, ahora: Date): VistaSolicitud['estado'] {
   return 'PENDIENTE_PAGO';
 }
 
+/**
+ * La vista de seguimiento (criterios 32 y 58): completa mientras la solicitud espera el pago y reducida en `VENCIDA` y `CANCELADA`. En la
+ * 005a la vigente del cliente es su única solicitud con otro estado visible, así que "no es la vigente" coincide con esos dos estados. La
+ * vista reducida no lleva `nombres`, `fotoCargada` ni `reservaVenceEn`: las claves no se crean (no se borran después de armarlas con
+ * datos), y el plan, las clases, el mes y el monto salen de la matrícula de esa solicitud, nunca de otra del mismo alumno (DR-14).
+ */
 function vistaDe(fila: FilaVista, ahora: Date): VistaSolicitud {
   const estado = estadoVisible(fila, ahora);
   const mes = String(fila.mes).padStart(2, '0');
-  const vista: VistaSolicitud = {
+  const base = {
     codigo: fila.codigo,
-    estado,
     creadaEn: fila.creada_en.toISOString(),
-    // El primer nombre de pila (DR-9, P2): nunca los demás nombres ni los apellidos.
-    nombres: fila.nombres.trim().split(/\s+/)[0] ?? '',
     plan: { nombre: fila.plan },
     clases: JSON.parse(fila.clases) as VistaSolicitud['clases'],
     mes: `${fila.anio}-${mes}`,
     clasesTotales: fila.clases_totales,
     monto: fila.monto,
     esProporcional: fila.es_proporcional,
+  };
+  if (estado !== 'PENDIENTE_PAGO') return { ...base, estado };
+  const vista: VistaSolicitud = {
+    ...base,
+    estado,
+    // El primer nombre de pila (DR-9, P2): nunca los demás nombres ni los apellidos.
+    nombres: fila.nombres.trim().split(/\s+/)[0] ?? '',
     fotoCargada: fila.foto_cargada,
   };
-  // La clave solo existe mientras la solicitud espera el pago (P3): en `VENCIDA` y `CANCELADA` no está en el objeto.
-  if (estado === 'PENDIENTE_PAGO' && fila.reserva_vence_en !== null) {
-    vista.reservaVenceEn = fila.reserva_vence_en.toISOString();
-  }
+  // Sin vencimiento (el pago ya está en verificación, historia 007) la clave no existe.
+  if (fila.reserva_vence_en !== null) vista.reservaVenceEn = fila.reserva_vence_en.toISOString();
   return vista;
 }

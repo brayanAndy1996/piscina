@@ -52,26 +52,50 @@ export const ESTADOS_SOLICITUD = ['PENDIENTE_PAGO', 'VENCIDA', 'CANCELADA'] as c
 export const estadoSolicitudSchema = z.enum(ESTADOS_SOLICITUD);
 export type EstadoSolicitud = z.infer<typeof estadoSolicitudSchema>;
 
-/**
- * Lo que muestra el enlace de seguimiento (criterio 32, DR-9): solo el código, el estado, el primer nombre de pila, el plan, las clases, el
- * mes, las clases del mes, el monto y si ya subió su foto. `reservaVenceEn` solo está en `PENDIENTE_PAGO`; en `VENCIDA` y `CANCELADA` la
- * clave no existe. Nunca el DNI, los apellidos, la fecha de nacimiento, el teléfono, el correo, la dirección, los datos médicos, el
- * apoderado, los consentimientos, la foto, los ids internos ni el hash del token.
- */
-export const vistaSolicitudSchema = z.strictObject({
+/** Los campos que lleva toda vista de seguimiento: los de la solicitud y su matrícula, nunca datos de la persona. */
+const baseVistaSolicitud = {
   codigo: z.string(),
-  estado: estadoSolicitudSchema,
   creadaEn: z.iso.datetime(),
-  reservaVenceEn: z.iso.datetime().optional(),
-  nombres: z.string(),
   plan: z.strictObject({ nombre: z.string() }),
   clases: z.array(clasePublicaSchema.pick({ nivel: true, diaSemana: true, horaInicio: true, horaFin: true })),
   mes: z.string(),
   clasesTotales: z.number().int(),
   monto: z.string(),
   esProporcional: z.boolean(),
+};
+
+/**
+ * Vista completa: la solicitud es la vigente del cliente y espera el pago (`PENDIENTE_PAGO`). Lleva el primer nombre de pila (DR-9),
+ * si ya subió su foto y, mientras la reserva corre, cuándo vence (sin vencimiento si el pago ya está en verificación, historia 007).
+ */
+export const vistaSolicitudCompletaSchema = z.strictObject({
+  ...baseVistaSolicitud,
+  estado: z.literal('PENDIENTE_PAGO'),
+  reservaVenceEn: z.iso.datetime().optional(),
+  nombres: z.string(),
   fotoCargada: z.boolean(),
 });
+
+/**
+ * Vista reducida (criterio 58, DR-14): una solicitud `VENCIDA` o `CANCELADA` ya no es la vigente del cliente, así que no muestra el
+ * nombre, la foto ni el vencimiento: las claves `nombres`, `fotoCargada` y `reservaVenceEn` no existen (P3).
+ */
+export const vistaSolicitudReducidaSchema = z.strictObject({
+  ...baseVistaSolicitud,
+  estado: z.enum(['VENCIDA', 'CANCELADA']),
+});
+
+/**
+ * Lo que muestra el enlace de seguimiento (criterios 32 y 58, DR-9, DR-14): una unión estricta por estado. Nunca el DNI, los apellidos, la
+ * fecha de nacimiento, el teléfono, el correo, la dirección, los datos médicos, el apoderado, los consentimientos, la foto, los ids
+ * internos ni el hash del token. La 007 suma sus estados a una de las dos ramas.
+ */
+export const vistaSolicitudSchema = z.discriminatedUnion('estado', [
+  vistaSolicitudCompletaSchema,
+  vistaSolicitudReducidaSchema,
+]);
+export type VistaSolicitudCompleta = z.infer<typeof vistaSolicitudCompletaSchema>;
+export type VistaSolicitudReducida = z.infer<typeof vistaSolicitudReducidaSchema>;
 export type VistaSolicitud = z.infer<typeof vistaSolicitudSchema>;
 
 export const respuestaConsultaSolicitudSchema = z.strictObject({

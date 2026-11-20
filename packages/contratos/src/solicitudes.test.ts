@@ -83,11 +83,22 @@ describe('consultarSolicitudSchema (criterios 29 a 31)', () => {
 });
 
 describe('vistaSolicitudSchema (criterio 32)', () => {
-  it('acepta la vista mínima, con o sin reservaVenceEn', () => {
+  it('acepta la vista completa en PENDIENTE_PAGO y la reducida (sin nombres, fotoCargada ni reservaVenceEn) en VENCIDA y CANCELADA', () => {
     expect(vistaSolicitudSchema.safeParse(vista).success).toBe(true);
+    const reducida: Partial<typeof vista> = { ...vista };
+    delete reducida.reservaVenceEn;
+    delete reducida.nombres;
+    delete reducida.fotoCargada;
+    for (const estado of ['VENCIDA', 'CANCELADA']) {
+      expect(vistaSolicitudSchema.safeParse({ ...reducida, estado }).success).toBe(true);
+    }
+  });
+
+  it('reservaVenceEn es opcional en la vista completa (pago en verificación) y la reducida lo rechaza', () => {
     const sinVencimiento: Partial<typeof vista> = { ...vista };
     delete sinVencimiento.reservaVenceEn;
-    expect(vistaSolicitudSchema.safeParse({ ...sinVencimiento, estado: 'VENCIDA' }).success).toBe(true);
+    expect(vistaSolicitudSchema.safeParse(sinVencimiento).success).toBe(true);
+    expect(vistaSolicitudSchema.safeParse({ ...vista, estado: 'CANCELADA' }).success).toBe(false);
   });
 
   it.each([

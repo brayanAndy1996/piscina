@@ -123,7 +123,7 @@ export {
   type DiaSemana,
   type NivelNatacion,
 } from './horario';
-export { MONTO_MAXIMO, montoSchema } from './dinero';
+export { MONTO_COTIZADO_MAXIMO, MONTO_MAXIMO, montoCotizadoSchema, montoSchema } from './dinero';
 export {
   actualizarPlanSchema,
   crearPlanSchema,
@@ -215,9 +215,13 @@ export {
   PATRON_TOKEN,
   respuestaConsultaSolicitudSchema,
   tokenSeguimientoSchema,
+  vistaSolicitudCompletaSchema,
+  vistaSolicitudReducidaSchema,
   vistaSolicitudSchema,
   type ConsultarSolicitud,
   type EstadoSolicitud,
   type RespuestaConsultaSolicitud,
   type VistaSolicitud,
+  type VistaSolicitudCompleta,
+  type VistaSolicitudReducida,
 } from './solicitudes';

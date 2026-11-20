@@ -116,9 +116,12 @@ describe('Página de seguimiento con el enlace (criterio 44)', () => {
   it('una solicitud vencida o cancelada muestra solo ese estado, sin fecha límite', async () => {
     let estado = 'VENCIDA';
     servidor(() => {
-      const sinFecha = vista({ estado });
-      delete sinFecha['reservaVenceEn'];
-      return { estado: 200, cuerpo: { solicitud: sinFecha, academia: { nombre: 'x', telefono: TELEFONO } } };
+      // La vista reducida (criterio 58): sin fecha límite, sin nombre y sin foto.
+      const reducida = vista({ estado });
+      delete reducida['reservaVenceEn'];
+      delete reducida['nombres'];
+      delete reducida['fotoCargada'];
+      return { estado: 200, cuerpo: { solicitud: reducida, academia: { nombre: 'x', telefono: TELEFONO } } };
     });
     mostrar(`/a/delfines/solicitud/${TOKEN}`);
     const solicitud = await screen.findByRole('article', { name: 'Tu solicitud' });
