@@ -160,6 +160,108 @@ describe('Página de seguimiento con el enlace (criterio 44)', () => {
   });
 });
 
+/** La vista reducida del criterio 58: sin `nombres`, `fotoCargada` ni `reservaVenceEn` (las claves no existen). */
+function reducida(estado: 'VENCIDA' | 'CANCELADA', extra: Record<string, unknown> = {}) {
+  const base = vista({ estado, ...extra });
+  delete base['reservaVenceEn'];
+  delete base['nombres'];
+  delete base['fotoCargada'];
+  return { solicitud: base, academia: { nombre: 'Academia de Natación Los Delfines', telefono: TELEFONO } };
+}
+
+describe('Vista reducida de una solicitud vencida o cancelada (criterios 44 y 58)', () => {
+  it.each([
+    ['VENCIDA', 'Vencida', /La reserva venció y el cupo se liberó/],
+    ['CANCELADA', 'Cancelada', /La academia canceló esta solicitud y el cupo se liberó/],
+  ] as const)(
+    '%s: muestra el estado y los datos de la solicitud sin saludo, sin fecha límite y sin foto',
+    async (estado, titulo, explicacion) => {
+      servidor(() => ({ estado: 200, cuerpo: reducida(estado) }));
+      mostrar(`/a/delfines/solicitud/${TOKEN}`);
+
+      const solicitud = await screen.findByRole('article', { name: 'Tu solicitud' });
+      expect(within(solicitud).getByText(titulo)).toBeInTheDocument();
+      expect(within(solicitud).getByText(explicacion)).toBeInTheDocument();
+      expect(within(solicitud).getByText('AQ-7F3K9X')).toBeInTheDocument();
+      expect(within(solicitud).getByText('Plan 3 veces')).toBeInTheDocument();
+      expect(within(solicitud).getByText(/Lunes de 18:00 a 19:00/)).toBeInTheDocument();
+      expect(within(solicitud).getByText('noviembre de 2026')).toBeInTheDocument();
+      expect(within(solicitud).getByText(/S\/ 88\.00 \(el precio ya incluye IGV\)/)).toBeInTheDocument();
+      expect(screen.getByText(/llama a la academia al 987654321/)).toBeInTheDocument();
+
+      // Sin saludo (ni un hueco tipo "Hola, "), sin fecha límite, sin la orden de pagar y sin foto.
+      expect(within(solicitud).queryByText(/Hola/)).not.toBeInTheDocument();
+      expect(solicitud.textContent).not.toMatch(/Hola|Lucía/);
+      expect(within(solicitud).queryByText('Reserva hasta')).not.toBeInTheDocument();
+      expect(within(solicitud).queryByText(/Paga S\//)).not.toBeInTheDocument();
+      expect(within(solicitud).queryByText(/hasta el \d/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/foto/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /foto/i })).not.toBeInTheDocument();
+    },
+  );
+
+  it('la reducida no deja un saludo vacío ni una coma suelta junto al código', async () => {
+    servidor(() => ({ estado: 200, cuerpo: reducida('VENCIDA') }));
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    const solicitud = await screen.findByRole('article', { name: 'Tu solicitud' });
+    expect(solicitud.textContent?.startsWith('Código de la solicitud')).toBe(true);
+  });
+
+  it('regreso por un tercero: la solicitud vencida muestra sus datos y ningún nombre; la nueva sí saluda', async () => {
+    let consultada: 'S1' | 'S2' = 'S1';
+    servidor(() =>
+      consultada === 'S1'
+        ? {
+            estado: 200,
+            cuerpo: reducida('VENCIDA', { codigo: 'AQ-111111', plan: { nombre: 'Plan 2 veces' }, monto: '60.00' }),
+          }
+        : {
+            estado: 200,
+            cuerpo: respuesta({ codigo: 'AQ-222222', nombres: 'Intrusa', plan: { nombre: 'Plan 5 veces' } }),
+          },
+    );
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+
+    const s1 = await screen.findByRole('article', { name: 'Tu solicitud' });
+    expect(within(s1).getByText('AQ-111111')).toBeInTheDocument();
+    expect(within(s1).getByText('Plan 2 veces')).toBeInTheDocument();
+    expect(within(s1).getByText(/S\/ 60\.00/)).toBeInTheDocument();
+    // Ningún nombre en toda la página: ni el de la clienta ni el del tercero.
+    expect(document.body.textContent).not.toMatch(/Valeria|Intrusa|Hola/);
+
+    consultada = 'S2';
+    await userEvent.click(screen.getByRole('button', { name: 'Actualizar' }));
+    expect(await screen.findByText('Hola, Intrusa')).toBeInTheDocument();
+    expect(screen.getByText('AQ-222222')).toBeInTheDocument();
+    expect(screen.queryByText('AQ-111111')).not.toBeInTheDocument();
+  });
+
+  it('con código y DNI muestra la misma vista reducida: el cuerpo no tiene ningún nombre', async () => {
+    servidor(() => ({ estado: 200, cuerpo: reducida('CANCELADA') }));
+    const user = userEvent.setup();
+    mostrar('/a/delfines/solicitud');
+    await user.type(await screen.findByLabelText('Código de la solicitud'), 'AQ-7F3K9X');
+    await user.type(screen.getByLabelText('DNI'), '45678912');
+    await user.click(screen.getByRole('button', { name: 'Consultar' }));
+
+    const solicitud = await screen.findByRole('article', { name: 'Tu solicitud' });
+    expect(within(solicitud).getByText('Cancelada')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Hola|Lucía|Valeria|Intrusa/);
+    expect(within(solicitud).queryByText('Reserva hasta')).not.toBeInTheDocument();
+  });
+
+  it('si la API mandara el nombre en una vencida, la página no lo muestra (el contrato estricto lo rechaza)', async () => {
+    servidor(() => ({
+      estado: 200,
+      cuerpo: { ...reducida('VENCIDA'), solicitud: { ...reducida('VENCIDA').solicitud, nombres: 'Valeria' } },
+    }));
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('Valeria');
+  });
+});
+
 describe('Consulta con código y DNI (criterio 44)', () => {
   it('manda el código recortado y en mayúsculas y el DNI en el cuerpo, y muestra la misma vista', async () => {
     const api = servidor(() => ({ estado: 200, cuerpo: respuesta() }));
