@@ -129,6 +129,9 @@ transacción que lo crea).
 
 Ampliar en el mismo cambio `PRIVILEGIOS_APP`, `scripts/lib/rol-app.mjs` y `TABLAS_DESPUES_DE_MIGRAR`.
 
+Precisiones de la spec (P4 y P5): `consentimientos` lleva `UNIQUE (academia_id, id)`, y el `GRANT UPDATE` de
+`apoderados` y `fichas_medicas` no incluye `creado_en`.
+
 ### 3. Dominio (funciones puras)
 
 - `matriculas/dominio/cobro.ts`:
@@ -230,7 +233,9 @@ lectura busca el código con la misma clave y el mismo DNI, y si falla responde 
 - Con token: `hashToken(token)` y `SELECT … WHERE academia_id = … AND token_hash = …`. Con código y DNI: `SELECT … FROM
   solicitudes_inscripcion s JOIN alumnos a … WHERE s.academia_id = … AND s.codigo = … AND a.dni = …`. Una sola consulta
   en los dos casos, con la vista ya armada (plan, clases y matrícula con `JOIN`), sin bloqueo.
-- Estado visible: `PENDIENTE_PAGO` con la matrícula vencida (`reserva_vence_en <= ahora`) → `VENCIDA`.
+- Estado visible: `PENDIENTE_PAGO` con la matrícula vencida (`reserva_vence_en <= ahora`) → `VENCIDA`. En `VENCIDA` y
+  `CANCELADA` la vista no lleva la clave `reservaVenceEn` (P3). `nombres` es la primera palabra de `alumnos.nombres`
+  (P2); `mes` va como `AAAA-MM` y `monto` como texto con dos decimales (P8).
 - `fotoCargada` = `alumnos.foto_clave IS NOT NULL`. En la 005a siempre es `false` (no hay ruta para subirla), pero el
   campo ya está en el esquema estricto para que la 005b no lo cambie.
 - Sin auditoría (es una lectura). El registro técnico no lleva el código junto con el DNI ni el token.

@@ -24,7 +24,8 @@
   públicas, token de seguimiento y archivos). La web, la semilla y la documentación no son críticas.
 - **Estado:** aprobada por el responsable (20/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
   DR-11 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-9), en "Decisiones". Ningún criterio
-  cambió de intención. No quedan preguntas abiertas.
+  cambió de intención. No quedan preguntas abiertas. Con precisiones técnicas para las pruebas protegidas de la 005a
+  (P1 a P9, en "Decisiones"), sin cambios de negocio.
 - **División (DR-11):** la historia se entrega en dos PR desde esta misma carpeta, las dos de ruta crítica, cada una con
   sus pruebas protegidas, su ataque y su cierre (ver "División en 005a y 005b"):
   - **005a · Inscripción, reserva y seguimiento** (se construye primero): criterios 1 a 33, 41 a 45, 47 y 48, salvo las
@@ -141,14 +142,15 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
    `consentimientos`, `solicitudes_inscripcion`, `matriculas` y `matricula_clases`, con las columnas de "Cambios al
    modelo de datos", con `academia_id`, RLS activada y forzada, políticas de `SELECT`, `INSERT` y `UPDATE` con la forma
    exacta del criterio 132 de 001 (y de `DELETE` solo en `apoderados`, pregunta N6), y `UNIQUE (academia_id, id)` en las
-   que reciben llaves. Toda referencia entre ellas y hacia `planes`, `clases` y `usuarios` es una llave foránea
+   que reciben llaves y en `consentimientos` (P5). Toda referencia entre ellas y hacia `planes`, `clases` y `usuarios` es una llave foránea
    compuesta `(academia_id, …) → (academia_id, id)`. Todas las pruebas de catálogo de 001 (criterios 9 a 13, 17, 18, 124
    a 126 y 131 a 133) siguen pasando y `TABLAS_DESPUES_DE_MIGRAR` suma las siete. _(crítico)_ (D-17, D-23; criterio 12
    de 001)
 2. **Privilegios mínimos.** Dado el rol `aquagestion_app`, entonces sus privilegios son exactamente los de "Cambios al
    modelo de datos" (`SELECT` e `INSERT` en las siete; `UPDATE` solo de las columnas listadas; `DELETE` solo en
    `apoderados`); no puede cambiar el DNI de un alumno, el código ni el token de una solicitud, ni la `academia_id` de
-   ninguna fila, ni borrar consentimientos, solicitudes ni matrículas. `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs` se
+   ninguna fila, ni el `creado_en` de `apoderados` ni de `fichas_medicas` (P4), ni borrar consentimientos, solicitudes ni
+   matrículas. `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs` se
    amplían igual y la API sigue atendiendo (criterio 102 de 001). _(crítico)_ (D-23, Ley 29733)
 3. **RLS y llaves compuestas.** Dadas filas de las siete tablas en A y en B, como app: en contexto de A, `SELECT` devuelve
    solo las de A; un `INSERT` con `academia_id` de B y un `UPDATE` que mueve una fila de A a B fallan con `42501`; en
@@ -169,7 +171,8 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
    - e) dos solicitudes `PENDIENTE_PAGO` del mismo alumno (`23505`, índice parcial); dos solicitudes de A con el mismo
      código o el mismo hash de token (`23505`);
    - f) `solicitudes_inscripcion.codigo` que no cumpla el formato del criterio 24 y `token_hash` que no tenga 32 bytes;
-   - g) `consentimientos` con un tipo fuera de `DATOS_PERSONALES`, `DESLINDE` e `IMAGEN`, o una versión vacía.
+   - g) `consentimientos` con un tipo fuera de `DATOS_PERSONALES`, `DESLINDE` e `IMAGEN` (`22P02`, porque la columna es
+     el enum `tipo_consentimiento`, o `23514`; P6), o una versión vacía (`23514`).
 
    _(crítico)_ (RN-11, RN-25, D-07, D-28)
 
@@ -221,7 +224,9 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
     redondear; el monto nunca queda por debajo de 0; y el total se redondea hacia arriba al sol entero una sola vez.
     Prueba con la tabla de D-03 (S/ 100 de 12 clases con 5 y 10 % de descuento → S/ 38) y con un descuento fijo mayor que
     el monto (→ S/ 0). En esta historia nadie la llama con ajuste ni descuento: la usan la 007 (ajuste, HU-34) y la 015
-    (descuento, HU-10). _(crítico)_ (D-03, HU-34)
+    (descuento, HU-10). Tipos (P1): `base` es un `Racional = { numerador: bigint; denominador: bigint }` en soles;
+    `descuento` es un `Descuento = { tipo: 'PORCENTAJE' | 'MONTO_FIJO'; valor: Decimal }` (en `PORCENTAJE`, `valor` de 0 a
+    100; en `MONTO_FIJO`, soles); `montoAjustado` es un `Decimal` en soles. _(crítico)_ (D-03, HU-34)
 11. **Cotización.** `POST /api/a/{nombreCorto}/inscripcion/cotizacion` con `{ planId, nivel, claseIds }` aplica las
     mismas validaciones de plan y clases que el envío (criterio 15) y responde 200 con
     `{ cotizacion: { mes, fechaInicio, fechaFin, clasesRestantes, clasesTotales, clasesPorMes, precioPlan, monto,
@@ -368,12 +373,14 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
     distingue un código existente con otro DNI de uno inexistente. Un cuerpo con token y código a la vez, o sin ninguno
     de los dos, responde 400 `SOLICITUD_INVALIDA`. _(crítico)_ (D-05, D-23)
 32. **Vista mínima.** `VistaSolicitud` (esquema estricto) tiene solo: `codigo`; `estado` (`PENDIENTE_PAGO`, `VENCIDA` o
-    `CANCELADA`; la 007 suma los suyos); `creadaEn`; `reservaVenceEn` (solo en `PENDIENTE_PAGO`); `nombres` (sin
-    apellidos); `plan` (`nombre`); `clases` (`nivel`, `diaSemana`, `horaInicio`, `horaFin`); `mes`; `clasesTotales`;
-    `monto`; `esProporcional`; y `fotoCargada` (booleano). Nunca lleva DNI, apellidos, fecha de nacimiento, edad,
-    teléfono, correo, dirección, datos médicos, apoderado, consentimientos, foto, ids internos (alumno, matrícula,
-    solicitud) ni el hash del token. Una solicitud `VENCIDA` o `CANCELADA` muestra lo mismo sin `reservaVenceEn`
-    (provisional, N9). _(crítico)_ (RNF-05, Ley 29733, D-05)
+    `CANCELADA`; la 007 suma los suyos); `creadaEn`; `reservaVenceEn` (solo en `PENDIENTE_PAGO`); `nombres`, que lleva
+    solo el primer nombre de pila (DR-9): la primera palabra de `alumnos.nombres` (sin los demás nombres ni apellidos;
+    P2); `plan` (`nombre`); `clases` (`nivel`, `diaSemana`, `horaInicio`, `horaFin`); `mes` (texto `AAAA-MM`, P8);
+    `clasesTotales`; `monto` (texto con dos decimales, como `"42.00"`, P8); `esProporcional`; y `fotoCargada`
+    (booleano). Nunca lleva DNI, apellidos, fecha de nacimiento, edad, teléfono, correo, dirección, datos médicos,
+    apoderado, consentimientos, foto, ids internos (alumno, matrícula, solicitud) ni el hash del token. Una solicitud
+    `VENCIDA` o `CANCELADA` muestra lo mismo sin `reservaVenceEn`: la clave no está en el objeto (ni con `null` ni con
+    `undefined` serializado; P3) (provisional, N9). _(crítico)_ (RNF-05, Ley 29733, D-05)
 
 ### F. Límites de peticiones de las rutas públicas
 
@@ -650,6 +657,8 @@ function contarInscritos(tx: TransaccionAcademia, claseIds: readonly string[], a
 // backend/src/modulos/matriculas/dominio/cobro.ts (puras).
 function clasesRestantes(clases: readonly { diaSemana: DiaSemana; horaInicio: Bloque }[], ahora: Date): number;
 function montoProporcional(precio: Decimal, clasesPorMes: number, clasesTotales: number): Decimal; // entero
+type Racional = { numerador: bigint; denominador: bigint }; // en soles (P1)
+type Descuento = { tipo: 'PORCENTAJE' | 'MONTO_FIJO'; valor: Decimal }; // P1
 function calcularTotal(entrada: { base: Racional; montoAjustado?: Decimal; descuento?: Descuento }): Decimal; // entero
 
 // backend/src/infraestructura/almacen-archivos/
@@ -658,7 +667,7 @@ interface AlmacenArchivos {
   leer(academiaId: string, clave: string): Promise<Buffer>;
   borrar(academiaId: string, clave: string): Promise<void>;
 }
-// backend/src/infraestructura/correo/
+// backend/src/infraestructura/correo/ (index.ts exporta la interfaz y el token de inyección ENVIADOR_CORREO; P7)
 interface EnviadorCorreo {
   enviar(mensaje: { academiaId: string; para: string; plantilla: 'SEGUIMIENTO_SOLICITUD'; datos: Record<string, string> }): Promise<void>;
 }
@@ -705,7 +714,8 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
   fechas. Sin `observaciones` en esta historia (lo agrega quien la use, 012).
 - **`consentimientos`:** `id`, `academia_id`, `alumno_id` (llave compuesta), `solicitud_id` (llave compuesta), `tipo`,
   `version text` (no vacía), `aceptado_en timestamptz`, `ip inet null`, `otorgado_por`, y el valor para `IMAGEN`
-  (`aceptado boolean`; para los otros dos siempre `true`). Solo `INSERT`: es evidencia (D-07).
+  (`aceptado boolean`; para los otros dos siempre `true`). `UNIQUE (academia_id, id)`, como exige el catálogo de 001
+  (criterios 12 y 131) aunque ninguna tabla la referencie todavía (P5). Solo `INSERT`: es evidencia (D-07).
 - **`solicitudes_inscripcion`:** `id`, `academia_id`, `alumno_id` (llave compuesta), `codigo text` (formato del criterio
   24), `token_hash bytea` (32 bytes), `clave_idempotencia uuid`, `estado estado_solicitud default 'PENDIENTE_PAGO'`,
   `ip_origen inet null`, `creado_en`, `actualizado_en`. `UNIQUE (academia_id, codigo)`, `UNIQUE (academia_id,
@@ -722,8 +732,8 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
   índice `(academia_id, clase_id)` para contar la ocupación.
 - **Privilegios de `aquagestion_app`** (criterio 2): `SELECT` e `INSERT` en las siete; `UPDATE` de `alumnos` (`nombres`,
   `apellidos`, `fecha_nacimiento`, `telefono`, `correo`, `direccion`, `grado_colegio`, `nivel`, `foto_clave`,
-  `actualizado_en`), `apoderados` (todas menos `alumno_id` y `academia_id`), `fichas_medicas` (todas menos `alumno_id` y
-  `academia_id`), `solicitudes_inscripcion` (`estado`, `actualizado_en`) y `matriculas` (`estado`, `reserva_vence_en`,
+  `actualizado_en`), `apoderados` (todas menos `alumno_id`, `academia_id` y `creado_en`), `fichas_medicas` (todas menos
+  `alumno_id`, `academia_id` y `creado_en`; P4), `solicitudes_inscripcion` (`estado`, `actualizado_en`) y `matriculas` (`estado`, `reserva_vence_en`,
   `actualizado_en`); `DELETE` solo en `apoderados` (con su política). La 007 y la 010 amplían lo que necesiten (por
   ejemplo `alumnos.estado` y `usuario_id`) en sus propias migraciones.
 - `PRIVILEGIOS_APP`, `scripts/lib/rol-app.mjs` y `TABLAS_DESPUES_DE_MIGRAR` se amplían en el mismo cambio.
@@ -963,6 +973,33 @@ Propuestas del especificador, aprobadas con la spec (20/11/2026).
 - **D8. Ocupación en una ruta aparte** (`GET /api/clases/ocupacion`) para no cambiar `claseSchema` ni `GET /api/clases`
   de 004, que tienen pruebas protegidas.
 - **D9. Un solo apoderado por alumno** (HU-01 pide los datos de "padre, madre o apoderado").
+
+### Precisiones de las pruebas protegidas (005a)
+
+Ambigüedades técnicas que encontró el test-writer de la 005a, resueltas por el orquestador (20/11/2026) antes de escribir
+las pruebas protegidas. No cambian ninguna regla de negocio; se citan como "Pn" en los criterios y el contrato.
+
+- **P1 (criterio 10 e interfaces del backend).** `calcularTotal` recibe `base: Racional`, con `Racional = { numerador:
+  bigint; denominador: bigint }`, y `descuento?: Descuento`, con `Descuento = { tipo: 'PORCENTAJE' | 'MONTO_FIJO'; valor:
+  Decimal }`, como en el plan.
+- **P2 (criterio 32).** El campo `nombres` de la vista de seguimiento lleva el primer nombre de pila (DR-9): la primera
+  palabra de `alumnos.nombres`. El criterio 32 queda alineado con DR-9 ("el primer nombre").
+- **P3 (criterio 32).** En una solicitud `VENCIDA` o `CANCELADA`, la vista de seguimiento no incluye la clave
+  `reservaVenceEn` (no es `null`: la clave no existe).
+- **P4 (criterio 2 y privilegios).** El rol `aquagestion_app` no tiene `UPDATE` sobre `creado_en` de `apoderados` ni de
+  `fichas_medicas`.
+- **P5 (criterio 1 y `consentimientos`).** `consentimientos` lleva `UNIQUE (academia_id, id)`, como exige el catálogo de
+  001 (criterios 12 y 131).
+- **P6 (criterio 4 g).** Un tipo de consentimiento inválido escrito directo en la base se rechaza con `22P02` (valor fuera
+  del enum `tipo_consentimiento`) o `23514`; la prueba acepta cualquiera de los dos.
+- **P7 (criterio 27 e interfaces del backend).** El token de inyección del enviador de correo es `ENVIADOR_CORREO`,
+  exportado desde `backend/src/infraestructura/correo/index.ts`.
+- **P8 (criterio 32).** En la vista de seguimiento, `mes` es un texto `AAAA-MM` y `monto` un texto con dos decimales
+  (como `"42.00"`).
+- **P9 (criterios 1, 2 y 21 b; consulta del orquestador).** El `DELETE` en `apoderados` para el rol app ya estaba
+  previsto antes de estas precisiones: criterio 1 (política de `DELETE` solo en `apoderados`), criterio 2 (`DELETE` solo
+  en `apoderados`), criterio 21 b (el apoderado "se quita, si ya es mayor"), "Casos límite" (único `DELETE`) y
+  "Cambios al modelo de datos" (privilegios). No se agrega nada.
 
 ## Preguntas abiertas
 
