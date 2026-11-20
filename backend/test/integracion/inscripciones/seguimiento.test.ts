@@ -466,23 +466,32 @@ describe('seguimiento de la solicitud (criterios 29 a 32)', () => {
       }
     });
 
-    it('criterio 32: una solicitud VENCIDA o CANCELADA muestra lo mismo sin reservaVenceEn', async () => {
+    it('criterio 32: una solicitud VENCIDA o CANCELADA muestra la vista reducida (criterio 58): sin reservaVenceEn, sin nombres y sin fotoCargada', async () => {
       const vencida = await solicitudDeA({ estado: 'VENCIDA' });
       const cancelada = await solicitudDeA({ estado: 'CANCELADA' });
 
-      const deVencida = vista(await consultar({ token: vencida.token }));
-      const deCancelada = vista(await consultar({ token: cancelada.token }));
+      const respuestaVencida = await consultar({ token: vencida.token });
+      const respuestaCancelada = await consultar({ token: cancelada.token });
+      const deVencida = vista(respuestaVencida);
+      const deCancelada = vista(respuestaCancelada);
 
       expect(deVencida['estado']).toBe('VENCIDA');
       expect(deCancelada['estado']).toBe('CANCELADA');
-      for (const solicitud of [deVencida, deCancelada]) {
-        expect(Object.keys(solicitud).sort()).toEqual(CLAVES_DE_LA_VISTA.filter((clave) => clave !== 'reservaVenceEn'));
+      for (const [solicitud, respuesta] of [
+        [deVencida, respuestaVencida],
+        [deCancelada, respuestaCancelada],
+      ] as const) {
+        expect(Object.keys(solicitud).sort()).toEqual(
+          CLAVES_DE_LA_VISTA.filter((clave) => !['reservaVenceEn', 'nombres', 'fotoCargada'].includes(clave)),
+        );
         expect(solicitud).toMatchObject({
           plan: { nombre: 'Plan 3 por semana' },
           mes: '2026-11',
           monto: '90.00',
-          nombres: 'Valeria',
         });
+        for (const clave of ['reservaVenceEn', 'nombres', 'fotoCargada'])
+          expect(solicitud, clave).not.toHaveProperty(clave);
+        expect(respuesta.texto, 'el primer nombre no aparece en ninguna parte del cuerpo').not.toContain('Valeria');
       }
     });
 
