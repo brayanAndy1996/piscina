@@ -145,6 +145,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Desde 005 (DR-13 y DR-14 de 005): si la 007 vuelve a enviar el enlace de seguimiento, va al alumno y al apoderado
     como en la 005; y sus estados nuevos de la solicitud muestran el nombre solo en la solicitud vigente del cliente
     (regla "Vista de seguimiento" de la spec 005).
+  - Desde 005a: las reglas para la 007 (comprobante con reserva sin límite, rechazo que cancela la matrícula y libera el cupo,
+    confirmación que crea al alumno, y `calcularTotal` con lo guardado en la matrícula) están en «Inscripción pública, reserva
+    y seguimiento (005a)» de [`docs/arquitectura.md`](../docs/arquitectura.md).
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
 - **009 · Asistencia y faltas.** QR y manual, validaciones, una por día, solo mientras dura la clase, puntual o
@@ -158,6 +161,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Nota de 003: "por vencer" (`diasPorVencer`) y la prioridad de renovación (`diasPrioridadRenovacion`) los leerá
     `leerConfiguracion(tx)` dentro de la transacción de la operación, sin caché. Son valores aparte: cambiar uno no cambia
     el otro (DR-3 de 003).
+  - Desde 005a: el cupo de una renovación o de un cambio de horario se cuenta con `contarOcupacion` (una matrícula de ese mes
+    ocupa cupo si está `VIGENTE`, o `RESERVADA` sin vencer), después de `bloquearClasesParaCupo` (regla «Cupo de una clase»
+    de 004). Las renovaciones no tienen `solicitud_id`. La inscripción para el mes siguiente y la prioridad de renovación
+    (D-06) siguen en la pregunta N3 de la spec 005, que decide esta historia.
 - **011 · Panel del alumno y apoderado.** Datos, plan, horario, clases restantes, vencimiento, asistencia día por
   día con hora (puntual, tarde, falta), nivel actual; solo lectura salvo el cambio de contraseña (HU-06, D-08, D-14).
 

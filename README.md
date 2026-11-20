@@ -40,7 +40,7 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
   quedan en la auditoría de la plataforma. Los inicios de sesión van solo al registro técnico. Todavía no hay pantalla
   para verla.
 - **Configuración:** la tabla de configuración por academia existe; sus claves y valores por defecto son de la 003.
-- **Ruta pública:** `GET /api/a/{nombreCorto}` devuelve el nombre de una academia activa, sin su id ni su estado. Responde
+- **Ruta pública:** `GET /api/a/{nombreCorto}` devuelve el nombre de una academia activa, sin su id ni su estado (desde la 005a, también su teléfono). Responde
   404 si no existe y 403 si está suspendida.
 - **Datos de ejemplo:** `npm run db:semilla` (y `npm run db:preparar`) crea, si no existen, las academias `delfines`
   ("Academia de Natación Los Delfines") y `tiburones` ("Club de Natación Tiburones") y el superadmin de desarrollo. Los
@@ -91,16 +91,15 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
 - **API:** `GET` y `PATCH /api/configuracion` (solo el administrador) y `GET /api/mi-academia` (nombre, nombre corto y
   teléfono de la academia de la sesión). Cada cambio guardado queda en la auditoría de la academia.
 - **Lo que todavía no usa nada:** la tolerancia de tardanza, los días por vencer y la prioridad de renovación se guardan,
-  pero las historias 009 y 010 todavía no los leen. El teléfono se publicará en las páginas públicas con la historia 005.
+  pero las historias 009 y 010 todavía no los leen. El teléfono se ve en el panel y, desde la 005a, en las páginas públicas.
 - **Datos de ejemplo:** la semilla deja un teléfono de ejemplo en `delfines`; `tiburones` queda con los valores por
   defecto.
 
 Todavía no trae los permisos de cada módulo (cada historia aplica su alcance), el alta de las cuentas de alumno (historia
-007), la pantalla de auditoría (Fase 3), la recuperación de la contraseña por correo (se pide en recepción), el teléfono en
-las páginas públicas (historia 005), el logo ni el cambio del nombre de la academia (DR-2 y DR-5 de 003), ni el cambio del
+007), la pantalla de auditoría (Fase 3), la recuperación de la contraseña por correo (se pide en recepción), el logo ni el cambio del nombre de la academia (DR-2 y DR-5 de 003), ni el cambio del
 DNI, del nombre o del rol de una cuenta.
 
-**004 · Planes y clases con aforo** está construida y espera la revisión, la suite completa y el PR para unirse a `main`.
+**004 · Planes y clases con aforo** está unida a `main` (19/11/2026).
 Trae:
 
 - **Planes** (`/panel/planes`, solo el administrador): nombre único en la academia (no distingue mayúsculas, ni espacios o
@@ -119,11 +118,44 @@ Trae:
   todas con el permiso `CONFIGURAR_PLANES_HORARIOS_AFORO` (solo el administrador). Cada cambio queda en la auditoría de la
   academia.
 - **Datos de ejemplo:** `delfines` tiene un segundo entrenador, dos planes y cinco clases, dos de ellas el lunes a las
-  18:00. `tiburones` queda sin planes ni clases.
-- **Lo que todavía no trae:** las inscripciones, las reservas y la ocupación de cupos, y la vista de planes y clases para el
-  público (005); el horario del entrenador (012); los días de cierre (017).
+  18:00 (la 005a suma tres más). `tiburones` queda sin planes ni clases.
+- **Lo que todavía no trae:** el horario del entrenador (012) y los días de cierre (017). Las inscripciones y las reservas llegan con la 005a (abajo).
 
-La siguiente historia es la **005 · Inscripción pública y seguimiento de la solicitud** (ver
+**005a · Inscripción pública, reserva y seguimiento** está construida y espera la revisión y el PR para unirse a `main`.
+Trae:
+
+- **Formulario público** en `/a/{nombreCorto}/inscripcion`, sin sesión, para el celular y para la PC de recepción. Pasos:
+  datos personales, ficha médica, apoderado (solo si la persona es menor de 18 años), plan y horario, y resumen con los
+  consentimientos. Solo se ofrecen las clases con cupo del nivel elegido, una por día. El monto es proporcional si entra a
+  mitad de mes, con IGV incluido y redondeado hacia arriba al sol entero.
+- **Reserva del cupo:** al enviar, la solicitud reserva su lugar con un código (`AQ-` y seis caracteres) y un enlace de
+  seguimiento. La reserva vence a las 24 horas o al fin del mes en Lima, lo que ocurra primero. Ninguna clase pasa de su
+  aforo, aunque dos personas tomen el último cupo a la vez.
+- **Seguimiento:** `/a/{nombreCorto}/solicitud/{token}`, con el enlace, y `/a/{nombreCorto}/solicitud`, con el código y el
+  DNI. El enlace lleva un token aleatorio, y la base guarda solo su SHA-256. El correo con el enlace sale después de
+  confirmar; en desarrollo, el envío es simulado.
+- **Límites por conexión:** lecturas, cotización, envío y consulta tienen su propio límite, y una conexión tiene como mucho
+  cinco solicitudes sin pagar. Las IPv6 se agrupan por bloque /64. Detalles en
+  [`docs/arquitectura.md`](docs/arquitectura.md).
+- **API nueva:** `GET /api/a/{nombreCorto}/inscripcion`, `POST /api/a/{nombreCorto}/inscripcion/cotizacion`,
+  `POST /api/a/{nombreCorto}/inscripcion` y `POST /api/a/{nombreCorto}/solicitudes/consulta`. `GET /api/a/{nombreCorto}`
+  suma el teléfono. `PATCH /api/clases/{id}` acepta `confirmarAforoMenor` y responde 409 si el aforo baja de los inscritos
+  o si se desactiva una clase con inscritos (DR-5 de 004).
+- **Teléfono público:** la página de ingreso, la de inscripción y la de seguimiento muestran el teléfono de la academia
+  (DR-4 de 003).
+- **Datos de ejemplo:** `delfines` suma tres clases de Básico (martes a jueves, a las 18:00) y tres clientes con solicitud
+  (`AQ-SM0001`, `AQ-SM0002` y `AQ-SM0003`). `tiburones` queda sin solicitudes.
+- **Variables de entorno:** esta historia no agrega ninguna a `.env.example`.
+- **Antes de publicar el formulario:** hay que configurar `trust proxy` con el hosting. Hoy no está configurado: detrás de
+  un proxy, todos los visitantes contarían como una sola conexión. Ver «Antes de publicar el formulario» en
+  [`docs/arquitectura.md`](docs/arquitectura.md).
+- **Cómo probarla en tu PC:** con `npm run dev` encendido, abre http://localhost:5173/a/delfines/inscripcion. El paso a paso
+  está en la guía, en «Probar la inscripción pública». Las pruebas automáticas corren con `npm test` (necesita PostgreSQL) y
+  con `npm run test:unit`.
+- **Lo que todavía no trae:** la foto de la inscripción, el panel de solicitudes y la cancelación (005b); el pago, la
+  verificación y el paso a alumno (007); la renovación y el cambio de horario (010).
+
+La siguiente entrega es la **005b · Foto y panel de solicitudes**, en la misma carpeta de la 005 (ver
 [`specs/backlog.md`](specs/backlog.md)).
 
 ## Cómo levantarlo en Windows
@@ -159,6 +191,8 @@ Si ya tenías la historia 003 y traes la 004, ejecuta `npm ci` y `npm run db:pre
 clases (con sus migraciones), y la semilla suma a `delfines` un segundo entrenador, dos planes y cinco clases de ejemplo.
 Los pasos están en la guía, en "Después de traer la historia 004".
 
+Si ya tenías la historia 004 y traes la 005a, ejecuta `npm ci` y `npm run db:preparar`: la 005a agrega las tablas de la inscripción, con sus dos migraciones, y la semilla suma las clases y los clientes de ejemplo. Si `npm run db:preparar` se detiene en «Migrando la base de desarrollo» con el código 23514, tu base es de una versión anterior de esta rama y hay que empezar de cero. Los pasos están en la guía, en "Después de traer la historia 005a".
+
 ## Comandos principales
 
 | Comando                                                                 | Qué hace                                                                                                          |
@@ -173,7 +207,7 @@ Los pasos están en la guía, en "Después de traer la historia 004".
 | `npm run db:crear`                                                      | Crea solo el rol `aquagestion_app` y las bases que falten (lo usa `db:preparar`).                                 |
 | `npm run db:migrar`, `npm run db:migrar:pruebas`                        | Aplica las migraciones pendientes a la base de desarrollo o a la de pruebas.                                      |
 | `npm run db:migracion`                                                  | Crea una migración nueva a partir de un cambio en el esquema de Prisma.                                           |
-| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo, el teléfono de ejemplo de `delfines` y sus planes y clases de ejemplo, si no existen.              |
+| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo, el teléfono de ejemplo de `delfines` sus planes y clases de ejemplo y sus clientes con solicitud, si no existen.              |
 | `npm run env:completar`                                                 | Agrega a `.env` las variables de `.env.example` que falten, sin cambiar las que ya tienes.                        |
 | `npm run plataforma:superadmin`                                         | Crea el superadmin de la plataforma o le restablece la clave, con `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE`. |
 | `npm run verificar:pruebas-protegidas`, `npm run verificar:sin-secretos` | Verificaciones del método y de seguridad del repositorio.                                                         |
@@ -229,8 +263,8 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/requerimientos.md`](docs/requerimientos.md): el mismo contenido en texto, para buscar y consultar rápido.
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
-- [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, y cómo
-  entrar a la plataforma.
+- [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, cómo
+  entrar a la plataforma, y cómo probar la inscripción pública, los planes y las clases.
 
 ## Forma de trabajo
 
@@ -253,7 +287,7 @@ adversariales y roles separados. Ver [`docs/metodologia.md`](docs/metodologia.md
 | Backend | Node.js 22 + TypeScript con NestJS y Prisma |
 | Frontend | React + Vite + Tailwind CSS (responsive; la PWA es de la Fase 4) |
 | Base de datos | PostgreSQL 16 |
-| Archivos | Disco local en desarrollo, detrás de una interfaz `AlmacenArchivos` (se implementa en la 005); el proveedor se decide con el hosting (D-21) |
+| Archivos | Disco local en desarrollo, detrás de una interfaz `AlmacenArchivos` (se implementa en la 005b); el proveedor se decide con el hosting (D-21) |
 | QR, PDF y Excel | `qrcode`, `pdfkit`, `exceljs`; lectura del QR con `html5-qrcode` |
 | Tareas | Tareas programadas en el backend (registro de faltas) |
 
