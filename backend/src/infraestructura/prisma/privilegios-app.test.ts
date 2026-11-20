@@ -77,6 +77,50 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
   efectivo('clases', null, 'SELECT'),
   efectivo('clases', null, 'INSERT'),
   ...['entrenador_id', 'aforo', 'activo', 'actualizado_en'].map((c) => efectivo('clases', c, 'UPDATE')),
+  // Historia 005, criterio 2: la lista exacta suma los privilegios de las siete tablas de la inscripción (no se quita nada de lo anterior).
+  // `apoderados` es la única tabla con DELETE. En `apoderados` y `fichas_medicas` el rol no tiene UPDATE sobre `creado_en` (P4).
+  efectivo('alumnos', null, 'SELECT'),
+  efectivo('alumnos', null, 'INSERT'),
+  ...[
+    'nombres',
+    'apellidos',
+    'fecha_nacimiento',
+    'telefono',
+    'correo',
+    'direccion',
+    'grado_colegio',
+    'nivel',
+    'foto_clave',
+    'actualizado_en',
+  ].map((c) => efectivo('alumnos', c, 'UPDATE')),
+  efectivo('apoderados', null, 'SELECT'),
+  efectivo('apoderados', null, 'INSERT'),
+  efectivo('apoderados', null, 'DELETE'),
+  ...['nombres', 'apellidos', 'dni', 'telefono', 'parentesco', 'correo', 'actualizado_en'].map((c) =>
+    efectivo('apoderados', c, 'UPDATE'),
+  ),
+  efectivo('fichas_medicas', null, 'SELECT'),
+  efectivo('fichas_medicas', null, 'INSERT'),
+  ...[
+    'tipo_sangre',
+    'enfermedades',
+    'alergias',
+    'medicamentos',
+    'seguro',
+    'contacto_emergencia_nombre',
+    'contacto_emergencia_telefono',
+    'actualizado_en',
+  ].map((c) => efectivo('fichas_medicas', c, 'UPDATE')),
+  efectivo('consentimientos', null, 'SELECT'),
+  efectivo('consentimientos', null, 'INSERT'),
+  efectivo('solicitudes_inscripcion', null, 'SELECT'),
+  efectivo('solicitudes_inscripcion', null, 'INSERT'),
+  ...['estado', 'actualizado_en'].map((c) => efectivo('solicitudes_inscripcion', c, 'UPDATE')),
+  efectivo('matriculas', null, 'SELECT'),
+  efectivo('matriculas', null, 'INSERT'),
+  ...['estado', 'reserva_vence_en', 'actualizado_en'].map((c) => efectivo('matriculas', c, 'UPDATE')),
+  efectivo('matricula_clases', null, 'SELECT'),
+  efectivo('matricula_clases', null, 'INSERT'),
 ];
 
 async function cargarDeLaApi(): Promise<Modulo> {
@@ -117,9 +161,10 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP', () => {
   it('criterio 102: ninguna entrada concede DELETE, TRUNCATE, REFERENCES ni TRIGGER', async () => {
     const { PRIVILEGIOS_APP } = await cargarDeLaApi();
 
+    // Historia 005: la única excepción es DELETE sobre `apoderados` (se borra al apoderado de quien vuelve a inscribirse como mayor).
     expect(
-      PRIVILEGIOS_APP.filter((p) => ['DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'].includes(p.privilegio)),
-    ).toEqual([]);
+      PRIVILEGIOS_APP.filter((p) => ['DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'].includes(p.privilegio)).map(clave),
+    ).toEqual(['apoderados|*|DELETE']);
   });
 
   it('criterio 102: la lista de la API y la de scripts/lib/rol-app.mjs son iguales', async () => {

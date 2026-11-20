@@ -39,7 +39,12 @@ describe('GET /api/a/{nombreCorto}: la academia por su nombre corto', () => {
       const respuesta = await pedir('delfines');
 
       expect(respuesta.status).toBe(200);
-      expect(respuesta.body).toEqual({ nombreCorto: 'delfines', nombre: 'Academia de Natación Los Delfines' });
+      // Historia 005, criterio 5 (amplía el criterio 58): la respuesta suma `telefono` (el de la configuración o null).
+      expect(respuesta.body).toEqual({
+        nombreCorto: 'delfines',
+        nombre: 'Academia de Natación Los Delfines',
+        telefono: null,
+      });
       expect(respuesta.headers['cache-control']).toBe('no-store');
     });
 
@@ -48,7 +53,7 @@ describe('GET /api/a/{nombreCorto}: la academia por su nombre corto', () => {
 
       const respuesta = await pedir('delfines');
 
-      expect(Object.keys(respuesta.body as object).sort()).toEqual(['nombre', 'nombreCorto']);
+      expect(Object.keys(respuesta.body as object).sort()).toEqual(['nombre', 'nombreCorto', 'telefono']);
       expect(JSON.stringify(respuesta.body)).not.toMatch(/estado|motivo|"id"|ACTIVA|SUSPENDIDA/i);
     });
 
@@ -58,7 +63,11 @@ describe('GET /api/a/{nombreCorto}: la academia por su nombre corto', () => {
         const respuesta = await pedir(nombreCorto);
 
         expect(respuesta.status).toBe(200);
-        expect(respuesta.body).toEqual({ nombreCorto: 'delfines', nombre: 'Academia de Natación Los Delfines' });
+        expect(respuesta.body).toEqual({
+          nombreCorto: 'delfines',
+          nombre: 'Academia de Natación Los Delfines',
+          telefono: null,
+        });
       },
     );
 

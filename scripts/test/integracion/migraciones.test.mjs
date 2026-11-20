@@ -12,16 +12,24 @@ import { urlAppAlineada } from './ayuda-ronda9.mjs';
 
 const servidor = servidorDePruebas();
 
-// Tablas de `public` después de aplicar todas las migraciones (la 000 no creaba ninguna; la 001 crea cinco, la 002, `usuarios` y la 004,
-// `planes` y `clases`). Cada historia con tablas nuevas agrega las suyas aquí.
+// Tablas de `public` después de aplicar todas las migraciones (la 000 no creaba ninguna; la 001 crea cinco, la 002, `usuarios`, la 004,
+// `planes` y `clases` y la 005, siete: `alumnos`, `apoderados`, `fichas_medicas`, `consentimientos`, `solicitudes_inscripcion`,
+// `matriculas` y `matricula_clases`). Cada historia con tablas nuevas agrega las suyas aquí.
 const TABLAS_DESPUES_DE_MIGRAR = [
   '_prisma_migrations',
   'academias',
+  'alumnos',
+  'apoderados',
   'auditoria',
   'auditoria_plataforma',
   'clases',
   'configuraciones',
+  'consentimientos',
+  'fichas_medicas',
+  'matricula_clases',
+  'matriculas',
   'planes',
+  'solicitudes_inscripcion',
   'superadmins',
   'usuarios',
 ].sort();
@@ -47,7 +55,7 @@ afterEach(async () => {
 });
 
 describe('db:migrar y db:migrar:pruebas (scripts/prisma.mjs)', () => {
-  it('aplica las migraciones, informa que no hay pendientes al repetir y crea solo las tablas de las historias 001, 002 y 004', async () => {
+  it('aplica las migraciones, informa que no hay pendientes al repetir y crea solo las tablas de las historias 001, 002, 004 y 005', async () => {
     const { nombres, variables } = prepararEntorno();
     expect(ejecutarScript(['crear-bases.mjs'], variables).estado).toBe(0);
 

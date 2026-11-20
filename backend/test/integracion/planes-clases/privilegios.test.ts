@@ -243,7 +243,8 @@ describe('criterio 2: la API sigue atendiendo con los privilegios nuevos', () =>
       const respuesta = await request(app.getHttpServer()).get('/api/a/academia-a');
 
       expect(respuesta.status).toBe(200);
-      expect(respuesta.body).toEqual({ nombreCorto: 'academia-a', nombre: 'Academia A' });
+      // Historia 005, criterio 5: la respuesta pública suma `telefono` (null si la academia no lo configuró).
+      expect(respuesta.body).toEqual({ nombreCorto: 'academia-a', nombre: 'Academia A', telefono: null });
     } finally {
       await app.close();
     }
