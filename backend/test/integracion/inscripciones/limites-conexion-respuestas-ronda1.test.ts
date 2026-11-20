@@ -92,7 +92,12 @@ describe('límites por IP con la clave de conexión (criterio 59)', () => {
       await repetir(20, (i) => pedir(ctx, 'HEAD', rutaPublica('academia-a'), { headers: desde(direccion(i + 200)) }));
 
       esLimite(await leer(direccion(900)));
-      esLimite(await pedir(ctx, 'HEAD', rutaPublica('academia-a', '/inscripcion'), { headers: desde(direccion(901)) }));
+      // Una respuesta a HEAD no tiene cuerpo: no hay código JSON que leer; se comprueban el estado y la cabecera.
+      const cabeza = await pedir(ctx, 'HEAD', rutaPublica('academia-a', '/inscripcion'), {
+        headers: desde(direccion(901)),
+      });
+      expect(cabeza.status, 'HEAD tras agotar el contador del bloque').toBe(429);
+      expect(cabeza.cacheControl).toBe('no-store');
     });
 
     it('criterio 59 a: las formas escritas distinto de la misma dirección (mayúsculas, ceros a la izquierda, ceros comprimidos) cuentan en el mismo bloque', async () => {

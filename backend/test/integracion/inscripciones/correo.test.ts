@@ -84,6 +84,8 @@ describe('envío: el correo se envía después de confirmar (criterio 27)', () =
     const respuesta = await enviar(await conCorreo());
 
     expect(respuesta.status, respuesta.texto).toBe(201);
+    // La respuesta no espera al correo (criterio 51): se espera a que `alEnviar` termine antes de mirar lo que vio.
+    await esperarHasta(() => vistoAlEnviar !== undefined);
     expect(vistoAlEnviar).toEqual({ solicitudes: 1, matriculas: 1 });
   });
 
