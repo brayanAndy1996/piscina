@@ -5,10 +5,19 @@ historias siguientes" y "Planes, clases y cupo (004)") y las specs [`001`](../00
 [`002`](../002-autenticacion-roles/spec.md), [`003`](../003-configuracion-academia/spec.md) y
 [`004`](../004-planes-clases-aforo/spec.md). Lo que no es orientativo es el contrato de `spec.md`.
 
-**Estado:** borrador (19/11/2026), pendiente de la aprobación de la spec. Los valores provisionales de N1 a N10 y T1 a
-T9 están escritos tal cual en este plan; si alguno cambia, cambian sobre todo los esquemas de `packages/contratos`, una
-constante del dominio o un límite del middleware, no el diseño. Si se aprueba la división de N11, las secciones 9 y 11
-(foto y panel) pasan a la 005b.
+**Estado:** aprobado con la spec (20/11/2026). Los valores provisionales quedaron decididos tal cual (DR-1 a DR-10 y
+DT-1 a DT-9 de 005), así que el plan no cambia. Por DR-11 la historia se entrega en dos PR desde esta carpeta:
+
+- **005a · inscripción, reserva y seguimiento** (primero): secciones 1 a 8, 10, 12 (salvo lo marcado) y 13, y de la
+  sección 11 solo DR-5 en `ClasesService` (criterios 41 y 42).
+- **005b · foto y panel de solicitudes** (siguiente PR): la sección 9 completa, de la sección 11 la lista, la
+  cancelación y `GET /api/clases/ocupacion` (criterios 38 a 40), y de la 12 la foto y el panel (criterio 46). Todo lo
+  que es de la 005b lleva la marca **[005b]**.
+
+Lo que la 005a deja hecho para la 005b, para que la 005b no necesite migración ni cambie contratos de la 005a: la
+migración completa (con `alumnos.foto_clave`, su privilegio de `UPDATE` y los estados `CANCELADA`), `fotoCargada` en
+`vistaSolicitudSchema` (en la 005a siempre `false`) y `contarInscritos`. La regla del límite de la foto (sección 8) y su
+prueba entran con la ruta, en la 005b. Detalle en "División en 005a y 005b" de `spec.md`.
 
 ## Módulos afectados
 
@@ -17,22 +26,22 @@ piscina/
 ├── packages/contratos/src/
 │   ├── inscripcion.ts (+ .test.ts)       nuevo: formulario, cotización, listas, celular, esMenorDeEdad
 │   ├── consentimientos.ts (+ .test.ts)   nuevo: versión, tipos y textos provisionales con el nombre de la academia
-│   ├── solicitudes.ts (+ .test.ts)       nuevo: código, token, consulta, vista mínima, panel, cancelación
+│   ├── solicitudes.ts (+ .test.ts)       nuevo: código, token, consulta, vista mínima; [005b] panel, cancelación
 │   ├── academias.ts                      AcademiaPublica + telefono
-│   ├── clases.ts                         actualizarClaseSchema + confirmarAforoMenor; respuestaOcupacionSchema
+│   ├── clases.ts                         actualizarClaseSchema + confirmarAforoMenor; [005b] respuestaOcupacionSchema
 │   └── index.ts                          + exportaciones
 ├── backend/
-│   ├── package.json                      + sharp (D-25; T6)
+│   ├── package.json                      [005b] + sharp (D-25; DT-6)
 │   ├── prisma/schema.prisma              + tipos y las siete tablas
 │   ├── prisma/migrations/<marca>_inscripcion_publica/   tipos, tablas, CHECK, índices, RLS, políticas, privilegios
 │   ├── prisma/seed.ts                    + solicitudes de ejemplo en delfines (criterio 47)
 │   ├── src/infraestructura/prisma/privilegios-app.ts   + privilegios de las siete tablas
-│   ├── src/infraestructura/almacen-archivos/          nuevo: interfaz, disco local, módulo, claves
+│   ├── src/infraestructura/almacen-archivos/          [005b] nuevo: interfaz, disco local, módulo, claves
 │   ├── src/infraestructura/correo/                    nuevo: interfaz, envío simulado, módulo
-│   ├── src/infraestructura/entorno/entorno.ts         + ALMACEN_DIRECTORIO
-│   ├── src/comun/http/cuerpos.ts                      la ruta de la foto queda fuera del lector JSON
-│   ├── src/comun/http/cuerpo-imagen.ts                nuevo: lector binario de la foto (5 MB, sin inflar)
-│   ├── src/modulos/academias/proteccion-de-prefijos.ts   + límites por IP de las rutas públicas (criterio 33)
+│   ├── src/infraestructura/entorno/entorno.ts         [005b] + ALMACEN_DIRECTORIO
+│   ├── src/comun/http/cuerpos.ts                      [005b] la ruta de la foto queda fuera del lector JSON
+│   ├── src/comun/http/cuerpo-imagen.ts                [005b] nuevo: lector binario de la foto (5 MB, sin inflar)
+│   ├── src/modulos/academias/proteccion-de-prefijos.ts   + límites por IP de las rutas públicas (criterio 33; [005b] foto)
 │   ├── src/modulos/academias/academia-publica.controller.ts   + telefono
 │   ├── src/modulos/auditoria/insercion.ts             actorTipo + 'PUBLICO'
 │   ├── src/modulos/matriculas/                        nuevo (sin controlador)
@@ -42,27 +51,27 @@ piscina/
 │   ├── src/modulos/inscripciones/                     nuevo
 │   │   ├── dominio/edad.ts · seleccion.ts · codigos.ts (+ .test.ts)
 │   │   ├── inscripcion-publica.controller.ts          GET formulario, POST cotización, POST envío
-│   │   ├── seguimiento.controller.ts                  POST consulta, PUT foto
-│   │   ├── solicitudes.controller.ts                  GET lista, POST cancelar (panel)
-│   │   ├── inscripciones.service.ts · seguimiento.service.ts · solicitudes.service.ts · foto.service.ts
+│   │   ├── seguimiento.controller.ts                  POST consulta; [005b] PUT foto
+│   │   ├── solicitudes.controller.ts                  [005b] GET lista, POST cancelar (panel)
+│   │   ├── inscripciones.service.ts · seguimiento.service.ts · [005b] solicitudes.service.ts · foto.service.ts
 │   │   └── inscripciones.module.ts · index.ts
-│   ├── src/modulos/clases/clases.service.ts           DR-5 (criterios 41 y 42) y GET /api/clases/ocupacion
+│   ├── src/modulos/clases/clases.service.ts           DR-5 (criterios 41 y 42); [005b] GET /api/clases/ocupacion
 │   └── test/
 │       ├── utilidades/inscripciones.ts                crear clientes, solicitudes y matrículas; llenar clases (test-writer)
 │       └── integracion/inscripciones/                 pruebas protegidas y no protegidas
 ├── scripts/
 │   ├── lib/rol-app.mjs                    + privilegios de las siete tablas
-│   ├── lib/dependencias-backend.mjs       + sharp
+│   ├── lib/dependencias-backend.mjs       [005b] + sharp
 │   └── test/integracion/migraciones.test.mjs   + las siete tablas en TABLAS_DESPUES_DE_MIGRAR
 ├── frontend/src/
 │   ├── modulos/inscripcion/               nuevo: api.ts · hooks.ts · PaginaInscripcion.tsx · pasos/*.tsx · Inscripcion.test.tsx
 │   ├── modulos/seguimiento/               nuevo: PaginaSeguimiento.tsx · PaginaConsultaCodigo.tsx · Seguimiento.test.tsx
-│   ├── modulos/solicitudes/               nuevo: PaginaSolicitudes.tsx · DialogoCancelar.tsx · Solicitudes.test.tsx
-│   ├── modulos/clases/                    ocupación en la grilla y diálogo de aforo menor (criterio 46)
+│   ├── modulos/solicitudes/               [005b] nuevo: PaginaSolicitudes.tsx · DialogoCancelar.tsx · Solicitudes.test.tsx
+│   ├── modulos/clases/                    [005b] ocupación en la grilla y diálogo de aforo menor (criterio 46)
 │   ├── modulos/sesion/PaginaIngresarAcademia.tsx   + teléfono (criterio 45)
-│   ├── modulos/panel/PaginaPanel.tsx      + "Solicitudes de inscripción" y "Nueva inscripción"
-│   └── rutas/Rutas.tsx                    + /a/:nombreCorto/inscripcion, /a/:nombreCorto/solicitud(/:token), /panel/solicitudes
-├── .env.example                           + ALMACEN_DIRECTORIO
+│   ├── modulos/panel/PaginaPanel.tsx      [005b] + "Solicitudes de inscripción" y "Nueva inscripción"
+│   └── rutas/Rutas.tsx                    + /a/:nombreCorto/inscripcion, /a/:nombreCorto/solicitud(/:token); [005b] /panel/solicitudes
+├── .env.example                           [005b] + ALMACEN_DIRECTORIO
 └── docs/arquitectura.md · README.md · guía de uso   documentador (criterio 48)
 ```
 
@@ -222,18 +231,23 @@ lectura busca el código con la misma clave y el mismo DNI, y si falla responde 
   solicitudes_inscripcion s JOIN alumnos a … WHERE s.academia_id = … AND s.codigo = … AND a.dni = …`. Una sola consulta
   en los dos casos, con la vista ya armada (plan, clases y matrícula con `JOIN`), sin bloqueo.
 - Estado visible: `PENDIENTE_PAGO` con la matrícula vencida (`reserva_vence_en <= ahora`) → `VENCIDA`.
+- `fotoCargada` = `alumnos.foto_clave IS NOT NULL`. En la 005a siempre es `false` (no hay ruta para subirla), pero el
+  campo ya está en el esquema estricto para que la 005b no lo cambie.
 - Sin auditoría (es una lectura). El registro técnico no lleva el código junto con el DNI ni el token.
 
 ### 8. Límites por IP (`instalarProteccionDePrefijos`)
 
 Se amplía el middleware de `/${prefijoApi}/a` con una tabla de reglas `{ metodo, patron, nombre, ttl, limite }`
 (`LIMITES_PUBLICOS`, junto a `LIMITE_INICIO_SESION`): `GET /^\/[^/]+\/?$/` y `GET /^\/[^/]+\/inscripcion\/?$/` comparten
-la regla "lectura"; `POST …/inscripcion/cotizacion`, `POST …/inscripcion`, `POST …/solicitudes/consulta` y
-`PUT …/solicitudes/foto` tienen la suya. Cuenta con `almacenLimite.increment(`publico-${nombre}:${ip}`, …)` antes de
+la regla "lectura"; `POST …/inscripcion/cotizacion`, `POST …/inscripcion` y `POST …/solicitudes/consulta` tienen la
+suya (005a); la regla de `PUT …/solicitudes/foto` se suma a la tabla en la 005b, con su ruta. Cuenta con `almacenLimite.increment(`publico-${nombre}:${ip}`, …)` antes de
 `comprobarDireccion` y antes de leer el cuerpo, como el ingreso. Sin coincidencia, sigue como hoy. Las pruebas usan un
 almacén limpio por prueba (como las de 002).
 
-### 9. Foto (`FotoService`, `AlmacenArchivos`)
+### 9. [005b] Foto (`FotoService`, `AlmacenArchivos`)
+
+Toda esta sección es de la 005b.
+
 
 - **Lector:** `instalarLectorDeCuerpos` recibe en `noLeerCuerpoEn` también `PUT /a/{nombreCorto}/solicitudes/foto`; un
   middleware propio en esa ruta, después del límite por IP, rechaza (400 `IMAGEN_NO_VALIDA`) un `Content-Type` que no
@@ -268,18 +282,20 @@ almacén limpio por prueba (como las de 002).
 
 ### 11. Panel
 
-- **`SolicitudesService.listar`:** `conAcademia(sesion.academiaId)`; una consulta con `JOIN` a alumnos, matrículas,
+De esta sección, solo "`ClasesService` (DR-5)" es de la 005a; la lista, la cancelación y la ocupación son de la 005b.
+
+- **[005b] `SolicitudesService.listar`:** `conAcademia(sesion.academiaId)`; una consulta con `JOIN` a alumnos, matrículas,
   planes y `matricula_clases`/`clases` (con `array_agg` ordenado), filtro por estado calculado con `ahora`, `ORDER BY
   creado_en DESC, id DESC LIMIT 200`. Sin `bloquearActorVigente` (es lectura, como en 002 a 004).
-- **`SolicitudesService.cancelar`:** `bloquearActorVigente` → validar el id (404 como AT-2 de 004) → `SELECT … FOR
+- **[005b] `SolicitudesService.cancelar`:** `bloquearActorVigente` → validar el id (404 como AT-2 de 004) → `SELECT … FOR
   UPDATE` de la solicitud y de su matrícula → `bloquearClasesParaCupo(tx, clasesDeLaMatricula)` → si `CANCELADA`, 200
   sin escribir; si no es `PENDIENTE_PAGO`, 409 `SOLICITUD_NO_CANCELABLE`; si no, dos `UPDATE` y la auditoría.
-- **`ClasesService` (DR-5):** en el `PATCH`, después de `bloquearClasesParaCupo` (que ya está, criterio 22 de 004) y de
+- **`ClasesService` (DR-5, 005a):** en el `PATCH`, después de `bloquearClasesParaCupo` (que ya está, criterio 22 de 004) y de
   `cambiosPedidosClase`: si cambia `aforo` a un valor menor que `contarInscritos` y no viene `confirmarAforoMenor`,
   409 `AFORO_MENOR_QUE_INSCRITOS`; si viene, se guarda y la auditoría suma `inscritos` y `confirmacion`. Si pide
   `activo: false` y hay inscritos, 409 `CLASE_CON_INSCRITOS`. El orden de los 409 de 004 no cambia; estos dos van
   después de `ENTRENADOR_NO_VALIDO` y antes de escribir.
-- **`GET /api/clases/ocupacion`:** `contarOcupacion` del mes en curso para todas las clases de la academia (sin
+- **[005b] `GET /api/clases/ocupacion`:** `contarOcupacion` del mes en curso para todas las clases de la academia (sin
   bloqueo), con 0 para las que no tienen.
 
 ### 12. Web
@@ -291,14 +307,16 @@ almacén limpio por prueba (como las de 002).
   esquema). La edad se calcula con `esMenorDeEdad(fecha, hoy)`, con `hoy` de la respuesta de la API (no del reloj del
   navegador). La selección de clases filtra la oferta por nivel, días y franjas del plan, y limita a una por día.
   La cotización se pide al cambiar la selección (`useMutation`), y su `mes` y `monto` viajan en el envío. La
-  `claveIdempotencia` se crea con `crypto.randomUUID()` al montar el formulario y se conserva en el estado. La foto se
-  sube con `fetch` (`PUT` con el cuerpo binario y la cabecera) después del 201.
+  `claveIdempotencia` se crea con `crypto.randomUUID()` al montar el formulario y se conserva en el estado.
+  **[005b]** El paso de la foto: se sube con `fetch` (`PUT` con el cuerpo binario y la cabecera) después del 201, y el
+  seguimiento ofrece reintentarla.
 - **Seguimiento:** el token se lee del parámetro de la ruta, se manda en el cuerpo y se mantiene solo en memoria; la
   consulta no usa persistencia de TanStack Query. `<meta name="referrer" content="no-referrer">` en `index.html` (vale
   para toda la web; no afecta a la API, que está en el mismo dominio).
-- **Panel:** `PaginaSolicitudes` con filtro y diálogo de cancelación; `GrillaSemanal` muestra "inscritos / aforo" con
+- **[005b] Panel:** `PaginaSolicitudes` con filtro y diálogo de cancelación; `GrillaSemanal` muestra "inscritos / aforo" con
   `GET /api/clases/ocupacion`; `FormularioClase` maneja `AFORO_MENOR_QUE_INSCRITOS` con un diálogo que reenvía con
-  `confirmarAforoMenor: true`, y `CLASE_CON_INSCRITOS` con un mensaje. Claves con la identidad de la sesión.
+  `confirmarAforoMenor: true`, y `CLASE_CON_INSCRITOS` con un mensaje. Claves con la identidad de la sesión. En la
+  005a, `FormularioClase` no cambia: muestra esos dos 409 como cualquier error de la 004.
 - Montos: `lib/dinero.ts` de la 004 (texto, sin `number`).
 
 ### 13. Semilla
@@ -320,13 +338,13 @@ NOTHING` sobre `(academia_id, dni)` y `(academia_id, codigo)`. La reserva vigent
 | Token con hash SHA-256 en la base; código de 6 caracteres (D5) | Token en claro; código de 5 | Un respaldo filtrado no abre los enlaces; mil millones de códigos por academia |
 | Consulta por `POST` con el dato en el cuerpo (D6) | `GET /…/{token}` | El token no queda en los registros de la API ni del proxy |
 | Bloqueos consultivos de IP y DNI antes de las filas y las clases | Solo el índice único del DNI | Ordena el reuso de un cliente y el límite por conexión sin `23505` en el camino normal |
-| Foto en `PUT` binario con el token en una cabecera (T1) | Base64 en el JSON; `multipart` | No sube el límite de 100 KB de todo el JSON; un solo lector, solo en esa ruta |
-| Foto guardada antes de la transacción, anterior borrada después (criterio 37) | Escribir el archivo después de confirmar | Un archivo sin referencia no lo ve nadie; una referencia a un archivo que no existe sí |
-| Recodificar con `sharp` sin metadatos (criterio 35) | Guardar el original | Quita GPS de fotos de menores y contenido escondido |
-| Actor `PUBLICO` (T2) | `SISTEMA` | No mezclar visitantes con tareas programadas |
-| Ocupación en ruta aparte (D8) | Campo en `claseSchema` | No tocar el contrato ni las pruebas protegidas de 004 |
+| [005b] Foto en `PUT` binario con el token en una cabecera (DT-1) | Base64 en el JSON; `multipart` | No sube el límite de 100 KB de todo el JSON; un solo lector, solo en esa ruta |
+| [005b] Foto guardada antes de la transacción, anterior borrada después (criterio 37) | Escribir el archivo después de confirmar | Un archivo sin referencia no lo ve nadie; una referencia a un archivo que no existe sí |
+| [005b] Recodificar con `sharp` sin metadatos (criterio 35) | Guardar el original | Quita GPS de fotos de menores y contenido escondido |
+| Actor `PUBLICO` (DT-2) | `SISTEMA` | No mezclar visitantes con tareas programadas |
+| [005b] Ocupación en ruta aparte (D8, DT-5) | Campo en `claseSchema` | No tocar el contrato ni las pruebas protegidas de 004 |
 | Límites por IP en el middleware de `/api/a` (criterio 33) | Guard de Nest | Cuentan antes de leer el cuerpo y de abrir transacciones, como el ingreso de 002 |
-| Correo simulado sin destinatario ni enlace (T8) | Registrar el mensaje completo | El enlace es una credencial |
+| Correo simulado sin destinatario ni enlace (DT-8) | Registrar el mensaje completo | El enlace es una credencial |
 
 ## Migraciones
 
@@ -345,16 +363,20 @@ NOTHING` sobre `(academia_id, dni)` y `(academia_id, codigo)`. La reserva vigent
   sobre el plan y no toca clases ni matrículas, así que no hay ciclo. Revisarlo si una historia hace que el `PATCH` de un
   plan toque matrículas.
 - **`ALTER TYPE … ADD VALUE`** no se puede usar en la misma transacción: el valor `PUBLICO` solo se usa en la API.
-- **`sharp` en Windows y en la integración continua:** binario por sistema operativo (D-26); la integración continua en
+- **[005b] `sharp` en Windows y en la integración continua:** binario por sistema operativo (D-26); la integración continua en
   Windows lo detecta. Si `npm ci` falla en alguna plataforma, se fija la versión.
-- **Imágenes maliciosas:** `limitInputPixels`, el límite de 5 MB antes de decodificar y `failOn: 'error'`; `sharp` corre
+- **[005b] Imágenes maliciosas:** `limitInputPixels`, el límite de 5 MB antes de decodificar y `failOn: 'error'`; `sharp` corre
   en el hilo de libuv, así que una imagen grande ocupa CPU: el límite de 10 por hora y por IP lo acota.
 - **Coma flotante:** cualquier `Number(`, `parseFloat` o `+monto` en `matriculas/dominio` o en la web rompe el criterio 9;
   el revisor los busca.
 - **Fechas:** `clasesRestantes` y `esMenorDeEdad` no pueden usar `new Date().getDay()`, `getFullYear()` ni la zona del
   proceso; el revisor busca `getDay`, `getDate` y `getMonth` en esos archivos.
-- **Pruebas protegidas de 001 y 004 que cambian (solo para sumar):** criterio 58 de 001 (`telefono`), listas exactas de
-  privilegios y tablas, `tipo_actor` y, si existe, la prueba de campos desconocidos de `actualizarClaseSchema`. Si el
-  tester encuentra otra, decide el orquestador.
-- **IP detrás de un proxy** (T9): los límites de los criterios 25 y 33 dependen de `req.ip`.
-- **Tamaño de la historia:** si se divide (N11), las secciones 9 y 11 (salvo DR-5) pasan a la 005b.
+- **Pruebas protegidas de 001 y 004 que cambian (solo para sumar):** en la 005a, criterio 58 de 001 (`telefono`),
+  listas exactas de privilegios y tablas, `tipo_actor` y, si existe, la prueba de campos desconocidos de
+  `actualizarClaseSchema`; en la 005b, la lista de dependencias permitidas del backend (`sharp`, criterio 127 de 001) y,
+  si alguna lo fija, el lector de cuerpos (criterio 74 de 001). Si el tester encuentra otra, decide el orquestador.
+- **IP detrás de un proxy** (DT-9): los límites de los criterios 25 y 33 dependen de `req.ip`. `trust proxy` se
+  configura con el hosting antes de publicar el formulario (aviso en las notas de hosting de `specs/backlog.md`).
+- **Entre los dos PR:** la 005a se puede unir a `main` sin la 005b. Mientras tanto no hay foto, la secretaria no lista
+  ni cancela solicitudes desde el panel (las reservas sin pagar se liberan solas al vencer) y el administrador no puede
+  bajar el aforo por debajo de los inscritos desde la web (la API lo permite con `confirmarAforoMenor`).

@@ -22,8 +22,14 @@
   seguimiento), aforo y reservas (último cupo simultáneo y reserva mientras el pago está pendiente), cálculo del cobro
   (proporcional y redondeo), datos sensibles de menores y de salud (Ley 29733) y aislamiento entre academias (rutas
   públicas, token de seguimiento y archivos). La web, la semilla y la documentación no son críticas.
-- **Estado:** borrador (19/11/2026). Pendiente de aprobación del responsable; ver "Preguntas abiertas" (N1 a N11 de
-  negocio y T1 a T9 técnicas). La pregunta N11 propone dividir la historia en 005a y 005b.
+- **Estado:** aprobada por el responsable (20/11/2026), con las propuestas de todas las preguntas de negocio (DR-1 a
+  DR-11 de esta spec) y las técnicas aprobadas por el orquestador (DT-1 a DT-9), en "Decisiones". Ningún criterio
+  cambió de intención. No quedan preguntas abiertas.
+- **División (DR-11):** la historia se entrega en dos PR desde esta misma carpeta, las dos de ruta crítica, cada una con
+  sus pruebas protegidas, su ataque y su cierre (ver "División en 005a y 005b"):
+  - **005a · Inscripción, reserva y seguimiento** (se construye primero): criterios 1 a 33, 41 a 45, 47 y 48, salvo las
+    partes de 28, 33, 43, 44 y 48 que tratan de la foto o del panel de solicitudes.
+  - **005b · Foto y panel de solicitudes** (siguiente PR): criterios 34 a 40 y 46, más esas partes.
 
 ## Objetivo
 
@@ -57,7 +63,60 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   administrador cambia el aforo y desactiva clases.
 
 No son críticos, pero llevan _(prueba obligatoria)_: 11 (cotización, salvo lo que cubren 8 a 10) y 40 (API), y 43 a
-46 (web, con pruebas de componentes). Los 47 y 48 (semilla y documentación) los verifica el revisor.
+46 (web, con pruebas de componentes). Los 47 y 48 (semilla y documentación) los verifica el revisor. _(Aprobado por el
+orquestador, DT-3.)_
+
+## División en 005a y 005b
+
+Decidida por el responsable (DR-11). Las dos entregas comparten esta spec, `plan.md` y `tasks.md`; las tareas y los
+criterios de la 005b llevan la marca **[005b, siguiente PR]**. El test-writer de la 005a escribe solo las pruebas
+protegidas de los criterios críticos de la 005a; las de la 005b se escriben, se confirman en rojo y se atacan en el PR
+de la 005b, en archivos de prueba nuevos (sin modificar los protegidos de la 005a).
+
+| Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
+| --- | --- | --- | --- |
+| **005a** · inscripción, reserva y seguimiento | 1 a 10, 12 a 33, 41 y 42 | 11, 43, 44 y 45 | 47 y 48 |
+| **005b** · foto y panel de solicitudes | 34 a 39, más la foto en 28 y 33 | 40 y 46 (y la foto en 43 y 44) | parte de 48 |
+
+**Partes de criterios de la 005a que se completan en la 005b:**
+
+- **28:** en la 005a, la prueba del registro técnico cotiza, envía y consulta; la subida de la foto se prueba en la 005b,
+  en una prueba protegida aparte con el mismo registro en memoria.
+- **33:** en la 005a, los límites de las dos lecturas, la cotización, el envío y la consulta; el de la foto (10 por hora)
+  llega con su ruta en la 005b, con su propia prueba protegida.
+- **43:** en la 005a, el formulario no tiene el paso de la foto; el paso, su vista previa, sus avisos y el reintento
+  desde el seguimiento son de la 005b.
+- **44:** en la 005a, la página de seguimiento no ofrece "subir foto"; llega en la 005b.
+- **48:** en la 005a se documenta todo menos `AlmacenArchivos`, la regla "Archivos" de "Reglas para las historias
+  siguientes", `ALMACEN_DIRECTORIO` en `.env.example` y el panel de solicitudes en el `README.md` y la guía de uso, que
+  documenta la 005b.
+
+**Dependencias entre las dos entregas y cómo quedan resueltas:**
+
+- **La migración de la 005a crea las siete tablas completas** (criterios 1 a 4), también `alumnos.foto_clave` y su
+  privilegio de `UPDATE`, y el estado `CANCELADA` de solicitudes y matrículas. La 005b no necesita migración para la
+  foto ni para cancelar. Así las pruebas de catálogo y de privilegios de la 005a no cambian en la 005b.
+- **`fotoCargada` en la vista mínima (criterio 32)** existe desde la 005a para que el esquema estricto no cambie en la
+  005b: se calcula como `alumnos.foto_clave IS NOT NULL` y en la 005a siempre es `false`, porque no hay forma de subir
+  una foto.
+- **Solicitudes canceladas en la 005a (criterios 20, 21 b, 25 y 42):** la API para cancelar (criterio 39) es de la 005b.
+  Las pruebas de la 005a crean las solicitudes y matrículas `CANCELADA` escribiendo las filas como dueño de las tablas
+  (utilidad de pruebas), y la secretaria todavía no puede cancelar desde el panel. Las reservas falsas se liberan solas
+  al vencer (criterio 20) mientras tanto.
+- **DR-5 de 004 (criterios 41 y 42) va en la 005a,** porque el último cupo simultáneo frente a un cambio de aforo
+  (criterio 18 e) y los inscritos que ignoran reservas vencidas (criterio 20) los usan. `contarInscritos` es de la 005a.
+  En la web, el diálogo de confirmación del aforo menor, el mensaje de `CLASE_CON_INSCRITOS` y "inscritos / aforo" en
+  la grilla son del criterio 46 (005b): mientras tanto, `/panel/clases` muestra esos 409 como cualquier error de la
+  004, y el administrador no puede bajar el aforo por debajo de los inscritos desde la web (el lado seguro).
+- **La ocupación para el administrador (`GET /api/clases/ocupacion`, criterio 40)** es de la 005b, junto con la grilla
+  que la usa (criterio 46).
+- **"Nueva inscripción" en el panel (DR-10, criterio 46)** es de la 005b; en la 005a la secretaria abre en recepción la
+  dirección pública `/a/{nombreCorto}/inscripcion`, que es el mismo formulario.
+- **`sharp`, el lector binario y `AlmacenArchivos`** (impacto en los criterios 74 y 127 de 001) entran con la 005b; la
+  005a no toca el lector de cuerpos ni las dependencias permitidas del backend.
+- Ningún criterio de la 005b cambia un contrato de la 005a: la 005b suma rutas, códigos de error
+  (`SOLICITUD_NO_EDITABLE`, `SOLICITUD_NO_CANCELABLE`, `IMAGEN_NO_VALIDA`) y la auditoría
+  `SOLICITUD_INSCRIPCION_CANCELADA`.
 
 ## Criterios de aceptación
 
@@ -290,7 +349,8 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
     DNI, nombres, fecha de nacimiento, teléfono, correo, dirección, datos médicos, apoderado, token, código junto con el
     DNI, el cuerpo de la petición ni el contenido de la foto; la línea de la petición de `pino-http` no lleva cuerpo ni
     token (el token nunca va en una dirección de la API). Prueba con un registro en memoria que envía un formulario
-    completo, consulta y sube una foto, y busca cada valor. _(crítico)_ (criterio 43 de 002, Ley 29733)
+    completo, consulta y sube una foto, y busca cada valor. _(crítico)_ (criterio 43 de 002, Ley 29733) _(005a sin la
+    foto; la subida de la foto, en la 005b: ver "División en 005a y 005b".)_
 
 ### E. Seguimiento de la solicitud
 
@@ -324,11 +384,13 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
     la consulta de seguimiento, 10 por minuto; la foto, 10 por hora. El límite de 10 por minuto del ingreso (002) no
     cambia. Pasado el límite responde 429 `DEMASIADAS_SOLICITUDES` con `Cache-Control: no-store`, sin leer el cuerpo,
     sin abrir transacción y sin escribir. Cada límite tiene su contador: agotar uno no afecta a los otros. _(crítico)_
-    (nota O2 de 001, DT-1 de 002)
+    (nota O2 de 001, DT-1 de 002) _(005a sin el límite de la foto, que llega con su ruta en la 005b.)_
 
-### G. Foto opcional
+### G. Foto opcional **[005b, siguiente PR]**
 
-34. **Subida de la foto.** `PUT /api/a/{nombreCorto}/solicitudes/foto`, con el token en la cabecera `X-Token-Solicitud`
+Los criterios 34 a 37 son de la 005b.
+
+34. **[005b] Subida de la foto.** `PUT /api/a/{nombreCorto}/solicitudes/foto`, con el token en la cabecera `X-Token-Solicitud`
     y la imagen como cuerpo binario (`Content-Type: image/jpeg` o `image/png`), responde 204 si el token es de una
     solicitud `PENDIENTE_PAGO` no vencida de la academia cuyo alumno está en estado `CLIENTE`. Responde: 404
     `SOLICITUD_NO_ENCONTRADA` (el mismo del criterio 31) sin token o con un token que no sirve; 409
@@ -337,20 +399,20 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
     puede decodificar, si tiene menos de 100 o más de 8000 píxeles por lado o más de 40 megapíxeles (provisionales); y
     413 `CARGA_EXCESIVA` con más de 5 MB, sin leer más allá del límite. Una foto nueva reemplaza a la anterior. Ningún
     rechazo cambia la foto guardada. _(crítico)_ (D-20, D-24; límites de `CLAUDE.md`)
-35. **La foto que se guarda.** La imagen aceptada se vuelve a codificar con `sharp` como JPEG de como mucho 800 píxeles
+35. **[005b] La foto que se guarda.** La imagen aceptada se vuelve a codificar con `sharp` como JPEG de como mucho 800 píxeles
     en su lado mayor (sin agrandar), con la orientación aplicada y **sin metadatos** (EXIF, GPS, XMP, ICC, comentarios):
     lo guardado nunca es el archivo original. Prueba: una foto con coordenadas GPS en su EXIF se guarda sin ellas; un PNG
     con un trozo de texto o un JPEG con datos después del final de la imagen se guardan sin ellos; un archivo poliglota
     (PNG válido con otro contenido pegado) se guarda solo como la imagen recodificada. _(crítico)_ (RNF-05: fotos de
     menores)
-36. **`AlmacenArchivos` y aislamiento de archivos.** La interfaz `AlmacenArchivos` (`guardar`, `leer`, `borrar`) recibe
+36. **[005b] `AlmacenArchivos` y aislamiento de archivos.** La interfaz `AlmacenArchivos` (`guardar`, `leer`, `borrar`) recibe
     siempre la academia y una clave que genera el servidor (`academias/{academiaId}/alumnos/{alumnoId}/foto-{uuid}.jpg`),
     nunca un nombre que venga del cliente. La implementación de disco local escribe bajo el directorio de
     `ALMACEN_DIRECTORIO` y rechaza toda clave que no cumpla el formato o que, resuelta, quede fuera de ese directorio o de
     la carpeta de la academia (`..`, rutas absolutas, separadores de Windows, bytes nulos, enlaces simbólicos). Leer o
     borrar con la academia A una clave de B falla sin tocar el archivo. Ninguna ruta de la API ni del servidor de la web
     sirve ese directorio. _(crítico)_ (D-21, D-23)
-37. **Archivo y transacción, sin restos visibles.** La imagen se procesa y se guarda con una clave nueva antes de la
+37. **[005b] Archivo y transacción, sin restos visibles.** La imagen se procesa y se guarda con una clave nueva antes de la
     transacción; la transacción vuelve a comprobar la solicitud, guarda la clave en `alumnos.foto_clave` y confirma; después
     se borra el archivo anterior. Si la transacción falla, se borra el archivo nuevo y la clave guardada no cambia; si
     falla el borrado del anterior, se registra un aviso (sin datos personales) y la respuesta sigue siendo 204. Dos
@@ -360,7 +422,9 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
 
 ### H. Panel: solicitudes, ocupación y aforo con inscritos
 
-38. **Lista de solicitudes.** `GET /api/solicitudes`, con `@Permiso('REGISTRAR_INSCRIPCION_Y_COBRO')` (`ADMIN` y
+Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5 de 004 en la API) son de la 005a.
+
+38. **[005b] Lista de solicitudes.** `GET /api/solicitudes`, con `@Permiso('REGISTRAR_INSCRIPCION_Y_COBRO')` (`ADMIN` y
     `SECRETARIA`), responde 200 con `{ solicitudes }` de la academia de la sesión, de la más nueva a la más antigua, las
     200 más recientes, filtradas por `?estado=` (`ACTIVAS` por defecto, `VENCIDAS`, `CANCELADAS` o `TODAS`); cada una con
     `id`, `codigo`, `estado` (con `VENCIDA` calculado), `creadaEn`, `reservaVenceEn`, `nombres`, `apellidos`, `dni`,
@@ -368,7 +432,7 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
     apoderado, consentimientos, foto, IP ni token. `ENTRENADOR` y `ALUMNO` reciben 403; sin sesión, 401; el Superadmin
     no tiene la ruta (D-29). Nunca aparecen solicitudes de otra academia, tampoco con `?academiaId=`. La lectura no
     audita. _(crítico)_ (sección 2.1, RN-21, D-23)
-39. **Cancelar una solicitud.** `POST /api/solicitudes/{id}/cancelar` con `{ motivo }` (de 3 a 200 caracteres
+39. **[005b] Cancelar una solicitud.** `POST /api/solicitudes/{id}/cancelar` con `{ motivo }` (de 3 a 200 caracteres
     visibles), con el mismo permiso: dentro de su `conAcademia`, `bloquearActorVigente` primero, después la solicitud
     (`FOR UPDATE`) y después `bloquearClasesParaCupo` con sus clases. Una solicitud `PENDIENTE_PAGO` (vencida o no) pasa a
     `CANCELADA` y su matrícula a `CANCELADA`: el cupo se libera en ese momento. Registra
@@ -377,7 +441,7 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
     auditoría); un id que no existe, de otra academia o que no es UUID, 404 `NO_ENCONTRADO`. Con el actor desactivado
     mientras espera, 401 sin escribir (prueba de carrera como el criterio 7 de 004). _(crítico)_ (RN-22, RN-28, DT-5 de
     002)
-40. **Ocupación para el administrador.** `GET /api/clases/ocupacion`, con
+40. **[005b] Ocupación para el administrador.** `GET /api/clases/ocupacion`, con
     `@Permiso('CONFIGURAR_PLANES_HORARIOS_AFORO')`, responde 200 con `{ mes, ocupacion: [{ claseId, inscritos,
     cuposRestantes }] }` de todas las clases de la academia en el mes en curso (las que no tienen inscritos, con 0).
     `claseSchema` y `GET /api/clases` de 004 no cambian. _(prueba obligatoria; permisos y aislamiento como el criterio 5
@@ -411,17 +475,18 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
     `TEXTOS_ACTUALIZADOS`, muestra lo nuevo y pide confirmar; ante `DNI_YA_REGISTRADO`, `SOLICITUD_YA_REGISTRADA`,
     `LIMITE_DE_RESERVAS_PENDIENTES` y 429, un mensaje claro con el teléfono de la academia. Si la foto falla después de
     crear la solicitud, la solicitud queda creada y la página de seguimiento permite volver a subirla. _(prueba
-    obligatoria, de componentes)_ (HU-01, HU-02, D-05, D-20, D-24)
+    obligatoria, de componentes)_ (HU-01, HU-02, D-05, D-20, D-24) _(005a sin el paso de la foto ni su reintento, que
+    son de la 005b.)_
 44. **Página de seguimiento.** `/a/{nombreCorto}/solicitud/{token}` consulta con el token en el cuerpo y muestra la vista
     mínima (estado en palabras, plan, días y horas, mes, monto, fecha límite de la reserva, teléfono de la academia y
     "subir foto" mientras se pueda). `/a/{nombreCorto}/solicitud` ofrece la consulta con código y DNI. La página no guarda
     el token en `localStorage`, `sessionStorage` ni cookies, declara `<meta name="referrer" content="no-referrer">`, no
     carga recursos de otros dominios y no muestra el token en el título. La clave de la consulta en TanStack Query no se
-    persiste. _(prueba obligatoria, de componentes)_ (D-05, D-27)
+    persiste. _(prueba obligatoria, de componentes)_ (D-05, D-27) _(005a sin "subir foto", que es de la 005b.)_
 45. **Teléfono en las páginas públicas.** El ingreso de la academia (`/a/{nombreCorto}/ingresar`, de 002), la inscripción
     y el seguimiento muestran el teléfono de la academia cuando existe, leído de `GET /api/a/{nombreCorto}` sin caché
     entre visitas (DR-4 de 003). _(prueba obligatoria, de componentes)_
-46. **Panel.** El inicio del panel muestra "Solicitudes de inscripción" a `ADMIN` y `SECRETARIA` (según
+46. **[005b] Panel.** El inicio del panel muestra "Solicitudes de inscripción" a `ADMIN` y `SECRETARIA` (según
     `puede(rol, 'REGISTRAR_INSCRIPCION_Y_COBRO')`) y "Nueva inscripción", que abre el formulario público de la academia
     en recepción (pregunta N10). `/panel/solicitudes` lista con filtro por estado y cancela con un diálogo que pide el
     motivo. `/panel/clases` muestra en cada clase "inscritos / aforo" y, al bajar el aforo por debajo de los inscritos,
@@ -440,7 +505,8 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
 48. **Documentación.** `docs/arquitectura.md` documenta las tablas, la ocupación (`contarOcupacion`), el orden de
     bloqueos, `AlmacenArchivos`, `EnviadorCorreo`, los límites de las rutas públicas y las "Reglas para las historias
     siguientes" de esta spec; el `README.md` y la guía de uso explican la inscripción, el seguimiento y el panel de
-    solicitudes; `.env.example` suma `ALMACEN_DIRECTORIO`. _(verificación del revisor)_
+    solicitudes; `.env.example` suma `ALMACEN_DIRECTORIO`. _(verificación del revisor)_ _(005a sin `AlmacenArchivos`,
+    la regla "Archivos", `ALMACEN_DIRECTORIO` ni el panel de solicitudes, que documenta la 005b.)_
 
 ## Casos límite
 
@@ -526,10 +592,10 @@ obligatorio → permiso → cuerpo → operación).
 | `POST /api/a/{nombreCorto}/inscripcion/cotizacion` | pública | `cotizarInscripcionSchema` | 200 `RespuestaCotizacion` | 400, 404, 403, 409 `PLAN_NO_DISPONIBLE`, `SELECCION_NO_VALIDA`, `SIN_CLASES_EN_EL_MES`, 429 |
 | `POST /api/a/{nombreCorto}/inscripcion` | pública | `enviarInscripcionSchema` | 201 `RespuestaInscripcionCreada` | 400, 404, 403, 409 (ver orden), 429 |
 | `POST /api/a/{nombreCorto}/solicitudes/consulta` | pública | `consultarSolicitudSchema` | 200 `RespuestaConsultaSolicitud` | 400, 404 `SOLICITUD_NO_ENCONTRADA`, 403, 429 |
-| `PUT /api/a/{nombreCorto}/solicitudes/foto` | pública, cabecera `X-Token-Solicitud` | JPEG o PNG, hasta 5 MB | 204 | 400 `IMAGEN_NO_VALIDA`, 404, 403, 409 `SOLICITUD_NO_EDITABLE`, 413, 429 |
-| `GET /api/solicitudes?estado=` | `REGISTRAR_INSCRIPCION_Y_COBRO` | — | 200 `RespuestaListaSolicitudes` | 400, 401, 403 |
-| `POST /api/solicitudes/{id}/cancelar` | `REGISTRAR_INSCRIPCION_Y_COBRO` | `cancelarSolicitudSchema` | 200 `RespuestaSolicitudPanel` | 400, 401, 403, 404, 409 `SOLICITUD_NO_CANCELABLE` |
-| `GET /api/clases/ocupacion` | `CONFIGURAR_PLANES_HORARIOS_AFORO` | — | 200 `RespuestaOcupacion` | 401, 403 |
+| **[005b]** `PUT /api/a/{nombreCorto}/solicitudes/foto` | pública, cabecera `X-Token-Solicitud` | JPEG o PNG, hasta 5 MB | 204 | 400 `IMAGEN_NO_VALIDA`, 404, 403, 409 `SOLICITUD_NO_EDITABLE`, 413, 429 |
+| **[005b]** `GET /api/solicitudes?estado=` | `REGISTRAR_INSCRIPCION_Y_COBRO` | — | 200 `RespuestaListaSolicitudes` | 400, 401, 403 |
+| **[005b]** `POST /api/solicitudes/{id}/cancelar` | `REGISTRAR_INSCRIPCION_Y_COBRO` | `cancelarSolicitudSchema` | 200 `RespuestaSolicitudPanel` | 400, 401, 403, 404, 409 `SOLICITUD_NO_CANCELABLE` |
+| **[005b]** `GET /api/clases/ocupacion` | `CONFIGURAR_PLANES_HORARIOS_AFORO` | — | 200 `RespuestaOcupacion` | 401, 403 |
 | `PATCH /api/clases/{id}` (de 004) | `CONFIGURAR_PLANES_HORARIOS_AFORO` | `actualizarClaseSchema` + `confirmarAforoMenor` | 200 | los de 004 + 409 `AFORO_MENOR_QUE_INSCRITOS`, `CLASE_CON_INSCRITOS` |
 
 **Orden de los 409 del envío** (después del 400 del esquema y de los 400 de los criterios 13 y 14):
@@ -538,6 +604,12 @@ obligatorio → permiso → cuerpo → operación).
 `SELECCION_NO_VALIDA`, se deciden con las clases ya bloqueadas (sigue el orden de bloqueos de "Reglas para las historias
 siguientes"). La cotización usa el mismo orden para los códigos que comparte. `SOLICITUD_NO_CANCELABLE` (409) es para una solicitud que ya no está `PENDIENTE_PAGO` ni `CANCELADA` (desde la
 007).
+
+Las rutas marcadas **[005b]** llegan en el siguiente PR; la 005a construye las demás, incluidos los dos 409 nuevos del
+`PATCH /api/clases/{id}`. De los códigos de error nuevos, `SOLICITUD_NO_EDITABLE`, `SOLICITUD_NO_CANCELABLE` e
+`IMAGEN_NO_VALIDA` son de la 005b; de la auditoría, `SOLICITUD_INSCRIPCION_CANCELADA`; de los esquemas compartidos,
+`solicitudPanelSchema`, `respuestaListaSolicitudesSchema`, `cancelarSolicitudSchema`, `filtroEstadoSolicitudesSchema` y
+`respuestaOcupacionSchema`; de las interfaces del backend, `AlmacenArchivos`.
 
 El `{id}` de `POST /api/solicitudes/{id}/cancelar` lo valida el servicio después de `bloquearActorVigente`, como AT-2 de
 004: un id que no es UUID responde el mismo 404 que uno inexistente o de otra academia.
@@ -684,8 +756,8 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
   de valores, se actualiza igual, solo para sumar.
 - **001, criterio 2 y `PRIVILEGIOS_APP` (criterio 102), `TABLAS_DESPUES_DE_MIGRAR`:** suman lo de las siete tablas
   (como en la 004).
-- **001, criterio 127 (dependencias del backend):** `sharp` se suma a `DEPENDENCIAS_BACKEND_PERMITIDAS` (D-25; T6).
-- **001, lector de cuerpos (criterio 74):** la ruta de la foto queda fuera de los tres middlewares de JSON (como
+- **[005b] 001, criterio 127 (dependencias del backend):** `sharp` se suma a `DEPENDENCIAS_BACKEND_PERMITIDAS` (D-25; T6).
+- **[005b] 001, lector de cuerpos (criterio 74):** la ruta de la foto queda fuera de los tres middlewares de JSON (como
   `DELETE /api/sesion`), con su propio lector binario de hasta 5 MB y sin descompresión. Ninguna otra ruta cambia.
 - **001, nota O2 y 002, límites:** se cierran para `GET /api/a/{nombreCorto}` con el criterio 33. El límite del ingreso
   (002) no cambia.
@@ -696,7 +768,8 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
 - **004, criterio 22:** sigue igual; DR-5 cuenta los inscritos después de ese bloqueo.
 - **002, matriz de permisos (criterio 26):** no cambia (24 filas): se usan `REGISTRAR_INSCRIPCION_Y_COBRO` y
   `CONFIGURAR_PLANES_HORARIOS_AFORO`.
-- **Web de 002:** la página de ingreso muestra el teléfono (criterio 45); el inicio del panel suma dos opciones.
+- **Web de 002:** la página de ingreso muestra el teléfono (criterio 45, 005a); el inicio del panel suma dos opciones
+  (criterio 46, 005b).
 - **`docs/arquitectura.md`:** secciones nuevas (criterio 48).
 
 ## Reglas para las historias siguientes
@@ -716,7 +789,7 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
   matrícula pasa a `CANCELADA` y el cupo se libera. Al confirmar, `VIGENTE`, el alumno pasa de `CLIENTE` a
   `ALUMNO_ACTIVO` y se crea su usuario (HU-04). El total sale de `calcularTotal` con lo guardado en la matrícula
   (`precio_plan`, `clases_por_mes_plan`, `clases_totales`), nunca del plan (HU-19).
-- **Archivos.** Toda historia que guarda archivos (comprobantes 007, multimedia 014, certificados) usa `AlmacenArchivos`
+- **[005b] Archivos.** Toda historia que guarda archivos (comprobantes 007, multimedia 014, certificados) usa `AlmacenArchivos`
   con claves generadas por el servidor bajo `academias/{academiaId}/…`, procesa y guarda antes de la transacción y borra
   lo reemplazado después de confirmar (criterio 37). Las imágenes subidas por el público se recodifican sin metadatos
   (criterio 35).
@@ -729,13 +802,15 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
 - **Saber si un DNI está en la academia:** HU-01 exige avisar que el DNI ya está registrado, así que cualquiera que
   complete el formulario puede saber si un DNI es de un alumno, de un cliente con solicitud en curso o del personal. Se
   mitiga con un mensaje único para los tres casos (criterio 21), los límites por IP (criterio 33) y la necesidad de un
-  formulario completo y válido. Pendiente de confirmar (N6).
+  formulario completo y válido. Aceptado por el responsable (DR-6).
 - **Reservas falsas:** sin verificar la identidad, alguien puede reservar cupos con DNI inventados. Lo limitan la reserva
   de 24 horas (N1), el límite por conexión (criterio 25, N8), los límites por IP y la cancelación por la secretaria
-  (criterio 39). Una red de muchas IP podría llenar cupos por un día.
+  (criterio 39, desde la 005b; entre los dos PR solo el vencimiento libera los cupos). Una red de muchas IP podría
+  llenar cupos por un día.
 - **IP detrás de un proxy:** hoy no hay `trust proxy` (DT-1 de 002). Detrás del proxy del hosting, todas las peticiones
   tendrían la misma IP: los límites de los criterios 25 y 33 contarían a todos juntos y bloquearían la inscripción
-  pública. Se resuelve al elegir el hosting (D-21), antes de publicar el formulario (T9).
+  pública. Se resuelve al elegir el hosting (D-21), antes de publicar el formulario (DT-9; aviso en las notas de
+  hosting de `specs/backlog.md`).
 - **Contadores en memoria por instancia** (PO-6 de 002): con varias instancias, cada límite vale por instancia.
 - **El token en la dirección de la web:** D-27 fija `/a/{academia}/solicitud/{token}`; esa dirección queda en el
   historial del navegador y en los registros del servidor de la web o del proxy. Se mitiga con `no-referrer`, sin
@@ -747,14 +822,126 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
   reposo depende del hosting (N7 b).
 - **Textos legales provisionales:** los consentimientos y el deslinde llevan un texto genérico hasta que la academia
   los revise con un abogado (N7).
-- **Foto sin dueño visible:** en esta historia nadie ve la foto; un error al guardarla solo se nota en la 008. Las
+- **[005b] Foto sin dueño visible:** en esta historia nadie ve la foto; un error al guardarla solo se nota en la 008. Las
   pruebas del criterio 35 comprueban el archivo guardado.
-- **Archivo huérfano:** si el proceso se cae entre guardar la foto nueva y confirmar, queda un archivo sin referencia que
+- **[005b] Archivo huérfano:** si el proceso se cae entre guardar la foto nueva y confirmar, queda un archivo sin referencia que
   nadie puede leer (criterio 37). Una limpieza periódica queda para cuando haya proveedor de archivos.
 
 ## Decisiones
 
-Propuestas del especificador; se aprueban con la spec.
+**Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" en esta sección y como "DR-n de
+005" fuera de ella; las del orquestador, "DT-n" y "DT-n de 005". Los criterios, el contrato y las demás secciones se
+escribieron antes de la aprobación y no cambian de intención: donde dicen "pregunta Nn" o "Nn" se refieren a DR-n de
+005 y donde dicen "pregunta Tn" o "Tn", a DT-n de 005. Los valores que la spec llama "provisionales" (24 horas de
+reserva, desde cuándo se cuentan las clases, solo el mes en curso, una clase por día, campos obligatorios y formato del
+celular, DNI ya registrado, consentimientos y versión de sus textos, límite de 5 solicitudes por conexión, vista
+mínima, límites por IP y límites de las imágenes) quedan aprobados para el MVP. Los textos de los consentimientos siguen
+siendo provisionales en su redacción hasta que la academia los revise con un abogado (DR-7).
+
+### Decisiones del responsable (20/11/2026)
+
+Bryan aprobó la especificación y aceptó la propuesta de cada pregunta de negocio ("De acuerdo con todas, apruebo la
+005"), incluida la división en 005a y 005b. Se conserva el texto de cada pregunta y su propuesta, que es lo decidido.
+
+- **DR-1 (pregunta N1). ¿Cuánto dura la reserva del cupo antes de pagar?** Los documentos dicen que el cupo se reserva
+  mientras el pago está pendiente de verificación, sin límite (RN-28), pero no dicen qué pasa entre que la persona envía
+  el formulario y paga. **Decidido (la propuesta):** el cupo queda reservado desde que envía el formulario y tiene
+  **24 horas** para pagar (en recepción o subiendo el Yape, cuando exista la 007); si no paga, el cupo se libera solo y
+  la solicitud queda "vencida". Cuando sube el comprobante, la reserva ya no vence hasta que la secretaria lo revise
+  (RN-28). El valor es fijo en esta historia; si se quiere, se vuelve configurable por academia más adelante (criterios
+  16 y 20).
+- **DR-2 (pregunta N2). ¿Desde cuándo se cuentan las clases del cobro proporcional?** **Decidido (la propuesta):** desde
+  el momento en que envía el formulario; la clase de hoy cuenta solo si todavía no empezó. El monto queda fijo al
+  enviar, aunque la secretaria verifique el pago días después. Y, siguiendo HU-34 al pie de la letra, quien se inscribe
+  el día 1 en un mes que tiene menos clases que el plan (por ejemplo, 11 en vez de 12) paga la parte proporcional
+  (11/12) (criterios 8 y 9).
+- **DR-3 (pregunta N3). ¿Se puede inscribir para el mes siguiente?** **Decidido (la propuesta):** en esta historia, solo
+  para el mes en curso. Si ya no quedan clases en el mes (por ejemplo, el último día por la noche), el formulario lo
+  dice y pide volver el día 1. La inscripción para el mes siguiente llega con la renovación (010), que es la que respeta
+  la prioridad de los alumnos actuales (D-06).
+- **DR-4 (pregunta N4). ¿El horario es el mismo todos los días?** **Decidido (la propuesta):** cada día elegido puede
+  tener su propia hora, dentro de los días y horas que permite el plan, con una sola clase por día (por ejemplo, lunes a
+  las 17:00 y miércoles a las 18:00) (criterio 15 b).
+- **DR-5 (pregunta N5). ¿Qué datos son obligatorios?** **Decidido (la propuesta):** obligatorios: nombres, apellidos,
+  DNI, fecha de nacimiento, celular (9 dígitos, empieza con 9), nivel, plan y clases, tipo de sangre (con la opción "No
+  sé"), contacto de emergencia (nombre y celular) y los dos consentimientos; para menores, además, nombres, apellidos,
+  DNI, celular y parentesco (padre, madre u otro apoderado) del apoderado. Opcionales: correo (si se da, ahí llega el
+  enlace), dirección, grado del colegio (lista de inicial a 5.° de secundaria, o "no estudia"), enfermedades, alergias,
+  medicamentos, seguro, correo del apoderado y la foto. No se piden sexo ni colegio (el modelo los menciona, pero HU-01
+  no; menos datos es menos riesgo con la Ley 29733). Edad: de 0 a 100 años, sin mínimo (criterios 12 y 13).
+- **DR-6 (pregunta N6). ¿Qué pasa si el DNI ya está registrado?** **Decidido (la propuesta):** se rechaza con un mismo
+  mensaje ("Este DNI ya tiene una inscripción o solicitud en esta academia; usa tu enlace o acércate a recepción") si es
+  de un alumno, de un cliente con una solicitud en curso o de alguien del personal. Si es de un cliente cuya solicitud
+  anterior venció o fue cancelada, se acepta y se reemplazan sus datos. Riesgo aceptado: este aviso, que pide HU-01,
+  permite que cualquiera sepa si un DNI está en la academia; se frena con límites por conexión (criterio 21 y "Riesgos
+  aceptados").
+- **DR-7 (pregunta N7). Consentimientos y textos legales.**
+  - a) **Decidido (la propuesta):** dos casillas obligatorias (tratamiento de datos personales, que menciona
+    expresamente los datos de salud y de menores, y deslinde de responsabilidad) y una opcional de **uso de imagen** para
+    las fotos y videos de progreso (la usará la 014; no marcarla no impide inscribirse). La foto del carnet queda
+    cubierta por el tratamiento de datos. Si es menor, acepta el apoderado. Se usan textos genéricos provisionales con el
+    nombre de la academia; **antes de salir a producción, la academia debe revisarlos con un abogado** (criterio 14).
+  - b) **Datos médicos. Decidido (la propuesta):** se protegen con accesos por rol, sin mostrarlos en el seguimiento ni
+    en los registros, y con el cifrado de disco del hosting; cifrado adicional por campo solo si el abogado lo pide.
+- **DR-8 (pregunta N8). Límites contra el abuso.** **Decidido (la propuesta):** como mucho **5 solicitudes sin pagar a
+  la vez desde una misma conexión** (una familia con varios hijos entra; alguien que intenta llenar las clases, no),
+  además de límites por minuto y por hora a cada pantalla pública (criterios 25 y 33).
+- **DR-9 (pregunta N9). ¿Qué muestra el enlace de seguimiento y por cuánto tiempo?** **Decidido (la propuesta):** solo
+  el código, el estado, el primer nombre, el plan, los días y horas, el mes, las clases, el monto, la fecha límite de la
+  reserva y el teléfono de la academia; nunca DNI, apellidos, salud, apoderado ni foto. El enlace no caduca; después de
+  vencida o cancelada solo muestra ese estado. El cliente no puede cancelar desde el enlace: llama a la academia
+  (criterio 32).
+- **DR-10 (pregunta N10). ¿Cómo inscribe la secretaria a quien llega a recepción?** **Decidido (la propuesta):** con el
+  mismo formulario público, abierto desde el panel ("Nueva inscripción"); la persona lee y acepta los consentimientos en
+  la pantalla. El cobro en efectivo llega con la 007. Las solicitudes las ven y cancelan (con motivo) la secretaria y el
+  administrador (criterios 38, 39 y 46, de la 005b; hasta entonces, la secretaria abre la dirección pública del
+  formulario).
+- **DR-11 (pregunta N11). ¿Dividimos la historia?** Es grande: formulario, cupo, cobro, seguimiento, foto, panel y aforo
+  con inscritos. **Decidido (la propuesta):** se divide en dos entregas, las dos de ruta crítica, cada una con sus
+  pruebas protegidas, su ataque y su PR:
+  - **005a · Inscripción, reserva y seguimiento:** criterios 1 a 33, 41 a 45, 47 y 48 (tablas, oferta, cálculo, envío
+    con el último cupo, seguimiento, límites, teléfono público, aforo con inscritos, web pública). Se construye primero.
+  - **005b · Foto y panel de solicitudes:** criterios 34 a 40 y 46 (`AlmacenArchivos`, `sharp` y la foto; lista,
+    cancelación y ocupación en el panel). Siguiente PR.
+
+  Las dos quedan en esta misma carpeta (`specs/005-inscripcion-publica/`), con sus tareas marcadas en `tasks.md`. Cómo
+  se reparten las partes compartidas y cómo se resuelven las dependencias: "División en 005a y 005b".
+
+### Decisiones técnicas del orquestador (20/11/2026)
+
+El orquestador aprobó las nueve propuestas técnicas tal como estaban. Se conserva el texto de cada pregunta y su
+propuesta.
+
+- **DT-1 (pregunta T1). Foto en una segunda petición binaria.** **Decidido (la propuesta):** `PUT` con `image/jpeg` o
+  `image/png` y el token en `X-Token-Solicitud`, después de crear la solicitud, con un lector binario solo en esa ruta.
+  Alternativas descartadas: la imagen en base64 dentro del JSON (obliga a subir el límite de 100 KB de todo el cuerpo y
+  suma un 33 %) y `multipart/form-data` (otro lector y otra superficie de ataque). _(005b.)_
+- **DT-2 (pregunta T2). Actor `PUBLICO` en la auditoría** para lo que hace un visitante sin cuenta (agrega un valor a
+  `tipo_actor`). **Decidido (la propuesta).** Alternativa descartada: `SISTEMA` con el origen en `datosDespues` (sin
+  migración del tipo, pero mezcla visitantes con tareas programadas). _(005a.)_
+- **DT-3 (pregunta T3). Clasificación.** **Decidido (la propuesta):** críticos 1 a 10, 12 a 39, 41 y 42; prueba
+  obligatoria 11, 40 y 43 a 46; revisor 47 y 48. Repartidos entre 005a y 005b como dice "División en 005a y 005b".
+- **DT-4 (pregunta T4). `GET /api/a/{nombreCorto}` suma `telefono`.** **Decidido (la propuesta):** cambia la forma del
+  criterio 58 de 001 y su prueba protegida, solo para sumar el campo. Alternativa descartada: una ruta nueva para el
+  teléfono (una petición más en cada página pública). _(005a.)_
+- **DT-5 (pregunta T5). Ocupación en una ruta aparte** (D8) y no en `claseSchema`. **Decidido (la propuesta).**
+  _(005b, criterio 40.)_
+- **DT-6 (pregunta T6). `sharp` como dependencia del backend** (D-25), con su binario por sistema operativo (la
+  integración continua en Windows lo comprueba, D-26). **Decidido (la propuesta).** _(005b.)_
+- **DT-7 (pregunta T7). Límites por IP del criterio 33.** **Decidido (la propuesta):** 60 por minuto las lecturas, 30
+  por minuto la cotización, 10 por hora el envío, 10 por minuto la consulta y 10 por hora la foto, en memoria como los
+  de 002. _(005a, salvo el de la foto, que es de la 005b.)_
+- **DT-8 (pregunta T8). El correo simulado no registra el destinatario ni el enlace** (criterio 27), aunque D-19 diga
+  que "registra el mensaje": el enlace es una credencial y el registro técnico nunca lleva tokens (criterio 43 de 002).
+  En desarrollo el enlace se ve en la respuesta y en la pantalla. **Decidido (la propuesta).** _(005a.)_
+- **DT-9 (pregunta T9). `trust proxy`.** **Decidido (la propuesta):** se configura con el hosting (D-21) **antes de
+  publicar el formulario** (riesgo "IP detrás de un proxy"). Sin eso, detrás de un proxy todas las peticiones llegan con
+  la misma IP y los límites por IP de esta historia (criterios 25 y 33) bloquean a todos a la vez. Esta historia no
+  configura `trust proxy`; el aviso queda en las notas de hosting de `specs/backlog.md`.
+
+### Decisiones de diseño (técnicas)
+
+Propuestas del especificador, aprobadas con la spec (20/11/2026).
 
 - **D1. La reserva es una matrícula `RESERVADA` con vencimiento.** La ocupación cuenta matrículas por mes, y la reserva
   sin pagar vence por tiempo, calculado al leer (`reserva_vence_en > ahora`), sin tarea programada. Alternativa
@@ -779,92 +966,5 @@ Propuestas del especificador; se aprueban con la spec.
 
 ## Preguntas abiertas
 
-Las de negocio (N) son para Bryan; las técnicas (T), para el orquestador. Cada una lleva su propuesta y el valor
-provisional con el que están escritos los criterios.
-
-### De negocio
-
-- **N1. ¿Cuánto dura la reserva del cupo antes de pagar?** Los documentos dicen que el cupo se reserva mientras el pago
-  está pendiente de verificación, sin límite (RN-28), pero no dicen qué pasa entre que la persona envía el formulario y
-  paga. **Propuesta:** el cupo queda reservado desde que envía el formulario y tiene **24 horas** para pagar (en
-  recepción o subiendo el Yape, cuando exista la 007); si no paga, el cupo se libera solo y la solicitud queda
-  "vencida". Cuando sube el comprobante, la reserva ya no vence hasta que la secretaria lo revise (RN-28). El valor es
-  fijo en esta historia; si se quiere, se vuelve configurable por academia más adelante. _(Provisional: 24 horas;
-  criterios 16 y 20.)_
-- **N2. ¿Desde cuándo se cuentan las clases del cobro proporcional?** **Propuesta:** desde el momento en que envía el
-  formulario; la clase de hoy cuenta solo si todavía no empezó. El monto queda fijo al enviar, aunque la secretaria
-  verifique el pago días después. Y, siguiendo HU-34 al pie de la letra, quien se inscribe el día 1 en un mes que tiene
-  menos clases que el plan (por ejemplo, 11 en vez de 12) paga la parte proporcional (11/12). _(Provisional así;
-  criterios 8 y 9.)_
-- **N3. ¿Se puede inscribir para el mes siguiente?** **Propuesta:** en esta historia, solo para el mes en curso. Si ya
-  no quedan clases en el mes (por ejemplo, el último día por la noche), el formulario lo dice y pide volver el día 1.
-  La inscripción para el mes siguiente llega con la renovación (010), que es la que respeta la prioridad de los alumnos
-  actuales (D-06). _(Provisional así.)_
-- **N4. ¿El horario es el mismo todos los días?** **Propuesta:** cada día elegido puede tener su propia hora, dentro de
-  los días y horas que permite el plan, con una sola clase por día (por ejemplo, lunes a las 17:00 y miércoles a las
-  18:00). _(Provisional así; criterio 15 b.)_
-- **N5. ¿Qué datos son obligatorios?** **Propuesta:** obligatorios: nombres, apellidos, DNI, fecha de nacimiento,
-  celular (9 dígitos, empieza con 9), nivel, plan y clases, tipo de sangre (con la opción "No sé"), contacto de
-  emergencia (nombre y celular) y los dos consentimientos; para menores, además, nombres, apellidos, DNI, celular y
-  parentesco (padre, madre u otro apoderado) del apoderado. Opcionales: correo (si se da, ahí llega el enlace),
-  dirección, grado del colegio (lista de inicial a 5.° de secundaria, o "no estudia"), enfermedades, alergias,
-  medicamentos, seguro, correo del apoderado y la foto. No pedimos sexo ni colegio (el modelo los menciona, pero HU-01
-  no; menos datos es menos riesgo con la Ley 29733). Edad: de 0 a 100 años, sin mínimo. _(Provisional así; criterios
-  12 y 13.)_
-- **N6. ¿Qué pasa si el DNI ya está registrado?** **Propuesta:** se rechaza con un mismo mensaje ("Este DNI ya tiene una
-  inscripción o solicitud en esta academia; usa tu enlace o acércate a recepción") si es de un alumno, de un cliente con
-  una solicitud en curso o de alguien del personal. Si es de un cliente cuya solicitud anterior venció o fue cancelada,
-  se acepta y se reemplazan sus datos. Ojo: este aviso, que pide HU-01, permite que cualquiera sepa si un DNI está en la
-  academia; lo frenamos con límites por conexión. _(Provisional así; criterio 21.)_
-- **N7. Consentimientos y textos legales.**
-  - a) **Propuesta:** dos casillas obligatorias (tratamiento de datos personales, que menciona expresamente los datos de
-    salud y de menores, y deslinde de responsabilidad) y una opcional de **uso de imagen** para las fotos y videos de
-    progreso (la usará la 014; no marcarla no impide inscribirse). La foto del carnet queda cubierta por el tratamiento
-    de datos. Si es menor, acepta el apoderado. Usaremos textos genéricos provisionales con el nombre de la academia;
-    **antes de salir a producción, la academia debe revisarlos con un abogado.** _(Provisional así; criterio 14.)_
-  - b) **Datos médicos:** **propuesta:** protegerlos con accesos por rol, sin mostrarlos en el seguimiento ni en los
-    registros, y con el cifrado de disco del hosting; cifrado adicional por campo solo si el abogado lo pide.
-- **N8. Límites contra el abuso.** **Propuesta:** como mucho **5 solicitudes sin pagar a la vez desde una misma
-  conexión** (una familia con varios hijos entra; alguien que intenta llenar las clases, no), además de límites por
-  minuto y por hora a cada pantalla pública. _(Provisional: 5; criterio 25.)_
-- **N9. ¿Qué muestra el enlace de seguimiento y por cuánto tiempo?** **Propuesta:** solo el código, el estado, el primer
-  nombre, el plan, los días y horas, el mes, las clases, el monto, la fecha límite de la reserva y el teléfono de la
-  academia; nunca DNI, apellidos, salud, apoderado ni foto. El enlace no caduca; después de vencida o cancelada solo
-  muestra ese estado. El cliente no puede cancelar desde el enlace: llama a la academia. _(Provisional así; criterio
-  32.)_
-- **N10. ¿Cómo inscribe la secretaria a quien llega a recepción?** **Propuesta:** con el mismo formulario público,
-  abierto desde el panel ("Nueva inscripción"); la persona lee y acepta los consentimientos en la pantalla. El cobro en
-  efectivo llega con la 007. Las solicitudes las ven y cancelan (con motivo) la secretaria y el administrador.
-  _(Provisional así; criterios 38, 39 y 46.)_
-- **N11. ¿Dividimos la historia?** Es grande: formulario, cupo, cobro, seguimiento, foto, panel y aforo con inscritos.
-  **Propuesta:** dividirla en dos entregas:
-  - **005a · Inscripción y reserva:** criterios 1 a 33, 41 a 45, 47 y 48 (tablas, oferta, cálculo, envío con el último
-    cupo, seguimiento, límites, teléfono público, aforo con inscritos, web pública).
-  - **005b · Foto y panel de solicitudes:** criterios 34 a 40 y 46 (`AlmacenArchivos`, `sharp` y la foto; lista,
-    cancelación y ocupación en el panel).
-
-  Las dos son de ruta crítica. _(Provisional: una sola historia, con este orden de tareas; si se divide, cada parte
-  lleva sus pruebas protegidas y su ataque.)_
-
-### Técnicas (para el orquestador)
-
-- **T1. Foto en una segunda petición binaria** (`PUT` con `image/jpeg` o `image/png` y el token en `X-Token-Solicitud`),
-  después de crear la solicitud, con un lector binario solo en esa ruta. Alternativas descartadas: la imagen en base64
-  dentro del JSON (obliga a subir el límite de 100 KB de todo el cuerpo y suma un 33 %) y `multipart/form-data` (otro
-  lector y otra superficie de ataque). _(Provisional así.)_
-- **T2. Actor `PUBLICO` en la auditoría** para lo que hace un visitante sin cuenta (agrega un valor a `tipo_actor`).
-  Alternativa: `SISTEMA` con el origen en `datosDespues` (sin migración del tipo, pero mezcla visitantes con tareas
-  programadas). _(Provisional: `PUBLICO`.)_
-- **T3. Clasificación:** críticos 1 a 10, 12 a 39, 41 y 42; prueba obligatoria 11, 40 y 43 a 46; revisor 47 y 48.
-- **T4. `GET /api/a/{nombreCorto}` suma `telefono`** (cambia la forma del criterio 58 de 001 y su prueba protegida,
-  solo para sumar). Alternativa: una ruta nueva para el teléfono (una petición más en cada página pública).
-- **T5. Ocupación en una ruta aparte** (D8) y no en `claseSchema`.
-- **T6. `sharp` como dependencia del backend** (D-25), con su binario por sistema operativo (la integración continua en
-  Windows lo comprueba, D-26).
-- **T7. Límites por IP del criterio 33** (60/min lecturas, 30/min cotización, 10/hora envío, 10/min consulta, 10/hora
-  foto), en memoria como los de 002.
-- **T8. El correo simulado no registra el destinatario ni el enlace** (criterio 27), aunque D-19 diga que "registra el
-  mensaje": el enlace es una credencial y el registro técnico nunca lleva tokens (criterio 43 de 002). En desarrollo el
-  enlace se ve en la respuesta y en la pantalla.
-- **T9. `trust proxy`:** decidirlo con el hosting antes de publicar el formulario (riesgo "IP detrás de un proxy"). Sin
-  eso, los límites por IP de esta historia bloquean a todos a la vez detrás de un proxy.
+Ninguna. Las preguntas N1 a N11 y T1 a T9 quedaron decididas el 20/11/2026 (DR-1 a DR-11 y DT-1 a DT-9, en
+"Decisiones", con el texto de cada pregunta y su propuesta).

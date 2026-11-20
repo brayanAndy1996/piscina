@@ -15,7 +15,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 002 | Autenticación y roles por academia | Sí | ✅ |
 | 003 | Configuración de la academia | En parte | ✅ |
 | 004 | Planes y clases con aforo | En parte | ✅ |
-| 005 | Inscripción pública y seguimiento de la solicitud | Sí | ⬜ |
+| 005a | Inscripción pública, reserva y seguimiento de la solicitud | Sí | 🟨 |
+| 005b | Foto de la inscripción y panel de solicitudes | Sí | ⬜ |
 | 006 | Caja | Sí | ⬜ |
 | 007 | Pagos, verificación y paso de cliente a alumno | Sí | ⬜ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
@@ -50,6 +51,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     el límite de 10 por minuto contaría a todos juntos. El contador del límite por IP vive en la memoria de cada instancia
     (PO-6): con varias instancias, el límite efectivo es 10 por instancia. Y las IPv6 se agrupan por `/64` (hoy cuentan
     por dirección exacta).
+  - Hosting (D-21), aviso de la 005 (DT-9 de 005): configurar `trust proxy` con el hosting **antes de publicar el
+    formulario de inscripción**. Sin eso, detrás del proxy todas las peticiones llegan con la misma IP, y los límites
+    por IP de la inscripción pública (criterio 33 de 005: lecturas, cotización, envío, consulta y foto) y el de 5
+    solicitudes sin pagar por conexión (criterio 25 de 005) bloquearían a todos a la vez.
   - DT-4: `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON responde 400 y no cierra (criterio 74 de 001),
     mientras que `DELETE /api/sesion` cierra con cualquier cuerpo (criterio 54 de 002). Alinearlos cambia pruebas
     protegidas de la 001: va en una historia propia.
@@ -72,6 +77,15 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **005 · Inscripción pública.** Formulario con datos, ficha médica, apoderado y consentimientos (HU-01, RN-20,
   D-07), elección de días y horario con cupo (HU-02), foto opcional (D-20, D-24), código y enlace de seguimiento
   (D-05), cálculo del cobro proporcional (HU-34, RN-25, D-03).
+  - Estado: spec aprobada por Bryan el 20/11/2026 (DR-1 a DR-11 y DT-1 a DT-9 de 005), en
+    [`specs/005-inscripcion-publica/`](005-inscripcion-publica/spec.md). Por DR-11 se entrega en dos PR desde esa misma
+    carpeta, los dos de ruta crítica:
+    - **005a · inscripción, reserva y seguimiento** (primero): criterios 1 a 33, 41 a 45, 47 y 48 (tablas, oferta,
+      cálculo del cobro, envío con el último cupo, seguimiento, límites por IP, teléfono público, aforo con inscritos de
+      DR-5 de 004, web pública).
+    - **005b · foto y panel de solicitudes** (siguiente PR, con la 005a unida): criterios 34 a 40 y 46 (`AlmacenArchivos`,
+      `sharp` y la foto; lista, cancelación y ocupación en el panel), más la foto en 28, 33, 43 y 44 y su parte de 48.
+  - Antes de publicar el formulario: `trust proxy` con el hosting (DT-9 de 005; aviso en las notas de hosting de la 002).
   - Nota de 001 (ataque ronda 17, O2): `GET /api/a/{nombreCorto}` es pública y no tiene límite de peticiones. Cada
     petición abre una transacción corta (`resolverAcademia`), y con el pool de 10 conexiones una avalancha anónima puede
     demorar o hacer fallar las peticiones de todas las academias. Se decide con el hosting (D-21: proxy, CDN o límites
