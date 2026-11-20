@@ -22,13 +22,12 @@ import { hoyEnLima } from '../../comun/fechas';
 import { claveDeConexion } from '../../comun/http/conexion';
 import {
   BaseDatos,
-  errorParaRegistro,
   type AcademiaResuelta,
   restriccionDeUnicidadViolada,
   sql,
   type TransaccionAcademia,
 } from '../../infraestructura/prisma';
-import { ENVIADOR_CORREO, enviarSinEsperar, type EnviadorCorreo } from '../../infraestructura/correo';
+import { ENVIADOR_CORREO, enviarSinEsperar, tipoDeError, type EnviadorCorreo } from '../../infraestructura/correo';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { AuditoriaService, ipParaAuditoria } from '../auditoria';
 import { bloquearClasesParaCupo } from '../clases';
@@ -309,11 +308,9 @@ export class InscripcionesService {
     // 5. La persona: filas del cliente (`alumnos`, `solicitudes_inscripcion`, `matriculas`) con `FOR UPDATE`.
     const cliente = await this.comprobarPersona(tx, dni, ahora);
 
-    // 6. Límite de reservas sin pagar por conexión (criterio 25).
-    if (
-      ipOrigen !== null &&
-      (await this.reservasActivasDeLaConexion(tx, ipOrigen, conexion, ahora)) >= LIMITE_RESERVAS_POR_CONEXION
-    ) {
+    // 6. Límite de reservas sin pagar por conexión (criterio 25). Una IP desconocida es una conexión más (clave ''), igual que en el
+    //    bloqueo consultivo: sus solicitudes se guardan con `ip_origen` nulo y se cuentan juntas.
+    if ((await this.reservasActivasDeLaConexion(tx, ipOrigen, conexion, ahora)) >= LIMITE_RESERVAS_POR_CONEXION) {
       throw limiteDeReservasPendientes();
     }
 
@@ -397,17 +394,19 @@ export class InscripcionesService {
         FROM matriculas
        WHERE academia_id = ${tx.academiaId}::uuid AND alumno_id = ${alumno.id}::uuid AND estado = 'RESERVADA'::estado_matricula
          FOR UPDATE`;
-    // Una solicitud en espera de pago está activa mientras su matrícula siga ocupando cupo: sin vencimiento (pago en verificación) o
-    // con un vencimiento posterior a "ahora". Sin matrícula que la desmienta, también es activa.
-    const vencidas = new Set(
+    // Una solicitud activa es una `PENDIENTE_PAGO` cuya matrícula todavía ocupa cupo (la misma definición que el conteo de reservas de la
+    // conexión): una matrícula `RESERVADA` sin vencimiento (pago en verificación) o con un vencimiento posterior a "ahora". Una solicitud
+    // en espera de pago sin esa matrícula (cancelada, vencida o inexistente) ya no ocupa nada y no impide volver a inscribirse; el envío
+    // la pasa a `VENCIDA` y cancela las reservas vencidas.
+    const conCupo = new Set(
       matriculas
         .filter(
           (m) =>
-            m.solicitud_id !== null && m.reserva_vence_en !== null && m.reserva_vence_en.getTime() <= ahora.getTime(),
+            m.solicitud_id !== null && (m.reserva_vence_en === null || m.reserva_vence_en.getTime() > ahora.getTime()),
         )
         .map((m) => m.solicitud_id),
     );
-    if (solicitudes.some((s) => !vencidas.has(s.id))) throw dniYaRegistrado();
+    if (solicitudes.some((s) => conCupo.has(s.id))) throw dniYaRegistrado();
     return { id: alumno.id };
   }
 
@@ -415,19 +414,24 @@ export class InscripcionesService {
    * Cuántas solicitudes activas se crearon desde la misma conexión en la academia (criterio 60; las vencidas y las canceladas no
    * cuentan). La conexión es la clave del criterio 59: una IPv4 cuenta las filas con esa dirección (también escrita como IPv6 mapeada,
    * porque `ip_origen` guarda la dirección exacta tal como llegó) y un bloque /64 cuenta las filas dentro del bloque, salvo las IPv6
-   * mapeadas (que son IPv4 aunque caigan en `::/64`). Los valores van como parámetros, nunca concatenados en el texto de la consulta.
+   * mapeadas (que son IPv4 aunque caigan en `::/64`). Una IP desconocida (`ip` nula, clave de conexión `''`) cuenta las filas con
+   * `ip_origen` nulo: es una conexión más, con el mismo tope. Los valores van como parámetros, nunca concatenados en el texto de la
+   * consulta.
    */
   private async reservasActivasDeLaConexion(
     tx: TransaccionAcademia,
-    ip: string,
+    ip: string | null,
     conexion: string,
     ahora: Date,
   ): Promise<number> {
-    const mismaConexion = isIPv4(conexion)
-      ? sql`s.ip_origen IN (${conexion}::inet, ${`::ffff:${conexion}`}::inet)`
-      : conexion.endsWith('/64')
-        ? sql`(s.ip_origen <<= ${conexion}::cidr AND NOT s.ip_origen <<= '::ffff:0:0/96'::cidr)`
-        : sql`s.ip_origen = ${ip}::inet`;
+    const mismaConexion =
+      ip === null
+        ? sql`s.ip_origen IS NULL`
+        : isIPv4(conexion)
+          ? sql`s.ip_origen IN (${conexion}::inet, ${`::ffff:${conexion}`}::inet)`
+          : conexion.endsWith('/64')
+            ? sql`(s.ip_origen <<= ${conexion}::cidr AND NOT s.ip_origen <<= '::ffff:0:0/96'::cidr)`
+            : sql`s.ip_origen = ${ip}::inet`;
     const filas = await tx.cliente.$queryRaw<{ n: number }[]>`
       SELECT count(*)::int AS n
         FROM solicitudes_inscripcion s
@@ -628,7 +632,7 @@ export class InscripcionesService {
       });
     } catch (error) {
       this.registro.warn(
-        { academiaId, error: errorParaRegistro(error) },
+        { academiaId, error: { tipo: tipoDeError(error) } },
         'No se pudo leer la solicitud de una clave repetida; se responde sin su código',
       );
       return null;

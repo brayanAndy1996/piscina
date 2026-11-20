@@ -1,5 +1,5 @@
 import { TZDate } from '@date-fns/tz';
-import type { Bloque, DiaSemana } from '@aquagestion/contratos';
+import { type Bloque, type DiaSemana, esBisiesto } from '@aquagestion/contratos';
 import { ZONA_LIMA, hoyEnLima } from '../../../comun/fechas';
 import { Decimal } from '../../../infraestructura/prisma';
 
@@ -31,10 +31,6 @@ export interface ClaseElegida {
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Clases restantes del mes (criterio 8)
 // ---------------------------------------------------------------------------------------------------------------------------------
-
-function esBisiesto(anio: number): boolean {
-  return (anio % 4 === 0 && anio % 100 !== 0) || anio % 400 === 0;
-}
 
 export function diasDelMes(anio: number, mes: number): number {
   if (mes === 2) return esBisiesto(anio) ? 29 : 28;

@@ -1,6 +1,7 @@
 // Semilla de datos de ejemplo para desarrollo (spec 001, criterio 61): las academias `delfines` y `tiburones` y el
 // superadmin de desarrollo. Solo agrega lo que falta: repetirla no falla ni duplica ni modifica lo que ya existe.
 // Nunca corre con NODE_ENV=production. No imprime la contraseña.
+import { VERSION_CONSENTIMIENTOS } from '@aquagestion/contratos';
 import { createHash } from 'node:crypto';
 import {
   cargarEnvDeLaRaiz,
@@ -94,7 +95,6 @@ const CLASES_DE_EJEMPLO = [
  * fin de ese mes (el tope de DR-12: el `CHECK` `matriculas_reserva_dentro_del_mes` no deja una reserva que cruce el mes) y la vencida,
  * una hora antes de sembrar.
  */
-const VERSION_DE_CONSENTIMIENTOS_DE_LA_SEMILLA = '2026-11-v1-provisional';
 const CLIENTES_DE_EJEMPLO = [
   {
     dni: '20000001',
@@ -412,7 +412,7 @@ async function sembrar(): Promise<number> {
           await tx.$executeRaw`
             INSERT INTO consentimientos (id, academia_id, alumno_id, solicitud_id, tipo, version, aceptado_en, otorgado_por, aceptado)
             VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${alumno.id}::uuid, ${solicitud.id}::uuid, ${tipo}::tipo_consentimiento,
-                    ${VERSION_DE_CONSENTIMIENTOS_DE_LA_SEMILLA}, ${ahora}::timestamptz, ${otorgante}::otorgante_consentimiento, true)`;
+                    ${VERSION_CONSENTIMIENTOS}, ${ahora}::timestamptz, ${otorgante}::otorgante_consentimiento, true)`;
         }
         return true;
       });

@@ -20,6 +20,10 @@ export const RUTAS_REDACTADAS = [
  * `nestjs-pino` crea un solo `pino-http` por proceso (con el primer destino que recibe) y las aplicaciones siguientes lo reutilizan. Para
  * que cada aplicación con un destino propio (las pruebas que capturan el registro) lo vea de verdad, el logger escribe siempre en este
  * destino, que reenvía al último destino pedido. En producción no se pide ningún destino y nada de esto interviene.
+ *
+ * El reenviador solo resuelve el destino: el `level` y el `redact` (y el resto de la configuración de `pino`) quedan fijados por la
+ * primera aplicación del proceso que crea el logger. Una aplicación posterior que pida otro nivel o rutas redactadas distintas con un
+ * destino propio recibe sus registros, pero con el nivel y la redacción de la primera.
  */
 let destinoPedido: DestinationStream | undefined;
 const destinoReenviado: DestinationStream = {

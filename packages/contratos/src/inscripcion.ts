@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { montoCotizadoSchema } from './dinero';
-import { fechaSchema, diaSemanaSchema, horaBloqueSchema, nivelNatacionSchema } from './horario';
+import { diaSemanaSchema, esBisiesto, fechaSchema, horaBloqueSchema, nivelNatacionSchema } from './horario';
+import { PATRON_UUID } from './identificadores';
 import { dniSchema } from './sesion';
 import { sinControles, textoVisibleSchema } from './texto';
 
@@ -88,11 +89,6 @@ export const NOMBRE_PARENTESCO: Readonly<Record<Parentesco, string>> = {
 const MAYORIA_DE_EDAD = 18;
 const EDAD_MAXIMA = 100;
 
-/** Años bisiestos del calendario gregoriano. */
-function esBisiesto(anio: number): boolean {
-  return (anio % 4 === 0 && anio % 100 !== 0) || anio % 400 === 0;
-}
-
 /** `AAAA-MM-DD` de una fecha de calendario, con el 29 de febrero tratado como 1 de marzo si el año no es bisiesto. */
 function fechaDeCumpleanios(anio: number, mes: number, dia: number): string {
   const [m, d] = mes === 2 && dia === 29 && !esBisiesto(anio) ? [3, 1] : [mes, dia];
@@ -154,8 +150,6 @@ export const correoSchema = z
   .toLowerCase()
   .max(254, 'El correo debe tener como máximo 254 caracteres.')
   .pipe(z.email('El correo no tiene un formato válido.'));
-
-const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Una lista de 1 a 7 clases, sin repetidos (el id se compara sin distinguir mayúsculas) y todas UUID. Los errores de la lista se informan
@@ -261,8 +255,8 @@ const montoTextoSchema = z.string().regex(PATRON_MONTO_TEXTO);
 /** Lo que el cliente va a pagar y por qué (criterios 9 y 11). Los montos van como texto con dos decimales. */
 export const cotizacionSchema = z.strictObject({
   mes: mesSchema,
-  fechaInicio: z.string(),
-  fechaFin: z.string(),
+  fechaInicio: fechaSchema,
+  fechaFin: fechaSchema,
   clasesRestantes: z.number().int(),
   clasesTotales: z.number().int(),
   clasesPorMes: z.number().int(),

@@ -115,6 +115,7 @@ export {
   horaBloqueSchema,
   horaFinDe,
   diaSemanaSchema,
+  esBisiesto,
   NIVELES,
   nivelNatacionSchema,
   NOMBRE_DIA,
@@ -123,6 +124,7 @@ export {
   type DiaSemana,
   type NivelNatacion,
 } from './horario';
+export { PATRON_UUID } from './identificadores';
 export { MONTO_COTIZADO_MAXIMO, MONTO_MAXIMO, montoCotizadoSchema, montoSchema } from './dinero';
 export {
   actualizarPlanSchema,
