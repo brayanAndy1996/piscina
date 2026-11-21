@@ -244,7 +244,23 @@ describe('criterio 96: el script lint de package.json', () => {
   });
 });
 
+// La prueba del criterio 159 (`regla-promesas-descartadas-ronda13.test.mjs`) crea y borra en paralelo `backend/src/modulos/zz-r13-<pid>/`
+// con archivos que la regla rechaza a proposito. Esa carpeta temporal queda fuera de esta corrida (si no, eslint falla con ENOENT al
+// leer un archivo ya borrado, o por los ejemplos que fallan), y a cambio se exige que git no tenga versionado nada con ese nombre:
+// ningun codigo real puede esconderse ahi. `npm run lint:protegido` no lleva esta exclusion.
+const CARPETA_TEMPORAL_RONDA13 = 'backend/src/modulos/zz-r13-*/**';
+
 describe('criterio 96: el paso protegido sobre el codigo real de backend/src', () => {
+  it('criterio 96: git no tiene versionado ningun archivo en la carpeta temporal de la ronda 13 (backend/src/modulos/zz-r13-*)', () => {
+    const resultado = spawnSync('git', ['ls-files', '--', ':(glob)backend/src/modulos/zz-r13-*/**'], {
+      cwd: raiz,
+      encoding: 'utf8',
+    });
+
+    expect(resultado.status, resultado.stderr).toBe(0);
+    expect(resultado.stdout.trim(), 'archivos versionados en backend/src/modulos/zz-r13-*').toBe('');
+  });
+
   it('criterio 96: eslint --no-inline-config --config eslint.protegido.config.mjs --max-warnings 0 backend/src termina con codigo 0', () => {
     const eslintBin = path.join(raiz, 'node_modules', 'eslint', 'bin', 'eslint.js');
     const resultado = spawnSync(
@@ -256,6 +272,8 @@ describe('criterio 96: el paso protegido sobre el codigo real de backend/src', (
         'eslint.protegido.config.mjs',
         '--max-warnings',
         '0',
+        '--ignore-pattern',
+        CARPETA_TEMPORAL_RONDA13,
         'backend/src',
       ],
       { cwd: raiz, encoding: 'utf8', timeout: 120_000 },
