@@ -32,7 +32,11 @@
   "Preguntas abiertas"). **Ronda 2 del ataque de la 005a (20/11/2026, sobre el commit `cf93533`):** sin fallas
   reproducibles en los criterios 49 a 60 ni regresiones en los demás criterios críticos; no agrega ni cambia criterios.
   Suma tres riesgos aceptados (IPv6 con un bloque mayor que /64, reintento con la reserva ya vencida y el tipo del error
-  del correo) y una pregunta que no bloquea (R7, en "Preguntas abiertas").
+  del correo) y una pregunta que no bloquea (R7, en "Preguntas abiertas"). **Repaso de la 005b (21/11/2026), con la 005a
+  unida a `main` (PR #8) y antes de las pruebas protegidas de la 005b:** precisiones técnicas PB1 a PB14 (en
+  "Decisiones") que ajustan los criterios 34 a 40 y 46, y las partes de la 005b de 28, 33, 43, 44 y 48, a lo que la 005a
+  construyó de verdad y los dejan comprobables desde los contratos públicos. Ninguna cambia una regla de negocio. Suma
+  preguntas nuevas que no bloquean (B1 a B5, en "Preguntas abiertas").
 - **División (DR-11):** la historia se entrega en dos PR desde esta misma carpeta, las dos de ruta crítica, cada una con
   sus pruebas protegidas, su ataque y su cierre (ver "División en 005a y 005b"):
   - **005a · Inscripción, reserva y seguimiento** (se construye primero): criterios 1 a 33, 41 a 45, 47 a 60, salvo las
@@ -78,6 +82,11 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   sensibles); y los límites por conexión con IPv6 por bloque /64 (entradas públicas: sin ellos, el límite de 5 reservas
   y los límites por minuto se saltan cambiando de dirección).
 - **Ronda 2 del ataque de la 005a:** sin fallas; no agrega criterios (sección M).
+- **Repaso de la 005b (21/11/2026):** la clasificación no cambia. Siguen críticos 34 a 37 (entrada pública anónima con
+  archivos de menores, aislamiento de archivos y efectos después de confirmar), 38 (datos personales y de menores en el
+  panel, permisos y aislamiento), 39 (libera cupo: aforo y reservas, auditoría y actor vigente), y las partes de la 005b
+  de 28 (registro técnico sin token ni datos de la foto) y 33 (límite de la foto por conexión). Siguen con prueba
+  obligatoria 40 y 46 y las partes de la 005b de 43 y 44; la de 48, del revisor.
 
 No son críticos, pero llevan _(prueba obligatoria)_: 11 (cotización, salvo lo que cubren 8 a 10) y 40 (API), y 43 a
 46 (web, con pruebas de componentes). Los 47 y 48 (semilla y documentación) los verifica el revisor. _(Aprobado por el
@@ -98,9 +107,22 @@ de la 005b, en archivos de prueba nuevos (sin modificar los protegidos de la 005
 **Partes de criterios de la 005a que se completan en la 005b:**
 
 - **28:** en la 005a, la prueba del registro técnico cotiza, envía y consulta; la subida de la foto se prueba en la 005b,
-  en una prueba protegida aparte con el mismo registro en memoria.
+  en una prueba protegida aparte con el mismo registro en memoria. _(Precisado el 21/11/2026, PB9.)_ La prueba de la 005b
+  usa el nivel `trace` y sube una foto válida que lleva en su EXIF coordenadas GPS y un comentario con un texto marcado
+  (por ejemplo `SECRETO-005B`), con las cabeceras `X-Token-Solicitud` y `Referer` (la dirección de seguimiento con el
+  token); además, una subida rechazada de cada tipo (400 por tipo de contenido, 400 por imagen, 404, 409, 413 y 429). En
+  ninguna línea aparecen el token, el DNI, los nombres o apellidos del alumno, el texto marcado, las coordenadas ni el
+  contenido de la imagen (tampoco en base64); `req.headers["x-token-solicitud"]` aparece con `TEXTO_REDACTADO`. Un
+  `X-Token-Solicitud` enviado a otra ruta (por ejemplo `GET /api/a/{nombreCorto}`) también se redacta.
 - **33:** en la 005a, los límites de las dos lecturas, la cotización, el envío y la consulta; el de la foto (10 por hora)
-  llega con su ruta en la 005b, con su propia prueba protegida.
+  llega con su ruta en la 005b, con su propia prueba protegida. _(Precisado el 21/11/2026, PB10.)_ La regla `foto` cuenta
+  `PUT /api/a/{nombreCorto}/solicitudes/foto` (también con mayúsculas distintas o barra final) por clave de conexión
+  (`claveDeConexion(req.ip)`, criterio 59), 10 por hora, sumando todas las academias y con su propio contador. Pruebas,
+  cada una con un almacén limpio: 10 subidas desde una conexión (válidas o rechazadas con 400, 404, 409 o 413) y la 11
+  responde 429 `DEMASIADAS_SOLICITUDES` con `Cache-Control: no-store`, sin leer el cuerpo (también con un
+  `Content-Length` de 6 MB), sin buscar la academia ni abrir transacción; diez subidas desde direcciones distintas del
+  mismo /64 agotan el contador, y `203.0.113.1` y `::ffff:203.0.113.1` lo comparten; agotar el de la foto no afecta a
+  la consulta, al envío ni a las lecturas, ni al revés.
 - **43:** en la 005a, el formulario no tiene el paso de la foto; el paso, su vista previa, sus avisos y el reintento
   desde el seguimiento son de la 005b.
 - **44:** en la 005a, la página de seguimiento no ofrece "subir foto"; llega en la 005b.
@@ -114,7 +136,8 @@ de la 005b, en archivos de prueba nuevos (sin modificar los protegidos de la 005
   clave de conexión; la regla de la foto (10 por hora) usa la misma clave y se prueba en la 005b, con su ruta.
 - **58 (respuesta R3):** en la 005a, una solicitud `VENCIDA` o `CANCELADA` no tiene subida de foto; en la 005b, la
   subida (criterio 34) solo acepta solicitudes con la vista completa, así que `fotoCargada` sigue existiendo donde se
-  puede subir.
+  puede subir. _(Precisado el 21/11/2026, PB5.)_ Después de una subida correcta, la vista completa de esa solicitud lleva
+  `fotoCargada: true` (por token y por código con DNI); la vista reducida sigue sin la clave.
 
 **Dependencias entre las dos entregas y cómo quedan resueltas:**
 
@@ -141,7 +164,21 @@ de la 005b, en archivos de prueba nuevos (sin modificar los protegidos de la 005
   005a no toca el lector de cuerpos ni las dependencias permitidas del backend.
 - Ningún criterio de la 005b cambia un contrato de la 005a: la 005b suma rutas, códigos de error
   (`SOLICITUD_NO_EDITABLE`, `SOLICITUD_NO_CANCELABLE`, `IMAGEN_NO_VALIDA`) y la auditoría
-  `SOLICITUD_INSCRIPCION_CANCELADA`.
+  `SOLICITUD_INSCRIPCION_CANCELADA`. _(Precisado el 21/11/2026.)_ También suma esquemas y constantes compartidas
+  (`fotos.ts`, PB4; los esquemas del panel, PB11 a PB13), la regla `foto` en `LIMITES_PUBLICOS` (PB10), la ruta de la
+  foto en el lector de cuerpos (`noLeerCuerpoEn` de `crear-app.ts`) y la cabecera `x-token-solicitud` en
+  `RUTAS_REDACTADAS` (PB9). Ninguna prueba protegida de la 005a cambia; la prueba no protegida
+  `opciones-registro.test.ts`, que fija el largo de `RUTAS_REDACTADAS` en 4, pasa a 5 en el mismo cambio de
+  implementación.
+- **Lo que la 005a construyó y la 005b usa tal cual** _(repaso del 21/11/2026)_: la función `claveDeConexion`
+  (`backend/src/comun/http/conexion.ts`) y la tabla `LIMITES_PUBLICOS` (`backend/src/modulos/academias/limite-inicio-sesion.ts`)
+  con su middleware (`proteccion-de-prefijos.ts`); `SeguimientoService` (`backend/src/modulos/inscripciones/seguimiento.service.ts`)
+  con su función de estado visible y su búsqueda por `token_hash`; `hashDeToken` (`inscripciones/dominio/codigos.ts`);
+  `PATRON_TOKEN` y `PATRON_CODIGO` (`packages/contratos/src/solicitudes.ts`); `solicitudNoEncontrada()`
+  (`inscripciones/errores.ts`); `contarOcupacion` y `contarInscritos` (`matriculas/index.ts`); `bloquearClasesParaCupo`
+  (`clases/cupo.ts`); `enviarSinEsperar` (`infraestructura/correo/`); `ipParaAuditoria` y `AuditoriaService.registrarEnAcademia`
+  (`modulos/auditoria`), que ya acepta `motivo`, `datosAntes` y `datosDespues`; y los privilegios de `UPDATE` de
+  `alumnos.foto_clave`, `solicitudes_inscripcion.estado` y `matriculas.estado` y `reserva_vence_en`.
 
 ## Criterios de aceptación
 
@@ -157,6 +194,16 @@ Definiciones usadas en los criterios. A y B son dos academias activas; "ruta pú
   meses siguientes (para DR-5 de 004).
 - **Solicitud activa:** una solicitud en estado `PENDIENTE_PAGO` cuya matrícula todavía ocupa cupo. **Solicitud
   vencida:** una `PENDIENTE_PAGO` cuya reserva venció; se muestra como `VENCIDA` aunque la fila aún no lo diga.
+  _(Precisado el 21/11/2026, PB1, como lo construyó la 005a en el criterio 21 y en el límite por conexión:)_ "su
+  matrícula todavía ocupa cupo" es su matrícula (`matriculas.solicitud_id` igual al id de la solicitud) en estado
+  `RESERVADA` con `reserva_vence_en` nula o posterior a "ahora"; el vencimiento ya lleva el tope del fin del mes
+  (criterio 54). En la 005 ninguna matrícula de una solicitud está `VIGENTE` (eso llega con la 007).
+- **Estado visible de una solicitud** _(precisado el 21/11/2026, PB2; es la regla que ya aplica el seguimiento de la
+  005a)_: si la fila está `VENCIDA` o `CANCELADA`, ese; si está `PENDIENTE_PAGO` y su matrícula está `CANCELADA`,
+  `CANCELADA`; si está `PENDIENTE_PAGO` y su matrícula está `RESERVADA` con `reserva_vence_en` anterior o igual a
+  "ahora", `VENCIDA`; si no, `PENDIENTE_PAGO`. Lo usan la vista de seguimiento (criterios 32 y 58), la foto (criterio
+  34), la lista (criterio 38) y la cancelación (criterio 39). Una solicitud **activa** es exactamente una con estado
+  visible `PENDIENTE_PAGO` en la 005.
 - **Reserva sin pago:** 24 horas desde el envío (DR-1), pero nunca después del fin del mes de la matrícula en
   America/Lima: vence en lo que ocurra primero, "ahora" más 24 horas o las 23:59:59.999 del último día del mes en curso
   (DR-12, criterio 54).
@@ -455,12 +502,63 @@ Los criterios 34 a 37 son de la 005b.
     puede decodificar, si tiene menos de 100 o más de 8000 píxeles por lado o más de 40 megapíxeles (provisionales); y
     413 `CARGA_EXCESIVA` con más de 5 MB, sin leer más allá del límite. Una foto nueva reemplaza a la anterior. Ningún
     rechazo cambia la foto guardada. _(crítico)_ (D-20, D-24; límites de `CLAUDE.md`)
+
+    _Precisión del repaso de la 005b (21/11/2026; PB3, PB4 y PB5; sin cambios de negocio)._ Las comprobaciones van en
+    este orden, y la primera que falla decide la respuesta:
+    - a) **límite por conexión** de la foto (criterio 33, parte de la 005b) → 429 `DEMASIADAS_SOLICITUDES`;
+    - b) **tipo y codificación**, antes de leer el cuerpo y antes de buscar la academia (como el lector JSON, criterio 74
+      de 001): el tipo de medio de `Content-Type` (la parte antes de `;`, recortada y sin distinguir mayúsculas; los
+      parámetros se ignoran) debe ser `image/jpeg` o `image/png`, y `Content-Encoding` debe faltar o ser `identity` (sin
+      distinguir mayúsculas, con espacios en los extremos). Si no → 400 `IMAGEN_NO_VALIDA`. Por ejemplo, sin
+      `Content-Type`, con `image/jpg`, `image/gif`, `image/webp`, `application/octet-stream`, `application/json` o
+      `multipart/form-data`, y con `Content-Encoding` `gzip`, `deflate`, `br`, una lista o vacío;
+    - c) **tamaño:** un cuerpo de más de `FOTO_TAMANO_MAXIMO` = 5 242 880 bytes (5 × 1024 × 1024) → 413
+      `CARGA_EXCESIVA` con el cuerpo de 001. Un `Content-Length` mayor responde sin leer el cuerpo; un cuerpo sin
+      `Content-Length` deja de leerse al pasar el límite. Un cuerpo de 5 242 880 bytes exactos sigue a la siguiente
+      comprobación;
+    - d) **academia** del nombre corto → 404 `ACADEMIA_NO_ENCONTRADA` o 403 `ACADEMIA_SUSPENDIDA` (criterios 58 a 60 de
+      001);
+    - e) **token:** sin la cabecera `X-Token-Solicitud`, vacía, repetida (Node las une con `, `), con un formato distinto
+      de `PATRON_TOKEN`, que no existe o que es de otra academia → 404 `SOLICITUD_NO_ENCONTRADA`, con el mismo cuerpo
+      del criterio 31. El token se busca por su SHA-256 dentro de la academia del nombre corto, como la consulta;
+    - f) **solicitud editable:** solo con la vista completa (criterio 58). Responde 409 `SOLICITUD_NO_EDITABLE`, con
+      cuerpo `{ codigo, mensaje }` sin `detalles`, si el estado visible (PB2) es `VENCIDA` o `CANCELADA` (también en el
+      instante exacto del vencimiento, incluido el tope del fin de mes del criterio 54: a las 23:59:59.999 del último
+      día del mes en Lima ya es 409), si la fila ya no está `PENDIENTE_PAGO` (por ejemplo, la solicitud anterior de un
+      cliente que volvió, criterio 21 b) o si el alumno ya no está en `CLIENTE` (desde la 007);
+    - g) **imagen:** 400 `IMAGEN_NO_VALIDA` si el cuerpo está vacío; si sus primeros bytes no son la firma del tipo
+      declarado (JPEG: `FF D8 FF`; PNG: `89 50 4E 47 0D 0A 1A 0A`; un PNG enviado como `image/jpeg` también falla); si
+      `sharp` no la puede decodificar (también una imagen cortada); o si sus dimensiones, tal como vienen en el archivo
+      (antes de aplicar la orientación), tienen un lado menor que `FOTO_LADO_MINIMO` (100) o mayor que
+      `FOTO_LADO_MAXIMO` (8000) píxeles, o más de `FOTO_PIXELES_MAXIMOS` (40 000 000) píxeles. Los límites incluyen el
+      borde: 100 × 100 y 8000 × 5000 se aceptan; 99 × 500, 8001 × 100 y 8000 × 5001, no.
+
+    Si todo pasa: **204** sin cuerpo y con `Cache-Control: no-store`; la foto nueva reemplaza a la anterior y la vista
+    completa de esa solicitud pasa a `fotoCargada: true`. Todos los 400 `IMAGEN_NO_VALIDA` tienen el mismo cuerpo
+    (`{ codigo, mensaje }`, el mismo mensaje y sin `detalles`). Ningún rechazo (400, 403, 404, 409, 413, 429 ni un 500)
+    cambia `alumnos.foto_clave`, deja un archivo nuevo en el almacén ni audita. Una solicitud `PENDIENTE_PAGO` sin
+    vencimiento (pago en verificación, desde la 007) sigue aceptando la foto. Las constantes viven en
+    `packages/contratos/src/fotos.ts` (`FOTO_TIPOS`, `FOTO_TAMANO_MAXIMO`, `FOTO_LADO_MINIMO`, `FOTO_LADO_MAXIMO`,
+    `FOTO_PIXELES_MAXIMOS` y `FOTO_LADO_GUARDADO`) y las usan la API y la web. Los demás métodos sobre esa dirección
+    (`GET`, `POST`…) no son rutas: responden como cualquier ruta inexistente.
 35. **[005b] La foto que se guarda.** La imagen aceptada se vuelve a codificar con `sharp` como JPEG de como mucho 800 píxeles
     en su lado mayor (sin agrandar), con la orientación aplicada y **sin metadatos** (EXIF, GPS, XMP, ICC, comentarios):
     lo guardado nunca es el archivo original. Prueba: una foto con coordenadas GPS en su EXIF se guarda sin ellas; un PNG
     con un trozo de texto o un JPEG con datos después del final de la imagen se guardan sin ellos; un archivo poliglota
     (PNG válido con otro contenido pegado) se guarda solo como la imagen recodificada. _(crítico)_ (RNF-05: fotos de
     menores)
+
+    _Precisión del repaso de la 005b (21/11/2026; PB6)._ Lo guardado se comprueba leyendo el archivo de
+    `alumnos.foto_clave` (como dueño de las tablas) con `AlmacenArchivosDisco.leer` o en el disco, en
+    `ALMACEN_DIRECTORIO` más la clave (criterio 36):
+    - empieza con `FF D8 FF` y `sharp(...).metadata()` da `format: 'jpeg'`, sin `exif`, `icc`, `iptc` ni `xmp`, y sin
+      `orientation`;
+    - su lado mayor es `min(800, lado mayor ya orientado)`, con la proporción conservada (redondeo de `sharp`): 1600 ×
+      1200 → 800 × 600; 400 × 300 → 400 × 300 (no se agranda); 100 × 100 → 100 × 100;
+    - una imagen de 200 × 100 con la orientación EXIF 6 (90°) se guarda con 100 × 200;
+    - sus bytes no contienen el texto marcado del comentario JPEG, del trozo `tEXt` del PNG ni de lo pegado después del
+      final de la imagen (`FF D9` en JPEG, `IEND` en PNG), y nunca son iguales a los bytes subidos. Las coordenadas GPS
+      viajan en el EXIF, así que la ausencia de `exif` las cubre.
 36. **[005b] `AlmacenArchivos` y aislamiento de archivos.** La interfaz `AlmacenArchivos` (`guardar`, `leer`, `borrar`) recibe
     siempre la academia y una clave que genera el servidor (`academias/{academiaId}/alumnos/{alumnoId}/foto-{uuid}.jpg`),
     nunca un nombre que venga del cliente. La implementación de disco local escribe bajo el directorio de
@@ -468,6 +566,29 @@ Los criterios 34 a 37 son de la 005b.
     la carpeta de la academia (`..`, rutas absolutas, separadores de Windows, bytes nulos, enlaces simbólicos). Leer o
     borrar con la academia A una clave de B falla sin tocar el archivo. Ninguna ruta de la API ni del servidor de la web
     sirve ese directorio. _(crítico)_ (D-21, D-23)
+
+    _Precisión del repaso de la 005b (21/11/2026; PB7)._ Contrato público, en
+    `backend/src/infraestructura/almacen-archivos/index.ts`: la interfaz `AlmacenArchivos` (firma de "Interfaces del
+    backend"), el token de inyección `ALMACEN_ARCHIVOS` (como `ENVIADOR_CORREO`, P7) y la clase
+    `AlmacenArchivosDisco`, con `constructor(raiz: string)`, que las pruebas crean sobre un directorio temporal. La API
+    usa `ALMACEN_DIRECTORIO` del entorno (por defecto, `backend/almacenamiento`, ya ignorado por git).
+    - **Clave válida:** como mucho 255 caracteres ASCII; `academias/{academiaId}/` seguido de uno o más segmentos
+      separados por `/`; `{academiaId}` es el mismo UUID, en minúsculas, que el `academiaId` recibido; cada segmento
+      cumple `^[a-z0-9][a-z0-9_-]*(\.[a-z0-9]+)?$`. Así quedan fuera `.` y `..`, los segmentos vacíos (`//`), la barra
+      final, las mayúsculas, los espacios, `%`, `\`, `:`, los bytes nulos y las rutas absolutas (`/…`, `C:\…`).
+    - **Rechazo:** con una clave que no cumple, con un `academiaId` que no es UUID o con una clave de otra academia,
+      `guardar`, `leer` y `borrar` devuelven una promesa rechazada (con un `Error`) sin crear, leer, cambiar ni borrar
+      ningún archivo. También rechazan si, ya resuelta, la ruta queda fuera de `{raiz}/academias/{academiaId}`, o si la
+      carpeta `{raiz}/academias/{academiaId}`, alguna carpeta debajo de ella o el propio archivo es un enlace simbólico (o
+      una unión de Windows).
+    - **Comportamiento:** `guardar` crea las carpetas que falten y escribe primero un archivo temporal en la misma carpeta
+      y después lo renombra (no quedan archivos a medias con la clave final); `leer` de una clave válida que no existe
+      rechaza; `borrar` de una clave válida que no existe resuelve sin error (borrar es idempotente).
+    - **Pruebas:** las claves de rechazo de arriba con las tres operaciones; un archivo de B que sigue igual después de
+      `leer` y `borrar` con la academia A; un enlace simbólico `{raiz}/academias/{A}/alumnos` que apunta a la carpeta de B,
+      con `guardar` y `leer`. Si el sistema no deja crear el enlace (por ejemplo, Windows sin permisos, `EPERM`), esa
+      prueba se omite con un aviso, no falla. Ninguna ruta sirve el directorio: `GET /api/almacenamiento/{clave}`,
+      `GET /almacenamiento/{clave}` y `GET /{clave}` responden 404 y nunca el contenido.
 37. **[005b] Archivo y transacción, sin restos visibles.** La imagen se procesa y se guarda con una clave nueva antes de la
     transacción; la transacción vuelve a comprobar la solicitud, guarda la clave en `alumnos.foto_clave` y confirma; después
     se borra el archivo anterior. Si la transacción falla, se borra el archivo nuevo y la clave guardada no cambia; si
@@ -475,6 +596,36 @@ Los criterios 34 a 37 son de la 005b.
     subidas simultáneas con el mismo token dejan una sola foto, la de la última en confirmar, y no dejan un archivo
     referenciado que no exista. Sin auditoría (la foto no es una operación de caja, pago ni horario); la acción queda en
     el registro técnico sin datos personales. _(crítico)_ (efectos después de confirmar; D-21)
+
+    _Precisión del repaso de la 005b (21/11/2026; PB8)._
+    - **Secuencia.** Las comprobaciones a) a c) del criterio 34 las hacen los middlewares, antes de Nest; d) a f), una
+      transacción corta de lectura, sin tocar archivos; después, fuera de toda transacción, g), la recodificación y
+      `guardar` con una clave nueva
+      `academias/{academiaId}/alumnos/{alumnoId}/foto-{uuid}.jpg` (`uuid` v4 nuevo, en minúsculas). Luego, en un
+      `conAcademia`: `alumnos` `FOR UPDATE` y después `solicitudes_inscripcion` `FOR UPDATE` (el orden de la regla "Orden
+      de bloqueos": primero el alumno, después la solicitud, igual que el envío), se repite f) y, si ya no es editable,
+      409 `SOLICITUD_NO_EDITABLE`; se lee la clave anterior y se actualizan `foto_clave` y `actualizado_en` (con
+      "ahora"). Después de confirmar se borra la anterior, si había.
+    - **Fallos.** Si `guardar` falla: 500 `ERROR_INTERNO`, y no cambia nada en la base. Si la transacción falla (409 por
+      una carrera o un error de la base): se borra el archivo nuevo, `foto_clave` no cambia y la respuesta es la del
+      fallo. Si falla un borrado (el del nuevo tras un fallo, o el del anterior tras confirmar): un `warn` con el mensaje
+      fijo `'No se pudo borrar un archivo'`, la academia y `error: { tipo }` como el criterio 52 (`tipoDeError`), sin el
+      mensaje del error (que lleva la ruta), el token ni datos personales; con el anterior, la respuesta sigue siendo 204.
+    - **Registro.** Una subida correcta escribe un `info` con el mensaje fijo `'Foto de la solicitud guardada'` y solo la
+      academia (`academiaId`).
+    - **Pruebas deterministas** (espera comprobada en `pg_locks`, como el criterio 18 c):
+      - a) **cancelación mientras sube:** la prueba bloquea la fila del alumno (`FOR UPDATE`) en una transacción; una
+        subida válida queda esperando; la prueba pasa la solicitud y su matrícula a `CANCELADA` (como dueño) y confirma.
+        La subida responde 409 `SOLICITUD_NO_EDITABLE`, `foto_clave` sigue igual (nula o la anterior) y en
+        `academias/{A}/alumnos/{alumnoId}/` no queda ningún archivo nuevo;
+      - b) **dos subidas a la vez** con el mismo token e imágenes distintas: las dos responden 204; `foto_clave` apunta a
+        un archivo que existe; en la carpeta del alumno queda exactamente un archivo, el de `foto_clave`;
+      - c) con un `AlmacenArchivos` de prueba cuyo `borrar` rechaza: una segunda subida responde 204 y cambia
+        `foto_clave`, el archivo anterior sigue en el disco y el registro tiene el `warn` sin el token;
+      - d) con un `AlmacenArchivos` de prueba cuyo `guardar` rechaza: 500 y `foto_clave` sin cambios;
+      - e) una subida y un envío del formulario con el mismo DNI a la vez (criterio 21): ninguno responde 500 ni falla
+        con `40P01`;
+      - f) ninguna subida (correcta o rechazada) escribe en `auditoria`.
 
 ### H. Panel: solicitudes, ocupación y aforo con inscritos
 
@@ -488,6 +639,33 @@ Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5
     apoderado, consentimientos, foto, IP ni token. `ENTRENADOR` y `ALUMNO` reciben 403; sin sesión, 401; el Superadmin
     no tiene la ruta (D-29). Nunca aparecen solicitudes de otra academia, tampoco con `?academiaId=`. La lectura no
     audita. _(crítico)_ (sección 2.1, RN-21, D-23)
+
+    _Precisión del repaso de la 005b (21/11/2026; PB1, PB2 y PB11)._
+    - **Permisos**, como el criterio 5 de 004: `ADMIN` y `SECRETARIA` de A, 200; `ENTRENADOR` y `ALUMNO`, 403
+      `SIN_PERMISO`; sin sesión, 401 `NO_AUTENTICADO`; con el cambio de contraseña pendiente, 403
+      `CAMBIO_DE_CLAVE_OBLIGATORIO`; con A suspendida, 403 `ACADEMIA_SUSPENDIDA`, en el orden de 002. Con solo la cookie
+      del Superadmin (`aq_plataforma`), 401.
+    - **Filtro.** `?estado=` (un solo valor, exacto): `ACTIVAS` (por defecto, también sin el parámetro) son las de
+      estado visible `PENDIENTE_PAGO` (las activas, PB1); `VENCIDAS`, las de estado visible `VENCIDA` (la fila
+      `PENDIENTE_PAGO` con la reserva vencida y la fila `VENCIDA`); `CANCELADAS`, las de estado visible `CANCELADA`;
+      `TODAS`, todas. Otro valor, un valor en minúsculas o el parámetro repetido (`?estado=ACTIVAS&estado=TODAS`)
+      responden 400 `SOLICITUD_INVALIDA` con `detalles.errores[0].campo` `estado`. Los demás parámetros se ignoran
+      (`?academiaId=<id de B>` responde la lista de A).
+    - **Orden y tope:** `creadaEn` descendente y, a igual `creadaEn`, `id` descendente; como mucho 200 después de
+      filtrar.
+    - **Cada elemento** (`solicitudPanelSchema`, estricto) tiene exactamente: `id` (de la solicitud), `codigo`, `estado`
+      (visible), `creadaEn` (ISO), `reservaVenceEn` (ISO si el estado visible es `PENDIENTE_PAGO` y la matrícula tiene
+      vencimiento; si no, `null`), `nombres` y `apellidos` (completos), `dni`, `telefono` (del alumno), `menorDeEdad`
+      (`esMenorDeEdad` con la fecha de nacimiento y la fecha de hoy en Lima, al momento de la consulta), `plan`
+      (`{ id, nombre }`), `clases` (`[{ id, nivel, diaSemana, horaInicio, horaFin }]`, por día y hora), `mes` (`AAAA-MM`),
+      `clasesTotales` y `monto` (texto con dos decimales: el ajustado si lo hay, si no el calculado, como el
+      seguimiento). Nunca lleva datos médicos, apoderado, consentimientos, `fotoCargada` ni la clave de la foto,
+      `ip_origen`, token ni su hash, `clave_idempotencia`, `alumnoId`, fecha de nacimiento, correo ni dirección.
+    - **Datos actuales.** Los datos de la persona son los que tiene hoy el alumno, también en sus solicitudes
+      anteriores: tras un regreso por el criterio 21 b, la solicitud anterior se lista con los datos nuevos (no hay
+      historial de datos personales; riesgo "Regreso de un cliente por un tercero"). El plan, las clases, el mes, las
+      clases totales y el monto son siempre los de la matrícula de esa solicitud.
+    - **Aislamiento:** con solicitudes en A y en B, la lista de A nunca trae filas de B, con ningún filtro.
 39. **[005b] Cancelar una solicitud.** `POST /api/solicitudes/{id}/cancelar` con `{ motivo }` (de 3 a 200 caracteres
     visibles), con el mismo permiso: dentro de su `conAcademia`, `bloquearActorVigente` primero, después la solicitud
     (`FOR UPDATE`) y después `bloquearClasesParaCupo` con sus clases. Una solicitud `PENDIENTE_PAGO` (vencida o no) pasa a
@@ -497,11 +675,56 @@ Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5
     auditoría); un id que no existe, de otra academia o que no es UUID, 404 `NO_ENCONTRADO`. Con el actor desactivado
     mientras espera, 401 sin escribir (prueba de carrera como el criterio 7 de 004). _(crítico)_ (RN-22, RN-28, DT-5 de
     002)
+
+    _Precisión del repaso de la 005b (21/11/2026; PB2 y PB12)._
+    - **Orden de comprobaciones,** el de 002 y 004: sesión → academia activa → cambio obligatorio → permiso (los mismos
+      códigos del criterio 38) → cuerpo → operación. El cuerpo es `cancelarSolicitudSchema`, estricto: `motivo`
+      recortado, de 3 a 200 caracteres y con al menos 3 visibles, sin controles, bidireccionales ni separadores de línea
+      (`textoVisibleSchema({ sujeto: 'El motivo', min: 3, max: 200 })`). Un motivo inválido, que falta, o un campo de más,
+      400 `SOLICITUD_INVALIDA` con el campo (`motivo` o `""`), sin escribir ni auditar, aunque el id tampoco sirva.
+    - **Bloqueos,** en este orden, en un solo `conAcademia`: `bloquearActorVigente` (sin `exclusivo`) → el id (un id que
+      no es UUID, que no existe o de otra academia: 404 `NO_ENCONTRADO`, el cuerpo de 001) → la solicitud `FOR UPDATE` →
+      su matrícula `FOR UPDATE` → `bloquearClasesParaCupo` con las clases de esa matrícula, en una llamada.
+    - **Decisión por el estado,** con "ahora" de `RELOJ`:
+      - fila `CANCELADA` (o estado visible `CANCELADA`): 200 con la solicitud, sin escribir ni auditar;
+      - fila `PENDIENTE_PAGO` (estado visible `PENDIENTE_PAGO` o `VENCIDA`): la solicitud pasa a `CANCELADA` y su
+        matrícula, si está `RESERVADA`, a `CANCELADA` con `reserva_vence_en = NULL` (lo exige el `CHECK
+        matriculas_reserva_coherente`), las dos con `actualizado_en` igual a "ahora";
+      - cualquier otro estado de la fila: 409 `SOLICITUD_NO_CANCELABLE` (`{ codigo, mensaje }`, sin `detalles`), sin
+        escribir ni auditar. En la 005 es la fila `VENCIDA` (la solicitud anterior de un cliente que volvió, criterio
+        21 b, que ya no ocupa nada); desde la 007, también sus estados nuevos.
+    - **Respuesta:** 200 con `{ solicitud }` (`respuestaSolicitudPanelSchema`), el mismo elemento de la lista del
+      criterio 38, ya con `estado: 'CANCELADA'` y `reservaVenceEn: null`.
+    - **Auditoría** de la cancelación que escribe: `SOLICITUD_INSCRIPCION_CANCELADA`, entidad `solicitud_inscripcion`,
+      `entidadId` el id de la solicitud, actor `USUARIO` con el id de quien cancela, `motivo` (recortado), la IP
+      (`ipParaAuditoria`), `datosAntes: { estado }` con el estado visible de antes (`PENDIENTE_PAGO` o `VENCIDA`) y
+      `datosDespues: { estado: 'CANCELADA' }`. Nada más: ni DNI, ni nombres, ni datos médicos, ni token.
+    - **Pruebas:**
+      - a) una solicitud activa en una clase llena: después del 200, la ocupación de sus clases baja en 1, un envío por
+        esa clase responde 201 (antes, 409 `SIN_CUPO`), el seguimiento la muestra `CANCELADA` con la vista reducida y no
+        cuenta en el límite por conexión (criterio 25);
+      - b) una solicitud vencida (fila `PENDIENTE_PAGO`) se cancela igual, con `datosAntes.estado` `VENCIDA`;
+      - c) dos cancelaciones simultáneas de la misma solicitud: las dos responden 200 y queda una sola auditoría;
+      - d) carrera del actor como el criterio 7 de 004: 401 y nada escrito;
+      - e) una cancelación y un envío por el último cupo de la misma clase a la vez, y una cancelación y un `PATCH` del
+        aforo de esa clase a la vez: ninguno responde 500 ni falla con `40P01`, y nunca hay más ocupación que aforo por
+        una inscripción nueva;
+      - f) una cancelación y un envío con el mismo DNI (criterio 21 b) a la vez: el envío responde 201 o 409
+        `DNI_YA_REGISTRADO`, según quién entre primero, nunca 500;
+      - g) un id de B con una sesión de A: 404 y las filas y la auditoría de B no cambian.
 40. **[005b] Ocupación para el administrador.** `GET /api/clases/ocupacion`, con
     `@Permiso('CONFIGURAR_PLANES_HORARIOS_AFORO')`, responde 200 con `{ mes, ocupacion: [{ claseId, inscritos,
     cuposRestantes }] }` de todas las clases de la academia en el mes en curso (las que no tienen inscritos, con 0).
     `claseSchema` y `GET /api/clases` de 004 no cambian. _(prueba obligatoria; permisos y aislamiento como el criterio 5
     de 004)_ (HU-17, R11 como dato)
+
+    _Precisión del repaso de la 005b (21/11/2026; PB13), con las definiciones de "Criterios de aceptación":_ `mes` es el
+    mes en curso en Lima (`AAAA-MM`); hay exactamente un elemento por cada clase de la academia, activa o inactiva, en
+    cualquier orden; `inscritos` son los "Inscritos de C" (`contarInscritos`: la mayor ocupación entre el mes en curso y
+    los siguientes, la misma cifra que `detalles.inscritos` de los 409 de DR-5) y `cuposRestantes` es `max(0, aforo −
+    ocupación del mes en curso)` (`contarOcupacion`). Las reservas vencidas y las matrículas canceladas no cuentan. Solo
+    `ADMIN` (`SECRETARIA`, `ENTRENADOR` y `ALUMNO`, 403; sin sesión, 401); los parámetros de consulta se ignoran y nunca
+    aparecen clases de otra academia. No audita ni bloquea.
 41. **Bajar el aforo por debajo de los inscritos (DR-5 de 004).** `PATCH /api/clases/{id}` con un `aforo` menor que los
     inscritos de la clase responde 409 `AFORO_MENOR_QUE_INSCRITOS` con `detalles.inscritos`, sin escribir ni auditar,
     salvo que el cuerpo traiga `confirmarAforoMenor: true`; con la confirmación se guarda (200), nadie pierde su lugar y
@@ -541,6 +764,23 @@ Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5
     persiste. Con la vista reducida (criterio 58, sin `nombres`), la página muestra el estado y los datos de la
     solicitud sin saludar por el nombre ni dejar un hueco. _(prueba obligatoria, de componentes)_ (D-05, D-27) _(005a
     sin "subir foto", que es de la 005b.)_ _(ajustado por el criterio 58, respuesta R3, ronda 1)_
+
+    _Precisión de las partes de la 005b de 43 y 44 (repaso del 21/11/2026; PB14). Pruebas de componentes, con la API
+    simulada:_
+    - **Paso de la foto (43).** Opcional: se puede seguir sin foto. Acepta un archivo (`accept="image/jpeg,image/png"`);
+      antes de subirlo avisa, sin llamar a la API, si su tipo no está en `FOTO_TIPOS` o si pasa de `FOTO_TAMANO_MAXIMO`
+      (un archivo de 5 242 880 bytes pasa, uno de 5 242 881 no). Muestra una vista previa con una URL local del archivo,
+      que se libera al cambiarlo o al salir. Las dimensiones las comprueba solo la API.
+    - **Subida después del 201 (43).** Con el 201 del envío, la web hace un solo `PUT /api/a/{nombreCorto}/solicitudes/foto`
+      con el archivo como cuerpo, su tipo en `Content-Type` y el token del 201 en `X-Token-Solicitud`. Muestra el código
+      y el enlace pase lo que pase con la foto; si la subida no responde 204, avisa que la solicitud quedó creada y que la
+      foto se puede subir desde el enlace de seguimiento. El token no se guarda en `localStorage`, `sessionStorage` ni
+      cookies.
+    - **Seguimiento (44).** Con la vista completa, muestra "Foto cargada" si `fotoCargada` es `true` y ofrece subir (o
+      cambiar) la foto, con los mismos avisos del paso del formulario; usa el token de la dirección, solo en memoria.
+      Después del 204 vuelve a consultar y muestra "Foto cargada". Ante 409 `SOLICITUD_NO_EDITABLE` avisa que ya no se
+      puede cambiar y vuelve a consultar (la vista pasa a reducida); ante 400 `IMAGEN_NO_VALIDA`, 413 y 429, un mensaje
+      claro con el teléfono de la academia. Con la vista reducida no hay control para subir la foto.
 45. **Teléfono en las páginas públicas.** El ingreso de la academia (`/a/{nombreCorto}/ingresar`, de 002), la inscripción
     y el seguimiento muestran el teléfono de la academia cuando existe, leído de `GET /api/a/{nombreCorto}` sin caché
     entre visitas (DR-4 de 003). _(prueba obligatoria, de componentes)_
@@ -552,6 +792,25 @@ Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5
     explica que primero hay que moverlos o cancelar sus solicitudes. Las claves de las consultas incluyen la identidad de
     la sesión y los formularios cumplen las lecciones de la 003 (criterio 29 de 004). _(prueba obligatoria, de
     componentes)_
+
+    _Precisión del repaso de la 005b (21/11/2026; PB14). Pruebas de componentes, con la API simulada:_
+    - **Inicio.** `ADMIN` y `SECRETARIA` ven "Solicitudes de inscripción" (a `/panel/solicitudes`) y "Nueva inscripción",
+      un enlace a `/a/{nombreCorto}/inscripcion` con el `nombreCorto` de la academia de la sesión
+      (`usuario.academia.nombreCorto`); `ENTRENADOR` y `ALUMNO` no ven ninguna de las dos.
+    - **`/panel/solicitudes`.** Pide `GET /api/solicitudes` con el filtro elegido (Activas por defecto; Vencidas,
+      Canceladas, Todas) y muestra por solicitud el código, nombres y apellidos, DNI, teléfono, si es menor, plan, días y
+      horas, mes, monto en soles, estado en palabras, fecha límite (si la hay) y fecha de creación. "Cancelar" aparece en
+      las de estado `PENDIENTE_PAGO` y `VENCIDA`; abre un diálogo que exige el motivo con `cancelarSolicitudSchema`,
+      desactiva el botón mientras espera y, con el 200, vuelve a pedir la lista. Ante 409 `SOLICITUD_NO_CANCELABLE` o
+      404, un mensaje claro y vuelve a pedir la lista. Para los demás roles, la ruta muestra lo mismo que las demás
+      páginas del panel sin permiso.
+    - **`/panel/clases`.** La grilla muestra "inscritos / aforo" en cada clase con `GET /api/clases/ocupacion`. Ante 409
+      `AFORO_MENOR_QUE_INSCRITOS`, `FormularioClase` abre un diálogo con `detalles.inscritos`; "Confirmar" reenvía el
+      mismo cuerpo con `confirmarAforoMenor: true` y "Volver" cierra sin enviar. Ante 409 `CLASE_CON_INSCRITOS`, explica
+      que la clase tiene `detalles.inscritos` inscritos y que primero hay que moverlos o cancelar sus solicitudes. Después
+      de un cambio correcto, vuelve a pedir las clases y la ocupación.
+    - **Claves de consulta** con la identidad de la sesión, como `useMiAcademia` (criterio 28 de 003): por ejemplo
+      `['solicitudes', nombreCorto, usuarioId, estado]` y `['ocupacion', nombreCorto, usuarioId]`.
 
 ### J. Semilla y documentación
 
@@ -590,7 +849,11 @@ Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5
     bloqueos, `AlmacenArchivos`, `EnviadorCorreo`, los límites de las rutas públicas y las "Reglas para las historias
     siguientes" de esta spec; el `README.md` y la guía de uso explican la inscripción, el seguimiento y el panel de
     solicitudes; `.env.example` suma `ALMACEN_DIRECTORIO`. _(verificación del revisor)_ _(005a sin `AlmacenArchivos`,
-    la regla "Archivos", `ALMACEN_DIRECTORIO` ni el panel de solicitudes, que documenta la 005b.)_
+    la regla "Archivos", `ALMACEN_DIRECTORIO` ni el panel de solicitudes, que documenta la 005b.)_ _(Precisado el
+    21/11/2026: la 005b suma en `docs/arquitectura.md`, dentro de "Lo que construye la historia 005a" o en una entrada
+    propia de la 005b, la foto (ruta, límites, recodificación y transacción), `AlmacenArchivos` con su formato de clave,
+    la lista, la cancelación y la ocupación; quita la foto, el panel y la cancelación de "Lo que todavía no trae"; y suma
+    la regla "Archivos" en "Reglas para las historias siguientes".)_
 
 ### K. Ronda 1 adversarial (005a)
 
@@ -859,6 +1122,23 @@ reintento con la reserva ya vencida y tipo del error del correo) y en la pregunt
 - **Una familia con IPv6:** todos sus equipos del mismo /64 comparten los límites, como una casa con IPv4 detrás de un
   router (criterios 59 y 60).
 - **IPv4 que Express entrega como `::ffff:a.b.c.d`:** cuenta igual que `a.b.c.d` (criterio 59).
+- **[005b] Foto de 5 242 880 bytes exactos:** pasa al resto de las comprobaciones; con un byte más, 413 (criterio 34 c).
+- **[005b] Foto subida en el último milisegundo del mes:** a las 23:59:59.999 del último día en Lima la reserva ya venció
+  (criterio 54); 409 `SOLICITUD_NO_EDITABLE` (criterio 34 f).
+- **[005b] Foto desde el enlace de una solicitud anterior** de un cliente que volvió (fila `VENCIDA`, criterio 21 b): 409
+  `SOLICITUD_NO_EDITABLE`; desde el enlace de la nueva, se acepta.
+- **[005b] Cliente que vuelve con una foto ya subida (criterio 21 b):** el envío de la 005a no toca `foto_clave`; la nueva
+  solicitud muestra `fotoCargada: true` con la foto anterior (pregunta B3).
+- **[005b] Foto en una academia suspendida:** 403 `ACADEMIA_SUSPENDIDA`, antes de mirar el token (criterio 34 d).
+- **[005b] PNG enviado como `image/jpeg`:** 400 `IMAGEN_NO_VALIDA` por la firma (criterio 34 g).
+- **[005b] Cancelar una solicitud vencida:** se acepta y queda `CANCELADA` (criterio 39 b); la anterior de un cliente que
+  volvió (fila `VENCIDA`), 409 `SOLICITUD_NO_CANCELABLE`.
+- **[005b] Lista con solicitudes anteriores de un cliente que volvió:** muestran los datos personales actuales del
+  alumno (criterio 38, "Datos actuales").
+- **[005b] Persona que cumplió 18 años después de enviar:** la lista la muestra con `menorDeEdad: false` (se calcula con
+  la fecha de hoy), aunque su apoderado siga guardado (criterio 38).
+- **[005b] Recepción con muchas inscripciones seguidas:** todas salen de la misma conexión y cuentan en los límites de
+  los criterios 25 y 33 (pregunta B4).
 
 ## Reglas de negocio aplicables
 
@@ -906,9 +1186,9 @@ obligatorio → permiso → cuerpo → operación).
 | `POST /api/a/{nombreCorto}/inscripcion/cotizacion` | pública | `cotizarInscripcionSchema` | 200 `RespuestaCotizacion` | 400, 404, 403, 409 `PLAN_NO_DISPONIBLE`, `SELECCION_NO_VALIDA`, `SIN_CLASES_EN_EL_MES`, 429 |
 | `POST /api/a/{nombreCorto}/inscripcion` | pública | `enviarInscripcionSchema` | 201 `RespuestaInscripcionCreada` | 400, 404, 403, 409 (ver orden), 429 |
 | `POST /api/a/{nombreCorto}/solicitudes/consulta` | pública | `consultarSolicitudSchema` | 200 `RespuestaConsultaSolicitud` | 400, 404 `SOLICITUD_NO_ENCONTRADA`, 403, 429 |
-| **[005b]** `PUT /api/a/{nombreCorto}/solicitudes/foto` | pública, cabecera `X-Token-Solicitud` | JPEG o PNG, hasta 5 MB | 204 | 400 `IMAGEN_NO_VALIDA`, 404, 403, 409 `SOLICITUD_NO_EDITABLE`, 413, 429 |
-| **[005b]** `GET /api/solicitudes?estado=` | `REGISTRAR_INSCRIPCION_Y_COBRO` | — | 200 `RespuestaListaSolicitudes` | 400, 401, 403 |
-| **[005b]** `POST /api/solicitudes/{id}/cancelar` | `REGISTRAR_INSCRIPCION_Y_COBRO` | `cancelarSolicitudSchema` | 200 `RespuestaSolicitudPanel` | 400, 401, 403, 404, 409 `SOLICITUD_NO_CANCELABLE` |
+| **[005b]** `PUT /api/a/{nombreCorto}/solicitudes/foto` | pública, cabecera `X-Token-Solicitud` | JPEG o PNG, hasta 5 242 880 bytes | 204 | 429; 400 `IMAGEN_NO_VALIDA`; 413 `CARGA_EXCESIVA`; 404 `ACADEMIA_NO_ENCONTRADA`, 403 `ACADEMIA_SUSPENDIDA`; 404 `SOLICITUD_NO_ENCONTRADA`; 409 `SOLICITUD_NO_EDITABLE`; 400 `IMAGEN_NO_VALIDA` (en ese orden, criterio 34) |
+| **[005b]** `GET /api/solicitudes?estado=` | `REGISTRAR_INSCRIPCION_Y_COBRO` | `estado` en la consulta (`filtroEstadoSolicitudesSchema`) | 200 `RespuestaListaSolicitudes` | 400 (`estado`), 401, 403 |
+| **[005b]** `POST /api/solicitudes/{id}/cancelar` | `REGISTRAR_INSCRIPCION_Y_COBRO` | `cancelarSolicitudSchema` | 200 `RespuestaSolicitudPanel` | 400, 401, 403, 404 `NO_ENCONTRADO`, 409 `SOLICITUD_NO_CANCELABLE` |
 | **[005b]** `GET /api/clases/ocupacion` | `CONFIGURAR_PLANES_HORARIOS_AFORO` | — | 200 `RespuestaOcupacion` | 401, 403 |
 | `PATCH /api/clases/{id}` (de 004) | `CONFIGURAR_PLANES_HORARIOS_AFORO` | `actualizarClaseSchema` + `confirmarAforoMenor` | 200 | los de 004 + 409 `AFORO_MENOR_QUE_INSCRITOS`, `CLASE_CON_INSCRITOS` |
 
@@ -917,7 +1197,11 @@ obligatorio → permiso → cuerpo → operación).
 `LIMITE_DE_RESERVAS_PENDIENTES` → `SELECCION_NO_VALIDA` → `SIN_CLASES_EN_EL_MES` → `SIN_CUPO` → `MONTO_CAMBIO`. Desde
 `SELECCION_NO_VALIDA`, se deciden con las clases ya bloqueadas (sigue el orden de bloqueos de "Reglas para las historias
 siguientes"). La cotización usa el mismo orden para los códigos que comparte. `SOLICITUD_NO_CANCELABLE` (409) es para una solicitud que ya no está `PENDIENTE_PAGO` ni `CANCELADA` (desde la
-007).
+007). _(Precisado el 21/11/2026, PB12: también la fila `VENCIDA` que deja el criterio 21 b desde la 005a.)_
+
+**Orden de la foto** _(precisado el 21/11/2026, PB3)_: la ruta de la foto no sigue el orden general "límite → academia →
+cuerpo": como el lector JSON de 001 (criterio 74), el tipo, la codificación y el tamaño del cuerpo se deciden antes de
+buscar la academia; el token, el estado de la solicitud y la imagen, después (criterio 34, a a g).
 
 Las rutas marcadas **[005b]** llegan en el siguiente PR; la 005a construye las demás, incluidos los dos 409 nuevos del
 `PATCH /api/clases/{id}`. De los códigos de error nuevos, `SOLICITUD_NO_EDITABLE`, `SOLICITUD_NO_CANCELABLE` e
@@ -949,9 +1233,19 @@ El `{id}` de `POST /api/solicitudes/{id}/cancelar` lo valida el servicio despué
   `{ codigo, dni }`, cada uno un texto de hasta 100 caracteres; el formato del token, del código y del DNI lo comprueba
   el servicio y, si no se cumple, responde el 404 del criterio 31, no un 400), `estadoSolicitudSchema`, `vistaSolicitudSchema` (criterio 32; desde la respuesta R3, unión estricta de la vista completa en `PENDIENTE_PAGO` y la reducida en `VENCIDA` y `CANCELADA`, criterio 58), `respuestaConsultaSolicitudSchema`,
   `solicitudPanelSchema`, `respuestaListaSolicitudesSchema`, `cancelarSolicitudSchema` y `filtroEstadoSolicitudesSchema`.
+  _(Precisado el 21/11/2026, PB11 y PB12, todos estrictos:)_ `solicitudPanelSchema` con las claves exactas del
+  criterio 38; `respuestaListaSolicitudesSchema = { solicitudes: SolicitudPanel[] }`;
+  `respuestaSolicitudPanelSchema = { solicitud: SolicitudPanel }` (respuesta de la cancelación);
+  `cancelarSolicitudSchema = { motivo }` con `textoVisibleSchema({ sujeto: 'El motivo', min: 3, max: 200 })`;
+  `filtroEstadoSolicitudesSchema`: `'ACTIVAS' | 'VENCIDAS' | 'CANCELADAS' | 'TODAS'`, `ACTIVAS` si falta (la API lee
+  solo `estado` de la consulta; un arreglo es 400).
+- **[005b]** `fotos.ts` _(nuevo, PB4)_: `FOTO_TIPOS = ['image/jpeg', 'image/png']`, `FOTO_TAMANO_MAXIMO = 5 * 1024 * 1024`
+  (5 242 880 bytes), `FOTO_LADO_MINIMO = 100`, `FOTO_LADO_MAXIMO = 8000`, `FOTO_PIXELES_MAXIMOS = 40_000_000` y
+  `FOTO_LADO_GUARDADO = 800`, más la cabecera `CABECERA_TOKEN_SOLICITUD = 'X-Token-Solicitud'`.
 - `academias.ts`: `academiaPublicaSchema` suma `telefono` (texto o `null`).
 - `clases.ts`: `actualizarClaseSchema` suma `confirmarAforoMenor` (booleano opcional; no cuenta como "un campo" para el
-  "al menos uno"); `respuestaOcupacionSchema`.
+  "al menos uno"); `respuestaOcupacionSchema` _(precisado el 21/11/2026, PB13: estricto, `{ mes: 'AAAA-MM', ocupacion:
+  [{ claseId: uuid, inscritos: entero >= 0, cuposRestantes: entero >= 0 }] }`)_.
 
 ### Interfaces del backend (para las historias siguientes)
 
@@ -977,12 +1271,14 @@ function vencimientoDeReserva(ahora: Date): Date; // min(ahora + 24 h, finDelMes
 // backend/src/comun/http/conexion.ts (pura; respuesta R4, criterio 59).
 function claveDeConexion(ip: string): string; // IPv4 exacta (también la mapeada); otra IPv6, su /64 canónico
 
-// backend/src/infraestructura/almacen-archivos/
+// backend/src/infraestructura/almacen-archivos/ (index.ts exporta la interfaz, ALMACEN_ARCHIVOS y AlmacenArchivosDisco; PB7)
 interface AlmacenArchivos {
   guardar(academiaId: string, clave: string, contenido: Buffer, tipo: 'image/jpeg' | 'image/png'): Promise<void>;
   leer(academiaId: string, clave: string): Promise<Buffer>;
-  borrar(academiaId: string, clave: string): Promise<void>;
+  borrar(academiaId: string, clave: string): Promise<void>; // una clave válida que no existe: resuelve
 }
+const ALMACEN_ARCHIVOS: symbol; // token de inyección, como ENVIADOR_CORREO
+class AlmacenArchivosDisco implements AlmacenArchivos { constructor(raiz: string); }
 // backend/src/infraestructura/correo/ (index.ts exporta la interfaz y el token de inyección ENVIADOR_CORREO; P7)
 interface EnviadorCorreo {
   enviar(mensaje: { academiaId: string; para: string; plantilla: 'SEGUIMIENTO_SOLICITUD'; datos: Record<string, string> }): Promise<void>;
@@ -992,7 +1288,9 @@ interface EnviadorCorreo {
 ### Auditoría
 
 - `SOLICITUD_INSCRIPCION_CREADA` (actor `PUBLICO`, criterio 26) y `SOLICITUD_INSCRIPCION_CANCELADA` (actor `USUARIO`,
-  criterio 39), entidad `solicitud_inscripcion`.
+  criterio 39), entidad `solicitud_inscripcion`. _(Precisado el 21/11/2026, PB12: la cancelación lleva `motivo`,
+  `datosAntes: { estado }` con el estado visible anterior y `datosDespues: { estado: 'CANCELADA' }`.)_ La foto no se
+  audita (criterio 37).
 - `CLASE_ACTUALIZADA` (de 004) suma `inscritos` y `confirmacion` cuando se confirma un aforo menor (criterio 41).
 
 ### Códigos de error nuevos
@@ -1062,6 +1360,13 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
   `CHECK matriculas_reserva_dentro_del_mes`: `reserva_vence_en IS NULL OR reserva_vence_en < (make_date(anio, mes, 1) +
   interval '1 month')::timestamp AT TIME ZONE 'America/Lima'`, con el mismo cuidado de `anio` y `mes` fuera de rango que
   `matriculas_fechas_del_mes`. Sin tablas, columnas, privilegios ni datos nuevos.
+- **[005b] Sin migración** _(confirmado en el repaso del 21/11/2026)_. La 005b usa lo que ya crearon
+  `20261120130000_inscripcion_publica` y `20261120190000_reserva_dentro_del_mes`: `alumnos.foto_clave` (y su `UPDATE`),
+  `solicitudes_inscripcion.estado` y `matriculas.estado` y `reserva_vence_en` (y sus `UPDATE`), los estados
+  `CANCELADA`, `auditoria.motivo` y el índice `matriculas_academia_id_solicitud_id_idx`. Al cancelar, la matrícula pasa a
+  `CANCELADA` con `reserva_vence_en = NULL`, porque `matriculas_reserva_coherente` no admite un vencimiento fuera de
+  `RESERVADA` (PB12). Si la implementación necesitara una columna, un índice o un privilegio más, se agrega aquí antes de
+  tocar el código.
 
 ## Fuera de alcance
 
@@ -1126,6 +1431,13 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
   (acepta hoy una `VENCIDA` con `nombres`) y la vista de la página de seguimiento, que saluda con el nombre
   (criterio 44), se ajustan en el mismo cambio de implementación.
 - **002, límite del ingreso:** no cambia; sigue contando por dirección exacta (pregunta R6).
+- **[005b] Repaso del 21/11/2026, lo que cambia fuera de los módulos nuevos:** `LimitePublico.metodo` suma `'PUT'` y
+  `LIMITES_PUBLICOS` suma la regla `foto` (PB10); `crear-app.ts` pasa a `instalarLectorDeCuerpos` la ruta de la foto
+  además de `DELETE /api/sesion`; `RUTAS_REDACTADAS` suma `req.headers["x-token-solicitud"]` y la prueba no protegida
+  `opciones-registro.test.ts` pasa de largo 4 a 5 (PB9); `FormularioClase`, `GrillaSemanal` y `PaginaPanel` cambian
+  (criterio 46). Ninguna prueba protegida de 001 a 005a cambia, salvo la de las dependencias permitidas del backend,
+  solo para sumar `sharp`. Si el tester encuentra otra (por ejemplo, una del criterio 74 de 001 que mande un `PUT`
+  binario justo a la ruta de la foto), decide el orquestador.
 
 ## Reglas para las historias siguientes
 
@@ -1153,7 +1465,10 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
 - **[005b] Archivos.** Toda historia que guarda archivos (comprobantes 007, multimedia 014, certificados) usa `AlmacenArchivos`
   con claves generadas por el servidor bajo `academias/{academiaId}/…`, procesa y guarda antes de la transacción y borra
   lo reemplazado después de confirmar (criterio 37). Las imágenes subidas por el público se recodifican sin metadatos
-  (criterio 35).
+  (criterio 35). _(Precisado el 21/11/2026, PB7 y PB8:)_ la clave cumple el formato del criterio 36 y la elige el
+  servidor con un UUID nuevo; las rutas que reciben un archivo binario se agregan a `noLeerCuerpoEn` con su propio
+  lector, límite y tipos; la transacción toma las filas en el orden de bloqueos de arriba (alumno antes que solicitud),
+  y el fallo de un borrado se registra solo con el tipo del error.
 - **Tokens públicos.** Un token que da acceso sin sesión se genera con 32 bytes criptográficos, se guarda solo su
   SHA-256, se busca dentro de la academia del nombre corto y viaja en el cuerpo o en una cabecera, nunca en la dirección
   de la API. Toda cabecera que lo lleve (o que lleve una dirección de la web que lo contenga, como `Referer`) se redacta
@@ -1236,12 +1551,20 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
 - **[005b] Foto sin dueño visible:** en esta historia nadie ve la foto; un error al guardarla solo se nota en la 008. Las
   pruebas del criterio 35 comprueban el archivo guardado.
 - **[005b] Archivo huérfano:** si el proceso se cae entre guardar la foto nueva y confirmar, queda un archivo sin referencia que
-  nadie puede leer (criterio 37). Una limpieza periódica queda para cuando haya proveedor de archivos.
+  nadie puede leer (criterio 37). Una limpieza periódica queda para cuando haya proveedor de archivos. Lo mismo si falla
+  el borrado de la foto anterior (criterio 37, PB8): queda en el disco, sin referencia, con un aviso en el registro.
+- **[005b] Fotos de solicitudes que nunca se pagaron** _(repaso del 21/11/2026)_: como los demás datos de esas personas
+  (riesgo "Datos de solicitudes que nunca se pagaron"), la foto de una solicitud vencida o cancelada se conserva hasta que
+  se defina la política de retención. Es una foto que puede ser de un menor. Pregunta B2.
+- **[005b] Recodificación en el proceso de la API** _(repaso del 21/11/2026)_: `sharp` decodifica imágenes de hasta 40
+  megapíxeles en el mismo proceso; diez subidas por hora y por conexión (criterio 33) acotan el uso de CPU y memoria,
+  pero muchas conexiones a la vez pueden hacerlo notar. Se revisa con el hosting (D-21).
 
 ## Decisiones
 
 **Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" en esta sección y como "DR-n de
-005" fuera de ella; las del orquestador, "DT-n" y "DT-n de 005"; las técnicas de la ronda 1 del ataque, "AT1-n". Los criterios, el contrato y las demás secciones se
+005" fuera de ella; las del orquestador, "DT-n" y "DT-n de 005"; las técnicas de la ronda 1 del ataque, "AT1-n"; las
+precisiones del repaso de la 005b, "PBn". Los criterios, el contrato y las demás secciones se
 escribieron antes de la aprobación y no cambian de intención: donde dicen "pregunta Nn" o "Nn" se refieren a DR-n de
 005 y donde dicen "pregunta Tn" o "Tn", a DT-n de 005. Los valores que la spec llama "provisionales" (24 horas de
 reserva, desde cuándo se cuentan las clases, solo el mes en curso, una clase por día, campos obligatorios y formato del
@@ -1480,6 +1803,63 @@ Propuestas del especificador para llevar DR-12 a DR-15 al código, sin cambios d
   que el ejemplo dure lo más posible sin cruzar el mes. Alternativa descartada: las 24 horas del formulario (el ejemplo
   dejaría de estar vigente al día siguiente de sembrar).
 
+### Precisiones del repaso de la 005b (21/11/2026)
+
+Repaso del especificador con la 005a unida a `main` (PR #8), antes de que el test-writer escriba las pruebas protegidas
+de la 005b. Son **precisiones técnicas**: ajustan los criterios de la 005b a lo que la 005a construyó de verdad (nombres,
+funciones, migraciones y comportamiento) y fijan códigos, cuerpos, límites y órdenes para que cada criterio se pueda
+probar desde los contratos públicos. **Ninguna cambia una regla de negocio.** Las preguntas de negocio que salieron del
+repaso están en "Preguntas abiertas" (B1 a B5) y, mientras no haya respuesta, rige lo que ya dice esta spec.
+
+- **PB1 (definiciones; criterios 21, 25, 38 y 39). Solicitud activa.** "Su matrícula todavía ocupa cupo" es su
+  matrícula `RESERVADA` con `reserva_vence_en` nula o posterior a "ahora" (con el tope del fin de mes del criterio 54),
+  como la cuentan `InscripcionesService.comprobarPersona` y el límite por conexión de la 005a. En la 005 ninguna
+  matrícula de una solicitud llega a `VIGENTE`.
+- **PB2 (definiciones; criterios 32, 34, 38 y 39). Estado visible.** Una sola regla, la de `estadoVisible` de
+  `SeguimientoService`: fila `VENCIDA` o `CANCELADA`; fila `PENDIENTE_PAGO` con la matrícula `CANCELADA` → `CANCELADA`;
+  con la matrícula `RESERVADA` vencida → `VENCIDA`; si no, `PENDIENTE_PAGO`. La fila `VENCIDA` existe desde la 005a: la
+  escribe el criterio 21 b en las solicitudes anteriores de un cliente que vuelve.
+- **PB3 (criterio 34 y contrato). Orden de la foto.** Límite → tipo y codificación → tamaño → academia → token →
+  estado → imagen. Las tres primeras van antes de la academia porque el lector de cuerpos corre antes de las rutas de
+  Nest (como el lector JSON, criterio 74 de 001, y como lo instala `crear-app.ts`); el token y el estado van antes de
+  decodificar, para no gastar CPU en un token que no sirve. Alternativa descartada: decodificar antes de buscar el
+  token (más trabajo con cualquier petición anónima).
+- **PB4 (criterio 34 y contratos). Constantes de la foto** en `packages/contratos/src/fotos.ts`, compartidas por la API y
+  la web; 5 MB son 5 242 880 bytes (lo que usa `express.raw({ limit: '5mb' })`); los límites de dimensiones incluyen el
+  borde; todos los 400 de imagen tienen el mismo cuerpo, sin `detalles`.
+- **PB5 (criterios 34 y 58). Foto solo con la vista completa:** estado visible `PENDIENTE_PAGO`, fila `PENDIENTE_PAGO` y
+  alumno `CLIENTE`; si no, 409 `SOLICITUD_NO_EDITABLE`. El vencimiento incluye el tope del fin de mes (criterio 54).
+  Después de subirla, `fotoCargada` es `true` en la vista completa.
+- **PB6 (criterio 35). Lo guardado, comprobable:** JPEG sin `exif`, `icc`, `iptc`, `xmp` ni `orientation`; lado mayor
+  `min(800, lado mayor)`, sin agrandar; orientación aplicada (200 × 100 con orientación 6 → 100 × 200).
+- **PB7 (criterio 36). `AlmacenArchivos`:** token `ALMACEN_ARCHIVOS`, clase `AlmacenArchivosDisco(raiz)` exportada para
+  las pruebas, formato exacto de la clave, rechazo con una promesa rechazada sin tocar archivos, escritura con archivo
+  temporal y `rename`, `borrar` idempotente; la prueba del enlace simbólico se omite donde el sistema no deja crearlo
+  (Windows sin permisos), porque la integración continua también corre en Windows (D-26).
+- **PB8 (criterio 37). Transacción de la foto:** filas en el orden de la regla "Orden de bloqueos" (alumno y después
+  solicitud). Con el orden al revés, una subida y un envío del mismo DNI (que bloquea el alumno y después sus
+  solicitudes) se esperarían en cruz (`40P01`, un 500). `guardar` que falla → 500 sin cambios; borrados que fallan → aviso
+  con `tipoDeError` (de `infraestructura/correo`), como el criterio 52; registro `info` fijo de la subida. Pruebas
+  deterministas de las carreras.
+- **PB9 (criterio 28 y su parte de la 005b). Registro técnico:** `req.headers["x-token-solicitud"]` en
+  `RUTAS_REDACTADAS` para toda la API (como `Referer`, AT1-5); la prueba no protegida que fija el largo pasa a 5.
+- **PB10 (criterio 33 y su parte de la 005b). Límite de la foto:** una regla `foto` con método `PUT` en
+  `LIMITES_PUBLICOS` (el tipo `LimitePublico.metodo` suma `'PUT'`), con la clave `publico-foto:${claveDeConexion(ip)}`
+  del middleware de la 005a; no necesita nada más.
+- **PB11 (criterio 38). Lista:** forma exacta de cada elemento, filtros por estado visible, `reservaVenceEn` en `null`
+  fuera de `PENDIENTE_PAGO`, `menorDeEdad` con la fecha de hoy, `monto` como el seguimiento, parámetro `estado` exacto
+  (400 con otro valor o repetido) y los demás parámetros ignorados; los datos personales son los actuales del alumno.
+- **PB12 (criterio 39 y contrato). Cancelación:** se decide así: estado visible `CANCELADA` → 200 sin escribir; fila
+  `PENDIENTE_PAGO` con estado visible `PENDIENTE_PAGO` o `VENCIDA` → cancela; cualquier otra fila → 409
+  `SOLICITUD_NO_CANCELABLE`, que en la 005 es la fila `VENCIDA` del criterio 21 b, porque "ya no está `PENDIENTE_PAGO`
+  ni `CANCELADA`"; la matrícula pasa a `CANCELADA` con `reserva_vence_en =
+  NULL` (`CHECK matriculas_reserva_coherente`); orden de bloqueos, respuesta y auditoría exactos.
+- **PB13 (criterio 40). Ocupación:** `inscritos` con `contarInscritos` (la definición "Inscritos de C", la misma cifra
+  de los 409 de DR-5) y `cuposRestantes` con `contarOcupacion` del mes en curso; un elemento por clase, activa o no. El
+  plan decía solo `contarOcupacion`: en la 005 dan lo mismo (no hay matrículas de meses siguientes), pero desde la 010 no.
+- **PB14 (criterios 43, 44 y 46). Web:** lo que comprueban las pruebas de componentes de la foto (formulario y
+  seguimiento) y del panel (inicio, solicitudes y clases).
+
 ## Preguntas abiertas
 
 Las preguntas N1 a N11 y T1 a T9 quedaron decididas el 20/11/2026 (DR-1 a DR-11 y DT-1 a DT-9, en "Decisiones", con el
@@ -1514,3 +1894,52 @@ anotada en las notas de hosting de `specs/backlog.md`.
   partida, 4 veces los del /64 (20 reservas sin pagar a la vez y 4 veces cada límite del criterio 33), a ajustar con
   los datos reales del hosting. Si se aprueba, entra como criterio nuevo con su prueba protegida, en la 005b o en una
   historia propia. _Mientras tanto:_ solo el límite por /64.
+
+### Pendientes de respuesta del responsable (repaso de la 005b, 21/11/2026)
+
+Preguntas de negocio que salieron al repasar la 005b y que no resuelven `docs/decisiones.md`, los requerimientos ni esta
+spec. **Ninguna bloquea las pruebas protegidas de la 005b: mientras no haya respuesta, rige lo que ya dice la spec**
+(lo que dice "Mientras tanto"). Si una respuesta cambia algo, entra como criterio nuevo con su origen ("respuesta Bn")
+antes de tocar el código.
+
+Ya resueltas, sin pregunta nueva: quién cancela (`ADMIN` y `SECRETARIA`, DR-10), si se puede cancelar una solicitud
+vencida (sí, criterio 39) y si el cliente cancela desde su enlace (no, DR-9). El motivo de la cancelación no se muestra
+en el enlace (la vista de DR-9 no lo incluye).
+
+- **B1. ¿Se avisa al cliente cuando la academia cancela su solicitud?** No hay WhatsApp (D-08); el correo existe, pero
+  es opcional y hoy es simulado (D-19). _Propuesta:_ no se envía correo en la 005b. El cliente ve "Cancelada" en su
+  enlace, y lo normal es que la secretaria cancele después de hablar con él por teléfono. _Alternativa:_ un correo
+  "Tu solicitud fue cancelada" a los mismos destinatarios del enlace (alumno y apoderado, DR-13), con el código pero sin
+  el motivo (puede llevar notas internas), enviado sin esperar después de confirmar (criterios 51 y 52). _Mientras
+  tanto:_ sin correo.
+- **B2. ¿Qué pasa con la foto de una solicitud cancelada o vencida?** La spec deja la retención y el borrado de los datos
+  de solicitudes que no se pagaron para una política futura (Ley 29733, "Fuera de alcance" y "Riesgos aceptados"), y la
+  foto puede ser de un menor. _Propuesta:_ se conserva, como el resto de sus datos, hasta definir esa política antes de
+  salir a producción; así, si la persona vuelve (criterio 21 b), no tiene que subirla otra vez. _Alternativa:_ al cancelar
+  se borra también la foto (se limpia `foto_clave` y se borra el archivo después de confirmar). Para las vencidas haría
+  falta una tarea programada, que esta historia no tiene. _Mientras tanto:_ se conserva.
+- **B3. ¿Se conserva la foto cuando un cliente vuelve a inscribirse con su DNI (criterio 21 b)?** El reenvío de la 005a
+  reemplaza los datos personales, la ficha y el apoderado, pero no toca la foto. Si quien vuelve es un tercero (riesgo
+  aceptado en DR-14), la nueva solicitud muestra `fotoCargada: true` con la foto de la persona anterior.
+  _Propuesta:_ se conserva hasta que se suba otra. Es la foto de la persona de ese DNI, y si un tercero usó el DNI, esa
+  foto ayuda a notarlo en recepción y en el carnet (008). _Alternativa:_ el reenvío quita la foto (limpia `foto_clave` y
+  borra el archivo después de confirmar), como el resto de los datos; esto cambia el envío de la 005a y lleva su propia
+  prueba protegida. _Mientras tanto:_ se conserva (la 005a no cambia).
+- **B4. ¿Las inscripciones que hace la secretaria en recepción cuentan en los límites por conexión?** "Nueva
+  inscripción" usa el formulario público desde la PC de recepción (DR-10), así que todas sus inscripciones salen de una
+  misma conexión. Esa conexión puede tener como mucho 5 solicitudes sin pagar (DR-8), 10 envíos por hora y 10 fotos por
+  hora (DT-7). Pasa lo mismo con los clientes que usan el wifi de la academia. Hasta la 007 nadie paga, así que esas 5
+  reservas solo se liberan al vencer o si la secretaria las cancela. En un día de muchas inscripciones, recepción
+  quedaría bloqueada. _Propuesta:_ las inscripciones y las fotos enviadas con una sesión válida de `ADMIN` o `SECRETARIA`
+  de esa misma academia no cuentan en esos límites (la sesión ya identifica a quien inscribe). Se hace en la 007, junto
+  con el cobro en recepción y antes de publicar el formulario, como criterio nuevo con su prueba protegida. _Alternativas:_
+  (b) hacerlo ya en la 005b; (c) mantener los límites y que el administrador pueda subirlos en la configuración de su
+  academia (003). _Mientras tanto:_ los límites valen igual para recepción.
+- **B5. ¿Dónde toma o agrega la foto la secretaria (D-20, D-24)?** En la 005b la foto solo se sube en el formulario
+  público o desde el enlace de seguimiento, que exige el token. La secretaria no tiene el token de las solicitudes de
+  otros (y no debe guardarlo), y el panel no tiene "subir foto" ni captura con la cámara de la PC. _Propuesta:_ en la
+  005b, el paso de la foto del formulario permite elegir un archivo (en el celular, el navegador ofrece la cámara), y
+  sirve también cuando la secretaria abre "Nueva inscripción". Agregar la foto después y tomarla con la cámara de la PC
+  desde el panel va en la 008 (carnet), que es donde se ve la foto y el "Foto pendiente" (D-24). _Alternativa:_ sumar
+  en la 005b una ruta del panel (`PUT /api/solicitudes/{id}/foto`, con `REGISTRAR_INSCRIPCION_Y_COBRO`, el mismo proceso
+  de los criterios 35 a 37) y la captura con la cámara de la PC en el formulario. _Mientras tanto:_ lo de la propuesta.

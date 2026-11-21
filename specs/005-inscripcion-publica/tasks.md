@@ -250,47 +250,72 @@ T33 o después; T34 ataca todo.
 Se empieza con la 005a unida a `main`, en una rama nueva. No necesita migración (la de la 005a ya trae `foto_clave` y
 los estados `CANCELADA`).
 
+### Repaso de la especificación
+
+- [x] T47 · especificador · **[005b]** Repaso del 21/11/2026 con la 005a unida a `main` (PR #8): precisiones técnicas
+      PB1 a PB14 en la spec (definiciones de solicitud activa y estado visible; orden, códigos, cuerpos y límites de la
+      foto; formato de lo guardado; `AlmacenArchivos`; transacción, bloqueos y fallos de la foto; registro técnico; regla
+      del límite; lista, cancelación y ocupación exactas; web), contrato, impacto, riesgos y plan (secciones 8, 9, 11, 12
+      y 14); preguntas nuevas B1 a B5, que no bloquean (criterios 28, 33 a 40, 43, 44, 46 y 48, partes de la 005b)
+- [ ] T0b · responsable · **[005b]** Responder B1 a B5 (no bloquean: mientras tanto rige "Mientras tanto" de cada una)
+
 ### Pruebas protegidas (en rojo)
 
-- [ ] T6a · test-writer · **[005b]** Pruebas protegidas de la foto (tipos, firma, tamaño exacto de 5 MB y uno más,
-      dimensiones, imagen que no decodifica, recodificación sin EXIF ni GPS ni datos de más, poliglota, estado de la
-      solicitud, token ajeno, `fotoCargada` en `true` después de subirla), de `AlmacenArchivos` (claves con `..`,
-      absolutas, de otra academia, enlaces simbólicos) y de la atomicidad (transacción que falla borra el archivo nuevo;
-      dos subidas a la vez); límite de 10 por hora de la foto, con su contador aparte; registro técnico en memoria sin
-      datos sensibles al subir la foto, en un archivo nuevo (criterios 34 a 37 y las partes de la 005b de 28 y 33)
-- [ ] T6c · test-writer · **[005b]** Pruebas protegidas del panel: lista por rol y sin datos médicos, aislamiento y
-      `?academiaId=`, cancelación que libera el cupo, idempotente, 404 de otra academia, carrera del actor vigente
-      (criterios 38 y 39); actualización de la prueba protegida de dependencias permitidas del backend solo para sumar
-      `sharp` (criterio 127 de 001)
+- [ ] T6a · test-writer · **[005b]** Pruebas protegidas de la foto, desde la spec y los contratos públicos, en archivos
+      nuevos: el orden y los códigos del criterio 34 a a g (429, 400 por tipo y codificación, 413 con 5 242 881 bytes y
+      con un `Content-Length` grande, 5 242 880 bytes que pasan, 404 y 403 de academia, 404 del token con el cuerpo del
+      criterio 31, 409 por vencida, cancelada, fila `VENCIDA` del criterio 21 b y en el último milisegundo del mes, 400
+      por firma, imagen cortada y dimensiones en los bordes), mismo cuerpo en todos los 400, `fotoCargada` en `true`
+      después de subirla, nada cambia con un rechazo (criterio 34); recodificación con las comprobaciones del criterio 35
+      (formato, metadatos, tamaños, orientación 6, texto marcado, poliglota); `AlmacenArchivosDisco` sobre un directorio
+      temporal con las claves de rechazo, la academia ajena, el enlace simbólico (omitido con `EPERM`), `borrar`
+      idempotente y ninguna ruta que sirva el directorio (criterio 36); carreras deterministas y fallos del almacén del
+      criterio 37 a a f (con `overrideProvider(ALMACEN_ARCHIVOS)`); límite `foto` con su contador aparte, por /64 y con
+      la IPv4 mapeada (parte de la 005b de 33); registro en memoria en `trace` con la foto, `X-Token-Solicitud` y
+      `Referer`, y los rechazos (parte de la 005b de 28)
+- [ ] T6c · test-writer · **[005b]** Pruebas protegidas del panel, en archivos nuevos: lista con los permisos, el filtro
+      (valores, defecto, 400 en `estado`), el orden, el tope de 200, las claves exactas de cada elemento, los datos
+      actuales tras un 21 b, `?academiaId=` y el aislamiento (criterio 38); cancelación con el orden de comprobaciones,
+      la decisión por estado (fila `PENDIENTE_PAGO` vigente y vencida, `CANCELADA` sin escribir, fila `VENCIDA` con 409),
+      `reserva_vence_en` en `NULL`, la auditoría exacta y las pruebas a a g del criterio 39; actualización de la prueba
+      protegida de dependencias permitidas del backend solo para sumar `sharp` (criterio 127 de 001)
 - [ ] T7b · tester · **[005b]** Confirmar que T6a y T6c fallan por la razón esperada y que las protegidas de 001 a 005a
       siguen pasando. Commit del orquestador: "Pruebas protegidas (005b): foto y panel de solicitudes (en rojo)"
 
 ### Implementación
 
-- [ ] T15 · backend · **[005b]** `infraestructura/almacen-archivos` (interfaz y disco local, `ALMACEN_DIRECTORIO` en el
-      entorno y en `.env.example`), `sharp` en `backend/package.json` y en `scripts/lib/dependencias-backend.mjs`,
-      lector binario de la foto fuera del lector JSON, regla del límite de la foto en `instalarProteccionDePrefijos`
-      (con la clave de conexión del criterio 59),
-      `FotoService` y `PUT …/solicitudes/foto` (criterios 33 parte de la foto, 34 a 37)
+- [ ] T15 · backend · **[005b]** `packages/contratos/src/fotos.ts` (PB4); `infraestructura/almacen-archivos` (interfaz,
+      `ALMACEN_ARCHIVOS`, `AlmacenArchivosDisco`, módulo; `ALMACEN_DIRECTORIO` en el entorno y en `.env.example`);
+      `sharp` en `backend/package.json` y en `scripts/lib/dependencias-backend.mjs`; lector binario de la foto
+      (`cuerpo-imagen.ts`) y la ruta en `noLeerCuerpoEn` de `crear-app.ts`; regla `foto` en `LIMITES_PUBLICOS` (con
+      `'PUT'` en `LimitePublico.metodo`); `x-token-solicitud` en `RUTAS_REDACTADAS` y la prueba no protegida de largo 5;
+      estado visible común (PB2); `FotoService` y `PUT …/solicitudes/foto` con el orden de PB3 y la transacción de PB8
+      (criterios 28 y 33 partes de la foto, 34 a 37; plan, secciones 8, 9 y 14)
 - [ ] T16b · backend · **[005b]** Contratos del panel (`solicitudPanelSchema`, `respuestaListaSolicitudesSchema`,
-      `cancelarSolicitudSchema`, `filtroEstadoSolicitudesSchema`, `respuestaOcupacionSchema`); `GET /api/solicitudes` y
-      `POST /api/solicitudes/{id}/cancelar` (criterios 38, 39) y `GET /api/clases/ocupacion` (criterio 40, con prueba
-      no protegida de permisos y aislamiento)
-- [ ] T18b · frontend · **[005b]** Paso de la foto en el formulario (vista previa, avisos de tipo y tamaño, subida
-      después del 201) y "subir foto" en el seguimiento, con reintento; pruebas de componentes (partes de la 005b de 43
-      y 44)
-- [ ] T19 · frontend · **[005b]** Panel: "Solicitudes de inscripción" (lista, filtro, cancelar con motivo), "Nueva
-      inscripción"; ocupación "inscritos / aforo" en la grilla y diálogos de DR-5 en el formulario de clases; pruebas de
-      componentes (criterio 46)
+      `respuestaSolicitudPanelSchema`, `cancelarSolicitudSchema`, `filtroEstadoSolicitudesSchema`,
+      `respuestaOcupacionSchema`); `GET /api/solicitudes` y `POST /api/solicitudes/{id}/cancelar` (criterios 38, 39) y
+      `GET /api/clases/ocupacion` con `contarInscritos` y `contarOcupacion` (criterio 40, con prueba no protegida de
+      permisos, aislamiento, clases inactivas y una matrícula del mes siguiente que cuenta en `inscritos` y no en
+      `cuposRestantes`) (plan, sección 11)
+- [ ] T18b · frontend · **[005b]** Paso de la foto en el formulario (vista previa, avisos de tipo y tamaño con
+      `fotos.ts`, subida después del 201 con el token en `X-Token-Solicitud`) y "subir foto" en el seguimiento, solo con
+      la vista completa, con reintento y los mensajes de 400, 409, 413 y 429; pruebas de componentes con lo que fija PB14
+      (partes de la 005b de 43 y 44)
+- [ ] T19 · frontend · **[005b]** Panel: "Solicitudes de inscripción" (lista, filtro, cancelar con motivo, 409 y 404),
+      "Nueva inscripción" con `usuario.academia.nombreCorto`; ocupación "inscritos / aforo" en la grilla y diálogos de
+      DR-5 en el formulario de clases; claves con la identidad de la sesión; pruebas de componentes con lo que fija PB14
+      (criterio 46)
 - [ ] T19b · tester · **[005b]** Pruebas protegidas en verde y suite completa
 
 ### Ataque
 
 - [ ] T20b · adversarial · **[005b]** Atacar 34 a 39: imágenes maliciosas (bombas de descompresión, poliglotas, EXIF,
       tipos cambiados, `Content-Encoding`), rutas y claves de archivo, carreras con la foto y con la cancelación (envío y
-      cancelación del mismo cliente, cancelación y `PATCH` de aforo sobre la misma clase), token de otra academia,
-      lista y cancelación con ids de otra academia o con roles sin permiso. Mismo ciclo por cada falla, hasta una ronda
-      sin fallas.
+      cancelación del mismo cliente, envío y foto del mismo DNI, foto y cancelación, cancelación y `PATCH` de aforo sobre
+      la misma clase), token de otra academia, la foto en el último milisegundo del mes y desde el enlace de una
+      solicitud anterior (21 b), `X-Token-Solicitud` en otras rutas y en los errores, lista y cancelación con ids de otra
+      academia o con roles sin permiso, y el parámetro `estado` repetido o raro. Mismo ciclo por cada falla, hasta una
+      ronda sin fallas.
 
 ### Revisión y cierre
 
@@ -300,9 +325,11 @@ los estados `CANCELADA`).
       la 005b (parte de 48)
 - [ ] T23b · tester · **[005b]** Suite completa, lint y verificación de tipos, también la integración continua en Windows
       por `sharp`
-- [ ] T24b · documentador · **[005b]** Commit, tareas marcadas, `docs/arquitectura.md` (`AlmacenArchivos` y la regla
-      "Archivos"), `README.md` y guía de uso (panel de solicitudes y foto), `.env.example` con `ALMACEN_DIRECTORIO`;
-      005b y la historia 005 como ✅ al unirla (parte de 48)
+- [ ] T24b · documentador · **[005b]** Commit, tareas marcadas, `docs/arquitectura.md` (la foto, `AlmacenArchivos` con
+      su formato de clave, la lista, la cancelación y la ocupación; "Lo que todavía no trae" sin lo de la 005b; la regla
+      "Archivos"), `README.md` y guía de uso (panel de solicitudes y foto), `.env.example` con `ALMACEN_DIRECTORIO`; las
+      preguntas B1 a B5 que sigan abiertas, en `specs/backlog.md` junto a la historia que las decide (B4 en la 007, B5 en
+      la 008); 005b y la historia 005 como ✅ al unirla (parte de 48)
 
 ### Solo ruta crítica (005b)
 
