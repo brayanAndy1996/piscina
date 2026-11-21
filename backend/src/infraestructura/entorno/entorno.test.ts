@@ -11,6 +11,9 @@ const URL_APP = 'postgresql://aquagestion_app:clave-secreta@127.0.0.1:5432/aquag
 // Criterio 91: un secreto que producción aceptaría no se escribe en el repositorio; se genera al ejecutar.
 const JWT = randomBytes(32).toString('base64url');
 const BASE = { DATABASE_URL_APP: URL_APP, JWT_SECRETO: JWT };
+// La raíz del repositorio: este archivo está en backend/src/infraestructura/entorno/.
+const RAIZ_DEL_REPOSITORIO = path.resolve(__dirname, '..', '..', '..', '..');
+const RAIZ_ALMACEN_POR_DEFECTO = path.join(RAIZ_DEL_REPOSITORIO, 'backend', 'almacenamiento');
 
 function mensajes(env: Record<string, string | undefined>): readonly string[] {
   try {
@@ -30,7 +33,23 @@ describe('validarEntorno', () => {
       JWT_SECRETO: JWT,
       PUERTO_API: 3000,
       NODE_ENV: undefined,
+      ALMACEN_DIRECTORIO: RAIZ_ALMACEN_POR_DEFECTO,
     });
+  });
+
+  it('ALMACEN_DIRECTORIO: sin valor es backend/almacenamiento bajo la raíz del repositorio; una ruta relativa se toma desde esa raíz; una absoluta se respeta', () => {
+    expect(validarEntorno({ ...BASE, ALMACEN_DIRECTORIO: '   ' }).ALMACEN_DIRECTORIO).toBe(RAIZ_ALMACEN_POR_DEFECTO);
+    expect(validarEntorno({ ...BASE, ALMACEN_DIRECTORIO: 'datos/fotos' }).ALMACEN_DIRECTORIO).toBe(
+      path.resolve(RAIZ_DEL_REPOSITORIO, 'datos', 'fotos'),
+    );
+    const absoluta = path.resolve(path.parse(process.cwd()).root, 'datos-aquagestion');
+    expect(validarEntorno({ ...BASE, ALMACEN_DIRECTORIO: absoluta }).ALMACEN_DIRECTORIO).toBe(absoluta);
+  });
+
+  it('ALMACEN_DIRECTORIO: un valor con un byte nulo es un problema que nombra la variable', () => {
+    const problemas = mensajes({ ...BASE, ALMACEN_DIRECTORIO: 'fotos\u0000x' });
+    expect(problemas).toHaveLength(1);
+    expect(problemas[0]).toContain('ALMACEN_DIRECTORIO');
   });
 
   it('lee PUERTO_API, NODE_ENV y DATABASE_POOL_MAX', () => {

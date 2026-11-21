@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import { diaSemanaSchema, horaBloqueSchema, nivelNatacionSchema } from './horario';
 import { clasePublicaSchema } from './inscripcion';
+import { textoVisibleSchema } from './texto';
 
 /**
  * Seguimiento de la solicitud de inscripción (spec 005, criterios 29 a 32; D-05, D-27). El cliente sigue su solicitud con un enlace
@@ -103,3 +105,67 @@ export const respuestaConsultaSolicitudSchema = z.strictObject({
   academia: z.strictObject({ nombre: z.string(), telefono: z.string().nullable() }),
 });
 export type RespuestaConsultaSolicitud = z.infer<typeof respuestaConsultaSolicitudSchema>;
+
+/**
+ * Panel de solicitudes de inscripción (spec 005b, criterios 38 y 39; PB11 y PB12). Lo ven `ADMIN` y `SECRETARIA`: lleva datos de contacto
+ * del alumno, pero nunca datos médicos, apoderado, consentimientos, foto, IP ni token.
+ */
+
+/** Filtro de `GET /api/solicitudes?estado=` (por estado visible): `ACTIVAS` si falta; cualquier otro valor, o un arreglo, es un error. */
+export const FILTROS_ESTADO_SOLICITUDES = ['ACTIVAS', 'VENCIDAS', 'CANCELADAS', 'TODAS'] as const;
+export const filtroEstadoSolicitudesSchema = z
+  .enum(FILTROS_ESTADO_SOLICITUDES, 'El estado debe ser ACTIVAS, VENCIDAS, CANCELADAS o TODAS.')
+  .default('ACTIVAS');
+export type FiltroEstadoSolicitudes = z.infer<typeof filtroEstadoSolicitudesSchema>;
+
+/**
+ * La consulta de `GET /api/solicitudes`: solo se lee `estado`; los demás parámetros se ignoran (`?academiaId=` no cambia de academia). La
+ * API arma `{ estado }` con `undefined` si no viene, el texto si viene una vez y un arreglo si se repite o se escribe como `estado[]=…`
+ * (que es un error).
+ */
+export const consultaListaSolicitudesSchema = z.object({ estado: filtroEstadoSolicitudesSchema });
+export type ConsultaListaSolicitudes = z.infer<typeof consultaListaSolicitudesSchema>;
+
+/** Cada solicitud de la lista, con las claves exactas del criterio 38 (estricto). */
+export const solicitudPanelSchema = z.strictObject({
+  id: z.uuid(),
+  codigo: z.string(),
+  estado: estadoSolicitudSchema,
+  creadaEn: z.iso.datetime(),
+  /** ISO si el estado visible es `PENDIENTE_PAGO` y la matrícula tiene vencimiento; si no, `null`. */
+  reservaVenceEn: z.iso.datetime().nullable(),
+  nombres: z.string(),
+  apellidos: z.string(),
+  dni: z.string(),
+  telefono: z.string(),
+  menorDeEdad: z.boolean(),
+  plan: z.strictObject({ id: z.uuid(), nombre: z.string() }),
+  clases: z.array(
+    z.strictObject({
+      id: z.uuid(),
+      nivel: nivelNatacionSchema,
+      diaSemana: diaSemanaSchema,
+      horaInicio: horaBloqueSchema,
+      horaFin: z.string(),
+    }),
+  ),
+  /** `AAAA-MM`. */
+  mes: z.string().regex(/^[0-9]{4}-(0[1-9]|1[0-2])$/, 'El mes debe tener el formato AAAA-MM.'),
+  clasesTotales: z.number().int().min(0),
+  /** Texto con dos decimales (el ajustado si lo hay, si no el calculado). */
+  monto: z.string().regex(/^[0-9]+\.[0-9]{2}$/, 'El monto debe ser un texto con dos decimales.'),
+});
+export type SolicitudPanel = z.infer<typeof solicitudPanelSchema>;
+
+export const respuestaListaSolicitudesSchema = z.strictObject({ solicitudes: z.array(solicitudPanelSchema) });
+export type RespuestaListaSolicitudes = z.infer<typeof respuestaListaSolicitudesSchema>;
+
+/** Respuesta de la cancelación: la solicitud ya con `estado: 'CANCELADA'` y `reservaVenceEn: null`. */
+export const respuestaSolicitudPanelSchema = z.strictObject({ solicitud: solicitudPanelSchema });
+export type RespuestaSolicitudPanel = z.infer<typeof respuestaSolicitudPanelSchema>;
+
+/** `POST /api/solicitudes/{id}/cancelar`: estricto; el motivo de 3 a 200 caracteres visibles, recortado. */
+export const cancelarSolicitudSchema = z.strictObject({
+  motivo: textoVisibleSchema({ sujeto: 'El motivo', min: 3, max: 200 }),
+});
+export type CancelarSolicitud = z.infer<typeof cancelarSolicitudSchema>;

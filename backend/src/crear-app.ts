@@ -5,6 +5,7 @@ import type { Request, Response } from 'express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule, type OpcionesApp } from './app.module';
+import { esSubidaDeFoto, instalarLectorDeImagen } from './comun/http/cuerpo-imagen';
 import { instalarLectorDeCuerpos } from './comun/http/cuerpos';
 import { ERROR_NO_ENCONTRADO } from './comun/filtros/filtro-errores';
 import type { Entorno } from './infraestructura/entorno';
@@ -31,8 +32,16 @@ export async function configurarApp<T extends INestApplication>(app: T): Promise
   instalarProteccionDeAcademia(express, PREFIJO_API);
   // Después de los de los prefijos: sin sesión, 401 antes de mirar el cuerpo; el tipo de contenido se rechaza antes de
   // leerlo y el lector JSON es el único (criterios 74 y 75).
-  // `DELETE /api/sesion` no lee el cuerpo: cierra la sesión con cualquier cuerpo (criterio 54).
-  instalarLectorDeCuerpos(express, PREFIJO_API, (solicitud, ruta) => esCierreDeSesion(solicitud.method, ruta));
+  // La foto de la solicitud (`PUT /api/a/{nombreCorto}/solicitudes/foto`, 005b) tiene su propio lector binario, que decide el tipo, la
+  // codificación y el tamaño antes de buscar la academia; va después de los límites por conexión (que cuentan antes de leer el cuerpo)
+  // y antes del lector JSON, que no la toca.
+  instalarLectorDeImagen(express, PREFIJO_API);
+  // `DELETE /api/sesion` no lee el cuerpo: cierra la sesión con cualquier cuerpo (criterio 54). Tampoco la foto, que ya lo leyó el suyo.
+  instalarLectorDeCuerpos(
+    express,
+    PREFIJO_API,
+    (solicitud, ruta) => esCierreDeSesion(solicitud.method, ruta) || esSubidaDeFoto(solicitud.method, ruta),
+  );
   express.enableShutdownHooks();
   await express.init();
   // Nest solo atiende lo que está bajo el prefijo `/api`: lo demás (por ejemplo `GET /salud`) lo contesta aquí,

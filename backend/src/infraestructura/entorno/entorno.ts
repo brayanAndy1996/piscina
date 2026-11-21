@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { leerNodeEnv, type NodeEnv } from './node-env';
 import { parametrosDeConexionProhibidos } from './url-postgres';
 
@@ -12,6 +13,11 @@ export interface Entorno {
   readonly PUERTO_API: number;
   /** Ausente (se comporta fuera de producción) o exactamente `development`, `test` o `production` (criterio 78). */
   readonly NODE_ENV: NodeEnv | undefined;
+  /**
+   * Carpeta donde el almacén de disco local guarda los archivos (las fotos, spec 005b; D-21). Siempre una ruta absoluta: una ruta relativa se
+   * toma desde la raíz del repositorio (donde está el `.env`). Por defecto, `backend/almacenamiento`, que git ignora.
+   */
+  readonly ALMACEN_DIRECTORIO: string;
 }
 
 /** Error de configuración: agrupa los problemas encontrados. Los mensajes nombran la variable, nunca su valor. */
@@ -38,6 +44,10 @@ export const JWT_SECRETOS_PUBLICOS: readonly string[] = [
   'secreto-solo-para-pruebas-de-aquagestion-0123456789',
   'secreto-solo-para-pruebas-e2e-de-aquagestion-0123456789',
 ];
+
+/** La raíz del repositorio (donde vive el `.env`): desde `src/infraestructura/entorno/` queda cuatro carpetas arriba. */
+const RAIZ_DEL_REPOSITORIO = path.resolve(__dirname, '..', '..', '..', '..');
+const ALMACEN_DIRECTORIO_POR_DEFECTO = path.join('backend', 'almacenamiento');
 
 const PUERTO_API_POR_DEFECTO = 3000;
 const POOL_MAXIMO_POR_DEFECTO = 10;
@@ -126,6 +136,10 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
     else problemas.push('La variable PUERTO_API debe ser un número entero entre 1 y 65535.');
   }
 
+  const almacenTexto = env['ALMACEN_DIRECTORIO']?.trim();
+  if (almacenTexto?.includes('\0')) problemas.push('La variable ALMACEN_DIRECTORIO no es una ruta válida.');
+  const almacenDirectorio = path.resolve(RAIZ_DEL_REPOSITORIO, almacenTexto || ALMACEN_DIRECTORIO_POR_DEFECTO);
+
   if (problemas.length > 0 || !urlApp || !secreto) throw new ErrorEntorno(problemas);
   return {
     DATABASE_URL_APP: urlApp,
@@ -133,5 +147,6 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
     JWT_SECRETO: secreto,
     PUERTO_API: puerto,
     NODE_ENV: nodeEnv,
+    ALMACEN_DIRECTORIO: almacenDirectorio,
   };
 }
