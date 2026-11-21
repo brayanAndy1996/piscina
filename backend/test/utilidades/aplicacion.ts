@@ -39,6 +39,10 @@ export function crearEntornoDePruebas(variables: Record<string, string | undefin
     // Compatibilidad con la historia 000: su `validarEntorno` anterior exige `DATABASE_URL`. La 001 lo ignora (la API
     // ya no lo lee, criterio 5). Es siempre una URL válida, para que ninguna prueba falle por esta variable.
     DATABASE_URL: esUrlPostgres(urlApp) ? urlApp : (process.env['DATABASE_URL_PRUEBAS'] ?? URL_SIN_USO),
+    // El almacén de archivos de las pruebas (005, criterio 63): si el proceso lo fija, se respeta; si no, manda el valor por defecto.
+    ...(process.env['ALMACEN_DIRECTORIO'] === undefined
+      ? {}
+      : { ALMACEN_DIRECTORIO: process.env['ALMACEN_DIRECTORIO'] }),
     ...variables,
   });
 }
