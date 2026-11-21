@@ -33,6 +33,8 @@ const FIRMA_JPEG = Buffer.from([0xff, 0xd8, 0xff]);
 const FIRMA_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const FORMATO_DE_SHARP: Readonly<Record<FotoTipo, string>> = { 'image/jpeg': 'jpeg', 'image/png': 'png' };
 const CALIDAD_JPEG = 85;
+/** Lo máximo que espera la relectura de `resolverConfirmacionIncierta` a que termine la transacción de confirmación (criterio 64). */
+const FOTO_ESPERA_RELECTURA_MS = 5000;
 
 /** Los rechazos que decide la propia transacción de la foto (409, 404 de la solicitud o de la academia): con ellos es seguro que no se confirmó nada. */
 function esRechazoDeLaTransaccion(error: unknown): boolean {
@@ -134,9 +136,11 @@ export class FotoService {
 
   /**
    * La transacción de confirmación terminó con un error que no decidió ella (de la base, de la conexión, del `COMMIT`): no se sabe si el
-   * `COMMIT` llegó (criterio 61 b). No se borra ningún archivo todavía: se relee `foto_clave` en una transacción nueva y de solo lectura.
-   * Si es la clave nueva, la foto quedó (204 y se borra la anterior); si es otra cosa, no quedó (se borra la nueva y se relanza el error
-   * original, 500); si la relectura falla, no se borra nada y se relanza el error original. La clave nueva lleva un UUID nuevo: si no
+   * `COMMIT` llegó (criterio 61 b). No se borra ningún archivo todavía: se relee `foto_clave` en una transacción nueva de la academia que
+   * no escribe nada, con `FOR SHARE` (espera a que la transacción de confirmación termine) y `lock_timeout` de `FOTO_ESPERA_RELECTURA_MS`
+   * (criterio 64); no es `READ ONLY` porque PostgreSQL no admite `FOR SHARE` ahí. Si es la clave nueva, la foto quedó (204 y se borra la
+   * anterior); si es otra cosa, no quedó (se borra la nueva y se relanza el error original, 500); si la relectura falla o la espera se agota
+   * (`55P03`), no se borra nada y se relanza el error original (criterio 61 b3). La clave nueva lleva un UUID nuevo: si no
    * está ahora, no lo estará nunca, y borrarla es seguro.
    */
   private async resolverConfirmacionIncierta(
@@ -156,12 +160,18 @@ export class FotoService {
     }
     let guardada: boolean;
     try {
-      guardada = await this.baseDatos.conAcademia(academiaId, async (tx) => {
-        const filas = await tx.cliente.$queryRaw<{ foto_clave: string | null }[]>`
+      guardada = await this.baseDatos.conAcademia(
+        academiaId,
+        async (tx) => {
+          const filas = await tx.cliente.$queryRaw<{ foto_clave: string | null }[]>`
           SELECT foto_clave FROM alumnos
-           WHERE academia_id = ${tx.academiaId}::uuid AND id = ${alumnoId}::uuid`;
-        return filas[0]?.foto_clave === clave;
-      });
+           WHERE academia_id = ${tx.academiaId}::uuid AND id = ${alumnoId}::uuid
+             FOR SHARE`;
+          return filas[0]?.foto_clave === clave;
+        },
+        // `lock_timeout` local a esta transacción (como `SET LOCAL`, que los módulos no pueden ejecutar): la espera agotada es `55P03` y va a b3.
+        { esperaMaximaDeBloqueoMs: FOTO_ESPERA_RELECTURA_MS },
+      );
     } catch {
       // Ni la base ni la academia responden: no se sabe nada, no se borra nada (queda, como mucho, un archivo sin referencia).
       throw errorOriginal;

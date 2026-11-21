@@ -47,7 +47,7 @@ export const JWT_SECRETOS_PUBLICOS: readonly string[] = [
 
 /** La raíz del repositorio (donde vive el `.env`): desde `src/infraestructura/entorno/` queda cuatro carpetas arriba. */
 const RAIZ_DEL_REPOSITORIO = path.resolve(__dirname, '..', '..', '..', '..');
-const ALMACEN_DIRECTORIO_POR_DEFECTO = path.join('backend', 'almacenamiento');
+const ALMACEN_DIRECTORIO_POR_DEFECTO = ['backend', 'almacenamiento'];
 /** Las carpetas que sirve la web (o copia al compilar): las mismas de `server.fs.allow` de `frontend/vite.config.ts`, con `packages/` entera. */
 const CARPETAS_DE_LA_WEB = ['frontend', 'packages', 'node_modules'];
 
@@ -67,11 +67,75 @@ function esUrlPostgres(valor: string): boolean {
   }
 }
 
-/** ¿La ruta es la carpeta o queda debajo? `path.relative` resuelve las barras y la unidad; en Windows no se distinguen mayúsculas. */
-function estaDentroDe(carpeta: string, ruta: string): boolean {
-  const windows = path.sep === '\\';
-  const relativa = path.relative(windows ? carpeta.toLowerCase() : carpeta, windows ? ruta.toLowerCase() : ruta);
-  return relativa === '' || (relativa !== '..' && !relativa.startsWith(`..${path.sep}`) && !path.isAbsolute(relativa));
+const ALMACEN_NO_ES_RUTA = 'La variable ALMACEN_DIRECTORIO no es una ruta válida.';
+const ALMACEN_DENTRO_DE_LA_WEB =
+  'La variable ALMACEN_DIRECTORIO no puede estar dentro de las carpetas que sirve la web.';
+/** Nombre corto 8.3 de Windows (`NODE_M~1`, `NODE_M~1.JS`): la misma expresión que usa Vite para rechazarlos. */
+const NOMBRE_CORTO_8_3 = /^[^~.]{1,6}~\d+(\.[^~.]{0,3})?$/;
+
+/** ¿Trae un carácter de control (U+0000 a U+001F)? Se mira por código y no con una expresión regular. */
+function tieneCaracterDeControl(valor: string): boolean {
+  for (let i = 0; i < valor.length; i += 1) if (valor.charCodeAt(i) <= 0x1f) return true;
+  return false;
+}
+
+/**
+ * Formas que Windows acepta y `path.relative` no entiende (criterio 66 b): prefijos con dos separadores (`\\?\`, `\\.\`, rutas de red),
+ * `<>"|?*` (también cubre `\??\`), `:` fuera de la unidad del principio (flujos alternativos, rutas relativas a una unidad) y segmentos
+ * que terminan en punto o en espacio (Windows los quita: `frontend.\public` es `frontend\public`).
+ */
+function esFormaInvalidaDeWindows(valor: string): boolean {
+  if (/^[\\/]{2}/.test(valor)) return true;
+  if (/[<>"|?*]/.test(valor)) return true;
+  if (valor.replace(/^[A-Za-z]:(?=[\\/])/, '').includes(':')) return true;
+  return valor.split(/[\\/]/).some((segmento) => segmento !== '.' && segmento !== '..' && /[. ]$/.test(segmento));
+}
+
+/** Raíz (unidad o `/`) y segmentos de una ruta ya resuelta, en minúsculas: la comparación no distingue mayúsculas en ningún sistema. */
+function partesDeLaRuta(ruta: path.PlatformPath, resuelta: string): { raiz: string; segmentos: string[] } {
+  const { root } = ruta.parse(resuelta);
+  return {
+    raiz: root.toLowerCase(),
+    segmentos: resuelta
+      .slice(root.length)
+      .split(ruta.sep)
+      .filter((segmento) => segmento !== '')
+      .map((segmento) => segmento.toLowerCase()),
+  };
+}
+
+/**
+ * ¿La ruta es la carpeta o queda debajo? Compara por segmentos, sin distinguir mayúsculas. Con `path.win32`, un segmento de la ruta con
+ * forma de nombre corto 8.3 coincide con cualquier segmento de la carpeta en esa posición (`NODE_M~1` puede ser `node_modules`).
+ */
+function estaDentroDe(ruta: path.PlatformPath, carpeta: string, resuelta: string): boolean {
+  const de = partesDeLaRuta(ruta, carpeta);
+  const en = partesDeLaRuta(ruta, resuelta);
+  if (de.raiz !== en.raiz || en.segmentos.length < de.segmentos.length) return false;
+  const conNombresCortos = ruta === path.win32;
+  return de.segmentos.every(
+    (segmento, i) => segmento === en.segmentos[i] || (conNombresCortos && NOMBRE_CORTO_8_3.test(en.segmentos[i] ?? '')),
+  );
+}
+
+/**
+ * Resuelve `ALMACEN_DIRECTORIO` y rechaza lo que la web serviría (criterio 66, decisión AB2-3). Es pura: `ruta` es `path.win32` o
+ * `path.posix`, así se prueba igual en cualquier sistema. Un solo problema por valor, en este orden: carácter de control, formas de Windows
+ * (solo con `path.win32`), carpetas de la web. Los problemas nombran la variable y no muestran la ruta.
+ */
+export function resolverAlmacenDirectorio(
+  valor: string | undefined,
+  opciones: { raiz: string; ruta: path.PlatformPath },
+): { directorio: string } | { problema: string } {
+  const { raiz, ruta } = opciones;
+  const texto = valor?.trim() ?? '';
+  if (tieneCaracterDeControl(texto)) return { problema: ALMACEN_NO_ES_RUTA };
+  if (ruta === path.win32 && esFormaInvalidaDeWindows(texto)) return { problema: ALMACEN_NO_ES_RUTA };
+  const directorio = ruta.resolve(raiz, texto || ruta.join(...ALMACEN_DIRECTORIO_POR_DEFECTO));
+  if (CARPETAS_DE_LA_WEB.some((carpeta) => estaDentroDe(ruta, ruta.join(raiz, carpeta), directorio))) {
+    return { problema: ALMACEN_DENTRO_DE_LA_WEB };
+  }
+  return { directorio };
 }
 
 /** Reglas de `JWT_SECRETO` en producción (criterio 79). Los caracteres se cuentan por punto de código. */
@@ -145,12 +209,8 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
     else problemas.push('La variable PUERTO_API debe ser un número entero entre 1 y 65535.');
   }
 
-  const almacenTexto = env['ALMACEN_DIRECTORIO']?.trim();
-  if (almacenTexto?.includes('\0')) problemas.push('La variable ALMACEN_DIRECTORIO no es una ruta válida.');
-  const almacenDirectorio = path.resolve(RAIZ_DEL_REPOSITORIO, almacenTexto || ALMACEN_DIRECTORIO_POR_DEFECTO);
-  if (CARPETAS_DE_LA_WEB.some((carpeta) => estaDentroDe(path.join(RAIZ_DEL_REPOSITORIO, carpeta), almacenDirectorio))) {
-    problemas.push('La variable ALMACEN_DIRECTORIO no puede estar dentro de las carpetas que sirve la web.');
-  }
+  const almacen = resolverAlmacenDirectorio(env['ALMACEN_DIRECTORIO'], { raiz: RAIZ_DEL_REPOSITORIO, ruta: path });
+  if ('problema' in almacen) problemas.push(almacen.problema);
 
   if (problemas.length > 0 || !urlApp || !secreto) throw new ErrorEntorno(problemas);
   return {
@@ -159,6 +219,6 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
     JWT_SECRETO: secreto,
     PUERTO_API: puerto,
     NODE_ENV: nodeEnv,
-    ALMACEN_DIRECTORIO: almacenDirectorio,
+    ALMACEN_DIRECTORIO: 'directorio' in almacen ? almacen.directorio : '',
   };
 }
