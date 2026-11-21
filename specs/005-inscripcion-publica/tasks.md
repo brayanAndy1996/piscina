@@ -425,7 +425,7 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
       segmentos sin mayúsculas en todos los sistemas, nombres cortos como comodín con `path.win32`) y `validarEntorno`
       que la usa; ajuste de la prueba no protegida `entorno.test.ts` si fija la distinción de mayúsculas en Linux
       (criterio 66; plan, sección 9)
-- [ ] T63 · tester · **[005b]** Pruebas protegidas de la 005b (también las de T49 y T58) en verde, suite completa, lint
+- [x] T63 · tester · **[005b]** Pruebas protegidas de la 005b (también las de T49 y T58) en verde, suite completa, lint
       y verificación de tipos, también en Windows (la del 62 b con el directorio temporal con nombre corto)
 - [x] T64 · adversarial · **[005b]** Ronda 3 sobre los criterios críticos de la 005b, con la spec y el código, incluidos
       64 a 66: `COMMIT` retenido en otros puntos (antes del `UPDATE`, con el `UPDATE` en camino), relectura con la
@@ -449,7 +449,7 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
       (de la 005a ni de la 005b) _(verificado con `verificar-pruebas-protegidas` y revisión a mano de cada commit)_
 - [x] T22b · revisor · **[005b]** Comparar con la spec (criterios de la 005b) y las reglas; verificar la documentación de
       la 005b (parte de 48) _(hecha: la revisión no encontró bloqueos)_
-- [ ] T23b · tester · **[005b]** Suite completa, lint y verificación de tipos, también la integración continua en Windows
+- [x] T23b · tester · **[005b]** Suite completa, lint y verificación de tipos, también la integración continua en Windows
       por `sharp`
 - [x] T24b · documentador · **[005b]** Commit, tareas marcadas, `docs/arquitectura.md` (la foto, `AlmacenArchivos` con
       su formato de clave, la lista, la cancelación y la ocupación; "Lo que todavía no trae" sin lo de la 005b; la regla
@@ -461,6 +461,6 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
 ### Solo ruta crítica (005b)
 
 - [x] Pruebas escritas por test-writer y confirmadas en rojo _(T7b, T50 y T59)_
-- [ ] Pruebas en verde tras la implementación _(T19b y T56 hechas; falta T63, después de las correcciones de la ronda
-      2, también en Windows)_
+- [x] Pruebas en verde tras la implementación _(T19b, T56 y T63: suite completa en verde el 21/11/2026; Windows en la CI
+      del PR)_
 - [x] Ataque adversarial sin fallas abiertas _(ronda 3, T64)_
