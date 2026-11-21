@@ -42,7 +42,13 @@ export default defineConfig({
       },
       {
         root: 'eslint',
-        test: { ...comun, name: 'eslint', include: ['*.test.mjs'] },
+        test: {
+          ...comun,
+          name: 'eslint',
+          include: ['*.test.mjs'],
+          // Varias pruebas pasan ESLint por todo backend/src; en la CI de Windows superan los 5 s por defecto.
+          testTimeout: 60_000,
+        },
       },
       {
         root: 'scripts',
