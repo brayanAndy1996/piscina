@@ -11,7 +11,7 @@ import {
   sembrarSolicitud,
   tokenAleatorio,
 } from '../../utilidades/inscripciones';
-import { pedir } from '../../utilidades/inscripciones-ronda1';
+import { desde, pedir } from '../../utilidades/inscripciones-ronda1';
 import {
   type AppConAlmacen,
   crearAppConAlmacen,
@@ -39,6 +39,9 @@ describe('el registro técnico de la subida de la foto no lleva datos sensibles 
       nivelRegistro: 'trace',
       destinoRegistro: destino,
       conLimites: true,
+      // La IP sale de `X-Forwarded-For`: la primera prueba agota las 10 subidas por hora desde su propia IP y las demás no se ven afectadas
+      // (el límite usa el tiempo real, el reloj fijo no lo reinicia).
+      ipPorCabecera: true,
       ahora: AHORA_005,
     });
   });
@@ -82,7 +85,7 @@ describe('el registro técnico de la subida de la foto no lleva datos sensibles 
     });
     const referer = (token: string) => `https://academia.test/a/academia-a/solicitud/${token}`;
     const foto = await jpeg(600, 400, { gps: true, comentario: TEXTO_MARCADO, orientacion: 1 });
-    const cabeceras = (token: string) => ({ referer: referer(token) });
+    const cabeceras = (token: string) => ({ referer: referer(token), ...desde('203.0.113.28') });
     const subir = (token: string, cuerpo: Buffer, extra: Parameters<typeof subirFoto>[2] = {}) =>
       subirFoto(ctx, 'academia-a', { token, cuerpo, headers: cabeceras(token), tipo: 'image/jpeg', ...extra });
 

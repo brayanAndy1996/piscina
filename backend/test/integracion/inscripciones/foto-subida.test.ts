@@ -330,7 +330,8 @@ describe('subida de la foto de la solicitud (criterio 34)', () => {
         ['un carácter de más', { token: `${cliente.token}A` }],
         ['un carácter de menos', { token: cliente.token.slice(0, -1) }],
         ['otro alfabeto', { token: `${cliente.token.slice(0, -1)}+` }],
-        ['con espacios', { token: ` ${cliente.token} ` }],
+        // Los espacios de los extremos no se pueden probar: Node los recorta (OWS de HTTP) antes de que el servidor vea el valor.
+        ['con un espacio dentro', { token: `${cliente.token.slice(0, 20)} ${cliente.token.slice(21)}` }],
         ['inexistente', { token: tokenAleatorio() }],
         ['de otra academia', { token: deB.token }],
       ];
@@ -692,26 +693,28 @@ describe('subida de la foto de la solicitud (criterio 34)', () => {
   describe('otros métodos', () => {
     it('criterio 34: GET, POST, PATCH y DELETE sobre la dirección de la foto responden como una ruta inexistente', async () => {
       const cliente = await sembrar();
-      const inexistente = await subirFoto(ctx, 'academia-a', {
-        metodo: 'PUT',
-        token: cliente.token,
-        cuerpo: png(100, 100),
-        ruta: rutaPublica('academia-a', '/solicitudes/no-existe-ninguna-ruta'),
-      });
-      expect(inexistente.status).toBe(404);
+      const rutaInexistente = rutaPublica('academia-a', '/solicitudes/no-existe-ninguna-ruta');
+      // La ruta de la foto solo existe para PUT. Cada método se compara con el mismo método y el mismo cuerpo sobre una ruta
+      // inexistente (con cuerpo no JSON, el criterio 74 de la 001 responde 400 en toda la API) y, sin cuerpo, con un 404 de ruta.
+      for (const conCuerpo of [true, false]) {
+        for (const metodo of ['GET', 'POST', 'PATCH', 'DELETE']) {
+          const opciones = {
+            metodo,
+            token: cliente.token,
+            cuerpo: conCuerpo && metodo !== 'GET' && metodo !== 'DELETE' ? png(100, 100) : undefined,
+            tipo: conCuerpo && metodo !== 'GET' && metodo !== 'DELETE' ? 'image/png' : null,
+          };
+          const etiqueta = `${metodo}${opciones.cuerpo ? ' con cuerpo' : ' sin cuerpo'}`;
+          const antes = await estado();
+          const inexistente = await subirFoto(ctx, 'academia-a', { ...opciones, ruta: rutaInexistente });
+          const respuesta = await subirFoto(ctx, 'academia-a', opciones);
 
-      for (const metodo of ['GET', 'POST', 'PATCH', 'DELETE']) {
-        const antes = await estado();
-        const respuesta = await subirFoto(ctx, 'academia-a', {
-          metodo,
-          token: cliente.token,
-          cuerpo: metodo === 'GET' || metodo === 'DELETE' ? undefined : png(100, 100),
-          tipo: metodo === 'GET' || metodo === 'DELETE' ? null : 'image/png',
-        });
-
-        expect(respuesta.status, `${metodo}: ${respuesta.texto}`).toBe(inexistente.status);
-        expect(respuesta.body?.['codigo'], metodo).toBe(inexistente.body?.['codigo']);
-        expect(await estado(), metodo).toEqual(antes);
+          if (!opciones.cuerpo) expect(inexistente.status, `${etiqueta}: ${inexistente.texto}`).toBe(404);
+          expect(respuesta.status, `${etiqueta}: ${respuesta.texto}`).toBe(inexistente.status);
+          expect(respuesta.body?.['codigo'], etiqueta).toBe(inexistente.body?.['codigo']);
+          expect(respuesta.texto, etiqueta).toBe(inexistente.texto);
+          expect(await estado(), etiqueta).toEqual(antes);
+        }
       }
     });
   });
