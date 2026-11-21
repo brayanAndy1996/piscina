@@ -3,8 +3,8 @@ import { ipParaAuditoria } from './ip';
 
 /** Lo que se registra de una acción crítica: quién, cuándo (lo pone el servicio) y qué (RN-22, RNF-06). */
 export interface EntradaAuditoria {
-  actorTipo: 'USUARIO' | 'SUPERADMIN' | 'SISTEMA';
-  /** Id de quien actuó; nulo con actor `SISTEMA`. */
+  actorTipo: 'USUARIO' | 'SUPERADMIN' | 'SISTEMA' | 'PUBLICO';
+  /** Id de quien actuó; nulo con actor `SISTEMA` o `PUBLICO` (un visitante sin cuenta, DT-2 de 005). */
   actorId: string | null;
   /** MAYÚSCULAS_CON_GUIONES_BAJOS, por ejemplo `ACADEMIA_SUSPENDIDA`. */
   accion: string;

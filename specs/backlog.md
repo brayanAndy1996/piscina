@@ -14,8 +14,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 001 | Academias y aislamiento | Sí | ✅ |
 | 002 | Autenticación y roles por academia | Sí | ✅ |
 | 003 | Configuración de la academia | En parte | ✅ |
-| 004 | Planes y clases con aforo | En parte | 🟨 |
-| 005 | Inscripción pública y seguimiento de la solicitud | Sí | ⬜ |
+| 004 | Planes y clases con aforo | En parte | ✅ |
+| 005a | Inscripción pública, reserva y seguimiento de la solicitud | Sí | 🟨 |
+| 005b | Foto de la inscripción y panel de solicitudes | Sí | ⬜ |
 | 006 | Caja | Sí | ⬜ |
 | 007 | Pagos, verificación y paso de cliente a alumno | Sí | ⬜ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
@@ -50,6 +51,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     el límite de 10 por minuto contaría a todos juntos. El contador del límite por IP vive en la memoria de cada instancia
     (PO-6): con varias instancias, el límite efectivo es 10 por instancia. Y las IPv6 se agrupan por `/64` (hoy cuentan
     por dirección exacta).
+  - Hosting (D-21), aviso de la 005 (DT-9 de 005): configurar `trust proxy` con el hosting **antes de publicar el
+    formulario de inscripción**. Sin eso, detrás del proxy todas las peticiones llegan con la misma IP, y los límites
+    por IP de la inscripción pública (criterio 33 de 005: lecturas, cotización, envío, consulta y foto) y el de 5
+    solicitudes sin pagar por conexión (criterio 25 de 005) bloquearían a todos a la vez.
   - DT-4: `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON responde 400 y no cierra (criterio 74 de 001),
     mientras que `DELETE /api/sesion` cierra con cualquier cuerpo (criterio 54 de 002). Alinearlos cambia pruebas
     protegidas de la 001: va en una historia propia.
@@ -67,12 +72,27 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   intentos de inicio de sesión, identidad de la academia (D-22).
 - **004 · Planes y clases.** Planes (HU-19, RN-07) y clases por nivel, día, hora y entrenador, con aforo de 20 a 50
   (HU-17, RN-09 a RN-11). Lo crítico: el aforo.
-  - Estado: construida; pendiente de la revisión (T15), de la suite completa (T16) y del PR. Se marca ✅ al unirse a
-    `main`. Lo que heredan la 005 y las siguientes está en su nota y en «Planes, clases y cupo (004)» de
+  - Estado: unida a `main` el 19/11/2026 (PR #7), tras tres rondas adversariales. Lo que heredan la 005 y las siguientes está en su nota y en «Planes, clases y cupo (004)» de
     [`docs/arquitectura.md`](../docs/arquitectura.md).
 - **005 · Inscripción pública.** Formulario con datos, ficha médica, apoderado y consentimientos (HU-01, RN-20,
   D-07), elección de días y horario con cupo (HU-02), foto opcional (D-20, D-24), código y enlace de seguimiento
   (D-05), cálculo del cobro proporcional (HU-34, RN-25, D-03).
+  - Estado: spec aprobada por Bryan el 20/11/2026 (DR-1 a DR-11 y DT-1 a DT-9 de 005), en
+    [`specs/005-inscripcion-publica/`](005-inscripcion-publica/spec.md). Por DR-11 se entrega en dos PR desde esa misma
+    carpeta, los dos de ruta crítica:
+    - **005a · inscripción, reserva y seguimiento** (primero): criterios 1 a 33, 41 a 45, 47 y 48 (tablas, oferta,
+      cálculo del cobro, envío con el último cupo, seguimiento, límites por IP, teléfono público, aforo con inscritos de
+      DR-5 de 004, web pública).
+    - **005b · foto y panel de solicitudes** (siguiente PR, con la 005a unida): criterios 34 a 40 y 46 (`AlmacenArchivos`,
+      `sharp` y la foto; lista, cancelación y ocupación en el panel), más la foto en 28, 33, 43 y 44 y su parte de 48.
+  - Antes de publicar el formulario: `trust proxy` con el hosting (DT-9 de 005; aviso en las notas de hosting de la 002).
+  - Hosting (D-21), pregunta R7 de 005 (ronda 2 del ataque de la 005a, no bloquea): la agrupación de IPv6 por /64 no
+    frena a quien controla un /56 o un /48 (con un /56, hasta 256 × 5 reservas sin pagar a la vez). Propuesta: un
+    segundo límite, más alto, por /56 o /48, decidido junto a `trust proxy`. Detalle en "Preguntas abiertas" de la spec.
+  - Respuestas de Bryan a la ronda 1 de la 005a (20/11/2026, DR-12 a DR-16 de 005; criterios 54 a 60): la reserva vence
+    a las 24 horas o al fin del mes en Lima, lo que ocurra primero; el enlace de seguimiento llega también al correo del
+    apoderado; la vista de una solicitud vencida, cancelada o que ya no es la vigente no muestra el nombre; los límites
+    por conexión agrupan las IPv6 por /64. La pregunta del DNI del personal pasó a la 007 (DR-16 de 005).
   - Nota de 001 (ataque ronda 17, O2): `GET /api/a/{nombreCorto}` es pública y no tiene límite de peticiones. Cada
     petición abre una transacción corta (`resolverAcademia`), y con el pool de 10 conexiones una avalancha anónima puede
     demorar o hacer fallar las peticiones de todas las academias. Se decide con el hosting (D-21: proxy, CDN o límites
@@ -108,6 +128,26 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   RN-01, RN-04, RN-28), ticket interno (D-09).
   - Desde 002: la cuenta del alumno se crea con `UsuariosService.crearEnTransaccion`, y cada escritura a pedido de un
     usuario de la academia llama antes a `bloquearActorVigente` (regla DT-5, en `docs/arquitectura.md`).
+  - Preguntas abiertas que llegan de la 005 (para el especificador de la 007, a consultar con el responsable):
+    - **DNI del personal igual al de un cliente (DR-16 de 005, antes R5).** La 005 rechaza la inscripción con el DNI de
+      alguien del personal (criterio 21 a de 005). ¿Una persona del personal (por ejemplo, un entrenador) puede
+      inscribirse como alumna en su academia? Y al revés: si el administrador crea un usuario del personal con el DNI
+      de un cliente con solicitud en curso, ¿se permite? Si se permite, la 007 no podría crear la cuenta del alumno,
+      porque el DNI es único en `usuarios` (D-28). Mientras no se decida, la 005 rechaza la inscripción y la creación de
+      personal de la 002 no cambia.
+    - **Comprobante en verificación al terminar el mes (DR-12 de 005).** "Nunca queda una reserva vigente de un mes ya
+      cerrado", pero con un comprobante subido la reserva no vence (`reserva_vence_en = NULL`, RN-28). ¿Qué pasa con un
+      Yape o una transferencia que sigue sin revisar cuando termina el mes de su matrícula? La base solo garantiza el
+      tope cuando hay fecha de vencimiento (criterio 56 de 005).
+    - **Identidad en los pagos que no pasan por recepción (DR-14 de 005).** Se aceptó que un tercero pueda reemplazar los
+      datos de un cliente con la solicitud vencida porque la identidad se comprueba en recepción con el DNI físico al
+      pagar. Con Yape o transferencia, ¿cuándo se comprueba el DNI físico antes de crear el usuario y el carnet?
+  - Desde 005 (DR-13 y DR-14 de 005): si la 007 vuelve a enviar el enlace de seguimiento, va al alumno y al apoderado
+    como en la 005; y sus estados nuevos de la solicitud muestran el nombre solo en la solicitud vigente del cliente
+    (regla "Vista de seguimiento" de la spec 005).
+  - Desde 005a: las reglas para la 007 (comprobante con reserva sin límite, rechazo que cancela la matrícula y libera el cupo,
+    confirmación que crea al alumno, y `calcularTotal` con lo guardado en la matrícula) están en «Inscripción pública, reserva
+    y seguimiento (005a)» de [`docs/arquitectura.md`](../docs/arquitectura.md).
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
 - **009 · Asistencia y faltas.** QR y manual, validaciones, una por día, solo mientras dura la clase, puntual o
@@ -121,6 +161,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Nota de 003: "por vencer" (`diasPorVencer`) y la prioridad de renovación (`diasPrioridadRenovacion`) los leerá
     `leerConfiguracion(tx)` dentro de la transacción de la operación, sin caché. Son valores aparte: cambiar uno no cambia
     el otro (DR-3 de 003).
+  - Desde 005a: el cupo de una renovación o de un cambio de horario se cuenta con `contarOcupacion` (una matrícula de ese mes
+    ocupa cupo si está `VIGENTE`, o `RESERVADA` sin vencer), después de `bloquearClasesParaCupo` (regla «Cupo de una clase»
+    de 004). Las renovaciones no tienen `solicitud_id`. La inscripción para el mes siguiente y la prioridad de renovación
+    (D-06) siguen en la pregunta N3 de la spec 005, que decide esta historia.
 - **011 · Panel del alumno y apoderado.** Datos, plan, horario, clases restantes, vencimiento, asistencia día por
   día con hora (puntual, tarde, falta), nivel actual; solo lectura salvo el cambio de contraseña (HU-06, D-08, D-14).
 

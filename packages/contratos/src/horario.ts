@@ -75,6 +75,11 @@ export function horaFinDe(bloque: Bloque): string {
 
 const PATRON_FECHA = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+/** Años bisiestos del calendario gregoriano. Fuente única: la usan los contratos y el cálculo del cobro del backend. */
+export function esBisiesto(anio: number): boolean {
+  return (anio % 4 === 0 && anio % 100 !== 0) || anio % 400 === 0;
+}
+
 /** `true` si el texto es una fecha real `AAAA-MM-DD` (por ejemplo, `2026-02-30` no lo es). Sin zona horaria. */
 export function esFechaReal(texto: string): boolean {
   const partes = PATRON_FECHA.exec(texto);

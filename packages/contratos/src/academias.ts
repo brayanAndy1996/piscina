@@ -102,9 +102,13 @@ export type RespuestaAcademia = z.infer<typeof respuestaAcademiaSchema>;
 export const respuestaListaAcademiasSchema = z.strictObject({ academias: z.array(academiaResumenSchema) });
 export type RespuestaListaAcademias = z.infer<typeof respuestaListaAcademiasSchema>;
 
-/** `GET /api/a/{nombreCorto}`: lo que cualquier visitante puede saber de una academia activa. */
+/**
+ * `GET /api/a/{nombreCorto}`: lo que cualquier visitante puede saber de una academia activa. Desde la 005, también su teléfono (el valor
+ * efectivo de la configuración, o `null`; DR-4 de 003, D-22).
+ */
 export const academiaPublicaSchema = z.strictObject({
   nombreCorto: z.string(),
   nombre: z.string(),
+  telefono: z.string().nullable(),
 });
 export type AcademiaPublica = z.infer<typeof academiaPublicaSchema>;

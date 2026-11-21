@@ -197,7 +197,8 @@ describe('criterio 2: privilegios exactos del rol de la app', () => {
           AND pg_catalog.has_table_privilege($1::name, c.oid, p.privilegio)`,
       [ROL],
     );
-    expect(filas).toEqual([]);
+    // Historia 005, criterio 2: la única excepción es DELETE sobre `apoderados` (su prueba exacta está en inscripciones/privilegios.test.ts).
+    expect(filas.filter((fila) => !(fila.tabla === 'apoderados' && fila.privilegio === 'DELETE'))).toEqual([]);
   });
 });
 

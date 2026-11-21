@@ -5,6 +5,7 @@ import {
   formatearFecha,
   formatearFechaCalendario,
   formatearFechaHora,
+  formatearMes,
 } from './fechas';
 
 describe('fechas en America/Lima', () => {
@@ -34,5 +35,16 @@ describe('fechas en America/Lima', () => {
     expect(diaIsoDeAbreviatura('Sun')).toBe(7);
     expect(() => diaIsoDeAbreviatura('lun')).toThrow(/No se reconoce el día/);
     expect(() => diaIsoDeAbreviatura('')).toThrow(/No se reconoce el día/);
+  });
+});
+
+describe('mes en palabras', () => {
+  it('un mes AAAA-MM se muestra como "noviembre de 2026"', () => {
+    expect(formatearMes('2026-11')).toBe('noviembre de 2026');
+    expect(formatearMes('2027-01')).toBe('enero de 2027');
+  });
+
+  it('un texto que no es un mes se muestra tal cual', () => {
+    expect(formatearMes('2026-13')).toBe('2026-13');
   });
 });

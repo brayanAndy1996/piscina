@@ -254,6 +254,27 @@ npm run dev
   igual a su DNI), dos planes y cinco clases de ejemplo. Repetirla no duplica nada (ver "Probar planes y clases").
 - La historia 004 no agrega variables a `.env`, así que `npm run env:completar` no hace falta.
 
+## Después de traer la historia 005a
+
+Si ya tenías el proyecto con la historia 004, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+npm ci
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- `npm run db:preparar` aplica a las dos bases las migraciones de la 005a (las tablas de la inscripción y la regla del fin de
+  mes) y ejecuta la semilla. La semilla agrega a `delfines` tres clases de Básico (martes, miércoles y jueves a las 18:00,
+  con Paula Fuentes) y tres clientes con una solicitud de ejemplo (ver "Probar la inscripción pública"). Repetirla no
+  duplica nada.
+- Si `npm run db:preparar` se detiene en «Migrando la base de desarrollo» con el código 23514, tu base es de una versión
+  anterior de esta rama. Mira "La migración `20261120190000_reserva_dentro_del_mes` falla con 23514", en "Problemas
+  frecuentes": la solución es empezar de cero.
+- La historia 005a no agrega variables a `.env`, así que `npm run env:completar` no hace falta.
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -353,8 +374,8 @@ La contraseña inicial de cada uno es su DNI, y debe cambiarla al entrar. El DNI
 `tiburones`: son dos cuentas distintas, una por academia (D-28).
 
 `delfines` también tiene un teléfono de ejemplo, `+51 999 000 111`, que se ve en **Configuración** (ver "Probar la
-configuración de la academia"). Además tiene un segundo entrenador (Paula Fuentes Ibarra), dos planes y cinco clases de
-ejemplo (ver "Probar planes y clases").
+configuración de la academia"). Además tiene un segundo entrenador (Paula Fuentes Ibarra), dos planes y ocho clases de
+ejemplo (ver "Probar planes y clases"), y tres clientes con una solicitud de inscripción (ver "Probar la inscripción pública").
 
 Lo que ves en `/panel` depende del rol:
 
@@ -404,7 +425,7 @@ los demás se guardan y los usarán sus historias.
 | Días de prioridad para renovar (días)                | 5            | de 1 a 15         | Se guarda; la renovación la usará (historia 010).                                  |
 | Intentos fallidos antes del bloqueo (intentos)       | 5            | de 3 a 10         | Ya se aplica al ingreso y al cambio de contraseña.                                 |
 | Duración del bloqueo (minutos)                       | 15           | de 5 a 60         | Ya se aplica al ingreso y al cambio de contraseña.                                 |
-| Teléfono de la academia                              | Sin teléfono | 6 a 20 caracteres | Ya se ve en la cabecera del panel; las páginas públicas lo mostrarán desde la historia 005. |
+| Teléfono de la academia                              | Sin teléfono | 6 a 20 caracteres | Ya se ve en la cabecera del panel y en las páginas públicas (ingreso, inscripción y seguimiento). |
 
 Otras comprobaciones:
 
@@ -433,9 +454,10 @@ probarlos con los datos de ejemplo de `delfines`:
 5. Pulsa **Editar** en **Plan de prueba**, quita la marca de **Plan activo** y pulsa **Guardar cambios**. El plan aparece
    como **Inactivo**: no se borra, y puedes volver a activarlo.
 6. Pulsa **← Volver al inicio** y después **Clases y horarios**. Verás la semana: siete días por bloques de 1 hora, de
-   08:00 a 20:00, y cada clase en su bloque, con su entrenador y su aforo. En `delfines` hay cinco clases de ejemplo, dos
-   de ellas el **lunes a las 18:00**: una Básico con Mario Castro y una Intermedio con Paula Fuentes (dos entrenadores
-   distintos en el mismo bloque).
+   08:00 a 20:00, y cada clase en su bloque, con su entrenador y su aforo. En `delfines` hay ocho clases de ejemplo. Dos están el
+   **lunes a las 18:00**: una Básico con Mario Castro y una Intermedio con Paula Fuentes (dos entrenadores distintos en el
+   mismo bloque). Las otras tres son de Básico, **martes, miércoles y jueves a las 18:00**, con Paula Fuentes; las añadió la
+   historia 005a.
 7. Pulsa **Nueva clase** y crea una clase que choca: **Nivel** Avanzado, **Día** Lunes, **Bloque** 18:00 a 19:00,
    **Entrenador** «Castro Vega, Mario» y **Aforo (alumnos)** `25`. Pulsa **Crear clase**: bajo **Entrenador** aparece «Ese
    entrenador ya tiene otra clase activa a esa hora.», porque Mario ya tiene la Básico del lunes a las 18:00. Ahora cambia
@@ -466,6 +488,58 @@ Otras comprobaciones:
   nombre: si cambias el nombre de **3 veces por semana** o de **2 veces por semana**, la siguiente ejecución lo vuelve a
   crear. Las clases de ejemplo se reconocen por su nivel, día y bloque: si las desactivas o cambias su entrenador, no se
   vuelven a crear.
+
+## Probar la inscripción pública
+
+La inscripción (historia 005a) no pide sesión: cualquier persona la llena desde su celular o desde la PC de recepción. Con
+`npm run dev` encendido, prueba el flujo completo con `delfines`:
+
+1. Abre **http://localhost:5173/a/delfines/inscripcion**. Verás el nombre de la academia, su teléfono y el formulario
+   **Inscripción**, en pasos: **Datos personales**, **Ficha médica**, **Apoderado** (solo si la persona es menor de 18 años),
+   **Plan y horario** y **Resumen y confirmación**.
+2. En **Datos personales**, escribe un DNI que no esté en `delfines`, por ejemplo `30000001`, y los nombres, los apellidos,
+   la fecha de nacimiento y el celular. En **Ficha médica**, elige el tipo de sangre y escribe el nombre y el celular del
+   contacto de emergencia; lo demás es opcional. Pulsa **Siguiente** en cada paso.
+3. En **Plan y horario**, elige el **Nivel** (Básico, Intermedio o Avanzado). Solo verás los planes vigentes de ese nivel, y
+   solo las clases con cupo. Elige un plan y una clase por cada día, tantas como indique el plan (en el de 3 veces por
+   semana, tres). Pulsa **Siguiente**: la página calcula el monto.
+4. En **Resumen y confirmación** revisa el monto, que dice «El precio ya incluye IGV.». Marca **Acepto el tratamiento de
+   datos personales** y **Acepto el deslinde de responsabilidad**, y pulsa **Enviar inscripción**.
+5. La página **Tu solicitud quedó registrada** muestra tu código (`AQ-` y seis caracteres), el enlace de seguimiento y hasta
+   qué hora está reservado tu cupo (hora de Lima). Copia el código y el enlace: son la única forma de seguir tu solicitud.
+   En desarrollo, el correo es simulado: no sale ningún mensaje, y el enlace solo se ve en esta pantalla.
+6. Pulsa **Ver el seguimiento de mi solicitud**. Verás el estado **Pendiente de pago**, el plan, los días y las horas, el
+   monto y la fecha límite de la reserva.
+7. Para consultar con el código, abre **http://localhost:5173/a/delfines/solicitud**, escribe el código y tu DNI, y pulsa
+   **Consultar**.
+
+Solicitudes de ejemplo (los DNI y los nombres son inventados). Se consultan con el código y el DNI, porque sus enlaces de
+seguimiento no se guardan en claro:
+
+| Código      | DNI      | Qué verás                                                                 |
+| ----------- | -------- | ------------------------------------------------------------------------- |
+| `AQ-SM0001` | 20000001 | **Pendiente de pago**, con la fecha límite de su reserva.                 |
+| `AQ-SM0002` | 20000002 | **Vencida**: sin nombre ni fecha límite.                                  |
+| `AQ-SM0003` | 20000003 | **Pendiente de pago**. Es la solicitud de un menor de edad con apoderado. |
+
+Las reservas de ejemplo vigentes vencen el último día del mes en Lima. Después de ese día, aparecen como **Vencida**.
+
+Otras comprobaciones:
+
+- Con el DNI `20000001`, que ya tiene una solicitud en `delfines`, el formulario responde «Este DNI ya tiene una inscripción
+  o solicitud en esta academia», y ofrece consultar con el código y el DNI.
+- Si una clase se llena antes de que envíes, la página la quita de tu selección y dice «Se llenó: …». Elige otra opción.
+- Con un código y un DNI que no corresponden, la consulta responde «No encontramos una solicitud con ese código y ese DNI.
+  Revísalos e inténtalo de nuevo.». Es el mismo mensaje que si el código no existe.
+- **Límites.** Hay límites por conexión: 60 lecturas por minuto, 30 cotizaciones por minuto, 10 envíos por hora y 10
+  consultas por minuto. Cada intento cuenta, también los que fallan. En tu PC, la web pasa por Vite y la API ve todas las
+  peticiones desde la misma dirección (127.0.0.1): **todas tus pruebas comparten esa conexión**. Si el formulario responde
+  «Hiciste demasiados envíos desde esta conexión.», espera un rato o vuelve a ejecutar `npm run dev`: los contadores de
+  minutos y de horas viven en memoria y se ponen a cero al reiniciar.
+- **Reservas sin pagar.** Una conexión puede tener como mucho cinco solicitudes sin pagar. A la sexta, el formulario responde
+  «Ya tienes varias reservas sin pagar desde esta conexión.». Estas reservas están en la base, así que reiniciar
+  `npm run dev` no las quita: vencen solas, a las 24 horas o al fin del mes en Lima, lo que ocurra primero. Para empezar de
+  cero, mira «Borrar la base de desarrollo y empezar de cero».
 
 ## Día a día
 
@@ -527,7 +601,7 @@ Las pruebas E2E levantan la API y la web en otros puertos (3100 y 5180), así qu
 | `npm run db:crear`                     | Crea solo el rol `aquagestion_app` y las bases que falten. Lo usa `db:preparar`.                         |
 | `npm run db:migrar`                    | Aplica a la base de desarrollo las migraciones pendientes.                                               |
 | `npm run db:migrar:pruebas`            | Aplica las migraciones pendientes a la base de pruebas.                                                  |
-| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines` y sus planes y clases de ejemplo, si no existen. Repetirla no duplica nada ni cambia las contraseñas, el teléfono ni lo que hayas editado.   |
+| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines`, sus planes y clases de ejemplo y sus clientes con solicitud, si no existen. Repetirla no duplica nada ni cambia las contraseñas, el teléfono ni lo que hayas editado.   |
 | `npm run db:migracion`                 | Crea una migración nueva a partir de un cambio del esquema. Pide un nombre.                              |
 | `npm run env:completar`                | Agrega a `.env` las variables de `.env.example` que falten. No cambia las que ya tienes.                 |
 | `npm run plataforma:superadmin`        | Crea el superadmin de la plataforma o le restablece la clave (usa `SUPERADMIN_*`; ver arriba).           |
@@ -738,6 +812,29 @@ Si usas Claude Code en tu PC y aparece un error de un hook de inicio (`SessionSt
 `preparar-sesion.mjs`, no tienes que hacer nada. Ese hook solo prepara las sesiones de la nube: en tu PC no cambia nada y
 no afecta a `npm run dev` ni a las pruebas.
 
+### La migración `20261120190000_reserva_dentro_del_mes` falla con 23514
+
+Síntoma: `npm run db:preparar` se detiene con el mensaje «Falló el paso: Migrando la base de desarrollo», y el error de
+PostgreSQL incluye el código `23514` y el nombre `matriculas_reserva_dentro_del_mes`. Volver a ejecutar `npm run db:preparar`
+no lo arregla: falla igual.
+
+Causa: la historia 005a agrega la regla de que una reserva sin pago no puede vencer después del fin de su mes. Una base de
+desarrollo sembrada con una versión anterior de esta rama tiene reservas de ejemplo que vencen a 365 días, y la migración no
+puede aceptarlas. `npm run db:preparar` migra la base que ya existe, sin borrarla, así que repetirlo no basta.
+
+Solución: borra la base de desarrollo y créala de cero. Los pasos son los de [Borrar la base de desarrollo y empezar de
+cero](#borrar-la-base-de-desarrollo-y-empezar-de-cero), en PowerShell, dentro de la carpeta del proyecto:
+
+```powershell
+docker compose down -v
+docker compose up -d
+npm run db:preparar
+```
+
+**Se pierden los datos de desarrollo**: las academias, los usuarios y las solicitudes que hayas creado en tu PC. El código del
+proyecto no cambia. La base de pruebas no tiene reservas de ejemplo, porque la semilla solo va a la de desarrollo; si el paso
+«Migrando la base de pruebas» también falla, aplica la misma solución.
+
 ### Borrar la base de desarrollo y empezar de cero
 
 Esto **borra todos los datos** de la base de desarrollo y de la de pruebas. No borra el código del proyecto. Hazlo solo
@@ -751,3 +848,6 @@ npm run db:preparar
 
 `docker compose down` sin `-v` apaga y quita el contenedor, pero conserva los datos. Con `-v` también se borra el volumen
 donde están guardados, por eso se pierde todo. `npm run db:preparar` vuelve a crear el rol `aquagestion_app` y la semilla.
+
+Es también la solución del error 23514 de la historia 005a (ver «La migración `20261120190000_reserva_dentro_del_mes` falla
+con 23514», en «Problemas frecuentes»).

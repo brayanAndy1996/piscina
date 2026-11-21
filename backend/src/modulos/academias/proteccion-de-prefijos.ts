@@ -2,10 +2,11 @@ import { HttpException } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import type { NextFunction, Request, Response } from 'express';
+import { claveDeConexion } from '../../comun/http/conexion';
 import { FiltroErrores } from '../../comun/filtros/filtro-errores';
 import { responderError } from '../../comun/filtros/responder-error';
 import { ErrorAcademiaNoEncontrada } from '../../infraestructura/prisma';
-import { LIMITE_INICIO_SESION } from './limite-inicio-sesion';
+import { LIMITE_INICIO_SESION, LIMITES_PUBLICOS } from './limite-inicio-sesion';
 import { SesionPlataformaService } from './sesion-plataforma.service';
 
 const CABECERA_SIN_CACHE = 'no-store';
@@ -29,6 +30,20 @@ function esRutaPublicaDeSesion(solicitud: Request): boolean {
   return (solicitud.method === 'POST' || solicitud.method === 'DELETE') && RUTA_DE_SESION.test(solicitud.path);
 }
 
+/**
+ * El método con el que se elige la regla de límite (criterio 49): Express atiende un `HEAD` con el manejador del `GET`, así que `HEAD`
+ * cae en la regla de `GET` y suma en el mismo contador. Cualquier otro método se compara tal cual.
+ */
+function metodoParaLimite(metodo: string): string {
+  return metodo === 'HEAD' ? 'GET' : metodo;
+}
+
+/** La regla de límite de una ruta pública de `/api/a` (spec 005, criterio 33), o `undefined` si la ruta no tiene límite propio. */
+function limiteDeRutaPublica(solicitud: Request) {
+  const metodo = metodoParaLimite(solicitud.method);
+  return LIMITES_PUBLICOS.find((regla) => regla.metodo === metodo && regla.patron.test(solicitud.path));
+}
+
 function esDireccionDecodificable(ruta: string): boolean {
   try {
     decodeURIComponent(ruta);
@@ -49,8 +64,11 @@ function esDireccionDecodificable(ruta: string): boolean {
  *   `NO_AUTENTICADO`.
  * - `/api/a`: `Cache-Control: no-store` en toda respuesta; y el límite por IP del inicio de sesión de una academia
  *   (`POST /api/a/{nombreCorto}/sesion`, spec 002, criterio 12): 10 por minuto por IP sumando todas las academias, contado antes de
- *   leer el cuerpo y de buscar la academia. El contador es el almacén en memoria de `@nestjs/throttler`, por instancia de la API
- *   (PO-6).
+ *   leer el cuerpo y de buscar la academia. Desde la 005, las demás rutas públicas tienen el suyo (`LIMITES_PUBLICOS`, criterio 33):
+ *   las lecturas, la cotización, el envío y la consulta de seguimiento, cada uno con su propio contador. Un `HEAD` cuenta como `GET`, en
+ *   el mismo contador (criterio 49), y la clave del contador es la de conexión (`claveDeConexion`, criterio 59): una IPv4 por dirección y
+ *   una IPv6 por bloque /64; el ingreso de 002 sigue por dirección exacta. Los contadores son el almacén en memoria de
+ *   `@nestjs/throttler`, por instancia de la API (PO-6).
  *
  * Las rutas de academia (`/api/*` salvo estas y `/api/salud`) las protege `instalarProteccionDeAcademia`
  * (`modulos/autenticacion`).
@@ -75,6 +93,22 @@ export function instalarProteccionDePrefijos(app: NestExpressApplication, prefij
           },
           (error: unknown) => responderError(filtro, error, solicitud, respuesta, siguiente),
         );
+      return;
+    }
+    const publico = limiteDeRutaPublica(solicitud);
+    if (publico) {
+      // Cada petición cuenta, sea cual sea su resultado y su academia (también las que fallarían con 404 o 400); la que pasa del límite
+      // no llega a leer el cuerpo ni a abrir una transacción.
+      // La clave es la de conexión (criterio 59): una IPv4 por dirección, una IPv6 por bloque /64.
+      const clave = `publico-${publico.nombre}:${claveDeConexion(solicitud.ip ?? '')}`;
+      almacenLimite.increment(clave, publico.ttl, publico.limite, publico.ttl, `publico-${publico.nombre}`).then(
+        (registro) => {
+          if (registro.isBlocked)
+            responderError(filtro, new HttpException('Too Many Requests', 429), solicitud, respuesta, siguiente);
+          else comprobarDireccion(solicitud, respuesta, siguiente);
+        },
+        (error: unknown) => responderError(filtro, error, solicitud, respuesta, siguiente),
+      );
       return;
     }
     comprobarDireccion(solicitud, respuesta, siguiente);
