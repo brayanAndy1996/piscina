@@ -48,6 +48,8 @@ export const JWT_SECRETOS_PUBLICOS: readonly string[] = [
 /** La raíz del repositorio (donde vive el `.env`): desde `src/infraestructura/entorno/` queda cuatro carpetas arriba. */
 const RAIZ_DEL_REPOSITORIO = path.resolve(__dirname, '..', '..', '..', '..');
 const ALMACEN_DIRECTORIO_POR_DEFECTO = path.join('backend', 'almacenamiento');
+/** Las carpetas que sirve la web (o copia al compilar): las mismas de `server.fs.allow` de `frontend/vite.config.ts`, con `packages/` entera. */
+const CARPETAS_DE_LA_WEB = ['frontend', 'packages', 'node_modules'];
 
 const PUERTO_API_POR_DEFECTO = 3000;
 const POOL_MAXIMO_POR_DEFECTO = 10;
@@ -63,6 +65,13 @@ function esUrlPostgres(valor: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** ¿La ruta es la carpeta o queda debajo? `path.relative` resuelve las barras y la unidad; en Windows no se distinguen mayúsculas. */
+function estaDentroDe(carpeta: string, ruta: string): boolean {
+  const windows = path.sep === '\\';
+  const relativa = path.relative(windows ? carpeta.toLowerCase() : carpeta, windows ? ruta.toLowerCase() : ruta);
+  return relativa === '' || (relativa !== '..' && !relativa.startsWith(`..${path.sep}`) && !path.isAbsolute(relativa));
 }
 
 /** Reglas de `JWT_SECRETO` en producción (criterio 79). Los caracteres se cuentan por punto de código. */
@@ -139,6 +148,9 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
   const almacenTexto = env['ALMACEN_DIRECTORIO']?.trim();
   if (almacenTexto?.includes('\0')) problemas.push('La variable ALMACEN_DIRECTORIO no es una ruta válida.');
   const almacenDirectorio = path.resolve(RAIZ_DEL_REPOSITORIO, almacenTexto || ALMACEN_DIRECTORIO_POR_DEFECTO);
+  if (CARPETAS_DE_LA_WEB.some((carpeta) => estaDentroDe(path.join(RAIZ_DEL_REPOSITORIO, carpeta), almacenDirectorio))) {
+    problemas.push('La variable ALMACEN_DIRECTORIO no puede estar dentro de las carpetas que sirve la web.');
+  }
 
   if (problemas.length > 0 || !urlApp || !secreto) throw new ErrorEntorno(problemas);
   return {

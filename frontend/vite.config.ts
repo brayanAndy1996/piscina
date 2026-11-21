@@ -22,6 +22,12 @@ export default defineConfig(({ mode }) => {
       // Si el puerto está ocupado, falla en lugar de cambiarlo.
       strictPort: true,
       proxy: { '/api': `http://127.0.0.1:${puertoApi}` },
+      // Lista cerrada (spec 005, criterio 62 a): por defecto Vite deja leer por `/@fs/` toda la raíz del workspace, incluido el almacén de
+      // archivos (`backend/almacenamiento`). `strict` y `deny` se quedan con los valores por defecto de Vite. Si una dependencia futura se
+      // resuelve fuera de estas carpetas, se suma aquí y en `validarEntorno` (CARPETAS_DE_LA_WEB).
+      fs: {
+        allow: [path.join(raiz, 'frontend'), path.join(raiz, 'packages', 'contratos'), path.join(raiz, 'node_modules')],
+      },
     },
     preview: {
       host: '127.0.0.1',

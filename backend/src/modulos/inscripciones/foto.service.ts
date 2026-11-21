@@ -10,9 +10,16 @@ import {
 } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
 import sharp from 'sharp';
+import { ErrorNegocio } from '../../comun/errores';
 import { ALMACEN_ARCHIVOS, type AlmacenArchivos } from '../../infraestructura/almacen-archivos';
 import { tipoDeError } from '../../infraestructura/correo';
-import { type AcademiaResuelta, BaseDatos, type TransaccionAcademia } from '../../infraestructura/prisma';
+import {
+  type AcademiaResuelta,
+  BaseDatos,
+  ErrorAcademiaNoEncontrada,
+  ErrorAcademiaSuspendida,
+  type TransaccionAcademia,
+} from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { hashDeToken } from './dominio/codigos';
 import { imagenNoValida, solicitudNoEditable, solicitudNoEncontrada } from './errores';
@@ -26,6 +33,15 @@ const FIRMA_JPEG = Buffer.from([0xff, 0xd8, 0xff]);
 const FIRMA_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const FORMATO_DE_SHARP: Readonly<Record<FotoTipo, string>> = { 'image/jpeg': 'jpeg', 'image/png': 'png' };
 const CALIDAD_JPEG = 85;
+
+/** Los rechazos que decide la propia transacción de la foto (409, 404 de la solicitud o de la academia): con ellos es seguro que no se confirmó nada. */
+function esRechazoDeLaTransaccion(error: unknown): boolean {
+  if (error instanceof ErrorAcademiaNoEncontrada || error instanceof ErrorAcademiaSuspendida) return true;
+  return (
+    error instanceof ErrorNegocio &&
+    (error.codigo === 'SOLICITUD_NO_EDITABLE' || error.codigo === 'SOLICITUD_NO_ENCONTRADA')
+  );
+}
 
 interface FilaDeLaSolicitud {
   solicitud_id: string;
@@ -47,8 +63,9 @@ interface FilaDeLaSolicitud {
  *    (un archivo sin referencia no lo ve nadie; una referencia a un archivo que no existe, sí).
  * 3. Una transacción corta bloquea `alumnos` y después `solicitudes_inscripcion` (el orden de "Orden de bloqueos": el envío con el mismo
  *    DNI toma el alumno antes que sus solicitudes), repite la comprobación de que la solicitud sigue editable y guarda la clave.
- * 4. Después de confirmar se borra el archivo anterior; si la transacción falla, se borra el nuevo. Un borrado que falla solo deja un aviso
- *    con el tipo del error (nunca su mensaje, que lleva la ruta) y no cambia la respuesta.
+ * 4. Después de confirmar se borra el archivo anterior; si la transacción la rechazó ella misma (409, 404), se borra el nuevo. Con cualquier
+ *    otro error no se sabe si el `COMMIT` llegó: se relee `foto_clave` y se decide con lo que se ve (criterio 61). Un borrado que falla solo
+ *    deja un aviso con el tipo del error (nunca su mensaje, que lleva la ruta) y no cambia la respuesta.
  *
  * Sin auditoría: la foto no es una operación de caja, pago ni horario (criterio 37).
  */
@@ -95,18 +112,66 @@ export class FotoService {
       throw new Error('No se pudo guardar la foto de la solicitud.');
     }
 
-    let anterior: string | null;
+    // La clave anterior se guarda fuera de `trabajo` en cuanto se lee: si `conAcademia` rechaza después (por ejemplo, el `COMMIT` se
+    // aplicó y la conexión se cortó), la confirmación incierta todavía necesita saber qué archivo reemplazó (criterio 61 b1).
+    const leida: { anterior: string | null } = { anterior: null };
     try {
-      anterior = await this.baseDatos.conAcademia(academia.id, (tx) =>
-        this.confirmar(tx, previa.solicitud_id, previa.alumno_id, clave),
+      await this.baseDatos.conAcademia(academia.id, (tx) =>
+        this.confirmar(tx, previa.solicitud_id, previa.alumno_id, clave, leida),
       );
     } catch (error) {
-      // La transacción falló (409 por una carrera o un error de la base): el archivo nuevo no lo referencia nadie.
-      await this.borrarSinFallar(academia.id, clave);
-      throw error;
+      if (esRechazoDeLaTransaccion(error)) {
+        // Lo decidió la propia transacción (409, 404, academia): es seguro que no se confirmó nada. El archivo nuevo no lo referencia nadie.
+        await this.borrarSinFallar(academia.id, clave);
+        throw error;
+      }
+      await this.resolverConfirmacionIncierta(academia.id, previa.alumno_id, clave, leida.anterior, error);
+      return;
     }
-    if (anterior !== null && anterior !== clave) await this.borrarSinFallar(academia.id, anterior);
+    if (leida.anterior !== null && leida.anterior !== clave) await this.borrarSinFallar(academia.id, leida.anterior);
     this.registro.info({ academiaId: academia.id }, 'Foto de la solicitud guardada');
+  }
+
+  /**
+   * La transacción de confirmación terminó con un error que no decidió ella (de la base, de la conexión, del `COMMIT`): no se sabe si el
+   * `COMMIT` llegó (criterio 61 b). No se borra ningún archivo todavía: se relee `foto_clave` en una transacción nueva y de solo lectura.
+   * Si es la clave nueva, la foto quedó (204 y se borra la anterior); si es otra cosa, no quedó (se borra la nueva y se relanza el error
+   * original, 500); si la relectura falla, no se borra nada y se relanza el error original. La clave nueva lleva un UUID nuevo: si no
+   * está ahora, no lo estará nunca, y borrarla es seguro.
+   */
+  private async resolverConfirmacionIncierta(
+    academiaId: string,
+    alumnoId: string,
+    clave: string,
+    anterior: string | null,
+    errorOriginal: unknown,
+  ): Promise<void> {
+    try {
+      this.registro.warn(
+        { academiaId, error: { tipo: tipoDeError(errorOriginal) } },
+        'Confirmación de la foto incierta',
+      );
+    } catch {
+      // Un registro que falla no cambia la respuesta.
+    }
+    let guardada: boolean;
+    try {
+      guardada = await this.baseDatos.conAcademia(academiaId, async (tx) => {
+        const filas = await tx.cliente.$queryRaw<{ foto_clave: string | null }[]>`
+          SELECT foto_clave FROM alumnos
+           WHERE academia_id = ${tx.academiaId}::uuid AND id = ${alumnoId}::uuid`;
+        return filas[0]?.foto_clave === clave;
+      });
+    } catch {
+      // Ni la base ni la academia responden: no se sabe nada, no se borra nada (queda, como mucho, un archivo sin referencia).
+      throw errorOriginal;
+    }
+    if (!guardada) {
+      await this.borrarSinFallar(academiaId, clave);
+      throw errorOriginal;
+    }
+    if (anterior !== null && anterior !== clave) await this.borrarSinFallar(academiaId, anterior);
+    this.registro.info({ academiaId }, 'Foto de la solicitud guardada');
   }
 
   /** La solicitud del token con su matrícula y su alumno, sin bloquear nada. */
@@ -138,14 +203,15 @@ export class FotoService {
 
   /**
    * La transacción de la foto: `alumnos` `FOR UPDATE` y después `solicitudes_inscripcion` `FOR UPDATE`, se repite la comprobación (409 si la
-   * solicitud cambió mientras se procesaba la imagen), se lee la clave anterior y se guarda la nueva. Devuelve la clave anterior.
+   * solicitud cambió mientras se procesaba la imagen), se lee la clave anterior (queda en `leida`, fuera de la transacción) y se guarda la nueva.
    */
   private async confirmar(
     tx: TransaccionAcademia,
     solicitudId: string,
     alumnoId: string,
     clave: string,
-  ): Promise<string | null> {
+    leida: { anterior: string | null },
+  ): Promise<void> {
     const alumnos = await tx.cliente.$queryRaw<{ estado: string; foto_clave: string | null }[]>`
       SELECT estado::text AS estado, foto_clave FROM alumnos
        WHERE academia_id = ${tx.academiaId}::uuid AND id = ${alumnoId}::uuid
@@ -175,10 +241,10 @@ export class FotoService {
       estado_alumno: alumno.estado,
     };
     if (!this.esEditable(fila, ahora)) throw solicitudNoEditable();
+    leida.anterior = alumno.foto_clave;
     await tx.cliente.$executeRaw`
       UPDATE alumnos SET foto_clave = ${clave}, actualizado_en = ${ahora}::timestamptz
        WHERE academia_id = ${tx.academiaId}::uuid AND id = ${alumnoId}::uuid`;
-    return alumno.foto_clave;
   }
 
   /**

@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
@@ -20,6 +22,13 @@ const swcNest = () =>
   });
 
 const comun = { environment: 'node' as const, env: { TZ: 'UTC' } };
+
+// Las pruebas del backend nunca escriben en `backend/almacenamiento` (spec 005, criterio 63): su `ALMACEN_DIRECTORIO` es un directorio temporal
+// fuera del repositorio, que `global-setup-almacen.ts` crea y borra (el prefijo `aqua-almacen-` es el que ese archivo exige para borrarlo).
+// El número del proceso evita que dos ejecuciones a la vez compartan el directorio.
+const almacenDePruebas = path.join(os.tmpdir(), `aqua-almacen-${process.pid}`);
+const comunBackend = { ...comun, env: { ...comun.env, ALMACEN_DIRECTORIO: almacenDePruebas } };
+const globalSetupAlmacen = './test/utilidades/global-setup-almacen.ts';
 
 export default defineConfig({
   test: {
@@ -86,21 +95,22 @@ export default defineConfig({
         root: 'backend',
         plugins: [swcNest()],
         test: {
-          ...comun,
+          ...comunBackend,
           name: 'backend-unit',
           include: ['src/**/*.test.ts', 'test/utilidades/**/*.test.ts'],
+          globalSetup: [globalSetupAlmacen],
         },
       },
       {
         root: 'backend',
         plugins: [swcNest()],
         test: {
-          ...comun,
+          ...comunBackend,
           name: 'backend-integracion',
           include: ['test/integracion/**/*.test.ts'],
           sequence: { groupOrder: 1 },
           // Valida DATABASE_URL_PRUEBAS (criterio 19) y migra la base de pruebas antes de cualquier prueba.
-          globalSetup: ['./test/utilidades/global-setup-compartido.ts'],
+          globalSetup: ['./test/utilidades/global-setup-compartido.ts', globalSetupAlmacen],
           // Una sola base de datos: los archivos de prueba no corren en paralelo.
           fileParallelism: false,
           testTimeout: 30_000,
@@ -113,10 +123,10 @@ export default defineConfig({
         root: 'backend',
         plugins: [swcNest()],
         test: {
-          ...comun,
+          ...comunBackend,
           name: 'backend-aislado',
           include: ['test/integracion-aislada/**/*.test.ts'],
-          globalSetup: ['./test/utilidades/global-setup-compartido.ts'],
+          globalSetup: ['./test/utilidades/global-setup-compartido.ts', globalSetupAlmacen],
           fileParallelism: false,
           sequence: { groupOrder: 3 },
           testTimeout: 30_000,
