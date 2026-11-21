@@ -257,7 +257,10 @@ los estados `CANCELADA`).
       foto; formato de lo guardado; `AlmacenArchivos`; transacción, bloqueos y fallos de la foto; registro técnico; regla
       del límite; lista, cancelación y ocupación exactas; web), contrato, impacto, riesgos y plan (secciones 8, 9, 11, 12
       y 14); preguntas nuevas B1 a B5, que no bloquean (criterios 28, 33 a 40, 43, 44, 46 y 48, partes de la 005b)
-- [ ] T0b · responsable · **[005b]** Responder B1 a B5 (no bloquean: mientras tanto rige "Mientras tanto" de cada una)
+- [x] T0b · responsable · **[005b]** Responder B1 a B5. Respondidas el 21/11/2026, todas con la propuesta: DR-17 a
+      DR-21 en la spec (criterio 39 sin correo al cancelar y prueba h; criterio 46 "Foto desde recepción"); B4 anotada
+      en `specs/backlog.md` junto a la 007, B5 junto a la 008 y la política de retención de fotos (B2) como pendiente
+      antes de producción
 
 ### Pruebas protegidas (en rojo)
 
@@ -277,7 +280,8 @@ los estados `CANCELADA`).
       (valores, defecto, 400 en `estado`), el orden, el tope de 200, las claves exactas de cada elemento, los datos
       actuales tras un 21 b, `?academiaId=` y el aislamiento (criterio 38); cancelación con el orden de comprobaciones,
       la decisión por estado (fila `PENDIENTE_PAGO` vigente y vencida, `CANCELADA` sin escribir, fila `VENCIDA` con 409),
-      `reserva_vence_en` en `NULL`, la auditoría exacta y las pruebas a a g del criterio 39; actualización de la prueba
+      `reserva_vence_en` en `NULL`, la auditoría exacta y las pruebas a a h del criterio 39 (h: sin correo y con la foto
+      intacta, DR-17 y DR-18); actualización de la prueba
       protegida de dependencias permitidas del backend solo para sumar `sharp` (criterio 127 de 001)
 - [ ] T7b · tester · **[005b]** Confirmar que T6a y T6c fallan por la razón esperada y que las protegidas de 001 a 005a
       siguen pasando. Commit del orquestador: "Pruebas protegidas (005b): foto y panel de solicitudes (en rojo)"
@@ -327,9 +331,9 @@ los estados `CANCELADA`).
       por `sharp`
 - [ ] T24b · documentador · **[005b]** Commit, tareas marcadas, `docs/arquitectura.md` (la foto, `AlmacenArchivos` con
       su formato de clave, la lista, la cancelación y la ocupación; "Lo que todavía no trae" sin lo de la 005b; la regla
-      "Archivos"), `README.md` y guía de uso (panel de solicitudes y foto), `.env.example` con `ALMACEN_DIRECTORIO`; las
-      preguntas B1 a B5 que sigan abiertas, en `specs/backlog.md` junto a la historia que las decide (B4 en la 007, B5 en
-      la 008); 005b y la historia 005 como ✅ al unirla (parte de 48)
+      "Archivos"), `README.md` y guía de uso (panel de solicitudes y foto), `.env.example` con `ALMACEN_DIRECTORIO`;
+      comprobar que siguen en `specs/backlog.md` las notas de B4 (007), B5 (008) y la política de retención de fotos
+      (B2), ya anotadas al responder T0b; 005b y la historia 005 como ✅ al unirla (parte de 48)
 
 ### Solo ruta crítica (005b)
 

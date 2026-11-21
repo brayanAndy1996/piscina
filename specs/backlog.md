@@ -94,6 +94,17 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     a las 24 horas o al fin del mes en Lima, lo que ocurra primero; el enlace de seguimiento llega también al correo del
     apoderado; la vista de una solicitud vencida, cancelada o que ya no es la vigente no muestra el nombre; los límites
     por conexión agrupan las IPv6 por /64. La pregunta del DNI del personal pasó a la 007 (DR-16 de 005).
+  - Respuestas de Bryan al repaso de la 005b (21/11/2026, DR-17 a DR-21 de 005, todas con la propuesta): al cancelar una
+    solicitud no se envía correo (el cliente ve «Cancelada» en su enlace); la foto de una solicitud cancelada o vencida
+    se conserva; en el reenvío con el mismo DNI (criterio 21 b) la foto se conserva; la exclusión de recepción de los
+    límites por conexión pasa a la 007 y la foto desde el panel con la cámara de la PC, a la 008 (notas de esas
+    historias).
+  - **Pendiente antes de producción: política de retención y borrado de datos de solicitudes no pagadas (Ley 29733,
+    DR-18 de 005, antes B2).** Las solicitudes vencidas o canceladas conservan los datos personales, la ficha médica, el
+    apoderado y la foto (que puede ser de un menor), sin plazo. Hay que definir con el responsable cuánto tiempo se
+    guardan y cómo se borran (incluido el archivo de la foto en `AlmacenArchivos`) antes de salir a producción. Mientras
+    tanto, nada se borra (riesgos «Datos de solicitudes que nunca se pagaron» y «Fotos de solicitudes que nunca se
+    pagaron» de la spec 005).
   - Nota de 001 (ataque ronda 17, O2): `GET /api/a/{nombreCorto}` es pública y no tiene límite de peticiones. Cada
     petición abre una transacción corta (`resolverAcademia`), y con el pool de 10 conexiones una avalancha anónima puede
     demorar o hacer fallar las peticiones de todas las academias. Se decide con el hosting (D-21: proxy, CDN o límites
@@ -146,11 +157,22 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Desde 005 (DR-13 y DR-14 de 005): si la 007 vuelve a enviar el enlace de seguimiento, va al alumno y al apoderado
     como en la 005; y sus estados nuevos de la solicitud muestran el nombre solo en la solicitud vigente del cliente
     (regla "Vista de seguimiento" de la spec 005).
+  - **Desde 005b (DR-20 de 005, antes B4), antes de publicar el formulario:** las inscripciones y las fotos enviadas con
+    una sesión válida de `ADMIN` o `SECRETARIA` de esa misma academia dejan de contar en los límites por conexión de la
+    inscripción pública (criterio 25 de 005, 5 solicitudes sin pagar por conexión, y criterio 33, límites por hora y por
+    minuto, también el de la foto). Hoy "Nueva inscripción" usa el formulario público desde la PC de recepción y comparte
+    esos límites, así que en un día de muchas inscripciones recepción queda bloqueada. Va como criterio nuevo con su
+    prueba protegida, junto con el cobro en recepción. En la 005b los límites quedan como están.
   - Desde 005a: las reglas para la 007 (comprobante con reserva sin límite, rechazo que cancela la matrícula y libera el cupo,
     confirmación que crea al alumno, y `calcularTotal` con lo guardado en la matrícula) están en «Inscripción pública, reserva
     y seguimiento (005a)» de [`docs/arquitectura.md`](../docs/arquitectura.md).
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
+  - **Desde 005b (DR-21 de 005, antes B5):** agregar la foto después desde el panel (a una solicitud o un alumno ya
+    registrado, sin el token de seguimiento) y tomarla con la cámara de la PC de recepción. En la 005b la foto solo se
+    sube en el paso del formulario (también cuando la secretaria abre "Nueva inscripción", eligiendo un archivo) o desde
+    el enlace de seguimiento. Debe usar el mismo proceso de los criterios 35 a 37 de 005: recodificación sin metadatos,
+    `AlmacenArchivos` con clave del servidor y borrado de la anterior después de confirmar.
 - **009 · Asistencia y faltas.** QR y manual, validaciones, una por día, solo mientras dura la clase, puntual o
   tarde, descuento de clase, registro de faltas por tarea programada (HU-14, HU-15, RN-14 a RN-16, D-08, D-11,
   D-16).

@@ -36,7 +36,11 @@
   unida a `main` (PR #8) y antes de las pruebas protegidas de la 005b:** precisiones técnicas PB1 a PB14 (en
   "Decisiones") que ajustan los criterios 34 a 40 y 46, y las partes de la 005b de 28, 33, 43, 44 y 48, a lo que la 005a
   construyó de verdad y los dejan comprobables desde los contratos públicos. Ninguna cambia una regla de negocio. Suma
-  preguntas nuevas que no bloquean (B1 a B5, en "Preguntas abiertas").
+  preguntas nuevas que no bloquean (B1 a B5). **Respuestas del responsable al repaso de la 005b (21/11/2026):** B1 a B5
+  quedan decididas con la propuesta de cada una (DR-17 a DR-21, en "Decisiones"). Ningún criterio cambia de intención:
+  lo que regía "mientras tanto" queda como lo decidido. Se precisan los criterios 39 (sin correo al cancelar) y 46
+  (la foto desde recepción es la del formulario), y lo que pasa a la 007 (B4) y a la 008 (B5) queda anotado en
+  `specs/backlog.md`.
 - **División (DR-11):** la historia se entrega en dos PR desde esta misma carpeta, las dos de ruta crítica, cada una con
   sus pruebas protegidas, su ataque y su cierre (ver "División en 005a y 005b"):
   - **005a · Inscripción, reserva y seguimiento** (se construye primero): criterios 1 a 33, 41 a 45, 47 a 60, salvo las
@@ -699,6 +703,9 @@ Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5
       `entidadId` el id de la solicitud, actor `USUARIO` con el id de quien cancela, `motivo` (recortado), la IP
       (`ipParaAuditoria`), `datosAntes: { estado }` con el estado visible de antes (`PENDIENTE_PAGO` o `VENCIDA`) y
       `datosDespues: { estado: 'CANCELADA' }`. Nada más: ni DNI, ni nombres, ni datos médicos, ni token.
+    - **Sin aviso al cliente** _(respuesta B1, DR-17)_: la cancelación no envía correo ni ningún otro aviso; el cliente
+      ve "Cancelada" en su enlace de seguimiento (vista reducida, criterio 58). Tampoco toca la foto: `alumnos.foto_clave`
+      y el archivo guardado no cambian (respuesta B2, DR-18).
     - **Pruebas:**
       - a) una solicitud activa en una clase llena: después del 200, la ocupación de sus clases baja en 1, un envío por
         esa clase responde 201 (antes, 409 `SIN_CUPO`), el seguimiento la muestra `CANCELADA` con la vista reducida y no
@@ -711,7 +718,10 @@ Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5
         una inscripción nueva;
       - f) una cancelación y un envío con el mismo DNI (criterio 21 b) a la vez: el envío responde 201 o 409
         `DNI_YA_REGISTRADO`, según quién entre primero, nunca 500;
-      - g) un id de B con una sesión de A: 404 y las filas y la auditoría de B no cambian.
+      - g) un id de B con una sesión de A: 404 y las filas y la auditoría de B no cambian;
+      - h) _(respuestas B1 y B2, DR-17 y DR-18)_ con el `EnviadorCorreo` de prueba, una cancelación correcta de una
+        solicitud cuyo alumno tiene foto no llama a `enviar`; después, `alumnos.foto_clave` sigue igual y su archivo
+        sigue en el almacén.
 40. **[005b] Ocupación para el administrador.** `GET /api/clases/ocupacion`, con
     `@Permiso('CONFIGURAR_PLANES_HORARIOS_AFORO')`, responde 200 con `{ mes, ocupacion: [{ claseId, inscritos,
     cuposRestantes }] }` de todas las clases de la academia en el mes en curso (las que no tienen inscritos, con 0).
@@ -797,6 +807,9 @@ Los criterios 38 a 40 son de la 005b **[005b, siguiente PR]**; los 41 y 42 (DR-5
     - **Inicio.** `ADMIN` y `SECRETARIA` ven "Solicitudes de inscripción" (a `/panel/solicitudes`) y "Nueva inscripción",
       un enlace a `/a/{nombreCorto}/inscripcion` con el `nombreCorto` de la academia de la sesión
       (`usuario.academia.nombreCorto`); `ENTRENADOR` y `ALUMNO` no ven ninguna de las dos.
+    - **Foto desde recepción** _(respuesta B5, DR-21)_: en la 005b la secretaria sube la foto eligiendo un archivo en el
+      paso de la foto del mismo formulario público (criterio 43), como cualquier cliente. El panel no tiene "subir foto"
+      ni captura con la cámara de la PC, ni ruta para agregar la foto a una solicitud ya enviada (eso va en la 008).
     - **`/panel/solicitudes`.** Pide `GET /api/solicitudes` con el filtro elegido (Activas por defecto; Vencidas,
       Canceladas, Todas) y muestra por solicitud el código, nombres y apellidos, DNI, teléfono, si es menor, plan, días y
       horas, mes, monto en soles, estado en palabras, fecha límite (si la hay) y fecha de creación. "Cancelar" aparece en
@@ -1128,7 +1141,12 @@ reintento con la reserva ya vencida y tipo del error del correo) y en la pregunt
 - **[005b] Foto desde el enlace de una solicitud anterior** de un cliente que volvió (fila `VENCIDA`, criterio 21 b): 409
   `SOLICITUD_NO_EDITABLE`; desde el enlace de la nueva, se acepta.
 - **[005b] Cliente que vuelve con una foto ya subida (criterio 21 b):** el envío de la 005a no toca `foto_clave`; la nueva
-  solicitud muestra `fotoCargada: true` con la foto anterior (pregunta B3).
+  solicitud muestra `fotoCargada: true` con la foto anterior, que se conserva hasta que se suba otra (respuesta B3,
+  DR-19).
+- **[005b] Foto de una solicitud cancelada o vencida:** se conserva en `alumnos.foto_clave` y en el almacén; ni la
+  cancelación (criterio 39) ni el vencimiento la borran (respuesta B2, DR-18).
+- **[005b] Cancelación de una solicitud:** el cliente no recibe correo; ve "Cancelada" en su enlace (respuesta B1,
+  DR-17).
 - **[005b] Foto en una academia suspendida:** 403 `ACADEMIA_SUSPENDIDA`, antes de mirar el token (criterio 34 d).
 - **[005b] PNG enviado como `image/jpeg`:** 400 `IMAGEN_NO_VALIDA` por la firma (criterio 34 g).
 - **[005b] Cancelar una solicitud vencida:** se acepta y queda `CANCELADA` (criterio 39 b); la anterior de un cliente que
@@ -1138,7 +1156,9 @@ reintento con la reserva ya vencida y tipo del error del correo) y en la pregunt
 - **[005b] Persona que cumplió 18 años después de enviar:** la lista la muestra con `menorDeEdad: false` (se calcula con
   la fecha de hoy), aunque su apoderado siga guardado (criterio 38).
 - **[005b] Recepción con muchas inscripciones seguidas:** todas salen de la misma conexión y cuentan en los límites de
-  los criterios 25 y 33 (pregunta B4).
+  los criterios 25 y 33 (respuesta B4, DR-20). Cuando se agotan, la secretaria cancela las reservas que ya no sirven
+  (criterio 39) o espera su vencimiento. Desde la 007, las inscripciones con la sesión de `ADMIN` o `SECRETARIA` de la
+  academia dejarán de contar.
 
 ## Reglas de negocio aplicables
 
@@ -1375,6 +1395,11 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
   También el ajuste del monto por el administrador (HU-34) y el ticket.
 - **Caja:** 006.
 - **Carnet, QR y ver la foto:** 008. En esta historia nadie lee la foto guardada.
+- **Agregar la foto desde el panel a una solicitud o un alumno ya registrado, y tomarla con la cámara de la PC:** 008
+  (respuesta B5, DR-21).
+- **Que las inscripciones de recepción (sesión de `ADMIN` o `SECRETARIA`) no cuenten en los límites por conexión:** 007,
+  antes de publicar el formulario (respuesta B4, DR-20).
+- **Correo al cliente cuando la academia cancela su solicitud:** no se envía (respuesta B1, DR-17).
 - **Ficha del alumno para el personal y datos médicos en pantalla:** 007 (lo que necesite la secretaria) y 012.
 - **Códigos de descuento:** 015 (el cálculo de D-03 ya los admite, criterio 10).
 - **Inscripción para el mes siguiente y prioridad de renovación (D-06):** 010 (pregunta N3).
@@ -1384,7 +1409,8 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
 - **Que el cliente cancele su propia solicitud desde el enlace:** no (pregunta N9).
 - **Carné de extranjería u otros documentos:** HU-01 pide DNI de 8 dígitos.
 - **Captcha o verificación del correo o del teléfono:** no; los límites por IP del criterio 33 y el 25 son la defensa.
-- **Borrado o retención de datos de solicitudes vencidas o canceladas (Ley 29733):** política futura (ver "Riesgos").
+- **Borrado o retención de datos de solicitudes vencidas o canceladas (Ley 29733), foto incluida:** política futura,
+  pendiente antes de producción (ver "Riesgos"; respuesta B2, DR-18).
 - **Proveedor real de correo y de archivos:** con el hosting (D-19, D-21).
 
 ## Impacto en especificaciones anteriores
@@ -1461,7 +1487,16 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
   sigue en verificación cuando termina el mes de su matrícula (pregunta anotada en `specs/backlog.md`). Al rechazar, la
   matrícula pasa a `CANCELADA` y el cupo se libera. Al confirmar, `VIGENTE`, el alumno pasa de `CLIENTE` a
   `ALUMNO_ACTIVO` y se crea su usuario (HU-04). El total sale de `calcularTotal` con lo guardado en la matrícula
-  (`precio_plan`, `clases_por_mes_plan`, `clases_totales`), nunca del plan (HU-19).
+  (`precio_plan`, `clases_por_mes_plan`, `clases_totales`), nunca del plan (HU-19). Además, antes de publicar el
+  formulario, las inscripciones y las fotos enviadas con una sesión válida de `ADMIN` o `SECRETARIA` de esa misma
+  academia dejan de contar en los límites por conexión (criterios 25 y 33), como criterio nuevo con su prueba
+  protegida (respuesta B4, DR-20).
+- **Para la 008 (respuesta B5, DR-21):** agregar la foto desde el panel a una solicitud o un alumno ya registrado y
+  tomarla con la cámara de la PC, con el mismo proceso de los criterios 35 a 37 (recodificación sin metadatos,
+  `AlmacenArchivos`, transacción y borrado de la anterior después de confirmar).
+- **Fotos de solicitudes no pagadas (respuesta B2, DR-18):** ninguna historia borra la foto de una solicitud cancelada
+  o vencida hasta que exista la política de retención (Ley 29733); cuando exista, la foto se trata como los demás datos
+  de esas personas.
 - **[005b] Archivos.** Toda historia que guarda archivos (comprobantes 007, multimedia 014, certificados) usa `AlmacenArchivos`
   con claves generadas por el servidor bajo `academias/{academiaId}/…`, procesa y guarda antes de la transacción y borra
   lo reemplazado después de confirmar (criterio 37). Las imágenes subidas por el público se recodifican sin metadatos
@@ -1555,7 +1590,16 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
   el borrado de la foto anterior (criterio 37, PB8): queda en el disco, sin referencia, con un aviso en el registro.
 - **[005b] Fotos de solicitudes que nunca se pagaron** _(repaso del 21/11/2026)_: como los demás datos de esas personas
   (riesgo "Datos de solicitudes que nunca se pagaron"), la foto de una solicitud vencida o cancelada se conserva hasta que
-  se defina la política de retención. Es una foto que puede ser de un menor. Pregunta B2.
+  se defina la política de retención, antes de producción. Es una foto que puede ser de un menor. Aceptado por el
+  responsable (respuesta B2, DR-18); la política queda pendiente en `specs/backlog.md`.
+- **[005b] Foto de la persona anterior tras un regreso por un tercero** _(respuesta B3, DR-19)_: con el criterio 21 b, si
+  quien vuelve con el DNI es otra persona (riesgo "Regreso de un cliente por un tercero"), la nueva solicitud conserva la
+  foto de la persona anterior y muestra `fotoCargada: true`. Aceptado: es la foto de quien tiene ese DNI y ayuda a notar
+  la suplantación en recepción y en el carnet (008).
+- **[005b] Recepción comparte los límites por conexión hasta la 007** _(respuesta B4, DR-20)_: "Nueva inscripción"
+  usa el formulario público desde la PC de recepción, así que en un día de muchas inscripciones puede llegar a las 5
+  reservas sin pagar (criterio 25) o a los 10 envíos y 10 fotos por hora (criterio 33). Se mitiga cancelando las
+  reservas que no sirven (criterio 39). Aceptado hasta la 007, que lo resuelve antes de publicar el formulario.
 - **[005b] Recodificación en el proceso de la API** _(repaso del 21/11/2026)_: `sharp` decodifica imágenes de hasta 40
   megapíxeles en el mismo proceso; diez subidas por hora y por conexión (criterio 33) acotan el uso de CPU y memoria,
   pero muchas conexiones a la vez pueden hacerlo notar. Se revisa con el hosting (D-21).
@@ -1566,7 +1610,8 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
 005" fuera de ella; las del orquestador, "DT-n" y "DT-n de 005"; las técnicas de la ronda 1 del ataque, "AT1-n"; las
 precisiones del repaso de la 005b, "PBn". Los criterios, el contrato y las demás secciones se
 escribieron antes de la aprobación y no cambian de intención: donde dicen "pregunta Nn" o "Nn" se refieren a DR-n de
-005 y donde dicen "pregunta Tn" o "Tn", a DT-n de 005. Los valores que la spec llama "provisionales" (24 horas de
+005 y donde dicen "pregunta Tn" o "Tn", a DT-n de 005. Donde dicen "pregunta Bn" o "respuesta Bn" (repaso de la
+005b), se refieren a DR-17 a DR-21 (B1 es DR-17, B2 es DR-18, B3 es DR-19, B4 es DR-20 y B5 es DR-21). Los valores que la spec llama "provisionales" (24 horas de
 reserva, desde cuándo se cuentan las clases, solo el mes en curso, una clase por día, campos obligatorios y formato del
 celular, DNI ya registrado, consentimientos y versión de sus textos, límite de 5 solicitudes por conexión, vista
 mínima, límites por IP y límites de las imágenes) quedan aprobados para el MVP. Los textos de los consentimientos siguen
@@ -1809,7 +1854,7 @@ Repaso del especificador con la 005a unida a `main` (PR #8), antes de que el tes
 de la 005b. Son **precisiones técnicas**: ajustan los criterios de la 005b a lo que la 005a construyó de verdad (nombres,
 funciones, migraciones y comportamiento) y fijan códigos, cuerpos, límites y órdenes para que cada criterio se pueda
 probar desde los contratos públicos. **Ninguna cambia una regla de negocio.** Las preguntas de negocio que salieron del
-repaso están en "Preguntas abiertas" (B1 a B5) y, mientras no haya respuesta, rige lo que ya dice esta spec.
+repaso (B1 a B5) quedaron respondidas por el responsable el 21/11/2026 (DR-17 a DR-21, más abajo).
 
 - **PB1 (definiciones; criterios 21, 25, 38 y 39). Solicitud activa.** "Su matrícula todavía ocupa cupo" es su
   matrícula `RESERVADA` con `reserva_vence_en` nula o posterior a "ahora" (con el tope del fin de mes del criterio 54),
@@ -1860,6 +1905,37 @@ repaso están en "Preguntas abiertas" (B1 a B5) y, mientras no haya respuesta, r
 - **PB14 (criterios 43, 44 y 46). Web:** lo que comprueban las pruebas de componentes de la foto (formulario y
   seguimiento) y del panel (inicio, solicitudes y clases).
 
+### Decisiones del responsable sobre el repaso de la 005b (21/11/2026)
+
+Respuestas de Bryan a las preguntas B1 a B5 del repaso de la 005b: aceptó la propuesta de cada una. Se conserva cada
+pregunta, resumida, con lo decidido; el texto completo de la pregunta, la propuesta y la alternativa descartada está en
+"Preguntas abiertas", en "Resueltas en el repaso de la 005b". Como lo decidido es lo que ya regía "mientras tanto",
+ningún criterio cambia de intención; se precisan los criterios 39 y 46.
+
+- **DR-17 (pregunta B1). Aviso al cancelar.** **Decidido (la propuesta):** cuando la academia cancela una solicitud
+  (criterio 39), no se envía correo ni ningún otro aviso. El cliente ve "Cancelada" en su enlace de seguimiento.
+  Alternativa descartada: un correo "Tu solicitud fue cancelada" a los destinatarios del enlace (DR-13). Criterio 39
+  ("Sin aviso al cliente" y prueba h).
+- **DR-18 (pregunta B2). Foto de una solicitud cancelada o vencida.** **Decidido (la propuesta):** se conserva, como el
+  resto de los datos de esa persona, hasta que se defina la política de retención y borrado (Ley 29733) antes de
+  salir a producción. Ni la cancelación ni el vencimiento la borran. Alternativa descartada: borrarla al cancelar (y,
+  para las vencidas, con una tarea programada). La política queda como pendiente antes de producción en
+  `specs/backlog.md`. Criterio 39 ("Sin aviso al cliente" y prueba h), "Riesgos aceptados" y "Fuera de alcance".
+- **DR-19 (pregunta B3). Foto en el reenvío con el mismo DNI (criterio 21 b).** **Decidido (la propuesta):** la foto se
+  conserva hasta que se suba otra; el envío de la 005a no toca `alumnos.foto_clave` y no cambia. Alternativa
+  descartada: que el reenvío quite la foto. Queda en "Casos límite" y "Riesgos aceptados".
+- **DR-20 (pregunta B4). Recepción y los límites por conexión.** **Decidido (la propuesta):** las inscripciones y las
+  fotos enviadas con una sesión válida de `ADMIN` o `SECRETARIA` de esa misma academia dejarán de contar en los límites
+  por conexión (criterios 25 y 33). Se hace en la 007, junto con el cobro en recepción y antes de publicar el
+  formulario, como criterio nuevo con su prueba protegida. **En la 005b los límites quedan como están** y valen igual
+  para recepción. Alternativas descartadas: hacerlo ya en la 005b, o mantener los límites y dejar que el administrador
+  los suba en la configuración. Anotada en `specs/backlog.md` junto a la 007.
+- **DR-21 (pregunta B5). Foto desde recepción.** **Decidido (la propuesta):** en la 005b la secretaria elige un archivo
+  en el paso de la foto del formulario (el mismo que abre "Nueva inscripción"; en el celular, el navegador ofrece la
+  cámara). Agregar la foto después desde el panel y tomarla con la cámara de la PC van en la 008 (carnet), donde se ve
+  la foto y el "Foto pendiente" (D-24). Alternativa descartada: sumar en la 005b una ruta del panel para la foto y la
+  captura con la cámara de la PC. Criterio 46 ("Foto desde recepción"). Anotada en `specs/backlog.md` junto a la 008.
+
 ## Preguntas abiertas
 
 Las preguntas N1 a N11 y T1 a T9 quedaron decididas el 20/11/2026 (DR-1 a DR-11 y DT-1 a DT-9, en "Decisiones", con el
@@ -1867,6 +1943,65 @@ texto de cada pregunta y su propuesta).
 
 Las preguntas R1 a R5 de la ronda 1 de la 005a quedaron respondidas por el responsable el 20/11/2026: R1 a R4 son
 DR-12 a DR-15 (criterios 54 a 60) y R5 pasó a la 007 (DR-16, anotada en `specs/backlog.md` junto a esa historia).
+
+Las preguntas B1 a B5 del repaso de la 005b quedaron respondidas por el responsable el 21/11/2026, todas con la
+propuesta: B1 a B5 son DR-17 a DR-21 (en "Decisiones"). Se conservan abajo, en "Resueltas en el repaso de la 005b", con
+el texto completo y la respuesta de cada una.
+
+Siguen pendientes, sin bloquear la 005b, R6 y R7 (al final de esta sección).
+
+### Resueltas en el repaso de la 005b (respondidas el 21/11/2026)
+
+Preguntas de negocio que salieron al repasar la 005b y que no resolvían `docs/decisiones.md`, los requerimientos ni esta
+spec. Bryan aceptó la propuesta de cada una; como lo que regía "mientras tanto" era la propuesta, ningún criterio
+cambia de intención (se precisan los criterios 39 y 46, "respuesta Bn").
+
+Ya resueltas antes, sin pregunta nueva: quién cancela (`ADMIN` y `SECRETARIA`, DR-10), si se puede cancelar una solicitud
+vencida (sí, criterio 39) y si el cliente cancela desde su enlace (no, DR-9). El motivo de la cancelación no se muestra
+en el enlace (la vista de DR-9 no lo incluye).
+
+- **B1. ¿Se avisa al cliente cuando la academia cancela su solicitud?** No hay WhatsApp (D-08); el correo existe, pero
+  es opcional y hoy es simulado (D-19). _Propuesta:_ no se envía correo en la 005b. El cliente ve "Cancelada" en su
+  enlace, y lo normal es que la secretaria cancele después de hablar con él por teléfono. _Alternativa:_ un correo
+  "Tu solicitud fue cancelada" a los mismos destinatarios del enlace (alumno y apoderado, DR-13), con el código pero sin
+  el motivo (puede llevar notas internas), enviado sin esperar después de confirmar (criterios 51 y 52). **Respuesta
+  (21/11/2026): la propuesta, DR-17.** No se envía correo; el cliente ve "Cancelada" en su enlace (criterio 39).
+- **B2. ¿Qué pasa con la foto de una solicitud cancelada o vencida?** La spec deja la retención y el borrado de los datos
+  de solicitudes que no se pagaron para una política futura (Ley 29733, "Fuera de alcance" y "Riesgos aceptados"), y la
+  foto puede ser de un menor. _Propuesta:_ se conserva, como el resto de sus datos, hasta definir esa política antes de
+  salir a producción; así, si la persona vuelve (criterio 21 b), no tiene que subirla otra vez. _Alternativa:_ al cancelar
+  se borra también la foto (se limpia `foto_clave` y se borra el archivo después de confirmar). Para las vencidas haría
+  falta una tarea programada, que esta historia no tiene. **Respuesta (21/11/2026): la propuesta, DR-18.** Se conserva
+  hasta que se defina la política de retención (Ley 29733) antes de producción, pendiente en `specs/backlog.md`.
+- **B3. ¿Se conserva la foto cuando un cliente vuelve a inscribirse con su DNI (criterio 21 b)?** El reenvío de la 005a
+  reemplaza los datos personales, la ficha y el apoderado, pero no toca la foto. Si quien vuelve es un tercero (riesgo
+  aceptado en DR-14), la nueva solicitud muestra `fotoCargada: true` con la foto de la persona anterior.
+  _Propuesta:_ se conserva hasta que se suba otra. Es la foto de la persona de ese DNI, y si un tercero usó el DNI, esa
+  foto ayuda a notarlo en recepción y en el carnet (008). _Alternativa:_ el reenvío quita la foto (limpia `foto_clave` y
+  borra el archivo después de confirmar), como el resto de los datos; esto cambia el envío de la 005a y lleva su propia
+  prueba protegida. **Respuesta (21/11/2026): la propuesta, DR-19.** La foto se conserva; el envío de la 005a no
+  cambia.
+- **B4. ¿Las inscripciones que hace la secretaria en recepción cuentan en los límites por conexión?** "Nueva
+  inscripción" usa el formulario público desde la PC de recepción (DR-10), así que todas sus inscripciones salen de una
+  misma conexión. Esa conexión puede tener como mucho 5 solicitudes sin pagar (DR-8), 10 envíos por hora y 10 fotos por
+  hora (DT-7). Pasa lo mismo con los clientes que usan el wifi de la academia. Hasta la 007 nadie paga, así que esas 5
+  reservas solo se liberan al vencer o si la secretaria las cancela. En un día de muchas inscripciones, recepción
+  quedaría bloqueada. _Propuesta:_ las inscripciones y las fotos enviadas con una sesión válida de `ADMIN` o `SECRETARIA`
+  de esa misma academia no cuentan en esos límites (la sesión ya identifica a quien inscribe). Se hace en la 007, junto
+  con el cobro en recepción y antes de publicar el formulario, como criterio nuevo con su prueba protegida. _Alternativas:_
+  (b) hacerlo ya en la 005b; (c) mantener los límites y que el administrador pueda subirlos en la configuración de su
+  academia (003). **Respuesta (21/11/2026): la propuesta, DR-20.** Se hace en la 007, antes de publicar el formulario
+  (anotada en `specs/backlog.md`); en la 005b los límites quedan como están y valen igual para recepción.
+- **B5. ¿Dónde toma o agrega la foto la secretaria (D-20, D-24)?** En la 005b la foto solo se sube en el formulario
+  público o desde el enlace de seguimiento, que exige el token. La secretaria no tiene el token de las solicitudes de
+  otros (y no debe guardarlo), y el panel no tiene "subir foto" ni captura con la cámara de la PC. _Propuesta:_ en la
+  005b, el paso de la foto del formulario permite elegir un archivo (en el celular, el navegador ofrece la cámara), y
+  sirve también cuando la secretaria abre "Nueva inscripción". Agregar la foto después y tomarla con la cámara de la PC
+  desde el panel va en la 008 (carnet), que es donde se ve la foto y el "Foto pendiente" (D-24). _Alternativa:_ sumar
+  en la 005b una ruta del panel (`PUT /api/solicitudes/{id}/foto`, con `REGISTRAR_INSCRIPCION_Y_COBRO`, el mismo proceso
+  de los criterios 35 a 37) y la captura con la cámara de la PC en el formulario. **Respuesta (21/11/2026): la
+  propuesta, DR-21.** En la 005b, elegir un archivo en el formulario (criterio 46, "Foto desde recepción"); agregarla
+  después y la captura con la cámara de la PC, en la 008 (anotada en `specs/backlog.md`).
 
 ### Pendientes de respuesta del responsable (respuestas de la ronda 1)
 
@@ -1894,52 +2029,3 @@ anotada en las notas de hosting de `specs/backlog.md`.
   partida, 4 veces los del /64 (20 reservas sin pagar a la vez y 4 veces cada límite del criterio 33), a ajustar con
   los datos reales del hosting. Si se aprueba, entra como criterio nuevo con su prueba protegida, en la 005b o en una
   historia propia. _Mientras tanto:_ solo el límite por /64.
-
-### Pendientes de respuesta del responsable (repaso de la 005b, 21/11/2026)
-
-Preguntas de negocio que salieron al repasar la 005b y que no resuelven `docs/decisiones.md`, los requerimientos ni esta
-spec. **Ninguna bloquea las pruebas protegidas de la 005b: mientras no haya respuesta, rige lo que ya dice la spec**
-(lo que dice "Mientras tanto"). Si una respuesta cambia algo, entra como criterio nuevo con su origen ("respuesta Bn")
-antes de tocar el código.
-
-Ya resueltas, sin pregunta nueva: quién cancela (`ADMIN` y `SECRETARIA`, DR-10), si se puede cancelar una solicitud
-vencida (sí, criterio 39) y si el cliente cancela desde su enlace (no, DR-9). El motivo de la cancelación no se muestra
-en el enlace (la vista de DR-9 no lo incluye).
-
-- **B1. ¿Se avisa al cliente cuando la academia cancela su solicitud?** No hay WhatsApp (D-08); el correo existe, pero
-  es opcional y hoy es simulado (D-19). _Propuesta:_ no se envía correo en la 005b. El cliente ve "Cancelada" en su
-  enlace, y lo normal es que la secretaria cancele después de hablar con él por teléfono. _Alternativa:_ un correo
-  "Tu solicitud fue cancelada" a los mismos destinatarios del enlace (alumno y apoderado, DR-13), con el código pero sin
-  el motivo (puede llevar notas internas), enviado sin esperar después de confirmar (criterios 51 y 52). _Mientras
-  tanto:_ sin correo.
-- **B2. ¿Qué pasa con la foto de una solicitud cancelada o vencida?** La spec deja la retención y el borrado de los datos
-  de solicitudes que no se pagaron para una política futura (Ley 29733, "Fuera de alcance" y "Riesgos aceptados"), y la
-  foto puede ser de un menor. _Propuesta:_ se conserva, como el resto de sus datos, hasta definir esa política antes de
-  salir a producción; así, si la persona vuelve (criterio 21 b), no tiene que subirla otra vez. _Alternativa:_ al cancelar
-  se borra también la foto (se limpia `foto_clave` y se borra el archivo después de confirmar). Para las vencidas haría
-  falta una tarea programada, que esta historia no tiene. _Mientras tanto:_ se conserva.
-- **B3. ¿Se conserva la foto cuando un cliente vuelve a inscribirse con su DNI (criterio 21 b)?** El reenvío de la 005a
-  reemplaza los datos personales, la ficha y el apoderado, pero no toca la foto. Si quien vuelve es un tercero (riesgo
-  aceptado en DR-14), la nueva solicitud muestra `fotoCargada: true` con la foto de la persona anterior.
-  _Propuesta:_ se conserva hasta que se suba otra. Es la foto de la persona de ese DNI, y si un tercero usó el DNI, esa
-  foto ayuda a notarlo en recepción y en el carnet (008). _Alternativa:_ el reenvío quita la foto (limpia `foto_clave` y
-  borra el archivo después de confirmar), como el resto de los datos; esto cambia el envío de la 005a y lleva su propia
-  prueba protegida. _Mientras tanto:_ se conserva (la 005a no cambia).
-- **B4. ¿Las inscripciones que hace la secretaria en recepción cuentan en los límites por conexión?** "Nueva
-  inscripción" usa el formulario público desde la PC de recepción (DR-10), así que todas sus inscripciones salen de una
-  misma conexión. Esa conexión puede tener como mucho 5 solicitudes sin pagar (DR-8), 10 envíos por hora y 10 fotos por
-  hora (DT-7). Pasa lo mismo con los clientes que usan el wifi de la academia. Hasta la 007 nadie paga, así que esas 5
-  reservas solo se liberan al vencer o si la secretaria las cancela. En un día de muchas inscripciones, recepción
-  quedaría bloqueada. _Propuesta:_ las inscripciones y las fotos enviadas con una sesión válida de `ADMIN` o `SECRETARIA`
-  de esa misma academia no cuentan en esos límites (la sesión ya identifica a quien inscribe). Se hace en la 007, junto
-  con el cobro en recepción y antes de publicar el formulario, como criterio nuevo con su prueba protegida. _Alternativas:_
-  (b) hacerlo ya en la 005b; (c) mantener los límites y que el administrador pueda subirlos en la configuración de su
-  academia (003). _Mientras tanto:_ los límites valen igual para recepción.
-- **B5. ¿Dónde toma o agrega la foto la secretaria (D-20, D-24)?** En la 005b la foto solo se sube en el formulario
-  público o desde el enlace de seguimiento, que exige el token. La secretaria no tiene el token de las solicitudes de
-  otros (y no debe guardarlo), y el panel no tiene "subir foto" ni captura con la cámara de la PC. _Propuesta:_ en la
-  005b, el paso de la foto del formulario permite elegir un archivo (en el celular, el navegador ofrece la cámara), y
-  sirve también cuando la secretaria abre "Nueva inscripción". Agregar la foto después y tomarla con la cámara de la PC
-  desde el panel va en la 008 (carnet), que es donde se ve la foto y el "Foto pendiente" (D-24). _Alternativa:_ sumar
-  en la 005b una ruta del panel (`PUT /api/solicitudes/{id}/foto`, con `REGISTRAR_INSCRIPCION_Y_COBRO`, el mismo proceso
-  de los criterios 35 a 37) y la captura con la cámara de la PC en el formulario. _Mientras tanto:_ lo de la propuesta.

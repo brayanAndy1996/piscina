@@ -36,7 +36,8 @@ Windows y el PR (tarea T45 del documentador).
 cambios de negocio. Cambian, solo en lo marcado **[005b]**: "Módulos afectados" (nombres reales de la 005a y archivos
 que toca la 005b), las secciones 8 (regla `foto`), 9 (orden de comprobaciones, bloqueos y fallos), 11 (lista,
 cancelación y ocupación), 12 (foto y panel en la web) y 14 (cabecera del token), y "Decisiones" y "Riesgos". Las
-preguntas B1 a B5 no bloquean: el plan sigue lo que dice "Mientras tanto" en cada una.
+preguntas B1 a B5 quedaron respondidas el 21/11/2026 con la propuesta de cada una (DR-17 a DR-21 de la spec), que es lo
+que el plan ya seguía: el diseño no cambia. La cancelación no envía correo ni toca la foto (criterio 39, prueba h).
 
 ## Módulos afectados
 
@@ -614,7 +615,8 @@ cualquier otra cosa.
 - **[005b] Imágenes maliciosas:** `limitInputPixels`, el límite de 5 MB antes de decodificar y `failOn: 'error'`; `sharp` corre
   en el hilo de libuv, así que una imagen grande ocupa CPU: el límite de 10 por hora y por IP lo acota.
 - **[005b] Recepción y límites por conexión:** desde "Nueva inscripción", recepción comparte conexión para los límites
-  de los criterios 25 y 33 (pregunta B4). No cambia el diseño de la 005b; si se aprueba la propuesta, va en la 007.
+  de los criterios 25 y 33 (respuesta B4, DR-20). No cambia el diseño de la 005b; la exclusión de la sesión de
+  recepción va en la 007, antes de publicar el formulario.
 - **[005b] Enlaces simbólicos en Windows:** crear un enlace pide permisos; la prueba del criterio 36 se omite si da
   `EPERM`, y la comprobación con `lstat` vale igual para las uniones de Windows.
 - **Coma flotante:** cualquier `Number(`, `parseFloat` o `+monto` en `matriculas/dominio` o en la web rompe el criterio 9;
