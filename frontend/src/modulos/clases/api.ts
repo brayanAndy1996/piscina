@@ -3,6 +3,7 @@ import {
   type CrearClase,
   respuestaClaseSchema,
   respuestaListaClasesSchema,
+  respuestaOcupacionSchema,
 } from '@aquagestion/contratos';
 import { enviarJson, pedirJson } from '../../api/cliente';
 import { listarPersonal } from '../usuarios/api';
@@ -11,6 +12,11 @@ import { listarPersonal } from '../usuarios/api';
 
 export async function listarClases() {
   return (await pedirJson('/api/clases', respuestaListaClasesSchema)).datos.clases;
+}
+
+/** `inscritos / aforo` de cada clase (criterio 40 de 005): `GET /api/clases/ocupacion`, solo para quien configura los horarios. */
+export async function obtenerOcupacion() {
+  return (await pedirJson('/api/clases/ocupacion', respuestaOcupacionSchema)).datos;
 }
 
 export async function crearClase(datos: CrearClase) {

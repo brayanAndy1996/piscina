@@ -27,9 +27,14 @@ function nombreCorto(entrenador: { nombres: string; apellidos: string }): string
   return `${entrenador.nombres.split(' ')[0] ?? ''} ${entrenador.apellidos.split(' ')[0] ?? ''}`.trim();
 }
 
+/** Lo que se ve de la ocupación de una clase: sus inscritos (criterio 40 de 005). */
+export type OcupacionPorClase = ReadonlyMap<string, { inscritos: number; cuposRestantes: number }>;
+
 interface Propiedades {
   clases: readonly Clase[];
   alElegir: (clase: Clase) => void;
+  /** Los inscritos de cada clase. Sin ella (todavía no llega o no se pudo pedir), se ve solo el aforo. */
+  ocupacion?: OcupacionPorClase | undefined;
 }
 
 /**
@@ -37,7 +42,7 @@ interface Propiedades {
  * aforo). En pantallas anchas se ven los siete días; en el celular, un día a la vez con un selector (RNF-01). Es la misma tabla: el
  * CSS solo oculta las columnas de los demás días.
  */
-export function GrillaSemanal({ clases, alElegir }: Propiedades) {
+export function GrillaSemanal({ clases, alElegir, ocupacion }: Propiedades) {
   const [diaMovil, setDiaMovil] = useState<number>(() => diaDeLaSemanaEnLima());
   const columna = (dia: number) => (dia === diaMovil ? '' : 'hidden md:table-cell');
 
@@ -88,6 +93,7 @@ export function GrillaSemanal({ clases, alElegir }: Propiedades) {
                       dia={dia}
                       bloque={bloque}
                       alElegir={alElegir}
+                      ocupacion={ocupacion}
                     />
                   </td>
                 ))}
@@ -105,11 +111,13 @@ function CeldaDelBloque({
   dia,
   bloque,
   alElegir,
+  ocupacion,
 }: {
   clases: readonly Clase[];
   dia: DiaSemana;
   bloque: Bloque;
   alElegir: (clase: Clase) => void;
+  ocupacion: OcupacionPorClase | undefined;
 }) {
   if (clases.length === 0) {
     return <span className="block px-1 py-2 text-sm text-slate-500 md:hidden">Sin clases</span>;
@@ -120,10 +128,12 @@ function CeldaDelBloque({
         const inactiva = !clase.activo;
         const entrenadorInactivo = !clase.entrenador.activo;
         const nombre = nombreCorto(clase.entrenador);
+        const inscritos = ocupacion?.get(clase.id)?.inscritos;
         const etiqueta = [
           `Editar la clase ${NOMBRE_NIVEL[clase.nivel]} del ${NOMBRE_DIA[dia].toLowerCase()} de ${bloque} a ${horaFinDe(bloque)}`,
           `entrenador ${nombre}`,
           `aforo ${clase.aforo}`,
+          inscritos === undefined ? null : `${inscritos} inscritos`,
           inactiva ? 'inactiva' : null,
           entrenadorInactivo ? 'entrenador inactivo' : null,
         ]
@@ -141,7 +151,13 @@ function CeldaDelBloque({
           >
             <span className="block font-semibold">{NOMBRE_NIVEL[clase.nivel]}</span>
             <span className="block break-words">{nombre}</span>
-            <span className="block">Aforo {clase.aforo}</span>
+            {inscritos === undefined ? (
+              <span className="block">Aforo {clase.aforo}</span>
+            ) : (
+              <span className={`block ${inscritos > clase.aforo ? 'font-medium text-amber-800' : ''}`}>
+                Inscritos {inscritos} / {clase.aforo}
+              </span>
+            )}
             {inactiva || entrenadorInactivo ? (
               <span className="flex flex-wrap gap-1 pt-0.5">
                 {inactiva ? <Insignia color="gris">Inactiva</Insignia> : null}

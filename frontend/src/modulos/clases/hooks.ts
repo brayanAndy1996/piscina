@@ -10,6 +10,7 @@ export function useClavesClases() {
   return {
     clases: ['clases', usuario.academia.nombreCorto, usuario.id] as const,
     entrenadores: ['entrenadores', usuario.academia.nombreCorto, usuario.id] as const,
+    ocupacion: ['ocupacion', usuario.academia.nombreCorto, usuario.id] as const,
   };
 }
 
@@ -32,6 +33,21 @@ export function useClases() {
   return useQuery({
     queryKey: claves.clases,
     queryFn: api.listarClases,
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * La ocupación de las clases (`inscritos / aforo`). Es informativa: si no llega, la grilla muestra solo el aforo. Siempre se vuelve a pedir
+ * al entrar; no se reintenta ni se pide al enfocar.
+ */
+export function useOcupacion() {
+  const claves = useClavesClases();
+  return useQuery({
+    queryKey: claves.ocupacion,
+    queryFn: api.obtenerOcupacion,
     retry: false,
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
@@ -69,6 +85,8 @@ function useGuardarClase<Entrada>(escribir: (entrada: Entrada) => Promise<Clase>
       cliente.setQueryData<Clase[]>(claves.clases, (lista) =>
         lista ? ordenarClases([...lista.filter((otra) => otra.id !== clase.id), clase]) : lista,
       );
+      // Un aforo o un estado nuevo cambia lo que se ve de la ocupación: se vuelve a pedir, sin esperarla.
+      void cliente.invalidateQueries({ queryKey: claves.ocupacion });
     },
   });
 }

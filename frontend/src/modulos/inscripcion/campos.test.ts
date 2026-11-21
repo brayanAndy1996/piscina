@@ -61,8 +61,8 @@ const CONTEXTO = { hoy: '2026-11-20', plan: PLAN };
 
 describe('pasos y edad', () => {
   it('el paso del apoderado solo está para menores', () => {
-    expect(pasosDeInscripcion(false)).toEqual(['datos', 'ficha', 'plan', 'resumen']);
-    expect(pasosDeInscripcion(true)).toEqual(['datos', 'ficha', 'apoderado', 'plan', 'resumen']);
+    expect(pasosDeInscripcion(false)).toEqual(['datos', 'ficha', 'plan', 'foto', 'resumen']);
+    expect(pasosDeInscripcion(true)).toEqual(['datos', 'ficha', 'apoderado', 'plan', 'foto', 'resumen']);
   });
 
   it('es menor según la fecha de hoy que se le da, sin usar el reloj del navegador', () => {
@@ -179,6 +179,10 @@ describe('validación por paso con los esquemas compartidos', () => {
       inscripcion: { planId: PLAN.id, claseIds: [LUN_17.id, MIE_18.id] },
     });
     expect(validarPaso('plan', completo, CONTEXTO)).toEqual({});
+  });
+
+  it('foto: es opcional, así que el paso no pide nada', () => {
+    expect(validarPaso('foto', CAMPOS_INICIALES, CONTEXTO)).toEqual({});
   });
 
   it('resumen: los dos consentimientos obligatorios, no el de imagen', () => {

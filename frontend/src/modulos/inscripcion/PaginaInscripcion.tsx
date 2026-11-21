@@ -17,6 +17,7 @@ import { frasePorTelefono } from '../../componentes/Telefono';
 import { Alerta, Aviso, ESTILO_BOTON } from '../../componentes/ui';
 import { formatearSoles } from '../../lib/dinero';
 import { erroresPorCampo, mensajeGeneral } from '../../lib/errores';
+import { useFotoElegida, useSubirFoto } from '../foto/hooks';
 import {
   CAMPOS_INICIALES,
   type CamposInscripcion,
@@ -42,6 +43,7 @@ import { useCotizar, useEnviarInscripcion, useFormularioInscripcion } from './ho
 import { PasoApoderado } from './pasos/PasoApoderado';
 import { PasoDatos } from './pasos/PasoDatos';
 import { PasoFicha } from './pasos/PasoFicha';
+import { PasoFoto } from './pasos/PasoFoto';
 import { PasoPlan } from './pasos/PasoPlan';
 import { PasoResumen } from './pasos/PasoResumen';
 
@@ -50,7 +52,7 @@ type Solicitud = RespuestaInscripcionCreada['solicitud'];
 /**
  * `/a/{nombreCorto}/inscripcion`: el formulario público de inscripción (HU-01, HU-02; criterio 43 de 005), sin sesión, para el celular y
  * para la PC de recepción. Guía por pasos: datos personales, ficha médica, apoderado (solo si es menor), nivel, plan y clases, y el
- * resumen con la cotización y los consentimientos. La foto opcional es de la 005b.
+ * foto opcional (que se sube aparte, después del 201) y el resumen con la cotización y los consentimientos.
  */
 export function PaginaInscripcion() {
   const { nombreCorto = '' } = useParams();
@@ -131,6 +133,8 @@ function Asistente({
   } | null>(null);
   const cotizar = useCotizar(nombreCorto);
   const enviar = useEnviarInscripcion(nombreCorto);
+  const fotoElegida = useFotoElegida();
+  const subirFoto = useSubirFoto(nombreCorto);
 
   const fechaNacimiento = useWatch({ control, name: 'alumno.fechaNacimiento' });
   const nivel = useWatch({ control, name: 'alumno.nivel' });
@@ -374,6 +378,10 @@ function Asistente({
     setError(null);
     enviar.mutate(validado.data, {
       onSuccess: (solicitud) => {
+        // La foto se sube una sola vez, con el token del 201. Pase lo que pase con ella, la solicitud ya quedó creada: la página
+        // muestra el código y el enlace (criterio 43). El token no sale de la memoria de la página.
+        if (fotoElegida.foto) subirFoto.mutate({ token: solicitud.token, archivo: fotoElegida.foto.archivo });
+        fotoElegida.elegir(null);
         // Lo escrito no se queda en la página: solo el código y el enlace.
         form.reset(CAMPOS_INICIALES);
         setCreada(solicitud);
@@ -395,7 +403,7 @@ function Asistente({
       setPideConfirmar(false);
       pedirCotizacion((nueva) => {
         setCotizacion(nueva);
-        irA('resumen');
+        irA('foto');
       });
       return;
     }
@@ -412,7 +420,16 @@ function Asistente({
     avanzar();
   };
 
-  if (creada) return <ConfirmacionInscripcion solicitud={creada} telefono={oferta.academia.telefono} />;
+  if (creada) {
+    const foto = subirFoto.isPending
+      ? 'subiendo'
+      : subirFoto.isSuccess
+        ? 'cargada'
+        : subirFoto.isError
+          ? 'fallo'
+          : null;
+    return <ConfirmacionInscripcion solicitud={creada} telefono={oferta.academia.telefono} foto={foto} />;
+  }
 
   const ocupado = cotizar.isPending || enviar.isPending;
   const etiquetaBoton =
@@ -481,6 +498,9 @@ function Asistente({
           {paso === 'ficha' ? <PasoFicha form={form} /> : null}
           {paso === 'apoderado' ? <PasoApoderado form={form} /> : null}
           {paso === 'plan' ? <PasoPlan form={form} oferta={oferta} llenas={llenas} /> : null}
+          {paso === 'foto' ? (
+            <PasoFoto foto={fotoElegida.foto} aviso={fotoElegida.aviso} alElegir={fotoElegida.elegir} />
+          ) : null}
           {paso === 'resumen' && cotizacion && plan && nivelValido(nivel) ? (
             <PasoResumen
               form={form}

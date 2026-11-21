@@ -79,19 +79,22 @@ export const CAMPOS_INICIALES: CamposInscripcion = {
 // Pasos
 // ---------------------------------------------------------------------------------------------------------------------------------
 
-export type Paso = 'datos' | 'ficha' | 'apoderado' | 'plan' | 'resumen';
+export type Paso = 'datos' | 'ficha' | 'apoderado' | 'plan' | 'foto' | 'resumen';
 
 export const ETIQUETA_PASO: Readonly<Record<Paso, string>> = {
   datos: 'Datos personales',
   ficha: 'Ficha médica',
   apoderado: 'Apoderado',
   plan: 'Plan y horario',
+  foto: 'Foto (opcional)',
   resumen: 'Resumen y confirmación',
 };
 
 /** Los pasos del formulario: el del apoderado solo aparece si la persona es menor de edad (RN-20). */
 export function pasosDeInscripcion(menor: boolean): Paso[] {
-  return menor ? ['datos', 'ficha', 'apoderado', 'plan', 'resumen'] : ['datos', 'ficha', 'plan', 'resumen'];
+  return menor
+    ? ['datos', 'ficha', 'apoderado', 'plan', 'foto', 'resumen']
+    : ['datos', 'ficha', 'plan', 'foto', 'resumen'];
 }
 
 /** ¿Es menor de edad con esta fecha de nacimiento? Una fecha que todavía no es una fecha real no cuenta como menor. */
@@ -275,6 +278,9 @@ export function validarPaso(paso: Paso, campos: CamposInscripcion, contexto: Con
       }
       return errores;
     }
+    case 'foto':
+      // La foto es opcional y se avisa al elegir el archivo: el paso no tiene nada que validar.
+      return {};
     case 'resumen': {
       const resultado = ESQUEMA_CONSENTIMIENTOS.safeParse({ ...campos.consentimientos, version: 'x' });
       return conPrefijo('consentimientos', resultado.success ? {} : erroresDeEsquema(resultado.error));

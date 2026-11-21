@@ -1,8 +1,22 @@
-import { textosConsentimiento, VERSION_CONSENTIMIENTOS } from '@aquagestion/contratos';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import {
+  CABECERA_TOKEN_SOLICITUD,
+  FOTO_TAMANO_MAXIMO,
+  textosConsentimiento,
+  VERSION_CONSENTIMIENTOS,
+} from '@aquagestion/contratos';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { error, llamadas, type Manejador, mostrar, simularApi } from '../../pruebas-api';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  archivoDePrueba,
+  error,
+  llamadas,
+  type Manejador,
+  mostrar,
+  peticiones,
+  simularApi,
+  simularUrlLocal,
+} from '../../pruebas-api';
 
 // Spec 005, criterio 43 (005a): el formulario público de inscripción por pasos, con los esquemas compartidos, la cotización, la clave de
 // idempotencia, el envío y el manejo de cada 409. La API se simula; los criterios de la API los prueba el backend.
@@ -101,6 +115,7 @@ const GET_ACADEMIA = 'GET /api/a/delfines';
 const GET_OFERTA = 'GET /api/a/delfines/inscripcion';
 const POST_COTIZACION = 'POST /api/a/delfines/inscripcion/cotizacion';
 const POST_ENVIO = 'POST /api/a/delfines/inscripcion';
+const PUT_FOTO = 'PUT /api/a/delfines/solicitudes/foto';
 
 function servidor(extra: Record<string, Manejador> = {}) {
   return simularApi({
@@ -111,13 +126,17 @@ function servidor(extra: Record<string, Manejador> = {}) {
     [GET_OFERTA]: () => ({ estado: 200, cuerpo: oferta() }),
     [POST_COTIZACION]: () => ({ estado: 200, cuerpo: { cotizacion: COTIZACION } }),
     [POST_ENVIO]: () => ({ estado: 201, cuerpo: CREADA }),
+    [PUT_FOTO]: () => ({ estado: 204 }),
     ...extra,
   });
 }
 
+let urls: ReturnType<typeof simularUrlLocal>;
+
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  urls = simularUrlLocal();
 });
 
 // --- Ayudas para recorrer los pasos -------------------------------------------------------------------------------------------------
@@ -175,12 +194,18 @@ async function elegirPlanDeDos(user: ReturnType<typeof userEvent.setup>) {
   await elegirClase(user, 'Miércoles', /18:00 a 19:00/);
 }
 
+/** Del paso del plan al resumen, pasando por el paso de la foto (opcional) sin elegir ninguna. */
+async function pasarPorLaFotoAlResumen(user: ReturnType<typeof userEvent.setup>) {
+  await siguiente(user, 'Foto (opcional)');
+  await siguiente(user, 'Resumen y confirmación');
+}
+
 /** Recorre el formulario de una persona mayor de edad hasta el resumen. */
 async function llegarAlResumen(user: ReturnType<typeof userEvent.setup>) {
   await llenarDatos(user, '2000-05-10', 'Ficha médica');
   await llenarFicha(user, 'Plan y horario');
   await elegirPlanDeDos(user);
-  await siguiente(user, 'Resumen y confirmación');
+  await pasarPorLaFotoAlResumen(user);
 }
 
 async function aceptarYEnviar(user: ReturnType<typeof userEvent.setup>, boton = 'Enviar inscripción') {
@@ -204,14 +229,12 @@ function diferido() {
 // ---------------------------------------------------------------------------------------------------------------------------------
 
 describe('Formulario de inscripción: pasos y validación (criterio 43)', () => {
-  it('muestra el nombre y el teléfono de la academia y empieza por los datos personales, sin paso de foto', async () => {
+  it('muestra el nombre y el teléfono de la academia y empieza por los datos personales', async () => {
     servidor();
     await abrir();
     expect(screen.getByText(NOMBRE)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: TELEFONO })).toHaveAttribute('href', `tel:${TELEFONO}`);
-    expect(screen.getByText('Paso 1 de 4')).toBeInTheDocument();
-    // 005a: sin el paso de la foto (es de la 005b).
-    expect(screen.queryByText(/foto/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Paso 1 de 5')).toBeInTheDocument();
   });
 
   it('valida cada paso con los esquemas compartidos y no avanza con datos inválidos', async () => {
@@ -249,12 +272,12 @@ describe('Formulario de inscripción: pasos y validación (criterio 43)', () => 
     const user = await abrir();
     // Cumple 18 hoy (2026-11-20 según la API): ya es mayor, no hay paso de apoderado.
     await llenarDatos(user, '2008-11-20', 'Ficha médica');
-    expect(screen.getByText('Paso 2 de 4')).toBeInTheDocument();
+    expect(screen.getByText('Paso 2 de 5')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Atrás' }));
     // Cumple 18 mañana: todavía es menor, aparece el paso del apoderado.
     escribir('Fecha de nacimiento', '2008-11-21');
     await siguiente(user, 'Ficha médica');
-    expect(screen.getByText('Paso 2 de 5')).toBeInTheDocument();
+    expect(screen.getByText('Paso 2 de 6')).toBeInTheDocument();
     await llenarFicha(user, 'Apoderado');
     expect(screen.getByText(/menor de 18 años/)).toBeInTheDocument();
   });
@@ -481,7 +504,7 @@ describe('Formulario de inscripción: cotización y envío (criterio 43)', () =>
     await llenarFicha(user, 'Apoderado');
     await llenarApoderado(user);
     await elegirPlanDeDos(user);
-    await siguiente(user, 'Resumen y confirmación');
+    await pasarPorLaFotoAlResumen(user);
     expect(screen.getByText(textosConsentimiento(NOMBRE, { menor: true }).DATOS_PERSONALES)).toBeInTheDocument();
     await user.click(
       screen.getByLabelText(/Acepto, como padre, madre o apoderado, el tratamiento de datos personales/),
@@ -560,7 +583,7 @@ describe('Formulario de inscripción: respuestas de la API que piden otra decisi
     // Sigue elegida la del miércoles; la llena se quitó de la selección.
     expect(screen.getByText('Elegiste 1 de 2.')).toBeInTheDocument();
     await elegirClase(user, 'Lunes', /18:00 a 19:00/);
-    await siguiente(user, 'Resumen y confirmación');
+    await pasarPorLaFotoAlResumen(user);
     expect(llamadas(api, POST_COTIZACION)).toHaveLength(2);
     expect(llamadas(api, POST_COTIZACION)[1]).toEqual({ planId: P2, nivel: 'BASICO', claseIds: [C_MIE_18, C_LUN_18] });
   });
@@ -746,5 +769,187 @@ describe('Formulario de inscripción: academia y errores de carga', () => {
     mostrar('/a/delfines/inscripcion');
     await user.click(await screen.findByRole('button', { name: 'Reintentar' }));
     expect(await screen.findByRole('heading', { name: 'Datos personales' })).toBeInTheDocument();
+  });
+});
+
+describe('Formulario de inscripción: paso de la foto (criterio 43, 005b)', () => {
+  /** Como `abrir`, pero el selector de archivos no filtra por `accept`: así se prueba el aviso con un tipo que el navegador no ofrecería. */
+  async function abrirEnLaFoto() {
+    const user = userEvent.setup({ applyAccept: false });
+    mostrar('/a/delfines/inscripcion');
+    await screen.findByRole('heading', { name: 'Datos personales' });
+    await llenarDatos(user, '2000-05-10', 'Ficha médica');
+    await llenarFicha(user, 'Plan y horario');
+    await elegirPlanDeDos(user);
+    await siguiente(user, 'Foto (opcional)');
+    return user;
+  }
+
+  const entradaDeFoto = () => screen.getByLabelText(/Elegir (una|otra) foto|Cambiar la foto/);
+
+  it('va entre el plan y el resumen, es opcional y se puede seguir sin foto', async () => {
+    const api = servidor();
+    const user = await abrirEnLaFoto();
+    expect(screen.getByText('Paso 4 de 5')).toBeInTheDocument();
+    expect(screen.getByText(/Es opcional/)).toBeInTheDocument();
+    expect(entradaDeFoto()).toHaveAttribute('accept', 'image/jpeg,image/png');
+    await siguiente(user, 'Resumen y confirmación');
+    await aceptarYEnviar(user);
+    await screen.findByRole('heading', { name: 'Tu solicitud quedó registrada' });
+    // Sin foto elegida, no se llama a la API de la foto.
+    expect(peticiones(api, PUT_FOTO)).toHaveLength(0);
+    expect(screen.queryByText(/Subiendo tu foto/)).not.toBeInTheDocument();
+  });
+
+  it('avisa, sin llamar a la API, si el archivo no es JPG ni PNG', async () => {
+    const api = servidor();
+    const user = await abrirEnLaFoto();
+    await user.upload(entradaDeFoto(), archivoDePrueba('foto.gif', 'image/gif'));
+    expect(screen.getByRole('alert')).toHaveTextContent('La foto debe ser un archivo JPG o PNG.');
+    expect(screen.queryByAltText('Vista previa de la foto elegida')).not.toBeInTheDocument();
+    expect(urls.crear).not.toHaveBeenCalled();
+    expect(peticiones(api, PUT_FOTO)).toHaveLength(0);
+    // Se sigue sin foto.
+    await siguiente(user, 'Resumen y confirmación');
+  });
+
+  it('avisa, sin llamar a la API, si pasa de 5 MB: 5 242 880 bytes pasan y 5 242 881 no', async () => {
+    const api = servidor();
+    const user = await abrirEnLaFoto();
+    await user.upload(entradaDeFoto(), archivoDePrueba('grande.png', 'image/png', FOTO_TAMANO_MAXIMO + 1));
+    expect(screen.getByRole('alert')).toHaveTextContent('La foto pesa más de 5 MB.');
+    expect(screen.queryByAltText('Vista previa de la foto elegida')).not.toBeInTheDocument();
+
+    await user.upload(entradaDeFoto(), archivoDePrueba('justa.png', 'image/png', FOTO_TAMANO_MAXIMO));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByAltText('Vista previa de la foto elegida')).toBeInTheDocument();
+    expect(peticiones(api, PUT_FOTO)).toHaveLength(0);
+  });
+
+  it('muestra una vista previa con una dirección local y la libera al cambiar de foto, al quitarla y al salir', async () => {
+    servidor();
+    const user = await abrirEnLaFoto();
+    await user.upload(entradaDeFoto(), archivoDePrueba('uno.jpg', 'image/jpeg'));
+    expect(screen.getByAltText('Vista previa de la foto elegida')).toHaveAttribute('src', 'blob:prueba-1');
+    expect(screen.getByText('uno.jpg')).toBeInTheDocument();
+
+    await user.upload(entradaDeFoto(), archivoDePrueba('dos.png', 'image/png'));
+    expect(urls.liberar).toHaveBeenCalledWith('blob:prueba-1');
+    expect(screen.getByAltText('Vista previa de la foto elegida')).toHaveAttribute('src', 'blob:prueba-2');
+
+    await user.click(screen.getByRole('button', { name: 'Quitar la foto' }));
+    expect(urls.liberar).toHaveBeenCalledWith('blob:prueba-2');
+    expect(screen.queryByAltText('Vista previa de la foto elegida')).not.toBeInTheDocument();
+
+    await user.upload(entradaDeFoto(), archivoDePrueba('tres.png', 'image/png'));
+    expect(urls.liberar).not.toHaveBeenCalledWith('blob:prueba-3');
+    cleanup();
+    expect(urls.liberar).toHaveBeenCalledWith('blob:prueba-3');
+  });
+
+  it('la foto elegida se conserva al volver desde el resumen', async () => {
+    const api = servidor();
+    const user = await abrirEnLaFoto();
+    await user.upload(entradaDeFoto(), archivoDePrueba('uno.jpg', 'image/jpeg'));
+    await siguiente(user, 'Resumen y confirmación');
+    await user.click(screen.getByRole('button', { name: 'Atrás' }));
+    await screen.findByRole('heading', { name: 'Foto (opcional)' });
+    expect(screen.getByAltText('Vista previa de la foto elegida')).toBeInTheDocument();
+    expect(peticiones(api, PUT_FOTO)).toHaveLength(0);
+  });
+
+  it('después del 201 sube la foto una sola vez, con su tipo y el token en X-Token-Solicitud, y muestra el código y el enlace', async () => {
+    const api = servidor();
+    const user = await abrirEnLaFoto();
+    const foto = archivoDePrueba('uno.png', 'image/png', 2048);
+    await user.upload(entradaDeFoto(), foto);
+    await siguiente(user, 'Resumen y confirmación');
+    await aceptarYEnviar(user);
+
+    await screen.findByRole('heading', { name: 'Tu solicitud quedó registrada' });
+    await screen.findByText('Foto cargada.');
+    const subidas = peticiones(api, PUT_FOTO);
+    expect(subidas).toHaveLength(1);
+    const subida = subidas[0] as RequestInit;
+    expect(subida.body).toBe(foto);
+    expect(subida.headers).toMatchObject({ 'Content-Type': 'image/png', [CABECERA_TOKEN_SOLICITUD]: TOKEN });
+    // El token solo va en la cabecera: no en la dirección, y no se guarda en el navegador.
+    for (const [url] of api.mock.calls) expect(String(url)).not.toContain(TOKEN);
+    expect(JSON.stringify({ ...localStorage })).not.toContain(TOKEN);
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain(TOKEN);
+    expect(document.cookie).not.toContain(TOKEN);
+    // El envío del formulario no lleva la foto.
+    expect(JSON.stringify(cuerpoDeEnvio(api))).not.toContain('uno.png');
+    expect(screen.getByText('AQ-7F3K9X')).toBeInTheDocument();
+  });
+
+  it('un JPG se sube con image/jpeg', async () => {
+    const api = servidor();
+    const user = await abrirEnLaFoto();
+    await user.upload(entradaDeFoto(), archivoDePrueba('uno.jpg', 'image/jpeg'));
+    await siguiente(user, 'Resumen y confirmación');
+    await aceptarYEnviar(user);
+    await screen.findByText('Foto cargada.');
+    expect((peticiones(api, PUT_FOTO)[0] as RequestInit).headers).toMatchObject({ 'Content-Type': 'image/jpeg' });
+  });
+
+  it.each([
+    ['400 IMAGEN_NO_VALIDA', () => error('IMAGEN_NO_VALIDA', 400)],
+    ['413 CARGA_EXCESIVA', () => error('CARGA_EXCESIVA', 413)],
+    ['429 DEMASIADAS_SOLICITUDES', () => error('DEMASIADAS_SOLICITUDES', 429)],
+    ['500', () => error('ERROR_INTERNO', 500)],
+  ])(
+    'si la foto falla (%s), la solicitud quedó creada: muestra el código y el enlace y avisa que la foto se sube desde el seguimiento',
+    async (_nombre, respuesta) => {
+      const api = servidor({ [PUT_FOTO]: respuesta });
+      const user = await abrirEnLaFoto();
+      await user.upload(entradaDeFoto(), archivoDePrueba('uno.png', 'image/png'));
+      await siguiente(user, 'Resumen y confirmación');
+      await aceptarYEnviar(user);
+
+      await screen.findByRole('heading', { name: 'Tu solicitud quedó registrada' });
+      const alerta = await screen.findByRole('alert');
+      expect(alerta).toHaveTextContent('Tu solicitud quedó creada, pero no pudimos subir la foto.');
+      expect(alerta).toHaveTextContent('desde el enlace de seguimiento');
+      expect(alerta).toHaveTextContent(`llama a la academia al ${TELEFONO}`);
+      expect(screen.getByText('AQ-7F3K9X')).toBeInTheDocument();
+      expect(screen.getByText(`${window.location.origin}/a/delfines/solicitud/${TOKEN}`)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Ver el seguimiento de mi solicitud' })).toBeInTheDocument();
+      // Un solo intento: no hay reintentos automáticos de la subida.
+      expect(peticiones(api, PUT_FOTO)).toHaveLength(1);
+    },
+  );
+
+  it('si la red falla al subir la foto, también muestra el código y el enlace', async () => {
+    servidor();
+    const original = globalThis.fetch;
+    const user = await abrirEnLaFoto();
+    await user.upload(entradaDeFoto(), archivoDePrueba('uno.png', 'image/png'));
+    await siguiente(user, 'Resumen y confirmación');
+    const conRedCaida = (url: string, opciones?: RequestInit) =>
+      opciones?.method === 'PUT' ? Promise.reject(new TypeError('red')) : original(url, opciones);
+    vi.stubGlobal('fetch', vi.fn(conRedCaida));
+    await aceptarYEnviar(user);
+    await screen.findByRole('heading', { name: 'Tu solicitud quedó registrada' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('no pudimos subir la foto');
+    expect(screen.getByText('AQ-7F3K9X')).toBeInTheDocument();
+  });
+
+  it('mientras sube, lo dice sin ocultar el código', async () => {
+    const espera = diferido();
+    servidor({
+      [PUT_FOTO]: async () => {
+        await espera.promesa;
+        return { estado: 204 };
+      },
+    });
+    const user = await abrirEnLaFoto();
+    await user.upload(entradaDeFoto(), archivoDePrueba('uno.png', 'image/png'));
+    await siguiente(user, 'Resumen y confirmación');
+    await aceptarYEnviar(user);
+    expect(await screen.findByText('Subiendo tu foto…')).toBeInTheDocument();
+    expect(screen.getByText('AQ-7F3K9X')).toBeInTheDocument();
+    espera.resolver();
+    expect(await screen.findByText('Foto cargada.')).toBeInTheDocument();
   });
 });
