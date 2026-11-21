@@ -201,6 +201,19 @@ export class BaseDatos implements OnModuleDestroy {
   }
 
   /**
+   * Si la transacción pidió `esperaMaximaDeBloqueoMs`, fija `lock_timeout` en ese valor hasta el fin de la transacción (como `SET LOCAL`, pero
+   * con el valor como parámetro). Va después del contexto y antes de que `trabajo` ejecute nada. Rechaza un valor que no sea un entero de 1 a
+   * 60000, sin ejecutar `trabajo`.
+   */
+  async #fijarEsperaDeBloqueos(tx: Prisma.TransactionClient, milisegundos: number | undefined): Promise<void> {
+    if (milisegundos === undefined) return;
+    if (!Number.isInteger(milisegundos) || milisegundos < 1 || milisegundos > 60_000) {
+      throw new RangeError('esperaMaximaDeBloqueoMs debe ser un entero de 1 a 60000.');
+    }
+    await tx.$queryRaw`SELECT pg_catalog.set_config('lock_timeout', ${`${milisegundos}ms`}, true)`;
+  }
+
+  /**
    * Abre la transacción, fija el contexto y entrega a `trabajo` el envoltorio (nunca el cliente de la transacción). Si
    * `trabajo` lanza, el envoltorio se apaga en el acto; si termina bien, sigue aceptando las llamadas encadenadas hasta que
    * `asentar()` ve la cola vacía y entonces se apaga (criterios 106 y 156).
@@ -214,6 +227,7 @@ export class BaseDatos implements OnModuleDestroy {
       async (tx) => {
         const marca = randomUUID();
         await this.#fijarContexto(tx, { ...contexto, marca });
+        await this.#fijarEsperaDeBloqueos(tx, opciones.esperaMaximaDeBloqueoMs);
         // Criterio 158: cada escritura de un delegado corre en un punto de guardado; el envoltorio se arma sobre esa capa.
         const capa = conPuntosDeGuardado(tx);
         const { cliente, terminar, ejecutar, asentar, descartar, exigirCompleta } = envolver(capa.tx);

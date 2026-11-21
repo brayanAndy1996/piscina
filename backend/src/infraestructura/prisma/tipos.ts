@@ -31,6 +31,11 @@ export interface TransaccionPlataforma {
 export interface OpcionesTransaccion {
   /** Nivel de aislamiento de la transacción (por defecto, el de PostgreSQL: `ReadCommitted`). */
   readonly aislamiento?: 'ReadCommitted' | 'RepeatableRead' | 'Serializable';
+  /**
+   * Lo máximo, en milisegundos, que una sentencia de la transacción espera un bloqueo de fila o de tabla antes de fallar con `55P03`
+   * (`lock_timeout`, local a la transacción). Por defecto no se fija: rige el valor de PostgreSQL (sin límite). Entero de 1 a 60000.
+   */
+  readonly esperaMaximaDeBloqueoMs?: number;
 }
 
 /** Lo que `resolverAcademia` devuelve de una academia (activa o suspendida). */

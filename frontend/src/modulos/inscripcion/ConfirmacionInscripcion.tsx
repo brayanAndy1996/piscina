@@ -1,7 +1,7 @@
 import type { RespuestaInscripcionCreada } from '@aquagestion/contratos';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Aviso, ESTILO_BOTON } from '../../componentes/ui';
+import { Alerta, Aviso, ESTILO_BOTON } from '../../componentes/ui';
 import { formatearFechaHora } from '../../lib/fechas';
 import { formatearSoles } from '../../lib/dinero';
 import { frasePorTelefono } from '../../componentes/Telefono';
@@ -38,11 +38,23 @@ function BotonCopiar({ texto, etiqueta }: { texto: string; etiqueta: string }) {
   );
 }
 
+/** Cómo va la foto que se subió con la solicitud: `null` si no se eligió ninguna. */
+export type EstadoDeLaFoto = 'subiendo' | 'cargada' | 'fallo' | null;
+
 /**
  * Al terminar (201): el código y el enlace de seguimiento, con un aviso para guardarlos y un botón para copiarlos (criterio 43, D-05). El
- * enlace lleva el token, que solo se ve aquí y en el correo: no se guarda en ninguna parte del navegador.
+ * enlace lleva el token, que solo se ve aquí y en el correo: no se guarda en ninguna parte del navegador. Si la foto falla, la solicitud
+ * sigue creada y el código y el enlace se ven igual: la foto se puede subir desde el seguimiento (criterio 43).
  */
-export function ConfirmacionInscripcion({ solicitud, telefono }: { solicitud: Solicitud; telefono: string | null }) {
+export function ConfirmacionInscripcion({
+  solicitud,
+  telefono,
+  foto = null,
+}: {
+  solicitud: Solicitud;
+  telefono: string | null;
+  foto?: EstadoDeLaFoto;
+}) {
   const enlaceCompleto = `${window.location.origin}${solicitud.enlace}`;
   return (
     <div className="space-y-5">
@@ -51,6 +63,23 @@ export function ConfirmacionInscripcion({ solicitud, telefono }: { solicitud: So
         <strong>Guarda tu código y tu enlace.</strong> Son la única forma de seguir tu solicitud. No compartas el
         enlace: da acceso a tu información.
       </Aviso>
+
+      {foto === 'subiendo' ? (
+        <p role="status" className="text-slate-800">
+          Subiendo tu foto…
+        </p>
+      ) : null}
+      {foto === 'cargada' ? (
+        <p role="status" className="text-emerald-800">
+          Foto cargada.
+        </p>
+      ) : null}
+      {foto === 'fallo' ? (
+        <Alerta>
+          Tu solicitud quedó creada, pero no pudimos subir la foto. Puedes subirla desde el enlace de seguimiento.
+          {frasePorTelefono(telefono)}
+        </Alerta>
+      ) : null}
 
       <section aria-label="Tu código" className="space-y-2 rounded-xl bg-white p-4 ring-1 ring-slate-200">
         <p className="text-sm text-slate-700">Código de la solicitud</p>

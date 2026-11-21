@@ -9,41 +9,59 @@ interface Opcion {
   permiso: Permiso;
   texto: string;
   descripcion: string;
-  ruta: string;
+  /** Una dirección que se abre en otra pestaña (el formulario público), en vez de una página del panel. */
+  externa?: boolean;
+  ruta: (nombreCorto: string) => string;
 }
+
+const ESTILO_TARJETA =
+  'block h-full rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700';
 
 /** Opciones del inicio. Se muestran solo las que el rol permite según `MATRIZ_PERMISOS`; la API vuelve a comprobarlo. */
 const OPCIONES: readonly Opcion[] = [
   {
+    permiso: 'REGISTRAR_INSCRIPCION_Y_COBRO',
+    texto: 'Solicitudes de inscripción',
+    descripcion: 'Mira las solicitudes que enviaron los clientes y cancela las que ya no van a seguir.',
+    ruta: () => '/panel/solicitudes',
+  },
+  {
+    permiso: 'REGISTRAR_INSCRIPCION_Y_COBRO',
+    texto: 'Nueva inscripción',
+    descripcion: 'Abre el formulario público para inscribir a un cliente en recepción. Se abre en otra pestaña.',
+    externa: true,
+    ruta: (nombreCorto) => `/a/${encodeURIComponent(nombreCorto)}/inscripcion`,
+  },
+  {
     permiso: 'GESTIONAR_USUARIOS',
     texto: 'Usuarios',
     descripcion: 'Crea, desactiva o reactiva al personal de la academia.',
-    ruta: '/panel/usuarios',
+    ruta: () => '/panel/usuarios',
   },
   {
     permiso: 'RESTABLECER_CLAVE',
     texto: 'Restablecer contraseña',
     descripcion: 'Busca a una persona por su DNI y devuélvele la contraseña inicial.',
-    ruta: '/panel/restablecer',
+    ruta: () => '/panel/restablecer',
   },
   {
     permiso: 'CONFIGURAR_ACADEMIA',
     texto: 'Configuración',
     descripcion:
       'Ajusta la tolerancia de tardanza, los días por vencer, el bloqueo del inicio de sesión y el teléfono.',
-    ruta: '/panel/configuracion',
+    ruta: () => '/panel/configuracion',
   },
   {
     permiso: 'CONFIGURAR_PLANES_HORARIOS_AFORO',
     texto: 'Planes',
     descripcion: 'Define los planes que vende la academia: precio, clases por mes, días, franjas y niveles.',
-    ruta: '/panel/planes',
+    ruta: () => '/panel/planes',
   },
   {
     permiso: 'CONFIGURAR_PLANES_HORARIOS_AFORO',
     texto: 'Clases y horarios',
     descripcion: 'Arma la semana: el nivel, el día, la hora, el entrenador y el aforo de cada clase.',
-    ruta: '/panel/clases',
+    ruta: () => '/panel/clases',
   },
 ];
 
@@ -75,14 +93,23 @@ export function PaginaPanel() {
         <nav aria-label="Opciones">
           <ul className="grid gap-3 sm:grid-cols-2">
             {opciones.map((opcion) => (
-              <li key={opcion.ruta}>
-                <Link
-                  to={opcion.ruta}
-                  className="block h-full rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
-                >
-                  <span className="block text-lg font-semibold text-sky-900">{opcion.texto}</span>
-                  <span className="mt-1 block text-sm text-slate-700">{opcion.descripcion}</span>
-                </Link>
+              <li key={opcion.texto}>
+                {opcion.externa ? (
+                  <a
+                    href={opcion.ruta(usuario.academia.nombreCorto)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={ESTILO_TARJETA}
+                  >
+                    <span className="block text-lg font-semibold text-sky-900">{opcion.texto}</span>
+                    <span className="mt-1 block text-sm text-slate-700">{opcion.descripcion}</span>
+                  </a>
+                ) : (
+                  <Link to={opcion.ruta(usuario.academia.nombreCorto)} className={ESTILO_TARJETA}>
+                    <span className="block text-lg font-semibold text-sky-900">{opcion.texto}</span>
+                    <span className="mt-1 block text-sm text-slate-700">{opcion.descripcion}</span>
+                  </Link>
+                )}
               </li>
             ))}
           </ul>

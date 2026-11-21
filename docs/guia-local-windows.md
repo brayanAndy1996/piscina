@@ -275,6 +275,26 @@ npm run dev
   frecuentes": la solución es empezar de cero.
 - La historia 005a no agrega variables a `.env`, así que `npm run env:completar` no hace falta.
 
+## Después de traer la historia 005b
+
+Si ya tenías el proyecto con la historia 005a, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+npm ci
+docker compose up -d
+npm run dev
+```
+
+- `npm ci` instala `sharp`, la librería que recodifica las fotos. Sus binarios de Windows los instala como dependencias
+  opcionales, así que no hay que compilar nada. Si la API no arranca con un error de sharp, mira "`npm ci` falla con sharp, o la
+  API no arranca con «Could not load the "sharp" module»" en "Problemas frecuentes".
+- La 005b no tiene migraciones ni cambia la semilla, así que `npm run db:preparar` no hace falta. Si ejecutas
+  `npm run db:migrar`, dirá que no hay nada que aplicar.
+- La 005b agrega `ALMACEN_DIRECTORIO` a `.env.example`, pero comentada. Por eso `npm run env:completar` no la agrega a tu `.env`,
+  y no hace falta: si no está, las fotos se guardan en `backend\almacenamiento`, dentro de la carpeta del proyecto, que Git no
+  sube. Si quieres otra carpeta, mira "Dónde se guardan las fotos".
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -540,6 +560,64 @@ Otras comprobaciones:
   «Ya tienes varias reservas sin pagar desde esta conexión.». Estas reservas están en la base, así que reiniciar
   `npm run dev` no las quita: vencen solas, a las 24 horas o al fin del mes en Lima, lo que ocurra primero. Para empezar de
   cero, mira «Borrar la base de desarrollo y empezar de cero».
+
+## Probar la foto y el panel de solicitudes
+
+La foto de la inscripción (historia 005b) es opcional, y la sube la propia persona en el mismo formulario. Con `npm run dev`
+encendido:
+
+1. Abre **http://localhost:5173/a/delfines/inscripcion** y completa el formulario como en "Probar la inscripción pública".
+   En el paso **Foto (opcional)**, pulsa **Elegir una foto** y elige un JPG o un PNG de tu PC. Verás una vista previa. Si el
+   archivo pesa más de 5 MB o no es JPG ni PNG, la página lo avisa antes de subirlo. También puedes seguir sin foto.
+2. Pulsa **Enviar inscripción**. Al terminar, la página muestra tu código y el enlace de seguimiento, y la foto se sube sola.
+   Si la subida falla, la solicitud ya está creada: la página lo dice, y puedes subir la foto desde el enlace de seguimiento.
+3. Abre el enlace de seguimiento. Mientras la solicitud esté pendiente de pago, verás **Foto cargada** y la opción de cambiarla
+   (**Elegir otra foto**). Si la solicitud ya venció o se canceló, esa opción no aparece.
+
+La foto no se puede ver desde la web todavía: eso llega con el carnet (historia 008). Para comprobar que se guardó, mira la
+carpeta de "Dónde se guardan las fotos" más abajo.
+
+Hay un límite de 10 subidas de foto por hora desde cada conexión. En tu PC, todas las pruebas comparten esa conexión (ver los
+límites en "Probar la inscripción pública"), así que si te pasas, espera un rato o vuelve a ejecutar `npm run dev`.
+
+Panel de solicitudes. Entra en **http://localhost:5173/a/delfines/ingresar** con el DNI de la administradora (`10000001`) o de
+la secretaria (`10000002`), de la tabla de "Entrar como usuario de una academia". Si te pide cambiar la contraseña, cámbiala.
+
+4. En el inicio del panel, pulsa **Solicitudes de inscripción** (`/panel/solicitudes`). Verás las solicitudes **Activas**, con su
+   código, nombre, DNI, teléfono, plan, días y horas, monto y fecha límite de la reserva. Cambia el filtro a **Vencidas**,
+   **Canceladas** o **Todas** para ver las demás.
+5. Pulsa **Cancelar** en una solicitud. El botón solo aparece en las activas y en las vencidas. Escribe el motivo (de 3 a 200
+   caracteres) y confirma. La solicitud pasa a **Cancelada** y libera el cupo de sus clases. La persona no recibe ningún correo,
+   y en su enlace de seguimiento verá "Cancelada". Su foto no se borra.
+6. En el inicio del panel, **Nueva inscripción** abre en otra pestaña el formulario público de la academia, para inscribir a
+   alguien en recepción.
+7. En **Clases y horarios**, cada clase muestra "inscritos / aforo". Esa grilla solo la ve el administrador.
+
+Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`. Ninguna escribe en
+tu carpeta `backend\almacenamiento`: usan una carpeta temporal, que se borra al terminar.
+
+## Dónde se guardan las fotos (ALMACEN_DIRECTORIO)
+
+La variable `ALMACEN_DIRECTORIO` de tu `.env` indica en qué carpeta se guardan las fotos.
+
+- **Por defecto**, si no está en tu `.env`, la carpeta es `backend\almacenamiento` dentro de tu proyecto (por ejemplo,
+  `C:\proyectos\piscina\backend\almacenamiento`). Git la ignora, así que no se sube a GitHub.
+- Una ruta **relativa** se cuenta desde la carpeta del proyecto. Una ruta **absoluta** también vale, con `\` o con `/`, por
+  ejemplo `ALMACEN_DIRECTORIO=C:/datos/aquagestion`.
+- Para cambiarla, abre `.env` con `notepad .env` y agrega una línea `ALMACEN_DIRECTORIO=...`. No copies `.env.example` encima.
+  `npm run env:completar` no la agrega sola, porque en `.env.example` está comentada.
+
+La API **no arranca** si la ruta tiene alguna de estas formas. El mensaje de error nombra la variable, pero no muestra la ruta:
+
+- un carácter de control, como un tabulador dentro de la ruta;
+- un prefijo de Windows como `\\?\C:\…` o `\\.\C:\…`, o una ruta de red como `\\servidor\recurso`;
+- los caracteres `< > " | ? *`, o un `:` que no esté al principio, como en `carpeta\x:datos` o `D:carpeta`;
+- un nombre que termina en punto o en espacio, como `frontend.\public`, que Windows lee como `frontend\public`;
+- una carpeta dentro de `frontend\`, `packages\` o `node_modules\` del proyecto (también `frontend\public`), da igual si está en
+  mayúsculas o en minúsculas. Un nombre corto de Windows, como `NODE_M~1`, que apunte allí también se rechaza.
+
+Un nombre corto justo debajo del proyecto, como `ALMAC~1`, también se rechaza: escribe el nombre largo. Después de cambiar el
+valor, guarda `.env` como UTF-8 y vuelve a ejecutar `npm run dev`.
 
 ## Día a día
 
@@ -834,6 +912,39 @@ npm run db:preparar
 **Se pierden los datos de desarrollo**: las academias, los usuarios y las solicitudes que hayas creado en tu PC. El código del
 proyecto no cambia. La base de pruebas no tiene reservas de ejemplo, porque la semilla solo va a la de desarrollo; si el paso
 «Migrando la base de pruebas» también falla, aplica la misma solución.
+
+### `npm ci` falla con sharp, o la API no arranca con «Could not load the "sharp" module»
+
+Síntoma: `npm run dev` se detiene al encender la API y muestra «Could not load the "sharp" module using the win32-x64 runtime».
+(`npm ci` casi nunca falla por sharp: sharp no compila nada al instalarse, así que el problema aparece al arrancar la API).
+
+Causa: los binarios de sharp vienen en dependencias opcionales de npm. En Windows, el binario nativo es `@img/sharp-win32-x64`, que
+está en `package-lock.json`. Si `npm ci` no instala las dependencias opcionales (por ejemplo, con `--omit=optional`), sharp no
+encuentra ningún binario que cargar, y como la foto lo usa desde el arranque, la API no arranca. El propio mensaje de sharp (en
+`node_modules\sharp\dist\sharp.cjs`) pide, como primera comprobación, que las dependencias opcionales se puedan instalar.
+
+Solución:
+
+1. Vuelve a ejecutar `npm ci` en la carpeta del proyecto, sin ninguna opción que omita las dependencias opcionales
+   (`--omit=optional` o `--no-optional`), y revisa que termine sin errores.
+2. Revisa que `node -v` muestre una versión 22 (ver "Node.js equivocado"). Con `engine-strict=true` en `.npmrc`, `npm ci` se
+   detiene si la versión de Node no es la del proyecto.
+3. No uses `npm install sharp`. En este proyecto todo se instala desde `package-lock.json` con `npm ci`, y ese otro comando puede
+   cambiar el archivo.
+4. Si sigue fallando, copia el mensaje completo (sin datos personales) y pídele ayuda a quien mantiene el proyecto. La guía de
+   instalación de sharp, a la que remite su propio paquete, está en https://sharp.pixelplumbing.com/install.
+
+### La API no arranca por `ALMACEN_DIRECTORIO`
+
+Síntoma: al encender la API aparece «La variable ALMACEN_DIRECTORIO no es una ruta válida.» o «La variable ALMACEN_DIRECTORIO no
+puede estar dentro de las carpetas que sirve la web.»
+
+Causa: el valor de `ALMACEN_DIRECTORIO` en tu `.env` tiene una de las formas de la lista de "Dónde se guardan las fotos", o cae
+dentro de `frontend`, `packages` o `node_modules` del proyecto.
+
+Solución: abre `.env` con `notepad .env`, corrige la línea `ALMACEN_DIRECTORIO` o bórrala, guarda el archivo como UTF-8 y vuelve a
+ejecutar `npm run dev`. Si la borras, la carpeta vuelve a ser `backend\almacenamiento`. El mensaje no muestra la ruta, así que
+compara con la línea de tu `.env`.
 
 ### Borrar la base de desarrollo y empezar de cero
 

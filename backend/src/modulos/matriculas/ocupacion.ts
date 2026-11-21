@@ -1,4 +1,4 @@
-import { hoyEnLima } from '../../comun/fechas';
+import { anioYMesEnLima } from '../../comun/fechas';
 import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
 import type { TransaccionAcademia } from '../../infraestructura/prisma';
 
@@ -61,9 +61,7 @@ export async function contarInscritos(
   const ids = idsValidos(claseIds);
   const mapa = new Map<string, number>(ids.map((id) => [id, 0]));
   if (ids.length === 0) return mapa;
-  const [anioTexto = '0', mesTexto = '0'] = hoyEnLima(ahora).split('-');
-  const anio = Number(anioTexto);
-  const mes = Number(mesTexto);
+  const { anio, mes } = anioYMesEnLima(ahora);
   const filas = await tx.cliente.$queryRaw<FilaOcupacion[]>`
     SELECT por_mes.clase_id, max(por_mes.ocupacion)::int AS ocupacion
       FROM (SELECT mc.clase_id::text AS clase_id, m.anio, m.mes, count(*)::int AS ocupacion

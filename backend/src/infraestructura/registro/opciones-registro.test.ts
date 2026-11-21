@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { crearOpcionesRegistro, RUTAS_REDACTADAS, TEXTO_REDACTADO } from './opciones-registro';
 
 describe('crearOpcionesRegistro', () => {
-  it('redacta cookie, authorization, referer y set-cookie con un texto fijo', () => {
+  it('redacta cookie, authorization, referer, x-token-solicitud y set-cookie con un texto fijo', () => {
     const opciones = crearOpcionesRegistro({ nodeEnv: 'production' });
     const pino = opciones.pinoHttp as { redact: { paths: string[]; censor: string } };
 
@@ -12,11 +12,12 @@ describe('crearOpcionesRegistro', () => {
         'req.headers.cookie',
         'req.headers.authorization',
         'req.headers.referer',
+        'req.headers["x-token-solicitud"]',
         'res.headers["set-cookie"]',
       ]),
     );
     expect(pino.redact.censor).toBe(TEXTO_REDACTADO);
-    expect(RUTAS_REDACTADAS).toHaveLength(4);
+    expect(RUTAS_REDACTADAS).toHaveLength(5);
   });
 
   it('queda en silencio en pruebas y en info en el resto', () => {

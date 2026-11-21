@@ -9,6 +9,7 @@ import { PaginaAcademias } from '../modulos/plataforma/PaginaAcademias';
 import { PaginaIngresar } from '../modulos/plataforma/PaginaIngresar';
 import { PaginaConsultaSolicitud } from '../modulos/seguimiento/PaginaConsultaSolicitud';
 import { PaginaSeguimiento } from '../modulos/seguimiento/PaginaSeguimiento';
+import { PaginaSolicitudes } from '../modulos/solicitudes/PaginaSolicitudes';
 import { PaginaCambiarClave } from '../modulos/sesion/PaginaCambiarClave';
 import { PaginaIngresarAcademia } from '../modulos/sesion/PaginaIngresarAcademia';
 import { RutaConSesion } from '../modulos/sesion/RutaConSesion';
@@ -35,6 +36,7 @@ export function Rutas() {
         <Route path="/panel/configuracion" element={<PaginaConfiguracion />} />
         <Route path="/panel/planes" element={<PaginaPlanes />} />
         <Route path="/panel/clases" element={<PaginaClases />} />
+        <Route path="/panel/solicitudes" element={<PaginaSolicitudes />} />
       </Route>
       <Route path="*" element={<PaginaNoEncontrada />} />
     </Routes>

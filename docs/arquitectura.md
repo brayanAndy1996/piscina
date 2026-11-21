@@ -43,8 +43,10 @@ Lo que construye la historia 001 (migraciones en `backend/prisma/migrations/` y 
     no devuelven ninguna.
   - `superadmins` y `auditoria_plataforma` solo se ven en contexto de plataforma.
   - `academias` la ven la plataforma y la propia academia; solo la plataforma la crea o la modifica.
-- **`BaseDatos` es el único punto de acceso.** Expone `conAcademia(academiaId, trabajo)`, `comoPlataforma(trabajo)`,
-  `resolverAcademia(nombreCorto)` y `comprobarConexion()`. Cada transacción fija los dos valores de contexto (academia y
+- **`BaseDatos` es el único punto de acceso.** Expone `conAcademia(academiaId, trabajo, opciones?)`,
+  `comoPlataforma(trabajo, opciones?)`, `resolverAcademia(nombreCorto)` y `comprobarConexion()`. Las opciones son
+  `OpcionesTransaccion`: el nivel de aislamiento y, desde la 005b, la espera máxima de los bloqueos (ver «Lo que construye
+  la historia 005b»). Cada transacción fija los dos valores de contexto (academia y
   plataforma) con `set_config(…, true)`: solo viven dentro de esa transacción, así que no pasan a la siguiente petición
   que use la misma conexión del pool. Los módulos no usan Prisma directamente; una regla de lint lo impide.
 - **Falla cerrada.** `BaseDatos` comprueba una vez por proceso que el rol de la API no tiene atributos ni privilegios que
@@ -161,14 +163,14 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
     pisar lo editado. Un plan de ejemplo se reconoce por su nombre: si se renombra, la siguiente ejecución lo vuelve a crear.
 - **Lo que construye la historia 005a** (inscripción pública, reserva del cupo y seguimiento de la solicitud; migraciones
   `<marca>_inscripcion_publica` y `<marca>_reserva_dentro_del_mes`; módulos `matriculas/` e `inscripciones/`; la
-  especificación está en `specs/005-inscripcion-publica/`. La foto y el panel de solicitudes son de la 005b):
+  especificación está en `specs/005-inscripcion-publica/`. La foto, el panel y la ocupación son de la 005b, más abajo):
   - **Tablas con RLS.** `alumnos`, `apoderados`, `fichas_medicas`, `consentimientos`, `solicitudes_inscripcion`, `matriculas`
     y `matricula_clases`. Cada fila lleva `academia_id`, la RLS está activada y forzada, y las llaves primarias y las
     compuestas hacia las filas padre incluyen `academia_id`. Los datos de salud (Ley 29733) están en `fichas_medicas`, y los
     del apoderado, en `apoderados`. `consentimientos` es la evidencia de los consentimientos (D-07) y solo admite `INSERT`.
   - **Privilegios.** `aquagestion_app` puede leer e insertar en esas tablas, actualizar solo las columnas que cambian (por
     ejemplo, el estado de la solicitud y de la matrícula) y borrar solo en `apoderados`. `alumnos.foto_clave` ya existe,
-    pero en la 005a nadie la escribe.
+    la escribe la foto desde la 005b (ver «Lo que construye la historia 005b», más abajo).
   - **Estados.** Una solicitud está `PENDIENTE_PAGO`, `VENCIDA` o `CANCELADA`. Si su reserva ya venció, se muestra como
     `VENCIDA` aunque la fila diga todavía `PENDIENTE_PAGO`. Una matrícula está `RESERVADA`, `VIGENTE`, `FINALIZADA` o
     `CANCELADA`.
@@ -209,7 +211,7 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
     Las rutas públicas tienen contadores en memoria de cada instancia (`LIMITES_PUBLICOS`, en
     `modulos/academias/limite-inicio-sesion.ts`). Cuentan cada petición antes de leer el cuerpo, también las que fallan:
     lecturas (la academia y el formulario, 60 por minuto, con `HEAD` en el mismo contador), cotización (30 por minuto), envío
-    (10 por hora) y consulta del seguimiento (10 por minuto). Además, una conexión tiene como mucho cinco solicitudes sin
+    (10 por hora) y consulta del seguimiento (10 por minuto). Desde la 005b, la foto tiene su propia regla (10 por hora). Además, una conexión tiene como mucho cinco solicitudes sin
     pagar (`LIMITE_RESERVAS_POR_CONEXION`, que se cuentan en la base). El ingreso de 002 no cambia y sigue contando por
     dirección exacta (pregunta R6 abierta). Las IPv6 de un bloque mayor que /64 no quedan cubiertas (pregunta R7).
   - **Antes de publicar el formulario: `trust proxy`** (advertencia de despliegue). Hoy la API no configura `trust proxy`:
@@ -224,8 +226,8 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
     (`backend/test/utilidades/inscripciones-ronda1.ts`); la aplicación real no lo cambia.
   - **Aforo con inscritos (DR-5 de 004).** `PATCH /api/clases/{id}` responde 409 `AFORO_MENOR_QUE_INSCRITOS` si el aforo baja
     de los inscritos, salvo con `confirmarAforoMenor: true`, y 409 `CLASE_CON_INSCRITOS` si se desactiva una clase con
-    inscritos. Los inscritos se cuentan después de `bloquearClasesParaCupo`. El diálogo de confirmación de la web llega con
-    la 005b; hasta entonces, la web muestra estos 409 como cualquier error.
+    inscritos. Los inscritos se cuentan después de `bloquearClasesParaCupo`. La web los muestra en `/panel/clases` con su
+    diálogo de confirmación, desde la 005b (criterio 46).
   - **Auditoría.** `SOLICITUD_INSCRIPCION_CREADA`, con actor `PUBLICO` (sin usuario) y entidad `solicitud_inscripcion`. Guarda
     el código, el plan, las clases, el mes, el monto, si es proporcional, si el alumno es menor y la fecha de la reserva,
     pero nunca el DNI, los datos de salud ni el token. `CLASE_ACTUALIZADA` suma `inscritos` y `confirmacion` cuando se
@@ -238,9 +240,162 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
     `10000005`) y tres clientes con solicitud: `AQ-SM0001` (vigente), `AQ-SM0002` (vencida) y `AQ-SM0003` (menor con
     apoderado). Sus reservas vigentes vencen al fin del mes en Lima, los tokens se guardan solo como hash, y repetirla no
     duplica ni pisa lo editado. `tiburones` queda sin solicitudes.
-  - **Lo que todavía no trae.** La foto, el panel de solicitudes, la cancelación por la secretaria y la ocupación para el
-    administrador (005b); el pago, la verificación y el paso de cliente a alumno (007); la renovación y el cambio de horario
-    (010).
+  - **Lo que todavía no trae.** El pago, la verificación y el paso de cliente a alumno (007); la renovación y el cambio de
+    horario (010).
+
+- **Lo que construye la historia 005b** (foto de la inscripción y panel de solicitudes; la especificación está en
+  `specs/005-inscripcion-publica/`, criterios 34 a 40, 46, 61 a 66 y las partes de la 005b de 28, 33, 43, 44 y 48). No
+  tiene migraciones: usa las tablas y los estados que ya creó la 005a.
+  - **Foto (`PUT /api/a/{nombreCorto}/solicitudes/foto`).** La imagen va como cuerpo binario, con `Content-Type` `image/jpeg`
+    o `image/png`, y el token va en la cabecera `X-Token-Solicitud`, nunca en la dirección. Responde 204 sin cuerpo y con
+    `Cache-Control: no-store`. Las comprobaciones van en este orden, y la primera que falla decide:
+    1. **Límite por conexión:** 10 subidas por hora, con su propio contador (la regla `foto` de `LIMITES_PUBLICOS`, con la
+       clave de conexión, que suma todas las academias). Pasado el límite, 429 `DEMASIADAS_SOLICITUDES` sin leer el cuerpo.
+    2. **Tipo y codificación,** antes de leer el cuerpo y de buscar la academia: el tipo de `Content-Type`, sin parámetros,
+       debe ser `image/jpeg` o `image/png`, y `Content-Encoding` debe faltar o ser `identity`. Si no, 400 `IMAGEN_NO_VALIDA`.
+    3. **Tamaño:** más de 5 242 880 bytes (5 MB) responde 413 `CARGA_EXCESIVA`. Un `Content-Length` mayor se rechaza sin leer
+       nada, y sin `Content-Length` el cuerpo deja de leerse al pasar el límite.
+    4. **Academia** del nombre corto: 404 `ACADEMIA_NO_ENCONTRADA` o 403 `ACADEMIA_SUSPENDIDA`.
+    5. **Token:** sin la cabecera, vacío, repetido, con otra forma, que no existe o que es de otra academia: 404
+       `SOLICITUD_NO_ENCONTRADA`, con el mismo cuerpo del seguimiento.
+    6. **Solicitud editable,** con la vista completa: 409 `SOLICITUD_NO_EDITABLE` si está vencida o cancelada (también en el
+       instante del vencimiento, incluido el tope del fin de mes), si la fila ya no está `PENDIENTE_PAGO` (la solicitud
+       anterior de un cliente que volvió) o si el alumno ya no está en `CLIENTE`.
+    7. **Imagen:** 400 `IMAGEN_NO_VALIDA` si el cuerpo está vacío, si su firma no es la del tipo declarado (JPEG `FF D8 FF`;
+       PNG `89 50 4E 47 0D 0A 1A 0A`), si `sharp` no la puede decodificar (también una imagen cortada), o si sus dimensiones,
+       tal como vienen en el archivo, tienen un lado menor de 100 o mayor de 8000 píxeles, o más de 40 megapíxeles. Los
+       límites incluyen el borde.
+
+    Los 400 de imagen tienen todos el mismo cuerpo (`{ codigo, mensaje }`, sin `detalles`). Ningún rechazo cambia la foto
+    guardada, deja un archivo ni audita. Una foto nueva reemplaza a la anterior, y la vista completa de la solicitud pasa a
+    `fotoCargada: true`. Una `PENDIENTE_PAGO` sin vencimiento (pago en verificación, desde la 007) también la acepta. Los
+    demás métodos sobre esa dirección responden como una ruta inexistente. Los límites están en
+    `packages/contratos/src/fotos.ts` (`FOTO_TIPOS`, `FOTO_TAMANO_MAXIMO`, `FOTO_LADO_MINIMO`, `FOTO_LADO_MAXIMO`,
+    `FOTO_PIXELES_MAXIMOS` y `FOTO_LADO_GUARDADO`), y los usan la API y la web.
+  - **Recodificación.** La imagen aceptada se vuelve a codificar con `sharp` como JPEG de como mucho 800 píxeles en su lado
+    mayor (sin agrandar), con la orientación aplicada y **sin metadatos**: nada de EXIF (ni coordenadas GPS), XMP, ICC ni
+    comentarios. Lo que se guarda nunca es el archivo subido.
+  - **Transacción de la foto (criterio 37).** Una lectura corta comprueba la solicitud (token y estado), sin bloqueos y sin
+    tocar archivos. Después, fuera de toda transacción, se recodifica la imagen y se **guarda primero**, con una clave nueva
+    (`academias/{academiaId}/alumnos/{alumnoId}/foto-{uuid}.jpg`): un archivo sin referencia no lo ve nadie, pero una
+    referencia a un archivo que no existe, sí. Luego, una transacción toma `alumnos` con `FOR UPDATE` y después
+    `solicitudes_inscripcion` con `FOR UPDATE` (el mismo orden que el envío), repite la comprobación de que la solicitud sigue
+    editable, lee la clave anterior y guarda la nueva en `alumnos.foto_clave`. **Después de confirmar** se borra el archivo
+    anterior. Si la transacción rechaza la subida ella misma (409 o 404), se borra el archivo nuevo y `foto_clave` no cambia.
+    Si falla un borrado, queda un aviso en el registro técnico con el tipo del error, y la respuesta sigue siendo 204. La
+    subida no escribe en `auditoria`: solo registra un `info` `'Foto de la solicitud guardada'` con la academia.
+  - **Confirmación incierta (criterios 61 y 64).** Si la transacción falla con otro error (de la base, de la conexión o del
+    `COMMIT`), no se sabe si el `COMMIT` llegó, así que todavía no se borra nada. Se relee `foto_clave` en una transacción
+    nueva de la academia que toma `FOR SHARE` sobre la fila del alumno, con una espera máxima de bloqueo de 5 s
+    (`FOTO_ESPERA_RELECTURA_MS`). Así espera a que una confirmación en camino termine, y lo que lee después es definitivo.
+    Si la clave que hay es la nueva, la foto quedó: 204 y se borra la anterior. Si es otra o es nula, se borra la nueva y la
+    respuesta es 500 `ERROR_INTERNO`. Si la relectura falla o la espera se agota (`55P03`), no se borra ningún archivo y la
+    respuesta es también 500. En esos casos queda un `warn` `'Confirmación de la foto incierta'`, con la academia y el tipo del
+    error. **Invariante:** después de cualquier subida, `foto_clave` es nula o apunta a un archivo que existe. Puede quedar un
+    archivo sin referencia (si falla un borrado o la relectura); eso está en «Riesgos aceptados» de la spec.
+  - **`BaseDatos`, opción `esperaMaximaDeBloqueoMs`.** `conAcademia(academiaId, trabajo, { esperaMaximaDeBloqueoMs })` fija
+    `lock_timeout` con esos milisegundos después de fijar el contexto y antes del trabajo, con `set_config(…, true)`. Es local
+    a la transacción, como `SET LOCAL`: la siguiente transacción de la misma conexión vuelve al valor anterior. Admite un entero
+    de 1 a 60000; con otro valor lanza `RangeError` sin ejecutar el trabajo. Sin la opción no se fija nada. Se pide así porque
+    los módulos no pueden hacer `SET LOCAL` (las reglas de lint lo prohíben). El resto no cambia: 10 s para conseguir una
+    conexión y 15 s de duración máxima por transacción.
+  - **`AlmacenArchivos` (`infraestructura/almacen-archivos/`).** La interfaz tiene tres operaciones, todas con la academia y
+    una clave: `guardar(academiaId, clave, contenido, tipo)`, `leer(academiaId, clave)` y `borrar(academiaId, clave)`. Se
+    inyecta con el token `ALMACEN_ARCHIVOS`, como `ENVIADOR_CORREO`. La implementación de disco es `AlmacenArchivosDisco`, con
+    `constructor(raiz)`: la API la crea con `ALMACEN_DIRECTORIO`, y las pruebas, con un directorio temporal.
+    - **Formato de la clave.** La genera el servidor y nunca viene del cliente. Es `academias/{academiaId}/` seguido de uno o
+      más segmentos separados por `/`, cada uno con `^[a-z0-9][a-z0-9_-]*(\.[a-z0-9]+)?$`. `{academiaId}` es el UUID en
+      minúsculas que recibe el almacén, y la clave tiene como mucho 255 caracteres ASCII. Quedan fuera `.` y `..`, los
+      segmentos vacíos, la barra final, las mayúsculas, los espacios, `%`, `\`, `:`, los bytes nulos y las rutas absolutas.
+    - **Rechazos.** Con una clave que no cumple, con un `academiaId` que no es UUID o con una clave de otra academia, las tres
+      operaciones devuelven una promesa rechazada, sin crear, leer, cambiar ni borrar nada. También rechazan si la ruta resuelta
+      queda fuera de la carpeta de la academia, o si esa carpeta, una carpeta debajo de ella o el propio archivo es un enlace
+      simbólico (o una unión de Windows). Los mensajes no llevan la ruta.
+    - **Comportamiento.** `guardar` crea las carpetas que falten y escribe primero un archivo temporal en la misma carpeta, para
+      renombrarlo después: no quedan archivos a medias con la clave final. `leer` de una clave válida que no existe rechaza;
+      `borrar` de una clave válida que no existe resuelve, porque borrar es idempotente.
+    - Ninguna ruta sirve ese directorio: `GET /api/almacenamiento/{clave}`, `GET /almacenamiento/{clave}` y `GET /{clave}`
+      responden 404.
+  - **`ALMACEN_DIRECTORIO` (`infraestructura/entorno/entorno.ts`).** Es la carpeta donde se guardan los archivos. Por defecto,
+    `backend/almacenamiento`, que git ignora. Una ruta relativa se toma desde la raíz del repositorio. La resuelve
+    `resolverAlmacenDirectorio(valor, { raiz, ruta })`, una función pura que recibe `path.win32` o `path.posix`, así que se
+    prueba igual en cualquier sistema. Si el valor no es válido, la API no arranca, y `validarEntorno` nombra la variable sin
+    mostrar la ruta. Se rechaza si:
+    - tiene un carácter de control (U+0000 a U+001F);
+    - (solo con `path.win32`) empieza con dos separadores (los prefijos `\\?\` y `\\.\`, las rutas de red como
+      `\\servidor\recurso`, `\??\`), lleva `<`, `>`, `"`, `|`, `?` o `*`, tiene un `:` fuera de la unidad del principio
+      (`carpeta\x:datos`, `D:carpeta`), o tiene un segmento que termina en punto o en espacio (`frontend.\public`, que Windows lee
+      como `frontend\public`);
+    - queda dentro de `frontend/`, `packages/` o `node_modules/` de la raíz, también `frontend/public`. La comparación es por
+      segmentos y **no distingue mayúsculas en ningún sistema**. Con `path.win32`, un nombre corto de 8.3 (como `NODE_M~1`)
+      coincide con cualquier nombre de esa posición.
+
+    Los nombres cortos no se rechazan por sí solos, porque el directorio temporal de Windows suele tenerlos; un nombre corto
+    justo debajo de la raíz (`ALMAC~1`) sí se rechaza, y se escribe el nombre largo. Un enlace, una unión o una unidad creada con
+    `subst` que lleve a `frontend/` no se detecta por el texto de la ruta: es un riesgo aceptado, que exige escribir a propósito
+    una ruta rara en la configuración.
+    - **Nota de hosting: la raíz del repositorio.** `RAIZ_DEL_REPOSITORIO` se calcula desde `__dirname`: son cuatro carpetas hacia
+      arriba desde `src/infraestructura/entorno/` (o desde `dist/infraestructura/entorno/`, al compilar a `backend/dist`), es
+      decir, la carpeta que contiene `backend/`. Si el hosting copia `dist` a otro lugar, esa cuenta deja de dar la raíz del
+      repositorio, y las rutas relativas de `ALMACEN_DIRECTORIO` (y su valor por defecto) caerían en otro sitio. Al elegir el
+      hosting (D-21) hay que repasarlo: o se fija `ALMACEN_DIRECTORIO` con una ruta absoluta, o se calcula la raíz de otra forma.
+  - **Panel de solicitudes (criterios 38 y 39).** `GET /api/solicitudes?estado=` y `POST /api/solicitudes/{id}/cancelar`, con
+    `@Permiso('REGISTRAR_INSCRIPCION_Y_COBRO')`, es decir, `ADMIN` y `SECRETARIA`. `ENTRENADOR` y `ALUMNO` reciben 403
+    `SIN_PERMISO`; sin sesión, 401; y el Superadmin no tiene estas rutas (D-29). La academia sale siempre de la sesión, nunca de
+    la dirección ni del cuerpo, así que `?academiaId=` no cambia nada.
+    - **Lista.** `estado` puede ser `ACTIVAS` (por defecto), `VENCIDAS`, `CANCELADAS` o `TODAS`, y filtra por el estado visible
+      (una `PENDIENTE_PAGO` con la reserva vencida cuenta como `VENCIDA`). Otro valor, uno en minúsculas o el parámetro repetido
+      responden 400 `SOLICITUD_INVALIDA` con `detalles.errores[0].campo` igual a `estado`. La lista va de la más nueva a la más
+      antigua (`creadaEn` y, a igual fecha, `id`) y trae como mucho 200 después de filtrar. Cada elemento (`solicitudPanelSchema`,
+      estricto) tiene `id`, `codigo`, `estado`, `creadaEn`, `reservaVenceEn`, `nombres`, `apellidos`, `dni`, `telefono`,
+      `menorDeEdad`, `plan` (`id` y `nombre`), `clases` (día y hora de cada una), `mes`, `clasesTotales` y `monto` (texto con dos
+      decimales). No lleva datos médicos, apoderado, consentimientos, foto, IP, token ni su hash, ni fecha de nacimiento. Los
+      datos personales son los actuales del alumno, también en sus solicitudes anteriores. La lectura no audita.
+    - **Cancelación.** Cuerpo `{ motivo }`, de 3 a 200 caracteres visibles. Todo en una sola transacción y en este orden:
+      `bloquearActorVigente`, la solicitud con `FOR UPDATE`, su matrícula con `FOR UPDATE` y las clases de esa matrícula con
+      `bloquearClasesParaCupo`, en una sola llamada. No toma `alumnos`, así que no entra en ciclo ni con el envío ni con la foto.
+      Una solicitud `PENDIENTE_PAGO` (vencida o no) pasa a `CANCELADA`, y su matrícula `RESERVADA` pasa a `CANCELADA` con
+      `reserva_vence_en` nula: el cupo se libera en ese momento. **Es idempotente:** una solicitud ya cancelada responde 200 sin
+      escribir ni auditar, así que dos cancelaciones dejan una sola auditoría. Una fila `VENCIDA` (la solicitud anterior de un
+      cliente que volvió, criterio 21 b) responde 409 `SOLICITUD_NO_CANCELABLE`. Un id que no es UUID, que no existe o que es de
+      otra academia responde 404 `NO_ENCONTRADO`.
+    - **Auditoría exacta.** Una sola entrada `SOLICITUD_INSCRIPCION_CANCELADA`, con entidad `solicitud_inscripcion`, `entidadId`
+      el id de la solicitud, actor `USUARIO` (quien cancela), `motivo`, la IP, `datosAntes: { estado }` (el estado visible de
+      antes: `PENDIENTE_PAGO` o `VENCIDA`) y `datosDespues: { estado: 'CANCELADA' }`. Nada más: ni DNI, nombres, datos médicos ni
+      token.
+    - **Sin correo y sin tocar la foto** (respuestas B1 y B2, DR-17 y DR-18). La cancelación no envía correo; el cliente ve
+      "Cancelada" en su enlace de seguimiento. `alumnos.foto_clave` y el archivo no cambian, porque ninguna historia borra la foto
+      de una solicitud cancelada o vencida hasta que exista la política de retención (Ley 29733).
+    - **Ocupación (criterio 40).** `GET /api/clases/ocupacion`, con `@Permiso('CONFIGURAR_PLANES_HORARIOS_AFORO')` (solo `ADMIN`),
+      responde `{ mes, ocupacion: [{ claseId, inscritos, cuposRestantes }] }`, con un elemento por cada clase de la academia,
+      activa o no. `inscritos` es `contarInscritos` (la misma cifra de los 409 de DR-5), y `cuposRestantes` es
+      `max(0, aforo − ocupación del mes)`, con `contarOcupacion`. No audita ni bloquea.
+    - **Web.** `/panel/solicitudes` (solo `ADMIN` y `SECRETARIA`) lista con el filtro, muestra los datos de cada solicitud y
+      cancela con un diálogo que pide el motivo (botón "Cancelar" de la tarjeta, en las activas y en las vencidas). El inicio del
+      panel tiene "Solicitudes de inscripción" y "Nueva inscripción", que abre en otra pestaña el formulario público de la
+      academia. La grilla de `/panel/clases` muestra "inscritos / aforo" con `GET /api/clases/ocupacion`, y los diálogos de DR-5.
+      Las claves de las consultas incluyen la identidad de la sesión.
+    - **Foto desde recepción (respuesta B5, DR-21).** La secretaria sube la foto en el paso de la foto del formulario público,
+      como cualquier cliente. El panel no tiene "subir foto" ni captura con la cámara.
+  - **Servidor de desarrollo de la web (`frontend/vite.config.ts`, criterios 62 y 65).** Por defecto, Vite deja leer por
+    `/@fs/` casi todo el repositorio, incluido el almacén. Por eso `server.fs.allow` es una lista cerrada: `frontend/`,
+    `packages/contratos/` y el `node_modules/` de la raíz, con `server.fs.strict` en `true`. `server.fs.deny` tiene los valores
+    por defecto de Vite 8.3.8 (`.env`, `.env.*`, `*.{crt,pem,key,p12,pfx,cer,der}`, `.npmrc`, `.yarnrc.yml` y `**/.git/**`) más
+    `**/node_modules/@aquagestion` y `**/node_modules/@aquagestion/**`. Hace falta porque npm enlaza cada workspace en
+    `node_modules/@aquagestion/` (una unión en Windows), y Vite no resuelve esos enlaces al decidir. La web no usa esa ruta: el
+    paquete `@aquagestion/contratos` se resuelve a `packages/contratos/`. Como Vite reemplaza su lista de `deny` si la
+    configuración trae una, los valores por defecto se copian a mano. **Si se actualiza Vite, hay que revisar esos valores** (en
+    `node_modules/vite/dist/node/chunks/node.js`, `server.fs.deny`) y copiarlos de nuevo. Un paquete nuevo del workspace usa el
+    ámbito `@aquagestion/`; si no lo usa, su enlace se suma a `deny`.
+  - **Pruebas sin almacén de desarrollo (criterio 63).** Ninguna prueba escribe en `backend/almacenamiento`. Las pruebas del
+    backend (`vitest.config.mts`) usan `ALMACEN_DIRECTORIO` en `os.tmpdir()/aqua-almacen-{pid}`: `global-setup-almacen.ts` la
+    crea antes y la borra al terminar. Las E2E (`e2e/playwright.config.ts`) arrancan la API con
+    `os.tmpdir()/aqua-e2e-almacen-{uuid}`, que `e2e/global-teardown.ts` borra. Las dos limpiezas solo borran lo que tiene ese
+    prefijo y está dentro de `os.tmpdir()`. La única excepción es la prueba del criterio 62, que crea y borra su propio archivo
+    en una carpeta de academia con UUID nuevo.
+  - **Registro técnico (criterios 28 y 53).** `x-token-solicitud` y `referer` se redactan en todo el registro de la API
+    (`RUTAS_REDACTADAS`, en `infraestructura/registro/opciones-registro.ts`), con un texto fijo. La línea de la petición de la
+    foto no lleva cuerpo ni token, y los fallos de la foto se registran solo con el tipo del error.
 
 ## Fechas y horas de negocio (America/Lima)
 
@@ -437,8 +592,8 @@ está en `specs/004-planes-clases-aforo/spec.md`, sección «Reglas para las his
 
 ### Inscripción pública, reserva y seguimiento (005a)
 
-Salen de la sección «Reglas para las historias siguientes» de `specs/005-inscripcion-publica/spec.md` (criterio 48). La regla
-«Archivos» es de la 005b y todavía no está aquí.
+Salen de la sección «Reglas para las historias siguientes» de `specs/005-inscripcion-publica/spec.md` (criterio 48). Las
+reglas que agregó la 005b («Archivos», «Para la 008» y «Fotos de solicitudes no pagadas») están al final de esta sección.
 
 - **Orden de bloqueos.** Si la transacción tiene actor, primero `usuarios`, con `bloquearActorVigente`. El envío público no
   tiene actor: sus bloqueos consultivos van primero, el de la conexión (`'inscripcion-ip:' || academia || ':' ||
@@ -457,7 +612,9 @@ Salen de la sección «Reglas para las historias siguientes» de `specs/005-insc
   (pregunta anotada en `specs/backlog.md`). Al rechazar, la matrícula pasa a `CANCELADA` y el cupo se libera. Al confirmar,
   queda `VIGENTE`: el alumno pasa de `CLIENTE` a `ALUMNO_ACTIVO` y se crea su usuario (HU-04). El total sale de
   `calcularTotal` con lo guardado en la matrícula (`precio_plan`, `clases_por_mes_plan`, `clases_totales`), nunca del plan
-  (HU-19).
+  (HU-19). Antes de publicar el formulario, las inscripciones y las fotos que envían `ADMIN` o `SECRETARIA` con su sesión
+  dejarán de contar en los límites por conexión (criterios 25 y 33; respuesta B4, DR-20). Ese criterio nuevo, con su prueba
+  protegida, es de la 007. Hasta entonces, recepción comparte esos límites.
 - **Tokens públicos.** Un token que da acceso sin sesión se genera con 32 bytes criptográficos, se guarda solo su SHA-256, se
   busca dentro de la academia del nombre corto y viaja en el cuerpo o en una cabecera, nunca en la dirección de la API. Toda
   cabecera que lo lleve (o que lleve una dirección de la web que lo contenga, como `Referer`) se redacta en el registro
@@ -473,6 +630,28 @@ Salen de la sección «Reglas para las historias siguientes» de `specs/005-insc
 - **Proveedores externos.** Un aviso después de confirmar que llama a un proveedor externo, como el correo, no retiene la
   respuesta (criterio 51). El fallo de un proveedor externo se registra solo con el tipo del error, nunca con su mensaje ni
   sus propiedades, que pueden llevar datos personales (criterio 52).
+- **Archivos (005b; criterios 35 a 37 y 61 a 66).** Toda historia que guarda archivos (comprobantes de la 007, multimedia de
+  la 014, certificados) usa `AlmacenArchivos`, con una clave que genera el servidor bajo `academias/{academiaId}/…` y nunca
+  con un nombre que venga del cliente. Procesa el archivo y lo guarda **antes** de la transacción; la transacción toma las
+  filas en el orden de bloqueos (el alumno antes que su solicitud); y **después de confirmar** borra lo que reemplazó. Un
+  archivo solo se borra cuando es seguro que nadie lo referencia: si la transacción que guarda la referencia falla sin que se
+  sepa si se confirmó, se relee la referencia en otra transacción antes de borrar nada (criterio 61). Esa relectura toma el
+  bloqueo de la fila que guarda la referencia (`FOR SHARE`, con espera máxima, criterio 64), para esperar a que la transacción
+  original termine; si la espera se agota, no borra nada. Las imágenes que suben las personas se recodifican sin metadatos
+  (criterio 35). El almacén nunca vive dentro de lo que sirve la web (`frontend/`, `packages/`, `node_modules/`), y el servidor
+  de desarrollo de la web solo sirve esas carpetas, nunca a través de los enlaces de los workspaces en
+  `node_modules/@aquagestion/` (criterios 62 y 65). Todo paquete nuevo del workspace usa el ámbito `@aquagestion/`, o su enlace
+  se suma a `server.fs.deny`. `ALMACEN_DIRECTORIO` se resuelve con `resolverAlmacenDirectorio` (criterio 66), y una variable de
+  ruta nueva que deba quedar fuera de algo aplica las mismas reglas, también las de las formas de ruta de Windows. Las pruebas
+  usan un almacén temporal, nunca el de desarrollo (criterio 63). Las claves que arma el servidor no usan nombres reservados de
+  Windows (`con`, `nul`, `aux`, `prn`, `com1` a `com9`, `lpt1` a `lpt9`, con o sin extensión) como segmento: hoy todos son fijos,
+  UUID o empiezan con un prefijo fijo (`foto-`).
+- **Para la 008 (respuesta B5, DR-21).** Agregar la foto desde el panel a una solicitud o a un alumno ya registrado, y tomarla
+  con la cámara de la PC, con el mismo proceso de los criterios 35 a 37: recodificación sin metadatos, `AlmacenArchivos`,
+  transacción y borrado de la anterior después de confirmar.
+- **Fotos de solicitudes no pagadas (respuesta B2, DR-18).** Ninguna historia borra la foto de una solicitud cancelada o vencida
+  hasta que exista la política de retención (Ley 29733), que se define antes de producción. Cuando exista, la foto se trata
+  como los demás datos de esas personas.
 
 ## Estructura de carpetas
 
@@ -501,14 +680,14 @@ piscina/
 │   │   └── modulos/
 │   │       ├── academias/        Alta de academias, Superadmin
 │   │       ├── autenticacion/ · usuarios/ · auditoria/ · configuracion/
-│       ├── planes/ · clases/ · matriculas/ · inscripciones/   (004 y 005a; matriculas/ no tiene controlador)
+│       ├── planes/ · clases/ · matriculas/ · inscripciones/   (004, 005a y 005b; matriculas/ no tiene controlador)
 │   │       └── <modulo>/         Un módulo por área (planes, clases, caja, pagos, asistencia…)
 │   │           ├── <modulo>.module.ts · .controller.ts · .service.ts
 │   │           └── dominio/      Cálculos puros + sus pruebas unitarias (*.test.ts)
 │   ├── test/
 │   │   ├── integracion/<modulo>/ Pruebas contra PostgreSQL real
 │   │   └── utilidades/           Crear academias y datos de prueba, limpiar la base
-│   └── almacenamiento/           Archivos subidos en desarrollo (ignorado por git)
+│   └── almacenamiento/           Fotos subidas en desarrollo: la carpeta por defecto de `ALMACEN_DIRECTORIO` (ignorado por git)
 ├── frontend/
 │   └── src/
 │       ├── main.tsx · App.tsx

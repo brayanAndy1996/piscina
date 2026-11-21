@@ -71,3 +71,20 @@ export type RespuestaClase = z.infer<typeof respuestaClaseSchema>;
 
 export const respuestaListaClasesSchema = z.strictObject({ clases: z.array(claseSchema) });
 export type RespuestaListaClases = z.infer<typeof respuestaListaClasesSchema>;
+
+/**
+ * `GET /api/clases/ocupacion` (spec 005b, criterio 40; PB13): un elemento por cada clase de la academia, activa o no. `inscritos` es la mayor
+ * ocupación entre el mes en curso y los siguientes (la cifra de los 409 de DR-5) y `cuposRestantes`, `max(0, aforo - ocupación del mes en curso)`.
+ */
+export const respuestaOcupacionSchema = z.strictObject({
+  /** `AAAA-MM`: el mes en curso en Lima. */
+  mes: z.string().regex(/^[0-9]{4}-(0[1-9]|1[0-2])$/, 'El mes debe tener el formato AAAA-MM.'),
+  ocupacion: z.array(
+    z.strictObject({
+      claseId: z.uuid(),
+      inscritos: z.number().int().min(0),
+      cuposRestantes: z.number().int().min(0),
+    }),
+  ),
+});
+export type RespuestaOcupacion = z.infer<typeof respuestaOcupacionSchema>;

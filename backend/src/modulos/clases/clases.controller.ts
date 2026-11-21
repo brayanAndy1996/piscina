@@ -6,6 +6,7 @@ import {
   crearClaseSchema,
   type RespuestaClase,
   type RespuestaListaClases,
+  type RespuestaOcupacion,
 } from '@aquagestion/contratos';
 import type { Request } from 'express';
 import { ValidarCon } from '../../comun/validacion';
@@ -27,6 +28,17 @@ export class ClasesController {
   @Permiso('CONFIGURAR_PLANES_HORARIOS_AFORO')
   listar(@SesionActual() sesion: SesionVerificada): Promise<RespuestaListaClases> {
     return this.servicio.listar(sesion.usuario.academiaId);
+  }
+
+  /**
+   * `GET /api/clases/ocupacion` (005b, criterio 40): cuántos inscritos tiene cada clase y cuántos cupos le quedan este mes. Va aparte de
+   * `GET /api/clases` para no cambiar `claseSchema`; solo el administrador, igual que las demás rutas de clases. Los parámetros de consulta
+   * se ignoran.
+   */
+  @Get('ocupacion')
+  @Permiso('CONFIGURAR_PLANES_HORARIOS_AFORO')
+  ocupacion(@SesionActual() sesion: SesionVerificada): Promise<RespuestaOcupacion> {
+    return this.servicio.ocupacion(sesion.usuario.academiaId);
   }
 
   @Post()

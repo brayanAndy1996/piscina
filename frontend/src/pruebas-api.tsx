@@ -78,3 +78,28 @@ export function sesionDe(
     },
   };
 }
+
+/**
+ * jsdom no trae `URL.createObjectURL` ni `revokeObjectURL` (la vista previa de la foto los usa). Los simula con direcciones
+ * `blob:prueba-N` y devuelve los dos espías. Se llama en el `beforeEach` de las pruebas que muestran una vista previa.
+ */
+export function simularUrlLocal() {
+  let n = 0;
+  const crear = vi.fn(() => `blob:prueba-${++n}`);
+  const liberar = vi.fn();
+  URL.createObjectURL = crear;
+  URL.revokeObjectURL = liberar;
+  return { crear, liberar };
+}
+
+/** Las peticiones hechas con un método y una dirección (con su cabecera y su cuerpo, sin interpretarlos). */
+export function peticiones(simulado: ReturnType<typeof simularApi>, clave: string): RequestInit[] {
+  return simulado.mock.calls
+    .filter(([url, opciones]) => `${opciones?.method ?? 'GET'} ${url}` === clave)
+    .map(([, opciones]) => opciones ?? {});
+}
+
+/** Un archivo de prueba con el tipo y el peso indicados (el contenido es relleno). */
+export function archivoDePrueba(nombre: string, tipo: string, bytes = 10): File {
+  return new File([new Uint8Array(bytes)], nombre, { type: tipo });
+}

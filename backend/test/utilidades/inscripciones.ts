@@ -570,6 +570,11 @@ export interface OpcionesAppInscripciones {
   conLimites?: boolean;
   /** Un enviador de correo de prueba que reemplaza al simulado (necesita el token `ENVIADOR_CORREO` de `infraestructura/correo`). */
   correo?: EnviadorDePrueba;
+  /**
+   * Un `AlmacenArchivos` que reemplaza al de la API (005b; necesita el token `ALMACEN_ARCHIVOS` de `infraestructura/almacen-archivos`):
+   * un `AlmacenArchivosDisco` sobre un directorio temporal o uno de prueba que falla. Sin esta opción, la aplicación usa el suyo.
+   */
+  almacen?: object;
   nivelRegistro?: string;
   destinoRegistro?: DestinationStream;
 }
@@ -586,7 +591,20 @@ export interface AppInscripciones {
  */
 export async function crearAppInscripciones(opciones: OpcionesAppInscripciones = {}): Promise<AppInscripciones> {
   let token: symbol | undefined;
+  let tokenAlmacen: symbol | undefined;
   let errorDeCorreo: Error | undefined;
+  if (opciones.almacen) {
+    // Igual que con el correo: si falta el módulo de la 005b, cada petición de cada prueba falla con este error.
+    try {
+      const modulo = await cargarFuncionalidad005<{ ALMACEN_ARCHIVOS: symbol }>(
+        'infraestructura/almacen-archivos/index.ts',
+        ['ALMACEN_ARCHIVOS'],
+      );
+      tokenAlmacen = modulo.ALMACEN_ARCHIVOS;
+    } catch (error) {
+      errorDeCorreo = error instanceof Error ? error : new Error(String(error));
+    }
+  }
   if (opciones.correo) {
     // No se lanza aquí (rompería el `beforeAll` y dejaría las pruebas omitidas): cada petición de cada prueba falla con este error.
     try {
@@ -605,6 +623,8 @@ export async function crearAppInscripciones(opciones: OpcionesAppInscripciones =
       let ajustado = constructor;
       if (!opciones.conLimites) ajustado = ajustado.overrideProvider(ThrottlerStorage).useValue(almacenSinLimites);
       if (opciones.correo && token) ajustado = ajustado.overrideProvider(token).useValue(opciones.correo);
+      if (opciones.almacen && tokenAlmacen)
+        ajustado = ajustado.overrideProvider(tokenAlmacen).useValue(opciones.almacen);
       return ajustado;
     },
   });

@@ -11,6 +11,7 @@ import { BaseDatos, type AcademiaResuelta, type Fragmento, sql } from '../../inf
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { leerConfiguracion } from '../configuracion/lectura';
 import { hashDeToken } from './dominio/codigos';
+import { estadoVisible } from './estado-visible';
 import { solicitudNoEncontrada } from './errores';
 
 interface FilaVista {
@@ -98,20 +99,6 @@ export class SeguimientoService {
     if (!PATRON_CODIGO.test(codigo) || !PATRON_DNI.test(dni)) return null;
     return sql`s.codigo = ${codigo}::text AND a.dni = ${dni}::text`;
   }
-}
-
-/** El estado que ve el cliente: una solicitud en espera de pago cuya reserva venció se muestra `VENCIDA` aunque la fila aún no lo diga. */
-function estadoVisible(fila: FilaVista, ahora: Date): VistaSolicitud['estado'] {
-  if (fila.estado_solicitud !== 'PENDIENTE_PAGO') return fila.estado_solicitud;
-  if (fila.estado_matricula === 'CANCELADA') return 'CANCELADA';
-  if (
-    fila.estado_matricula === 'RESERVADA' &&
-    fila.reserva_vence_en !== null &&
-    fila.reserva_vence_en.getTime() <= ahora.getTime()
-  ) {
-    return 'VENCIDA';
-  }
-  return 'PENDIENTE_PAGO';
 }
 
 /**

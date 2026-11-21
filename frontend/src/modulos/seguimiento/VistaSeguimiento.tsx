@@ -1,19 +1,9 @@
-import {
-  type EstadoSolicitud,
-  NOMBRE_DIA,
-  NOMBRE_NIVEL,
-  type RespuestaConsultaSolicitud,
-} from '@aquagestion/contratos';
+import { NOMBRE_DIA, NOMBRE_NIVEL, type RespuestaConsultaSolicitud } from '@aquagestion/contratos';
 import { formatearSoles } from '../../lib/dinero';
+import { ESTADO_EN_PALABRAS } from '../../lib/estado-solicitud';
 import { formatearFechaHora, formatearMes } from '../../lib/fechas';
 import { Insignia } from '../../componentes/ui';
 import { frasePorTelefono } from '../../componentes/Telefono';
-
-const ESTADO_EN_PALABRAS: Readonly<Record<EstadoSolicitud, { titulo: string; color: 'ambar' | 'gris' }>> = {
-  PENDIENTE_PAGO: { titulo: 'Pendiente de pago', color: 'ambar' },
-  VENCIDA: { titulo: 'Vencida', color: 'gris' },
-  CANCELADA: { titulo: 'Cancelada', color: 'gris' },
-};
 
 function Explicacion({ respuesta }: { respuesta: RespuestaConsultaSolicitud }) {
   const { solicitud, academia } = respuesta;

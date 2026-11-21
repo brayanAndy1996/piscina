@@ -37,6 +37,7 @@ export const DEPENDENCIAS_BACKEND_PERMITIDAS = Object.freeze([
   'pino-http',
   'reflect-metadata',
   'rxjs',
+  'sharp',
   'zod',
   // devDependencies
   '@nestjs/cli',

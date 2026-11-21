@@ -12,3 +12,15 @@ export const ZONA_LIMA = 'America/Lima';
 export function hoyEnLima(instante: Date): string {
   return format(new TZDate(instante, ZONA_LIMA), 'yyyy-MM-dd');
 }
+
+/** El año, el mes (1 a 12) y el día del mes de `instante` en America/Lima, como números. Lanza `RangeError` con una fecha inválida. */
+export function fechaEnLima(instante: Date): { anio: number; mes: number; dia: number } {
+  const [anio = 0, mes = 0, dia = 0] = hoyEnLima(instante).split('-').map(Number);
+  return { anio, mes, dia };
+}
+
+/** El año y el mes (1 a 12) de `instante` en America/Lima, como números. Lanza `RangeError` con una fecha inválida. */
+export function anioYMesEnLima(instante: Date): { anio: number; mes: number } {
+  const { anio, mes } = fechaEnLima(instante);
+  return { anio, mes };
+}

@@ -1,11 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { esErrorDeApi } from '../../api/cliente';
 import { MarcoPublico } from '../../componentes/MarcoPublico';
 import { frasePorTelefono } from '../../componentes/Telefono';
-import { Alerta, ESTILO_BOTON } from '../../componentes/ui';
+import { Alerta, Aviso, ESTILO_BOTON } from '../../componentes/ui';
 import { mensajeGeneral } from '../../lib/errores';
 import { useSolicitudPorToken } from './hooks';
+import { SeccionFoto } from './SeccionFoto';
 import { VistaSeguimiento } from './VistaSeguimiento';
 
 /** El título de la pestaña nunca lleva el token (criterio 44 de 005): es el mismo para toda solicitud. */
@@ -40,6 +41,8 @@ export function PaginaSeguimiento() {
 function ContenidoSeguimiento({ nombreCorto, token }: { nombreCorto: string; token: string }) {
   const consulta = useSolicitudPorToken(nombreCorto, token);
   const consultaPorCodigo = `/a/${encodeURIComponent(nombreCorto)}/solicitud`;
+  // Un aviso de la foto sigue a la vista aunque la vista pase a reducida y la sección de la foto desaparezca (criterio 44).
+  const [avisoFoto, setAvisoFoto] = useState<string | null>(null);
 
   if (consulta.data === undefined) {
     if (consulta.isPending) {
@@ -78,6 +81,17 @@ function ContenidoSeguimiento({ nombreCorto, token }: { nombreCorto: string; tok
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold text-sky-900">Seguimiento de tu solicitud</h1>
       <VistaSeguimiento respuesta={respuesta} />
+      {respuesta.solicitud.estado === 'PENDIENTE_PAGO' ? (
+        <SeccionFoto
+          nombreCorto={nombreCorto}
+          token={token}
+          fotoCargada={respuesta.solicitud.fotoCargada}
+          telefono={respuesta.academia.telefono}
+          alActualizar={() => consulta.refetch()}
+          alAvisar={setAvisoFoto}
+        />
+      ) : null}
+      {avisoFoto ? <Aviso>{avisoFoto}</Aviso> : null}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"

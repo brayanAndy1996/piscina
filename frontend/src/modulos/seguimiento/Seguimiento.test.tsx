@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { error, llamadas, mostrar, simularApi } from '../../pruebas-api';
+import { archivoDePrueba, error, llamadas, mostrar, peticiones, simularApi, simularUrlLocal } from '../../pruebas-api';
 import { Rutas } from '../../rutas/Rutas';
 
 // Spec 005, criterio 44 (005a): la página de seguimiento con el token en el cuerpo, la vista mínima, la consulta con código y DNI y el
@@ -50,10 +50,13 @@ function servidor(consulta: () => { estado: number; cuerpo?: unknown }, telefono
   });
 }
 
+let urls: ReturnType<typeof simularUrlLocal>;
+
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   document.title = 'AquaGestión';
+  urls = simularUrlLocal();
 });
 
 describe('Página de seguimiento con el enlace (criterio 44)', () => {
@@ -77,8 +80,9 @@ describe('Página de seguimiento con el enlace (criterio 44)', () => {
     // La reserva vence el 21/11 a las 15:30 en Lima.
     expect(within(solicitud).getByText('21/11/2026 15:30')).toBeInTheDocument();
     expect(screen.getByText(/llama a la academia al 987654321/)).toBeInTheDocument();
-    // 005a: sin "subir foto".
-    expect(screen.queryByText(/foto/i)).not.toBeInTheDocument();
+    // Con la vista completa y sin foto, ofrece subirla (005b).
+    expect(screen.getByText('Foto pendiente')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Subir foto' })).toBeDisabled();
   });
 
   it('no guarda el token en localStorage, sessionStorage ni cookies y no lo pone en el título', async () => {
@@ -302,5 +306,185 @@ describe('Consulta con código y DNI (criterio 44)', () => {
     await user.click(screen.getByRole('button', { name: 'Consultar' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('No encontramos una solicitud con ese código y ese DNI');
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+});
+
+describe('"Subir foto" en el seguimiento (criterio 44, 005b)', () => {
+  const PUT_FOTO = 'PUT /api/a/delfines/solicitudes/foto';
+  const entradaDeFoto = () => screen.getByLabelText(/Elegir (una|otra) foto|Cambiar la foto/);
+
+  /** Un servidor con estado: el `PUT` responde lo que se le indique y, si es 204, la consulta siguiente ya dice `fotoCargada`. */
+  function servidorConFoto(respuestaPut: () => { estado: number; cuerpo?: unknown } = () => ({ estado: 204 })) {
+    const estado = { fotoCargada: false, reducida: false };
+    const api = simularApi({
+      [GET_ACADEMIA]: () => ({
+        estado: 200,
+        cuerpo: { nombreCorto: 'delfines', nombre: 'Academia de Natación Los Delfines', telefono: TELEFONO },
+      }),
+      [POST_CONSULTA]: () => ({
+        estado: 200,
+        cuerpo: estado.reducida ? reducida('CANCELADA') : respuesta({ fotoCargada: estado.fotoCargada }),
+      }),
+      [PUT_FOTO]: () => {
+        const salida = respuestaPut();
+        if (salida.estado === 204) estado.fotoCargada = true;
+        if (salida.estado === 409) estado.reducida = true;
+        return salida;
+      },
+    });
+    return { api, estado };
+  }
+
+  it('con la vista completa y sin foto, ofrece subirla: el botón se activa con un archivo válido', async () => {
+    servidorConFoto();
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    await screen.findByRole('article', { name: 'Tu solicitud' });
+    const seccion = screen.getByRole('region', { name: 'Foto' });
+    expect(within(seccion).getByText('Foto pendiente')).toBeInTheDocument();
+    expect(entradaDeFoto()).toHaveAttribute('accept', 'image/jpeg,image/png');
+    const boton = within(seccion).getByRole('button', { name: 'Subir foto' });
+    expect(boton).toBeDisabled();
+    await userEvent.setup().upload(entradaDeFoto(), archivoDePrueba('uno.png', 'image/png'));
+    expect(screen.getByAltText('Vista previa de la foto elegida')).toHaveAttribute('src', 'blob:prueba-1');
+    expect(boton).toBeEnabled();
+  });
+
+  it('con la foto ya cargada, lo dice y ofrece cambiarla', async () => {
+    const { estado } = servidorConFoto();
+    estado.fotoCargada = true;
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    await screen.findByRole('article', { name: 'Tu solicitud' });
+    const seccion = screen.getByRole('region', { name: 'Foto' });
+    expect(within(seccion).getByText('Foto cargada')).toBeInTheDocument();
+    expect(within(seccion).queryByText('Foto pendiente')).not.toBeInTheDocument();
+    expect(within(seccion).getByRole('button', { name: 'Cambiar foto' })).toBeInTheDocument();
+  });
+
+  it('sube con el token de la dirección en X-Token-Solicitud, vuelve a consultar y muestra "Foto cargada"', async () => {
+    const { api } = servidorConFoto();
+    const usuario = userEvent.setup();
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    await screen.findByRole('article', { name: 'Tu solicitud' });
+    const foto = archivoDePrueba('uno.jpg', 'image/jpeg', 4096);
+    await usuario.upload(entradaDeFoto(), foto);
+    await usuario.click(screen.getByRole('button', { name: 'Subir foto' }));
+
+    const seccion = screen.getByRole('region', { name: 'Foto' });
+    await waitFor(() => expect(within(seccion).getByText('Foto cargada')).toBeInTheDocument());
+    const subidas = peticiones(api, PUT_FOTO);
+    expect(subidas).toHaveLength(1);
+    const subida = subidas[0] as RequestInit;
+    expect(subida.body).toBe(foto);
+    expect(subida.headers).toMatchObject({ 'Content-Type': 'image/jpeg', 'X-Token-Solicitud': TOKEN });
+    // Volvió a consultar y la subida ya no deja un archivo elegido.
+    expect(llamadas(api, POST_CONSULTA)).toHaveLength(2);
+    expect(screen.queryByAltText('Vista previa de la foto elegida')).not.toBeInTheDocument();
+    // El token vive solo en la memoria de la página.
+    for (const [url] of api.mock.calls) expect(String(url)).not.toContain(TOKEN);
+    expect(JSON.stringify({ ...localStorage })).not.toContain(TOKEN);
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain(TOKEN);
+    expect(document.cookie).not.toContain(TOKEN);
+    expect(document.title).not.toContain(TOKEN);
+  });
+
+  it('avisa, sin llamar a la API, si el archivo no es JPG ni PNG o pasa de 5 MB', async () => {
+    const { api } = servidorConFoto();
+    const usuario = userEvent.setup({ applyAccept: false });
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    await screen.findByRole('article', { name: 'Tu solicitud' });
+    await usuario.upload(entradaDeFoto(), archivoDePrueba('uno.webp', 'image/webp'));
+    expect(screen.getByRole('alert')).toHaveTextContent('La foto debe ser un archivo JPG o PNG.');
+    expect(screen.getByRole('button', { name: 'Subir foto' })).toBeDisabled();
+
+    await usuario.upload(entradaDeFoto(), archivoDePrueba('grande.png', 'image/png', 5_242_881));
+    expect(screen.getByRole('alert')).toHaveTextContent('La foto pesa más de 5 MB.');
+    expect(screen.getByRole('button', { name: 'Subir foto' })).toBeDisabled();
+
+    await usuario.upload(entradaDeFoto(), archivoDePrueba('justa.png', 'image/png', 5_242_880));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Subir foto' })).toBeEnabled();
+    expect(peticiones(api, PUT_FOTO)).toHaveLength(0);
+  });
+
+  it.each([
+    ['400 IMAGEN_NO_VALIDA', error('IMAGEN_NO_VALIDA', 400), /No pudimos usar esa imagen/],
+    ['413 CARGA_EXCESIVA', error('CARGA_EXCESIVA', 413), /La foto pesa más de 5 MB/],
+    ['429 DEMASIADAS_SOLICITUDES', error('DEMASIADAS_SOLICITUDES', 429), /Subiste demasiadas fotos/],
+  ])(
+    '%s: un mensaje claro con el teléfono de la academia y se puede reintentar con el mismo archivo',
+    async (_n, falla, texto) => {
+      let intento = 0;
+      const { api } = servidorConFoto(() => (++intento === 1 ? falla : { estado: 204 }));
+      const usuario = userEvent.setup();
+      mostrar(`/a/delfines/solicitud/${TOKEN}`);
+      await screen.findByRole('article', { name: 'Tu solicitud' });
+      await usuario.upload(entradaDeFoto(), archivoDePrueba('uno.png', 'image/png'));
+      await usuario.click(screen.getByRole('button', { name: 'Subir foto' }));
+
+      const alerta = await screen.findByRole('alert');
+      expect(alerta).toHaveTextContent(texto);
+      expect(alerta).toHaveTextContent(`llama a la academia al ${TELEFONO}`);
+      expect(screen.getByAltText('Vista previa de la foto elegida')).toBeInTheDocument();
+
+      await usuario.click(screen.getByRole('button', { name: 'Reintentar la subida' }));
+      await waitFor(() => expect(screen.getByText('Foto cargada')).toBeInTheDocument());
+      expect(peticiones(api, PUT_FOTO)).toHaveLength(2);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    },
+  );
+
+  it('409 SOLICITUD_NO_EDITABLE: avisa que ya no se puede cambiar, vuelve a consultar y la vista pasa a reducida sin control para subir', async () => {
+    const { api } = servidorConFoto(() => error('SOLICITUD_NO_EDITABLE', 409));
+    const usuario = userEvent.setup();
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    await screen.findByRole('article', { name: 'Tu solicitud' });
+    await usuario.upload(entradaDeFoto(), archivoDePrueba('uno.png', 'image/png'));
+    await usuario.click(screen.getByRole('button', { name: 'Subir foto' }));
+
+    expect(await screen.findByText(/ya no se puede cambiar/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Cancelada')).toBeInTheDocument());
+    expect(llamadas(api, POST_CONSULTA)).toHaveLength(2);
+    expect(screen.queryByRole('region', { name: 'Foto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Subir foto|Cambiar foto/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Elegir (una|otra) foto|Cambiar la foto/)).not.toBeInTheDocument();
+    expect(peticiones(api, PUT_FOTO)).toHaveLength(1);
+  });
+
+  it('con la vista reducida no hay control para subir la foto', async () => {
+    const { estado } = servidorConFoto();
+    estado.reducida = true;
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    await screen.findByRole('article', { name: 'Tu solicitud' });
+    expect(screen.queryByRole('region', { name: 'Foto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /foto/i })).not.toBeInTheDocument();
+  });
+
+  it('la consulta con código y DNI no ofrece subir la foto: no tiene el token', async () => {
+    simularApi({
+      [GET_ACADEMIA]: () => ({
+        estado: 200,
+        cuerpo: { nombreCorto: 'delfines', nombre: 'Academia de Natación Los Delfines', telefono: TELEFONO },
+      }),
+      [POST_CONSULTA]: () => ({ estado: 200, cuerpo: respuesta() }),
+    });
+    const usuario = userEvent.setup();
+    mostrar('/a/delfines/solicitud');
+    await usuario.type(await screen.findByLabelText('Código de la solicitud'), 'AQ-7F3K9X');
+    await usuario.type(screen.getByLabelText('DNI'), '45678912');
+    await usuario.click(screen.getByRole('button', { name: 'Consultar' }));
+    await screen.findByRole('article', { name: 'Tu solicitud' });
+    expect(screen.queryByRole('region', { name: 'Foto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /foto/i })).not.toBeInTheDocument();
+  });
+
+  it('libera la vista previa al cambiar de foto y al salir de la página', async () => {
+    servidorConFoto();
+    const usuario = userEvent.setup();
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    await screen.findByRole('article', { name: 'Tu solicitud' });
+    await usuario.upload(entradaDeFoto(), archivoDePrueba('uno.png', 'image/png'));
+    await usuario.upload(entradaDeFoto(), archivoDePrueba('dos.png', 'image/png'));
+    expect(urls.liberar).toHaveBeenCalledWith('blob:prueba-1');
+    expect(urls.liberar).not.toHaveBeenCalledWith('blob:prueba-2');
   });
 });

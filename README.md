@@ -121,7 +121,7 @@ Trae:
   18:00 (la 005a suma tres más). `tiburones` queda sin planes ni clases.
 - **Lo que todavía no trae:** el horario del entrenador (012) y los días de cierre (017). Las inscripciones y las reservas llegan con la 005a (abajo).
 
-**005a · Inscripción pública, reserva y seguimiento** está construida y espera la revisión y el PR para unirse a `main`.
+**005a · Inscripción pública, reserva y seguimiento** está unida a `main` (PR #8, 20/11/2026).
 Trae:
 
 - **Formulario público** en `/a/{nombreCorto}/inscripcion`, sin sesión, para el celular y para la PC de recepción. Pasos:
@@ -152,11 +152,37 @@ Trae:
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, abre http://localhost:5173/a/delfines/inscripcion. El paso a paso
   está en la guía, en «Probar la inscripción pública». Las pruebas automáticas corren con `npm test` (necesita PostgreSQL) y
   con `npm run test:unit`.
-- **Lo que todavía no trae:** la foto de la inscripción, el panel de solicitudes y la cancelación (005b); el pago, la
-  verificación y el paso a alumno (007); la renovación y el cambio de horario (010).
+- **Lo que todavía no trae:** el pago, la verificación y el paso a alumno (007); la renovación y el cambio de horario (010).
 
-La siguiente entrega es la **005b · Foto y panel de solicitudes**, en la misma carpeta de la 005 (ver
-[`specs/backlog.md`](specs/backlog.md)).
+**005b · Foto de la inscripción y panel de solicitudes** está construida. Falta la verificación final (la suite completa, el
+lint, los tipos y la integración continua en Windows) y el PR para unirse a `main`. Trae:
+
+- **Foto opcional en el formulario:** en el paso **Foto (opcional)**, antes del resumen, la persona elige una imagen JPG o PNG
+  de hasta 5 MB. Ve una vista previa, y la página avisa antes de subirla si el tipo o el tamaño no sirven. La foto se sube sola
+  después de crear la solicitud. Si la subida falla, la solicitud queda creada y el enlace de seguimiento permite subirla de nuevo.
+- **La API comprueba la imagen** (que sea un JPEG o un PNG de verdad, que se pueda decodificar, de 100 a 8000 píxeles por lado y
+  como mucho 40 megapíxeles) y la guarda como JPEG de como mucho 800 píxeles, **sin metadatos** (sin EXIF ni coordenadas GPS).
+  Lo guardado nunca es el archivo subido. Cada conexión puede subir 10 fotos por hora.
+- **Seguimiento con foto:** mientras la solicitud sea editable (pendiente de pago y no vencida), el enlace de seguimiento muestra
+  "Foto cargada" o permite subir o cambiar la foto. Con la vista reducida no hay control para subirla.
+- **Panel de solicitudes** en `/panel/solicitudes`, para `ADMIN` y `SECRETARIA`: lista las solicitudes con el filtro Activas,
+  Vencidas, Canceladas o Todas, con los datos de contacto, el plan, los días y las horas, el monto y la fecha límite de la reserva.
+  **Cancelar** pide un motivo, libera el cupo y deja su auditoría. La persona no recibe correo, y su foto no se borra.
+- **«Nueva inscripción»** en el inicio del panel abre, en otra pestaña, el formulario público de la academia, para inscribir a
+  alguien en recepción. Desde recepción, la foto se elige en ese mismo paso.
+- **Ocupación:** la grilla de `/panel/clases` muestra "inscritos / aforo", y al bajar el aforo por debajo de los inscritos, o al
+  desactivar una clase con inscritos, la web pide confirmación o explica qué hacer (DR-5 de 004).
+- **Almacén de archivos (`ALMACEN_DIRECTORIO`):** las fotos se guardan en la carpeta que indica esta variable, que por defecto es
+  `backend/almacenamiento` (ignorada por git). Ninguna ruta de la API ni del servidor de desarrollo la sirve. La API no arranca si
+  la ruta cae dentro de `frontend/`, `packages/` o `node_modules/`, o si tiene una forma de ruta que Windows no admite. Detalles en
+  la guía, en «Dónde se guardan las fotos».
+- **Dependencia nueva:** `sharp`, que recodifica las imágenes. Sus binarios de Windows vienen con `npm ci`.
+- **Sin migraciones:** la 005b usa las tablas y los estados que ya creó la 005a.
+- **Lo que todavía no trae:** agregar la foto después desde el panel y tomarla con la cámara de la PC (008); ver la foto desde la
+  web (008, con el carnet); y la política de retención de las fotos de solicitudes no pagadas, que se define antes de producción.
+
+La historia 005 (la 005a y la 005b) está en [`specs/005-inscripcion-publica/`](specs/005-inscripcion-publica/spec.md). Su estado
+está en [`specs/backlog.md`](specs/backlog.md).
 
 ## Cómo levantarlo en Windows
 
@@ -192,6 +218,9 @@ clases (con sus migraciones), y la semilla suma a `delfines` un segundo entrenad
 Los pasos están en la guía, en "Después de traer la historia 004".
 
 Si ya tenías la historia 004 y traes la 005a, ejecuta `npm ci` y `npm run db:preparar`: la 005a agrega las tablas de la inscripción, con sus dos migraciones, y la semilla suma las clases y los clientes de ejemplo. Si `npm run db:preparar` se detiene en «Migrando la base de desarrollo» con el código 23514, tu base es de una versión anterior de esta rama y hay que empezar de cero. Los pasos están en la guía, en "Después de traer la historia 005a".
+
+Si ya tenías la historia 005a y traes la 005b, ejecuta `npm ci`: la 005b agrega `sharp`, que recodifica las fotos, y no tiene
+migraciones. Los pasos están en la guía, en "Después de traer la historia 005b".
 
 ## Comandos principales
 
@@ -231,6 +260,9 @@ Si ya tenías la historia 004 y traes la 005a, ejecuta `npm ci` y `npm run db:pr
 - **Aforo y choques de clases:** el cupo de cada clase se bloquea con `bloquearClasesParaCupo` antes de contar u escribir, y
   los choques de clases (el mismo entrenador o el mismo nivel en un bloque) los decide la base con índices únicos. Las reglas
   para las historias siguientes están en `docs/arquitectura.md`.
+- **Archivos:** las fotos se guardan con `AlmacenArchivos`, en la carpeta de `ALMACEN_DIRECTORIO`, fuera de lo que sirve la web.
+  Cada historia que guarda archivos los guarda antes de confirmar la transacción, y borra lo que reemplaza después de confirmar
+  (reglas en `docs/arquitectura.md`).
 - **Varias academias:** cada tabla de negocio lleva `academia_id`, y PostgreSQL filtra por academia con seguridad a nivel
   de fila (D-23). Eso ya está en la 001. Las reglas de fechas, transacciones y errores que siguen las historias nuevas
   están en [`docs/arquitectura.md`](docs/arquitectura.md).
@@ -264,7 +296,7 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 - [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, cómo
-  entrar a la plataforma, y cómo probar la inscripción pública, los planes y las clases.
+  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes y las clases.
 
 ## Forma de trabajo
 
@@ -287,7 +319,7 @@ adversariales y roles separados. Ver [`docs/metodologia.md`](docs/metodologia.md
 | Backend | Node.js 22 + TypeScript con NestJS y Prisma |
 | Frontend | React + Vite + Tailwind CSS (responsive; la PWA es de la Fase 4) |
 | Base de datos | PostgreSQL 16 |
-| Archivos | Disco local en desarrollo, detrás de una interfaz `AlmacenArchivos` (se implementa en la 005b); el proveedor se decide con el hosting (D-21) |
+| Archivos | Disco local en desarrollo (`ALMACEN_DIRECTORIO`), detrás de una interfaz `AlmacenArchivos` (desde la 005b); el proveedor se decide con el hosting (D-21) |
 | QR, PDF y Excel | `qrcode`, `pdfkit`, `exceljs`; lectura del QR con `html5-qrcode` |
 | Tareas | Tareas programadas en el backend (registro de faltas) |
 

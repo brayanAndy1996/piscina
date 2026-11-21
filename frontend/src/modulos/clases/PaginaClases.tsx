@@ -1,5 +1,5 @@
 import { type Clase, NOMBRE_DIA, NOMBRE_NIVEL } from '@aquagestion/contratos';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, ESTILO_BOTON } from '../../componentes/ui';
@@ -8,8 +8,8 @@ import { mensajeGeneral } from '../../lib/errores';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
 import { FormularioClase } from './FormularioClase';
-import { GrillaSemanal } from './GrillaSemanal';
-import { useClases } from './hooks';
+import { GrillaSemanal, type OcupacionPorClase } from './GrillaSemanal';
+import { useClases, useOcupacion } from './hooks';
 
 type Dialogo = { tipo: 'nueva' } | { tipo: 'editar'; id: string };
 
@@ -26,11 +26,19 @@ export function PaginaClases() {
 
 function ContenidoClases() {
   const consulta = useClases();
-  useAlPerderSesion(consulta.error);
+  const ocupacionConsulta = useOcupacion();
+  useAlPerderSesion(consulta.error, ocupacionConsulta.error);
   const verGrilla = useRecienPedida(consulta);
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
   const [creada, setCreada] = useState<Clase | null>(null);
   const clases = consulta.data;
+  const ocupacion = useMemo<OcupacionPorClase | undefined>(
+    () =>
+      ocupacionConsulta.data
+        ? new Map(ocupacionConsulta.data.ocupacion.map((fila) => [fila.claseId, fila]))
+        : undefined,
+    [ocupacionConsulta.data],
+  );
   // La clase que se edita es siempre la última que llegó: el formulario decide qué hacer con una base nueva (criterio 27 de 003).
   const claseEditada = dialogo?.tipo === 'editar' ? clases?.find((clase) => clase.id === dialogo.id) : undefined;
 
@@ -56,7 +64,8 @@ function ContenidoClases() {
       </div>
       <p className="text-slate-700">
         Las clases duran un bloque de 1 hora, de 08:00 a 20:00. Toca una clase para cambiar su entrenador, su aforo (de
-        20 a 50 alumnos) o su estado.
+        20 a 50 alumnos) o su estado. Cada clase muestra sus inscritos frente a su aforo; no cuentan las reservas
+        vencidas ni las canceladas.
       </p>
       {creada ? (
         <p role="status" className="rounded-2xl bg-emerald-50 p-4 text-emerald-900 ring-1 ring-emerald-200">
@@ -73,7 +82,16 @@ function ContenidoClases() {
               Todavía no hay clases. Crea la primera con «Nueva clase».
             </p>
           ) : null}
-          <GrillaSemanal clases={clases} alElegir={(clase) => setDialogo({ tipo: 'editar', id: clase.id })} />
+          {ocupacionConsulta.isError && !esErrorDeApi(ocupacionConsulta.error, 401) ? (
+            <p className="text-sm text-slate-700">
+              No pudimos cargar los inscritos de cada clase. Por ahora se ve solo el aforo.
+            </p>
+          ) : null}
+          <GrillaSemanal
+            clases={clases}
+            ocupacion={ocupacion}
+            alElegir={(clase) => setDialogo({ tipo: 'editar', id: clase.id })}
+          />
         </>
       ) : consulta.isError ? (
         <div className="space-y-3">
