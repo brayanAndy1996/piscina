@@ -48,6 +48,9 @@ export default defineConfig({
           include: ['*.test.mjs'],
           // Varias pruebas pasan ESLint por todo backend/src; en la CI de Windows superan los 5 s por defecto.
           testTimeout: 60_000,
+          // Un archivo por vez: la ronda 13 crea y borra carpetas zz-r13-* dentro de backend/src mientras otras
+          // pruebas pasan ESLint por esa carpeta (criterio 96), y en paralelo ESLint podía leer un archivo ya borrado.
+          fileParallelism: false,
         },
       },
       {
