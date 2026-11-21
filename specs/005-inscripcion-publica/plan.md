@@ -44,6 +44,11 @@ AB1-1 a AB1-4). Cambian "Módulos afectados", la sección 9 (confirmación incie
 (`frontend/vite.config.ts`), la nueva 16 (proxy de PostgreSQL y servidor de Vite en las pruebas, almacén temporal),
 "Decisiones" y "Riesgos".
 
+**Ronda 2 del ataque de la 005b (21/11/2026):** criterios 64 a 66 y ajustes de 37, 61 y 62 (sección O de la spec,
+AB2-1 a AB2-3). Cambian "Módulos afectados", la sección 9 (relectura con bloqueo y `resolverAlmacenDirectorio`), la 12
+(`server.fs.deny`), la 16 (modo `retenerCommit` del proxy, pruebas de los enlaces de Vite y del entorno con
+`path.win32`), "Decisiones" y "Riesgos".
+
 ## Módulos afectados
 
 ```
@@ -66,7 +71,8 @@ piscina/
 │   ├── src/infraestructura/prisma/privilegios-app.ts   + privilegios de las siete tablas
 │   ├── src/infraestructura/almacen-archivos/          [005b] nuevo: interfaz, disco local, módulo, claves
 │   ├── src/infraestructura/correo/                    nuevo: interfaz, envío simulado, módulo
-│   ├── src/infraestructura/entorno/entorno.ts         [005b] + ALMACEN_DIRECTORIO; ronda 1: rechazo dentro de lo que sirve la web (criterio 62 b)
+│   ├── src/infraestructura/entorno/entorno.ts         [005b] + ALMACEN_DIRECTORIO; ronda 1: rechazo dentro de lo que sirve la web (criterio 62 b);
+│   │                                                  ronda 2: función pura resolverAlmacenDirectorio con las formas de Windows (criterio 66)
 │   ├── src/crear-app.ts                               [005b] noLeerCuerpoEn suma PUT …/solicitudes/foto (además de DELETE /api/sesion)
 │   ├── src/comun/http/cuerpos.ts                      sin cambios: ya recibe noLeerCuerpoEn
 │   ├── src/comun/http/cuerpo-imagen.ts                [005b] nuevo: lector binario de la foto (5 242 880 bytes, sin inflar)
@@ -91,13 +97,15 @@ piscina/
 │   ├── src/modulos/clases/clases.service.ts           DR-5 (criterios 41 y 42); [005b] GET /api/clases/ocupacion
 │   └── test/
 │       ├── utilidades/inscripciones.ts                crear clientes, solicitudes y matrículas; llenar clases (test-writer)
-│       ├── utilidades/proxy-postgres.ts               [005b, ronda 1] proxy TCP que corta en el COMMIT (criterio 61; test-writer)
+│       ├── utilidades/proxy-postgres.ts               [005b, ronda 1] proxy TCP que corta en el COMMIT (criterio 61; test-writer);
+│       │                                              ronda 2: modo retenerCommit, pidRetenido, liberar() y descartar() (criterio 64)
 │       └── integracion/inscripciones/                 pruebas protegidas y no protegidas
 ├── scripts/
 │   ├── lib/rol-app.mjs                    + privilegios de las siete tablas
 │   ├── lib/dependencias-backend.mjs       [005b] + sharp
 │   └── test/integracion/migraciones.test.mjs   + las siete tablas en TABLAS_DESPUES_DE_MIGRAR
-├── frontend/vite.config.ts                [005b, ronda 1] server.fs.allow con lista cerrada (criterio 62 a)
+├── frontend/vite.config.ts                [005b, ronda 1] server.fs.allow con lista cerrada (criterio 62 a); ronda 2: server.fs.deny con
+│                                          los valores por defecto y los enlaces de node_modules/@aquagestion (criterio 65)
 ├── vitest.config.mts (o el globalSetup compartido)   [005b, ronda 1] ALMACEN_DIRECTORIO temporal en las pruebas del backend (criterio 63)
 ├── e2e/playwright.config.ts               [005b, ronda 1] ALMACEN_DIRECTORIO temporal para la API de las E2E (criterio 63)
 ├── frontend/src/
@@ -398,9 +406,15 @@ Toda esta sección es de la 005b. _(Ajustada en el repaso del 21/11/2026: PB3 a 
   - si el error es una de las respuestas que decide la transacción (`solicitudNoEditable()`, `solicitudNoEncontrada()`,
     `ErrorAcademiaNoEncontrada`, `ErrorAcademiaSuspendida`), se borra el nuevo y se relanza, como hoy;
   - con cualquier otro error: `registro.warn({ academiaId, error: { tipo: tipoDeError(error) } }, 'Confirmación de la
-    foto incierta')` y una relectura en otro `conAcademia`:
-    `SELECT foto_clave FROM alumnos WHERE academia_id = … AND id = …` (sin `FOR UPDATE`: una transacción cortada que
-    todavía no terminó en el servidor no la bloquea y su escritura no se ve);
+    foto incierta')` y una relectura en otro `conAcademia` _(ronda 2, criterio 64, AB2-1; antes decía "sin `FOR
+    UPDATE`", y eso es justo lo que dejaba pasar un `COMMIT` tardío)_:
+    `SET LOCAL lock_timeout = '5000ms'` (con la constante `FOTO_ESPERA_RELECTURA_MS = 5000` del servicio) y
+    `SELECT foto_clave FROM alumnos WHERE academia_id = … AND id = … FOR SHARE`. La transacción no se abre como
+    `READ ONLY` (PostgreSQL rechaza `FOR SHARE` en una de solo lectura) y no escribe nada. Si la transacción de
+    confirmación sigue abierta en el servidor (su `COMMIT` está en camino o aplicándose), tiene la fila con `FOR
+    UPDATE` y el `UPDATE`, así que la relectura espera a que confirme o revierta; la API solo envía el `COMMIT` después
+    de que el `UPDATE` respondió, así que no hay un `COMMIT` posible sin la fila ya bloqueada. Un `55P03`
+    (`lock_not_available`) o cualquier otro error de la relectura cae en "si la relectura rechaza";
   - si la relectura devuelve la clave nueva: `info` de subida correcta, borrar la anterior (si había y es distinta) con
     `borrarSinFallar` y terminar sin error (204);
   - si devuelve otra cosa: `borrarSinFallar(nueva)` y relanzar el error original (500 `ERROR_INTERNO` por el filtro
@@ -408,13 +422,32 @@ Toda esta sección es de la 005b. _(Ajustada en el repaso del 21/11/2026: PB3 a 
   - si la relectura rechaza: no borrar nada y relanzar el error original (500).
 
   La relectura no repite la comprobación de la solicitud: solo responde "¿quedó guardada esta clave?". La clave tiene un
-  UUID nuevo, así que si no está ahora no lo estará nunca y borrarla es seguro.
+  UUID nuevo y, con el bloqueo obtenido, la transacción que podía guardarla ya terminó: si no está ahora no lo estará
+  nunca y borrarla es seguro. La relectura confirma su propia transacción en seguida (sin otra consulta), así que no
+  deja el bloqueo `FOR SHARE` puesto más allá de la lectura.
 - **Entorno (ronda 1 de la 005b, criterio 62 b, AB1-3).** `validarEntorno`, después de resolver `ALMACEN_DIRECTORIO`
   como hoy, rechaza la ruta si `path.relative(carpeta, almacen)` no empieza con `..` ni es absoluta para alguna de
   `{raíz}/frontend`, `{raíz}/packages` y `{raíz}/node_modules` (es decir, si es esa carpeta o queda debajo). En Windows
   se compara con las dos rutas pasadas a minúsculas. El problema nombra la variable y no muestra la ruta, como el del
   byte nulo. La lista de carpetas es la misma de `server.fs.allow` (sección 12; `packages/` entera, que incluye
   `packages/contratos/`).
+- **Entorno (ronda 2 de la 005b, criterio 66, AB2-3).** `estaDentroDe` y el bloque de `ALMACEN_DIRECTORIO` de
+  `validarEntorno` pasan a la función pura exportada `resolverAlmacenDirectorio(valor, { raiz, ruta })`, que recibe
+  `path.win32` o `path.posix` y no usa `path` ni `process.platform` por su cuenta. `validarEntorno` la llama con
+  `{ raiz: RAIZ_DEL_REPOSITORIO, ruta: path }` y suma el `problema`. Pasos:
+  1. `valor?.trim()`; vacío → `backend/almacenamiento`. Con `/[\u0000-\u001f]/` → "no es una ruta válida".
+  2. Si `ruta.sep === '\\'`: "no es una ruta válida" con `/^[\\/]{2}/`, con `/[<>"|?*]/`, con un `:` fuera de
+     `/^[A-Za-z]:[\\/]/` (por ejemplo, quitar ese prefijo si está y buscar `:` en el resto), o si algún segmento de
+     `valor.split(/[\\/]/)`, distinto de `''`, `.` y `..`, cumple `/[. ]$/`.
+  3. `resuelta = ruta.resolve(raiz, valor)`. Para cada carpeta de `CARPETAS_DE_LA_WEB`, `carpeta = ruta.join(raiz,
+     nombre)`; las dos se parten por `ruta.sep` sin segmentos vacíos. Está dentro si `resuelta` tiene al menos tantos
+     segmentos como `carpeta` y cada segmento de `carpeta` es igual al de `resuelta` en esa posición, comparados con
+     `toLowerCase()`, o (solo si `ruta.sep === '\\'`) el de `resuelta` cumple
+     `/^[^~.]{1,6}~\d+(?:\.[^~.]{0,3})?$/`.
+  4. Sin problema → `{ directorio: resuelta }`.
+
+  Un solo problema por valor (el primero que aparece). El mensaje del byte nulo sigue siendo el mismo, ahora también
+  para las formas de Windows.
 - **`AlmacenArchivosDisco` (PB7):** `constructor(raiz)`; la API lo crea con `ALMACEN_DIRECTORIO` (entorno, por defecto
   `backend/almacenamiento`, ya en `.gitignore`). Valida la clave con el formato del criterio 36 (hasta 255 caracteres,
   `academias/{uuid}/` y segmentos `^[a-z0-9][a-z0-9_-]*(\.[a-z0-9]+)?$`) y que el UUID sea el `academiaId` recibido;
@@ -530,6 +563,14 @@ De esta sección, solo "`ClasesService` (DR-5)" es de la 005a; la lista, la canc
   `strict` y `deny` no se tocan (se quedan los valores por defecto de Vite). `preview` no cambia. Si una dependencia
   futura se resuelve fuera de esas carpetas (por ejemplo, otro paquete del workspace), se suma a la lista de las dos
   partes (Vite y `validarEntorno`) en la historia que lo traiga; las E2E, que usan este servidor, lo detectan.
+- **[005b, ronda 2] Enlaces de los workspaces (criterio 65, AB2-2).** En el mismo `fs`, `deny: [...DENY_POR_DEFECTO_DE_VITE,
+  '**/node_modules/@aquagestion', '**/node_modules/@aquagestion/**']`, con `DENY_POR_DEFECTO_DE_VITE` copiado de la
+  versión de Vite del repositorio (hoy `.env`, `.env.*`, `*.{crt,pem,key,p12,pfx,cer,der}`, `.npmrc`, `.yarnrc.yml` y
+  `**/.git/**`): Vite reemplaza la lista entera si la configuración trae una (no la fusiona), y la prueba del 62 a
+  avisa si una actualización de Vite suma valores que la copia no tiene. Vite convierte los patrones sin `/` en
+  `**/{patrón}` y los compara con `nocase` y `dot`. `allow`, `strict`, `resolve.preserveSymlinks` y `preview` no
+  cambian. Comprobar a mano con `npm run dev` que la web carga y que los contratos se piden por
+  `/@fs/{raíz}/packages/contratos/…`.
 
 ### 13. Semilla
 
@@ -608,6 +649,34 @@ cualquier otra cosa.
   `globalTeardown` (nuevo o el existente) borra. Las utilidades que ya usan un directorio temporal propio
   (`crearAppConAlmacen`) no cambian.
 
+### 17. [005b] Pruebas de la ronda 2 del ataque (criterios 64 a 66)
+
+- **Proxy con `retenerCommit` (criterio 64, AB2-1).** En `proxy-postgres.ts`, en el mismo commit de pruebas protegidas:
+  - `Puente` lee, en `alRecibirDelServidor`, el mensaje `K` (`BackendKeyData`: `Int32` pid e `Int32` clave) y guarda
+    el `pid`.
+  - En `alMensajeDelCliente`, si `tomarModo()` da `'retenerCommit'`, el puente pasa a "reteniendo": guarda el mensaje
+    del `COMMIT` (y, si es un `P`, también los que siguen en `bufferCliente` y en los `data` siguientes hasta un `S`
+    incluido), cuenta un corte, destruye solo el socket del cliente y avisa al proxy (`proxy.retener(this)`). Mientras
+    retiene, `cliente.on('close')` no llama a `cerrar()` y lo que llega del servidor no se reenvía.
+  - `ProxyPostgres` guarda el puente retenido y expone `pidRetenido`, `liberar()` (escribe lo guardado en el socket del
+    servidor, espera el `C` con `COMMIT`, cierra y resuelve) y `descartar()` (destruye el socket del servidor y resuelve
+    en su `close`). `cerrar()` incluye el retenido.
+  - Los modos del criterio 61 no cambian; la prueba de la ronda 1 sigue igual.
+- **Espera comprobada:** como `conFilaRetenida` de `carreras.ts`, un cliente propio de `pg` (dueño) consulta cada pocos
+  milisegundos `SELECT pid FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))` con `pidRetenido`, con un
+  límite de seguridad, mientras la promesa de la subida sigue sin terminar (`observar`).
+- **Caso 3 (espera agotada):** la prueba no fija tiempos; solo espera la respuesta con un plazo de Vitest amplio
+  (60 s), porque la API responde a los 5 s de `lock_timeout`.
+- **Enlaces de Vite (criterio 65).** Archivo nuevo junto a `scripts/test/vite-no-sirve-almacen-ronda1-005b.test.mjs`,
+  con el mismo arranque del servidor y del archivo del almacén (puede copiar sus funciones de apoyo; no lo modifica).
+  La precondición usa `fs.lstatSync` y `fs.realpathSync` sobre `{raíz}/node_modules/@aquagestion/{backend,e2e,scripts}`.
+  Para la base64, se compara con `Buffer.from(imagen).toString('base64')` (también un trozo del medio, por si la
+  respuesta la parte). El módulo que importa los contratos se pide transformado y se busca en su código la primera
+  dirección que contenga `contratos`.
+- **Entorno (criterio 66).** Archivo nuevo junto a `entorno-almacen-web-ronda1-005b.test.ts`, que importa
+  `resolverAlmacenDirectorio` de `./entorno` y usa `path.win32` y `path.posix` de `node:path`; la parte de
+  `validarEntorno` en Windows va con `it.runIf(process.platform === 'win32')`.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -645,6 +714,10 @@ cualquier otra cosa.
 | [005b, ronda 1] Proxy TCP de prueba que corta en el `COMMIT` (AB1-2) | Envolver `BaseDatos` con `overrideProvider` | Caja negra (solo `DATABASE_URL_APP` y el protocolo), reproduce la falla real, determinista |
 | [005b, ronda 1] `server.fs.allow` con lista cerrada y rechazo en `validarEntorno` (AB1-3, criterio 62) | `server.fs.deny` con el directorio del almacén; almacén por defecto fuera del repositorio | Sin globs con rutas de Windows; protege todo `backend/`; Bryan conserva su carpeta de desarrollo |
 | [005b, ronda 1] `ALMACEN_DIRECTORIO` temporal en la configuración de las pruebas (AB1-4, criterio 63) | Que cada prueba reemplace el almacén | Una prueba que lo olvide no escribe en el almacén de quien desarrolla |
+| [005b, ronda 2] Relectura con `FOR SHARE` y `lock_timeout` de 5 s (AB2-1, criterio 64) | Lectura sin bloqueo (ronda 1); `FOR UPDATE`; `NOWAIT`; esperar sin límite; mirar `pg_locks` desde la API | Espera justo lo necesario para que la transacción original termine; si no termina, b3 conserva el invariante |
+| [005b, ronda 2] Modo `retenerCommit` en el proxy protegido, con el `pid` del `BackendKeyData` (AB2-1) | Un segundo proxy como el del adversarial; un retraso por tiempo | Una sola utilidad que entiende el protocolo; la espera se comprueba en `pg_blocking_pids` |
+| [005b, ronda 2] `server.fs.deny` con `**/node_modules/@aquagestion(/**)` (AB2-2, criterio 65) | Lista de carpetas de `node_modules/` en `allow`; plugin con `realpath`; `preserveSymlinks` | Sin la ruta del usuario en el patrón; Vite lo aplica sin mayúsculas y en todos los caminos de lectura |
+| [005b, ronda 2] `resolverAlmacenDirectorio` pura con `path.win32` o `path.posix`, rechazo de las formas de Windows y nombres cortos como comodín (AB2-3, criterio 66) | Normalizar `\\?\` y `\\.\`; `realpathSync.native`; riesgo aceptado; rechazar todo nombre corto | Determinista y probada en la nube; no rompe el directorio temporal de la integración continua en Windows |
 
 ## Migraciones
 
@@ -702,6 +775,21 @@ cualquier otra cosa.
   `frontend/`, `packages/contratos/` o `node_modules/` de la raíz dejaría de servirse en desarrollo (403 en la consola
   del navegador). Las E2E usan el servidor de desarrollo, así que lo detectan; la prueba del criterio 62 comprueba lo
   mínimo (`/`, `/src/main.tsx`, contratos y una dependencia).
+- **[005b, ronda 2] Bloqueo de la relectura (criterio 64):** con una conexión medio abierta, la fila del alumno queda
+  bloqueada hasta que PostgreSQL la detecte; la relectura responde 500 a los 5 s sin borrar nada, y otras operaciones
+  sobre ese alumno esperan (riesgo aceptado de la spec, "Conexión medio abierta"). Si un cambio futuro hiciera que la
+  transacción de confirmación enviara el `COMMIT` sin haber bloqueado la fila (por ejemplo, un `UPDATE` sin `FOR
+  UPDATE` previo que no encuentre la fila), el razonamiento de AB2-1 deja de valer: el revisor comprueba que el orden de
+  PB8 se mantiene.
+- **[005b, ronda 2] El modo `retenerCommit` y el protocolo extendido (criterio 64):** si Prisma envía el `COMMIT` como
+  `Parse`, `Bind`, `Execute` y `Sync` en varios paquetes, el proxy debe esperar al `Sync` antes de cerrar el lado de la
+  API; si lo cerrara antes, `liberar()` mandaría un `COMMIT` incompleto y el servidor no lo ejecutaría (el caso 1
+  fallaría por la prueba, no por la API).
+- **[005b, ronda 2] Valores por defecto de `deny` copiados (criterio 65):** una actualización de Vite que sume un valor
+  por defecto no llega sola a la configuración; la prueba del 62 a, que compara con los valores de una configuración
+  sin archivo, falla y avisa.
+- **[005b, ronda 2] Comparación sin mayúsculas en Linux (criterio 66):** rechaza también `FRONTEND/` o `Packages/` en
+  Linux, aunque sean carpetas distintas de las de la web. Es rechazar de más una configuración rara.
 - **Coma flotante:** cualquier `Number(`, `parseFloat` o `+monto` en `matriculas/dominio` o en la web rompe el criterio 9;
   el revisor los busca.
 - **Fechas:** `clasesRestantes` y `esMenorDeEdad` no pueden usar `new Date().getDay()`, `getFullYear()` ni la zona del
