@@ -17,9 +17,18 @@ import net from 'node:net';
  * - `caer`: corta como `cortarTrasCommit`, cierra todas las conexiones abiertas a través del proxy y rechaza las nuevas (las acepta y las
  *   cierra) hasta que la prueba llama a `restablecer()`.
  *
+ * El criterio 64 (ronda 2 del ataque de la 005b, decisión AB2-1) suma un cuarto modo, sin cambiar los otros tres:
+ *
+ * - `retenerCommit`: actúa sobre el primer `COMMIT` de una conexión marcada. No lo reenvía: lo guarda junto con los mensajes del cliente
+ *   que lo siguen hasta el `Sync` (`S`) incluido, si llegó como `Parse` (con `Q`, solo ese mensaje); cierra solo el lado de la API y deja
+ *   abierta la conexión con el servidor, donde la transacción sigue abierta con sus bloqueos. Cuenta un corte. Mientras haya un `COMMIT`
+ *   retenido, el cierre del lado de la API no cierra el del servidor. `pidRetenido` es el `pid` del proceso de PostgreSQL de esa conexión
+ *   (el proxy lee el `BackendKeyData` que el servidor manda al iniciar). `liberar()` reenvía lo retenido y resuelve cuando llega el
+ *   `CommandComplete` con la etiqueta `COMMIT`; `descartar()` cierra la conexión con el servidor sin reenviar nada (PostgreSQL revierte).
+ *
  * Supone que la conexión local no va cifrada (si el servidor aceptara SSL, el proxy deja pasar los bytes sin interpretarlos y nunca corta).
  */
-export type ModoDeCorte = 'cortarTrasCommit' | 'cortarAntesDelCommit' | 'caer';
+export type ModoDeCorte = 'cortarTrasCommit' | 'cortarAntesDelCommit' | 'caer' | 'retenerCommit';
 
 const CODIGO_SSL = 80877103;
 const CODIGO_GSSENC = 80877104;
@@ -47,17 +56,32 @@ class Puente {
   private readonly sentencias = new Map<string, string>();
   private marcada = false;
   private esperandoCommit: ModoDeCorte | null = null;
+  /** Criterio 64: el `pid` del proceso de PostgreSQL de esta conexión (del `BackendKeyData`). */
+  pidDelServidor: number | null = null;
+  /** Criterio 64: los mensajes del `COMMIT` que se están reuniendo (el `COMMIT` y, si llegó como `Parse`, los que siguen hasta el `Sync`). */
+  private capturado: Buffer[] | null = null;
+  /** Criterio 64: el `COMMIT` retenido, completo, que `liberar()` reenvía. */
+  private retenido: Buffer[] | null = null;
+  private liberacion: { resolver: () => void; rechazar: (error: Error) => void } | null = null;
+  private cerrada = false;
+  private readonly servidorCerrado: Promise<void>;
 
   constructor(
     private readonly proxy: ProxyPostgres,
     readonly cliente: net.Socket,
     readonly servidor: net.Socket,
   ) {
+    this.servidorCerrado = new Promise<void>((resolver) => servidor.once('close', () => resolver()));
     cliente.on('data', (datos: Buffer) => this.alRecibirDelCliente(datos));
     servidor.on('data', (datos: Buffer) => this.alRecibirDelServidor(datos));
-    cliente.on('error', () => this.cerrar());
+    // Con un `COMMIT` retenido, el cierre del lado de la API no cierra el del servidor (la transacción sigue abierta con sus bloqueos).
+    cliente.on('error', () => {
+      if (!this.retenido) this.cerrar();
+    });
     servidor.on('error', () => this.cerrar());
-    cliente.on('close', () => this.cerrar());
+    cliente.on('close', () => {
+      if (!this.retenido) this.cerrar();
+    });
     servidor.on('close', () => this.cerrar());
   }
 
@@ -66,10 +90,46 @@ class Puente {
     return this.fase === 'crudo';
   }
 
+  /** Cierra las dos conexiones (también la del servidor con un `COMMIT` retenido). */
   cerrar(): void {
+    this.cerrada = true;
     this.cliente.destroy();
     this.servidor.destroy();
     this.proxy.olvidar(this);
+    if (this.liberacion) {
+      const { rechazar } = this.liberacion;
+      this.liberacion = null;
+      rechazar(
+        new Error('La conexión con PostgreSQL se cerró antes de que llegara el CommandComplete del COMMIT retenido.'),
+      );
+    }
+  }
+
+  /** Criterio 64: reenvía al servidor lo retenido y resuelve cuando llega el `CommandComplete` `COMMIT`, ya cerrada la conexión. */
+  liberar(): Promise<void> {
+    const retenido = this.retenido;
+    if (!retenido || this.cerrada) return Promise.reject(new Error('No hay ningún COMMIT retenido.'));
+    return new Promise<void>((resolver, rechazar) => {
+      this.liberacion = { resolver, rechazar };
+      for (const mensaje of retenido) this.servidor.write(mensaje);
+    });
+  }
+
+  /** Criterio 64: cierra la conexión con el servidor sin reenviar nada (PostgreSQL revierte) y resuelve cuando se cerró. */
+  descartar(): Promise<void> {
+    if (!this.retenido || this.cerrada) return Promise.reject(new Error('No hay ningún COMMIT retenido.'));
+    this.cerrar();
+    return this.servidorCerrado;
+  }
+
+  /** Termina de reunir el `COMMIT` retenido: cuenta el corte y cierra solo el lado de la API. */
+  private retenerAhora(): void {
+    this.retenido = this.capturado;
+    this.capturado = null;
+    this.bufferCliente = Buffer.alloc(0);
+    this.proxy.registrarCorte();
+    this.proxy.retener(this);
+    this.cliente.destroy();
   }
 
   // ------------------------------------------------------------------------------------------------------------------
@@ -113,6 +173,13 @@ class Puente {
 
   /** Procesa un mensaje con tipo del cliente. Devuelve `false` si la conexión se cerró y no hay que seguir. */
   private alMensajeDelCliente(tipo: string, cuerpo: Buffer, mensaje: Buffer): boolean {
+    if (this.capturado) {
+      // Criterio 64: el `COMMIT` llegó como `Parse`; se reúnen los mensajes siguientes hasta el `Sync` incluido.
+      this.capturado.push(Buffer.from(mensaje));
+      if (tipo !== 'S') return true;
+      this.retenerAhora();
+      return false;
+    }
     let sql: string | undefined;
     if (tipo === 'Q') {
       sql = cadenaC(cuerpo, 0).texto;
@@ -136,6 +203,12 @@ class Puente {
         if (modo === 'cortarAntesDelCommit') {
           this.proxy.registrarCorte();
           this.cerrar();
+          return false;
+        }
+        if (modo === 'retenerCommit') {
+          this.capturado = [Buffer.from(mensaje)];
+          if (tipo !== 'Q') return true;
+          this.retenerAhora();
           return false;
         }
         if (modo) this.esperandoCommit = modo;
@@ -176,6 +249,13 @@ class Puente {
       if (largo < 4 || buffer.length < 1 + largo) return;
       const mensaje = buffer.subarray(0, 1 + largo);
       this.bufferServidor = buffer.subarray(1 + largo);
+      // `BackendKeyData`: el `pid` del proceso de PostgreSQL de esta conexión (criterio 64).
+      if (buffer[0] === 0x4b && largo === 12 && this.pidDelServidor === null)
+        this.pidDelServidor = mensaje.readInt32BE(5);
+      if (this.retenido) {
+        this.alRespuestaDeLoRetenido(mensaje);
+        continue;
+      }
       if (this.esperandoCommit && buffer[0] === 0x43 /* C: CommandComplete */) {
         const etiqueta = cadenaC(mensaje.subarray(5), 0).texto;
         const modo = this.esperandoCommit;
@@ -191,6 +271,21 @@ class Puente {
       this.cliente.write(mensaje);
     }
   }
+
+  /** Criterio 64: lo que contesta el servidor después de `liberar()` no llega a nadie; solo se espera el `CommandComplete` `COMMIT`. */
+  private alRespuestaDeLoRetenido(mensaje: Buffer): void {
+    const liberacion = this.liberacion;
+    if (!liberacion) return;
+    if (mensaje[0] === 0x43 && cadenaC(mensaje.subarray(5), 0).texto.startsWith('COMMIT')) {
+      this.liberacion = null;
+      this.cerrar();
+      void this.servidorCerrado.then(liberacion.resolver);
+    } else if (mensaje[0] === 0x45) {
+      this.liberacion = null;
+      this.cerrar();
+      liberacion.rechazar(new Error('El servidor respondió un error al COMMIT retenido.'));
+    }
+  }
 }
 
 export class ProxyPostgres {
@@ -200,6 +295,7 @@ export class ProxyPostgres {
   private caido = false;
   private totalDeCortes = 0;
   private cerrado = false;
+  private puenteRetenido: Puente | null = null;
   /** El puerto en el que escucha (efímero), en `127.0.0.1`. */
   puerto = 0;
 
@@ -238,6 +334,11 @@ export class ProxyPostgres {
     return this.totalDeCortes;
   }
 
+  /** El `pid` del proceso de PostgreSQL de la conexión con un `COMMIT` retenido (modo `retenerCommit`), o `null` si no hay ninguna. */
+  get pidRetenido(): number | null {
+    return this.puenteRetenido?.pidDelServidor ?? null;
+  }
+
   /** Si el proxy está caído (rechaza las conexiones nuevas). */
   get estaCaido(): boolean {
     return this.caido;
@@ -262,7 +363,24 @@ export class ProxyPostgres {
     this.totalDeCortes = 0;
   }
 
-  /** Cierra todas las conexiones abiertas y el servidor (siempre, también si la prueba falló). */
+  /**
+   * Reenvía al servidor el `COMMIT` retenido y resuelve cuando llega su `CommandComplete` con la etiqueta `COMMIT`, ya cerrada esa conexión.
+   * Rechaza si no hay nada retenido.
+   */
+  liberar(): Promise<void> {
+    const puente = this.puenteRetenido;
+    if (!puente) return Promise.reject(new Error('No hay ningún COMMIT retenido.'));
+    return puente.liberar();
+  }
+
+  /** Cierra la conexión con el servidor sin reenviar el `COMMIT` (PostgreSQL revierte) y resuelve cuando se cerró. Rechaza si no hay nada retenido. */
+  descartar(): Promise<void> {
+    const puente = this.puenteRetenido;
+    if (!puente) return Promise.reject(new Error('No hay ningún COMMIT retenido.'));
+    return puente.descartar();
+  }
+
+  /** Cierra todas las conexiones abiertas, también las retenidas, y el servidor (siempre, también si la prueba falló). */
   async cerrar(): Promise<void> {
     if (this.cerrado) return;
     this.cerrado = true;
@@ -289,8 +407,14 @@ export class ProxyPostgres {
     for (const puente of [...this.puentes]) puente.cerrar();
   }
 
+  /** `retenerCommit`: este puente tiene un `COMMIT` retenido. */
+  retener(puente: Puente): void {
+    this.puenteRetenido = puente;
+  }
+
   olvidar(puente: Puente): void {
     this.puentes.delete(puente);
+    if (this.puenteRetenido === puente) this.puenteRetenido = null;
   }
 
   private alConectar(cliente: net.Socket): void {
