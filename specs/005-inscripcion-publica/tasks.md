@@ -92,7 +92,7 @@ protegidas de la 005a.
       la foto, con cotización, `claveIdempotencia` y manejo de cada 409; página de seguimiento (token y código con DNI)
       con `no-referrer`, sin persistir el token y sin "subir foto"; pruebas de componentes (criterios 43 a 45, partes de
       la 005a). `FormularioClase` no cambia: los dos 409 de DR-5 se ven como cualquier error de la 004
-- [ ] T19a · tester · Pruebas protegidas de la 005a en verde y suite completa
+- [x] T19a · tester · Pruebas protegidas de la 005a en verde y suite completa
 
 ### Ataque
 
@@ -147,7 +147,7 @@ escritas.
       ejemplo con lunes, miércoles y viernes y `monto_calculado` de `montoProporcional`; prueba no protegida de la
       semilla con un envío 201 por cada plan de ejemplo (`RELOJ` en el día 1 del mes en curso); las pruebas de la
       semilla de 002 y 004 siguen pasando (criterio 47; plan, sección 13)
-- [ ] T33 · tester · Pruebas protegidas de la 005a (también las de la ronda 1) en verde y suite completa
+- [x] T33 · tester · Pruebas protegidas de la 005a (también las de la ronda 1) en verde y suite completa
 
 #### Respuestas del responsable a la ronda 1 (005a)
 
@@ -195,7 +195,7 @@ T33 o después; T34 ataca todo.
       mes (criterio 47 d; plan, sección 13)
 - [x] T43 · frontend · `VistaSeguimiento` sin el saludo con el nombre en la vista reducida, con su prueba de componentes
       (criterios 44 y 58; plan, sección 12)
-- [ ] T44 · tester · Pruebas protegidas de la 005a (también las de T36) en verde, suite completa, lint y verificación
+- [x] T44 · tester · Pruebas protegidas de la 005a (también las de T36) en verde, suite completa, lint y verificación
       de tipos
 
 #### Ronda 2 del ataque (005a)
@@ -224,14 +224,14 @@ T33 o después; T34 ataca todo.
       `@Permiso`, `await` en cada paso, sin caché, errores con `errorParaRegistro`, registro sin datos sensibles, montos
       sin `number`, fechas en Lima, orden de bloqueos, 409 por nombre de restricción, efectos después de confirmar) y las
       convenciones; verificar la semilla y la documentación de la 005a (criterios 47 y 48)
-- [ ] T23 · tester · Suite completa, lint y verificación de tipos
-- [ ] T24 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, ocupación, orden de bloqueos,
+- [x] T23 · tester · Suite completa, lint y verificación de tipos
+- [x] T24 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, ocupación, orden de bloqueos,
       `EnviadorCorreo`, límites públicos y las reglas para las historias siguientes, salvo "Archivos"), `README.md` y
       guía de uso (inscripción y seguimiento); notas para la 007 y la 010 en `specs/backlog.md`; en el PR, el aviso de
       recrear las bases de desarrollo de la rama sembradas antes del `CHECK` del criterio 56 (T45; plan, "Migraciones");
       005a como ✅ al unirla (criterio 48, parte de la 005a)
       _(Hecha en este commit, salvo el aviso en la descripción del PR (T45) y el ✅ de la 005a al unirla: los pone el orquestador.)_
-- [ ] T45 · documentador · Nota operativa de la ronda 2 (plan, "Migraciones"): en `docs/guia-local-windows.md`, un
+- [x] T45 · documentador · Nota operativa de la ronda 2 (plan, "Migraciones"): en `docs/guia-local-windows.md`, un
       problema conocido "La migración `20261120190000_reserva_dentro_del_mes` falla con 23514", que explique que pasa en
       una base de desarrollo sembrada con una versión anterior de la rama (reservas de ejemplo a 365 días), que
       `db:preparar` solo no lo arregla y que la solución es "Borrar la base de desarrollo y empezar de cero" (con el
@@ -242,7 +242,7 @@ T33 o después; T34 ataca todo.
 ### Solo ruta crítica (005a)
 
 - [x] Pruebas escritas por test-writer y confirmadas en rojo
-- [ ] Pruebas en verde tras la implementación
+- [x] Pruebas en verde tras la implementación
 - [x] Ataque adversarial sin fallas abiertas
 
 ## 005b · Foto y panel de solicitudes [005b, siguiente PR]
