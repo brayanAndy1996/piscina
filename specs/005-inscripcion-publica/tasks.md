@@ -445,17 +445,18 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
 
 ### Revisión y cierre
 
-- [ ] T21b · orquestador · **[005b]** Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
-      (de la 005a ni de la 005b)
-- [ ] T22b · revisor · **[005b]** Comparar con la spec (criterios de la 005b) y las reglas; verificar la documentación de
-      la 005b (parte de 48)
+- [x] T21b · orquestador · **[005b]** Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
+      (de la 005a ni de la 005b) _(verificado con `verificar-pruebas-protegidas` y revisión a mano de cada commit)_
+- [x] T22b · revisor · **[005b]** Comparar con la spec (criterios de la 005b) y las reglas; verificar la documentación de
+      la 005b (parte de 48) _(hecha: la revisión no encontró bloqueos)_
 - [ ] T23b · tester · **[005b]** Suite completa, lint y verificación de tipos, también la integración continua en Windows
       por `sharp`
-- [ ] T24b · documentador · **[005b]** Commit, tareas marcadas, `docs/arquitectura.md` (la foto, `AlmacenArchivos` con
+- [x] T24b · documentador · **[005b]** Commit, tareas marcadas, `docs/arquitectura.md` (la foto, `AlmacenArchivos` con
       su formato de clave, la lista, la cancelación y la ocupación; "Lo que todavía no trae" sin lo de la 005b; la regla
       "Archivos"), `README.md` y guía de uso (panel de solicitudes y foto), `.env.example` con `ALMACEN_DIRECTORIO`;
       comprobar que siguen en `specs/backlog.md` las notas de B4 (007), B5 (008) y la política de retención de fotos
       (B2), ya anotadas al responder T0b; 005b y la historia 005 como ✅ al unirla (parte de 48)
+      _(hecha en este commit; el ✅ de la 005b y de la 005 al unirla lo pone el orquestador)_
 
 ### Solo ruta crítica (005b)
 
