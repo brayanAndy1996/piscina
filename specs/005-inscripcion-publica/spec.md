@@ -48,7 +48,11 @@
   confirmación incierta espera a la transacción original), 65 (el servidor de desarrollo de la web no sirve el
   repositorio a través de los enlaces de los workspaces) y 66 (formas de ruta de Windows en `ALMACEN_DIRECTORIO`), en la
   sección O; ajustes de los criterios 37, 61, 62 y de la decisión AB1-1, decisiones AB2-1 a AB2-3 y riesgos aceptados
-  nuevos o precisados.
+  nuevos o precisados. **Ronda 3 del ataque de la 005b (21/11/2026, sobre el commit `2f695c2`):** sin fallas
+  reproducibles en los criterios 34 a 39 y 61 a 66 ni regresiones en los demás criterios críticos de la 005b; no agrega
+  criterios (sección P). Se precisa cómo se fija la espera máxima de la relectura del criterio 64 (opción
+  `esperaMaximaDeBloqueoMs` de `BaseDatos.conAcademia`, sin cambio de efecto) y se suman o precisan riesgos aceptados
+  (caché de Vitest, enlaces que el sistema ya trae, mayúsculas de Unicode, nombres reservados en `ALMACEN_DIRECTORIO`).
 - **División (DR-11):** la historia se entrega en dos PR desde esta misma carpeta, las dos de ruta crítica, cada una con
   sus pruebas protegidas, su ataque y su cierre (ver "División en 005a y 005b"):
   - **005a · Inscripción, reserva y seguimiento** (se construye primero): criterios 1 a 33, 41 a 45, 47 a 60, salvo las
@@ -111,6 +115,7 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   con el código, el esquema y los informes de las E2E, que pueden tener trazas con tokens). El 66 completa el 62 b: es
   una mala configuración de quien desarrolla y no un ataque, pero deja el almacén dentro de lo que sirve la web, y su
   prueba es pura y determinista en cualquier sistema.
+- **Ronda 3 del ataque de la 005b:** sin fallas; no agrega criterios (sección P).
 
 No son críticos, pero llevan _(prueba obligatoria)_: 11 (cotización, salvo lo que cubren 8 a 10) y 40 (API), y 43 a
 46 (web, con pruebas de componentes). Los 47 y 48 (semilla y documentación) los verifica el revisor. _(Aprobado por el
@@ -1265,8 +1270,15 @@ un modo (criterio 64) sin cambiar los que ya tiene, en el commit de pruebas prot
     relectura ve la clave anterior, la subida borra el archivo nuevo y responde 500, y después el `COMMIT` se aplica:
     `foto_clave` queda apuntando a un archivo borrado. Desde este criterio:
     - a) **Relectura con bloqueo** (decisión AB2-1). La relectura del criterio 61 b es una transacción nueva de la
-      academia (`conAcademia`) que primero fija `SET LOCAL lock_timeout` en `FOTO_ESPERA_RELECTURA_MS` (5000 ms) y
-      después lee `SELECT foto_clave FROM alumnos WHERE academia_id = … AND id = … FOR SHARE`. No escribe nada, y la
+      academia (`conAcademia`) con la espera máxima de bloqueos (`lock_timeout`) en `FOTO_ESPERA_RELECTURA_MS` (5000
+      ms), local a esa transacción, que lee `SELECT foto_clave FROM alumnos WHERE academia_id = … AND id = … FOR SHARE`.
+      _(Precisado en la ronda 3 del ataque de la 005b, sin cambio de efecto:)_ la espera no se fija con `SET LOCAL`
+      dentro de `FotoService`, porque las reglas de lint `aquagestion-sql/sesion-en-modulos` y `set-config-app` prohíben
+      en los módulos cambiar parámetros de la sesión; se pide con la opción `esperaMaximaDeBloqueoMs` de
+      `BaseDatos.conAcademia` (`{ esperaMaximaDeBloqueoMs: FOTO_ESPERA_RELECTURA_MS }`), que ejecuta
+      `set_config('lock_timeout', '<n>ms', true)` después de fijar el contexto y antes de que corra el trabajo (ver
+      "Interfaces del backend"). Es igual de local que `SET LOCAL`: la transacción siguiente en la misma conexión vuelve
+      al valor anterior (0, sin límite), como lo comprobó el adversarial. No escribe nada, y la
       transacción no se declara `READ ONLY` (PostgreSQL no admite `FOR SHARE` en una transacción de solo lectura). Por
       qué basta: la transacción de confirmación toma el alumno con `FOR UPDATE` y actualiza su fila antes de enviar el
       `COMMIT`; mientras ese `COMMIT` pueda aplicarse, la transacción sigue abierta en el servidor con la fila bloqueada,
@@ -1436,6 +1448,17 @@ un modo (criterio 64) sin cambiar los que ya tiene, en el commit de pruebas prot
     _(crítico)_ (D-21, D-23, RNF-05; criterio 62 b; ataque ronda 2 de la 005b, falla 3. Causa: `estaDentroDe` compara
     con `path.relative`, que toma `\\?\C:\…`, `\\.\C:\…` y las rutas de red como raíces distintas de `C:\`, y no conoce
     los nombres cortos ni los puntos y espacios finales que Windows quita.)
+
+### P. Ronda 3 adversarial (005b)
+
+Ronda 3 del ataque de la 005b (T64, 21/11/2026), sobre el commit `2f695c2`, con la spec y el código: **sin fallas
+reproducibles** en los criterios 64 a 66 ni regresiones en 34 a 39, 61 y 62 ni en los demás criterios críticos de la
+005b. No se agregan criterios. Solo se precisa cómo se fija la espera máxima de la relectura (criterio 64 a y decisión
+AB2-1: con la opción `esperaMaximaDeBloqueoMs` de `BaseDatos.conAcademia` en lugar de `SET LOCAL` en el módulo, con el
+mismo efecto). Lo que encontró sin llegar a falla queda en "Riesgos aceptados": la caché de Vitest que sirve el
+servidor de desarrollo y los enlaces que el sistema ya trae (en el riesgo "Lo que sirve el servidor de desarrollo de la
+web"), las mayúsculas de Unicode en `ALMACEN_DIRECTORIO` (riesgo nuevo) y `NUL\x` en Windows (riesgo "Nombres
+reservados de Windows").
 
 ## Casos límite
 
@@ -1674,6 +1697,18 @@ interface EnviadorCorreo {
   enviar(mensaje: { academiaId: string; para: string; plantilla: 'SEGUIMIENTO_SOLICITUD'; datos: Record<string, string> }): Promise<void>;
 }
 
+// backend/src/infraestructura/prisma/tipos.ts y base-datos.ts (de la 001; opción nueva en la ronda 2 del ataque de la
+// 005b, criterio 64, precisada en la ronda 3). Tercer argumento de conAcademia (y de las demás transacciones de BaseDatos).
+interface OpcionesTransaccion {
+  readonly aislamiento?: 'ReadCommitted' | 'RepeatableRead' | 'Serializable'; // sin cambios
+  // Espera máxima de un bloqueo de fila o de tabla antes de fallar con 55P03 (lock_timeout), local a la transacción.
+  // Si viene, BaseDatos ejecuta set_config('lock_timeout', '<n>ms', true) después de fijar el contexto y antes del
+  // trabajo. Entero de 1 a 60000; con otro valor lanza RangeError sin ejecutar el trabajo. Sin la opción, no se fija.
+  readonly esperaMaximaDeBloqueoMs?: number;
+}
+// conAcademia<T>(academiaId: string, trabajo: (tx: TransaccionAcademia) => Promise<T>, opciones?: OpcionesTransaccion): Promise<T>;
+// La relectura del criterio 64 la usa con { esperaMaximaDeBloqueoMs: FOTO_ESPERA_RELECTURA_MS } (5000).
+
 // backend/src/infraestructura/entorno/entorno.ts (pura; ronda 2 del ataque de la 005b, criterio 66).
 // Resuelve ALMACEN_DIRECTORIO desde la raíz y lo rechaza si no es una ruta válida o si queda dentro de lo que sirve la web.
 function resolverAlmacenDirectorio(
@@ -1858,6 +1893,10 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
   protegida de 001 a 005b cambia: las del 61 y del 62 siguen pasando igual (la del 62 b en Windows usa un directorio
   temporal con nombre corto, que el criterio 66 sigue aceptando). La prueba no protegida `entorno.test.ts` se ajusta en
   el mismo cambio de implementación si fija la distinción de mayúsculas en Linux.
+- **[005b] 001, `BaseDatos` (precisado en la ronda 3 del ataque de la 005b):** `OpcionesTransaccion` suma la opción
+  `esperaMaximaDeBloqueoMs`, que usa la relectura del criterio 64 (ver "Interfaces del backend"). Sin la opción, toda
+  transacción sigue igual que en la 001 (no se fija `lock_timeout`); las reglas de lint de la 001 que prohíben `SET`,
+  `SET LOCAL` y `set_config` en los módulos no cambian.
 
 ## Reglas para las historias siguientes
 
@@ -2007,19 +2046,39 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
 - **[005b] Nombres reservados de Windows en las claves** _(observación del ataque ronda 1 de la 005b)_: el formato de la
   clave del criterio 36 acepta segmentos como `con`, `nul` o `aux.jpg`, que en Windows no son archivos normales. No es
   explotable, porque las claves las arma siempre el servidor y la de la foto no puede tener esos segmentos (regla
-  "Archivos"). Aceptado; si una historia arma claves con otros segmentos, los evita.
-- **[005b] Lo que sirve el servidor de desarrollo de la web** _(ataque ronda 1 de la 005b; precisado en la ronda 2)_:
-  con la lista cerrada del criterio 62, el servidor de desarrollo sigue sirviendo `frontend/`, `packages/contratos/` y
-  el `node_modules/` de la raíz, salvo los enlaces de los workspaces en `node_modules/@aquagestion/` (criterio 65): es
+  "Archivos"). Aceptado; si una historia arma claves con otros segmentos, los evita. _(Ronda 3 del ataque de la
+  005b:)_ lo mismo pasa con un `ALMACEN_DIRECTORIO` que tenga un segmento reservado, por ejemplo `NUL\x` en Windows:
+  `resolverAlmacenDirectorio` (criterio 66) no lo rechaza. Queda debajo de la raíz y fuera de las carpetas que sirve la
+  web, así que no expone el almacén; es una mala configuración de quien desarrolla. Queda cubierto por este mismo
+  riesgo.
+- **[005b] Lo que sirve el servidor de desarrollo de la web** _(ataque ronda 1 de la 005b; precisado en las rondas 2 y
+  3)_: con la lista cerrada del criterio 62, el servidor de desarrollo sigue sirviendo `frontend/`, `packages/contratos/`
+  y el `node_modules/` de la raíz, salvo los enlaces de los workspaces en `node_modules/@aquagestion/` (criterio 65): es
   código público del repositorio o dependencias. Escucha solo en `127.0.0.1` (configuración de la 000). En producción
   la web se publica compilada, sin servidor de desarrollo (D-21). Otro enlace dentro de `node_modules/` que apunte fuera
   (por ejemplo, uno creado a mano o con `npm link`) volvería a abrir lo que apunta; exige una acción de quien
-  desarrolla en su propio disco; aceptado. El rechazo de `ALMACEN_DIRECTORIO` de los criterios 62 b y 66 compara el
-  texto de las rutas, sin mirar el disco: un valor que pase por un enlace simbólico o una unión, por una unidad creada
-  con `subst`, por una unidad de red asignada a una carpeta del repositorio o por un volumen montado en una carpeta,
-  hacia `frontend/`, no se detecta. Exige también que quien desarrolla prepare eso en su propio disco; aceptado (las
-  formas que se escriben en el propio valor, como `\\?\`, las rutas de red y los nombres cortos, sí se rechazan desde
-  el criterio 66).
+  desarrolla en su propio disco; aceptado.
+  _(Ronda 3:)_ como `node_modules/` está en `server.fs.allow`, también se sirve la caché de Vitest
+  (`node_modules/.vitest-cache/`), que guarda el código transformado de `backend/src` y de las pruebas. Es código
+  público del repositorio y no lleva valores del `.env` que no estén ya en `.env.example`; aceptado. Mitigación posible,
+  si se quiere cerrar: sumar `**/node_modules/.vitest-cache/**` a `server.fs.deny` o mover la caché fuera de
+  `node_modules/` (`fsModuleCachePath` de Vitest).
+  El rechazo de `ALMACEN_DIRECTORIO` de los criterios 62 b y 66 compara el texto de las rutas, sin mirar el disco: un
+  valor que pase por un enlace simbólico o una unión, por una unidad creada con `subst`, por una unidad de red asignada
+  a una carpeta del repositorio o por un volumen montado en una carpeta, hacia `frontend/`, no se detecta. _(Precisado
+  en la ronda 3:)_ algunos de esos enlaces no hace falta crearlos, porque el sistema ya los trae: la unión
+  `C:\Documents and Settings` en Windows, `/proc/self/root` en Linux y los firmlinks de `/System/Volumes/Data` en
+  macOS. Aun así, cada caso exige que quien desarrolla escriba a propósito una ruta rara en su configuración (por
+  ejemplo `/proc/self/root/home/…/frontend/public`), así que sigue siendo una mala configuración propia y no un ataque;
+  aceptado (las formas que se escriben en el propio valor, como `\\?\`, las rutas de red y los nombres cortos, sí se
+  rechazan desde el criterio 66).
+- **[005b] Mayúsculas de Unicode en `ALMACEN_DIRECTORIO`** _(observación del ataque ronda 3 de la 005b)_: la
+  comparación sin mayúsculas del criterio 66 usa `toLowerCase()`, que no iguala la `ſ` (s larga, U+017F) con la `s`,
+  así que un valor como `node_moduleſ\x` se acepta. NTFS (Windows) o APFS (macOS), que comparan los nombres sin
+  mayúsculas con sus propias tablas, podrían tratarlo como `node_modules` y dejar el almacén dentro de lo que sirve la
+  web. No se pudo verificar fuera de Windows y macOS, y exige que quien desarrolla escriba ese carácter a propósito en
+  su configuración; aceptado. Mitigación posible: comparar también con `toUpperCase()` (que convierte `ſ` en `S`), además
+  de con `toLowerCase()`.
 - **[005b] Conexión medio abierta durante la confirmación de la foto** _(ataque ronda 2 de la 005b)_: si la conexión
   de la transacción de confirmación se pierde sin que PostgreSQL lo note (una conexión TCP medio abierta), esa
   transacción sigue abierta con la fila del alumno bloqueada hasta que PostgreSQL la detecte (por los `keepalive` de
@@ -2424,7 +2483,15 @@ el plan (secciones 9, 12 y 16).
   `COMMIT` en camino); (c) esperar sin límite (una conexión medio abierta retendría la petición hasta que PostgreSQL la
   detecte, minutos u horas); (d) mirar `pg_locks` o `pg_stat_activity` desde la API (el rol de la app no debe leer
   sesiones ajenas y Prisma no expone el `pid` de la transacción); (e) para las pruebas, un segundo proxy aparte como el
-  del adversarial (repite el análisis del protocolo) o un retraso por tiempo (no determinista).
+  del adversarial (repite el análisis del protocolo) o un retraso por tiempo (no determinista). _(Precisado en la ronda
+  3 del ataque de la 005b, sin cambio de efecto:)_ la espera de 5 s no se fija con `SET LOCAL lock_timeout` dentro de
+  `FotoService`, porque las reglas de lint `aquagestion-sql/sesion-en-modulos` y `set-config-app` lo prohíben en los
+  módulos. Se fija con la opción nueva `esperaMaximaDeBloqueoMs` de `BaseDatos.conAcademia`, que ejecuta
+  `set_config('lock_timeout', '<n>ms', true)` después del contexto y antes del trabajo, y acepta un entero de 1 a 60000
+  (si no, lanza `RangeError` sin ejecutar el trabajo). El efecto es el mismo y queda local a la transacción: el
+  adversarial comprobó que la transacción siguiente en la misma conexión vuelve a 0. Alternativa descartada: una
+  excepción de lint para `foto.service.ts` (abriría en un módulo la puerta a cambiar parámetros de la transacción, que
+  la 001 reserva a `infraestructura/prisma/` y a los comandos).
 - **AB2-2 (criterio 65). `server.fs.deny` con los enlaces de los workspaces.** Los patrones
   `**/node_modules/@aquagestion` y `**/node_modules/@aquagestion/**` no llevan la ruta del usuario (lo que hizo
   descartar `deny` en AB1-3 a), y Vite aplica `deny` sin distinguir mayúsculas, antes que `allow` y en todos los caminos
@@ -2463,7 +2530,8 @@ el texto completo y la respuesta de cada una.
 Siguen pendientes, sin bloquear la 005b, R6 y R7 (al final de esta sección).
 
 La ronda 1 del ataque de la 005b (criterios 61 a 63) no deja preguntas nuevas: sus dos fallas y su observación son
-técnicas (AB1-1 a AB1-4). La ronda 2 (criterios 64 a 66) tampoco: sus tres fallas son técnicas (AB2-1 a AB2-3).
+técnicas (AB1-1 a AB1-4). La ronda 2 (criterios 64 a 66) tampoco: sus tres fallas son técnicas (AB2-1 a AB2-3). La
+ronda 3 no tuvo fallas ni deja preguntas: sus observaciones van a "Riesgos aceptados" (sección P).
 
 ### Resueltas en el repaso de la 005b (respondidas el 21/11/2026)
 

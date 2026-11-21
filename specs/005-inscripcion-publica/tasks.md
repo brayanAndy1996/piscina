@@ -264,7 +264,7 @@ los estados `CANCELADA`).
 
 ### Pruebas protegidas (en rojo)
 
-- [ ] T6a · test-writer · **[005b]** Pruebas protegidas de la foto, desde la spec y los contratos públicos, en archivos
+- [x] T6a · test-writer · **[005b]** Pruebas protegidas de la foto, desde la spec y los contratos públicos, en archivos
       nuevos: el orden y los códigos del criterio 34 a a g (429, 400 por tipo y codificación, 413 con 5 242 881 bytes y
       con un `Content-Length` grande, 5 242 880 bytes que pasan, 404 y 403 de academia, 404 del token con el cuerpo del
       criterio 31, 409 por vencida, cancelada, fila `VENCIDA` del criterio 21 b y en el último milisegundo del mes, 400
@@ -276,44 +276,44 @@ los estados `CANCELADA`).
       criterio 37 a a f (con `overrideProvider(ALMACEN_ARCHIVOS)`); límite `foto` con su contador aparte, por /64 y con
       la IPv4 mapeada (parte de la 005b de 33); registro en memoria en `trace` con la foto, `X-Token-Solicitud` y
       `Referer`, y los rechazos (parte de la 005b de 28)
-- [ ] T6c · test-writer · **[005b]** Pruebas protegidas del panel, en archivos nuevos: lista con los permisos, el filtro
+- [x] T6c · test-writer · **[005b]** Pruebas protegidas del panel, en archivos nuevos: lista con los permisos, el filtro
       (valores, defecto, 400 en `estado`), el orden, el tope de 200, las claves exactas de cada elemento, los datos
       actuales tras un 21 b, `?academiaId=` y el aislamiento (criterio 38); cancelación con el orden de comprobaciones,
       la decisión por estado (fila `PENDIENTE_PAGO` vigente y vencida, `CANCELADA` sin escribir, fila `VENCIDA` con 409),
       `reserva_vence_en` en `NULL`, la auditoría exacta y las pruebas a a h del criterio 39 (h: sin correo y con la foto
       intacta, DR-17 y DR-18); actualización de la prueba
       protegida de dependencias permitidas del backend solo para sumar `sharp` (criterio 127 de 001)
-- [ ] T7b · tester · **[005b]** Confirmar que T6a y T6c fallan por la razón esperada y que las protegidas de 001 a 005a
+- [x] T7b · tester · **[005b]** Confirmar que T6a y T6c fallan por la razón esperada y que las protegidas de 001 a 005a
       siguen pasando. Commit del orquestador: "Pruebas protegidas (005b): foto y panel de solicitudes (en rojo)"
 
 ### Implementación
 
-- [ ] T15 · backend · **[005b]** `packages/contratos/src/fotos.ts` (PB4); `infraestructura/almacen-archivos` (interfaz,
+- [x] T15 · backend · **[005b]** `packages/contratos/src/fotos.ts` (PB4); `infraestructura/almacen-archivos` (interfaz,
       `ALMACEN_ARCHIVOS`, `AlmacenArchivosDisco`, módulo; `ALMACEN_DIRECTORIO` en el entorno y en `.env.example`);
       `sharp` en `backend/package.json` y en `scripts/lib/dependencias-backend.mjs`; lector binario de la foto
       (`cuerpo-imagen.ts`) y la ruta en `noLeerCuerpoEn` de `crear-app.ts`; regla `foto` en `LIMITES_PUBLICOS` (con
       `'PUT'` en `LimitePublico.metodo`); `x-token-solicitud` en `RUTAS_REDACTADAS` y la prueba no protegida de largo 5;
       estado visible común (PB2); `FotoService` y `PUT …/solicitudes/foto` con el orden de PB3 y la transacción de PB8
       (criterios 28 y 33 partes de la foto, 34 a 37; plan, secciones 8, 9 y 14)
-- [ ] T16b · backend · **[005b]** Contratos del panel (`solicitudPanelSchema`, `respuestaListaSolicitudesSchema`,
+- [x] T16b · backend · **[005b]** Contratos del panel (`solicitudPanelSchema`, `respuestaListaSolicitudesSchema`,
       `respuestaSolicitudPanelSchema`, `cancelarSolicitudSchema`, `filtroEstadoSolicitudesSchema`,
       `respuestaOcupacionSchema`); `GET /api/solicitudes` y `POST /api/solicitudes/{id}/cancelar` (criterios 38, 39) y
       `GET /api/clases/ocupacion` con `contarInscritos` y `contarOcupacion` (criterio 40, con prueba no protegida de
       permisos, aislamiento, clases inactivas y una matrícula del mes siguiente que cuenta en `inscritos` y no en
       `cuposRestantes`) (plan, sección 11)
-- [ ] T18b · frontend · **[005b]** Paso de la foto en el formulario (vista previa, avisos de tipo y tamaño con
+- [x] T18b · frontend · **[005b]** Paso de la foto en el formulario (vista previa, avisos de tipo y tamaño con
       `fotos.ts`, subida después del 201 con el token en `X-Token-Solicitud`) y "subir foto" en el seguimiento, solo con
       la vista completa, con reintento y los mensajes de 400, 409, 413 y 429; pruebas de componentes con lo que fija PB14
       (partes de la 005b de 43 y 44)
-- [ ] T19 · frontend · **[005b]** Panel: "Solicitudes de inscripción" (lista, filtro, cancelar con motivo, 409 y 404),
+- [x] T19 · frontend · **[005b]** Panel: "Solicitudes de inscripción" (lista, filtro, cancelar con motivo, 409 y 404),
       "Nueva inscripción" con `usuario.academia.nombreCorto`; ocupación "inscritos / aforo" en la grilla y diálogos de
       DR-5 en el formulario de clases; claves con la identidad de la sesión; pruebas de componentes con lo que fija PB14
       (criterio 46)
-- [ ] T19b · tester · **[005b]** Pruebas protegidas en verde y suite completa
+- [x] T19b · tester · **[005b]** Pruebas protegidas en verde y suite completa
 
 ### Ataque
 
-- [ ] T20b · adversarial · **[005b]** Atacar 34 a 39: imágenes maliciosas (bombas de descompresión, poliglotas, EXIF,
+- [x] T20b · adversarial · **[005b]** Atacar 34 a 39: imágenes maliciosas (bombas de descompresión, poliglotas, EXIF,
       tipos cambiados, `Content-Encoding`), rutas y claves de archivo, carreras con la foto y con la cancelación (envío y
       cancelación del mismo cliente, envío y foto del mismo DNI, foto y cancelación, cancelación y `PATCH` de aforo sobre
       la misma clase), token de otra academia, la foto en el último milisegundo del mes y desde el enlace de una
@@ -321,7 +321,8 @@ los estados `CANCELADA`).
       academia o con roles sin permiso, y el parámetro `estado` repetido o raro. Mismo ciclo por cada falla, hasta una
       ronda sin fallas.
       _(Ronda 1 hecha el 21/11/2026: dos fallas, criterios 61 y 62, y una observación, criterio 63; sección N de la
-      spec. Sigue con las tareas de abajo y la ronda 2, T55.)_
+      spec. Siguió con las tareas de abajo, la ronda 2 (T55, tres fallas, sección O) y la ronda 3 (T64, sin fallas,
+      sección P).)_
 
 #### Ronda 1 del ataque (005b)
 
@@ -334,7 +335,7 @@ en archivos nuevos (por ejemplo `…-ronda1-005b.test.ts`), sin modificar las pr
       impacto, regla "Archivos", riesgos aceptados (archivo huérfano tras una relectura fallida, confirmación incierta
       con una subida simultánea, nombres reservados de Windows, lo que sirve el servidor de desarrollo), AB1-1 a AB1-4;
       plan (secciones 9, 12 y 16, decisiones y riesgos) (criterios 36, 37, 61 a 63)
-- [ ] T49 · test-writer · **[005b]** Pruebas protegidas en rojo, desde la spec y los contratos públicos: utilidad del
+- [x] T49 · test-writer · **[005b]** Pruebas protegidas en rojo, desde la spec y los contratos públicos: utilidad del
       proxy de PostgreSQL (`backend/test/utilidades/proxy-postgres.ts`, modos `cortarTrasCommit`, `cortarAntesDelCommit`
       y `caer`, armado desde `AlmacenDeFallosDePrueba.alGuardar` y disparado por el `UPDATE` de `alumnos` con
       `foto_clave`) y los casos 1 a 5 del criterio 61 (204 con un solo archivo, 500 sin tocar `F1`, 500 sin borrar nada,
@@ -344,29 +345,29 @@ en archivos nuevos (por ejemplo `…-ronda1-005b.test.ts`), sin modificar las pr
       archivos de la raíz, 200 en `/`, `/src/main.tsx`, `packages/contratos/package.json` y
       `node_modules/react/index.js`; `validarEntorno` con `ALMACEN_DIRECTORIO` dentro y fuera de las carpetas de la web
       (criterio 62)
-- [ ] T50 · tester · **[005b]** Confirmar que T49 falla por la razón esperada (archivo nuevo borrado con `foto_clave`
+- [x] T50 · tester · **[005b]** Confirmar que T49 falla por la razón esperada (archivo nuevo borrado con `foto_clave`
       apuntándolo, o 500 en el caso 1; 200 `image/jpeg` por `/@fs/` y 200 en `backend/`; `validarEntorno` que acepta el
       almacén dentro de `frontend/`) y no por sintaxis, importaciones o configuración; que el proxy funciona también en
       la integración continua de Windows; y que las demás protegidas siguen igual. `git diff --cached --stat` solo con
       archivos de prueba. Commit del orquestador: "Pruebas protegidas (005b, ronda 1): confirmación incierta de la foto
       y servidor de desarrollo (en rojo)"
-- [ ] T51 · backend · **[005b]** `FotoService.subir`: clave anterior fuera de `trabajo`, errores decididos por la
+- [x] T51 · backend · **[005b]** `FotoService.subir`: clave anterior fuera de `trabajo`, errores decididos por la
       transacción como hoy, y para los demás el `warn` `'Confirmación de la foto incierta'` y la relectura de
       `foto_clave` con las tres salidas b1 a b3 (criterios 37 y 61; plan, sección 9)
-- [ ] T52 · backend · **[005b]** `validarEntorno`: rechazo de `ALMACEN_DIRECTORIO` dentro de `frontend/`, `packages/` o
+- [x] T52 · backend · **[005b]** `validarEntorno`: rechazo de `ALMACEN_DIRECTORIO` dentro de `frontend/`, `packages/` o
       `node_modules/` de la raíz, con sus casos en la prueba no protegida `entorno.test.ts` (criterio 62 b; plan,
       sección 9)
-- [ ] T53 · frontend · **[005b]** `frontend/vite.config.ts`: `server.fs.allow` con `frontend/`, `packages/contratos/` y
+- [x] T53 · frontend · **[005b]** `frontend/vite.config.ts`: `server.fs.allow` con `frontend/`, `packages/contratos/` y
       `node_modules/` de la raíz, sin tocar `strict`, `deny` ni `preview`; comprobar `npm run dev` y las E2E (criterio
       62 a; plan, sección 12)
-- [ ] T54 · backend · **[005b]** `ALMACEN_DIRECTORIO` temporal en las pruebas del backend (`vitest.config.mts` o el
+- [x] T54 · backend · **[005b]** `ALMACEN_DIRECTORIO` temporal en las pruebas del backend (`vitest.config.mts` o el
       `globalSetup` compartido, con borrado al terminar) y en la API de las E2E (`e2e/playwright.config.ts` y su
       `globalTeardown`); prueba no protegida de integración que comprueba que el almacén del proceso de pruebas queda
       fuera del repositorio; borrar a mano lo que haya quedado de pruebas en `backend/almacenamiento/` de la máquina de
       la sesión (no está versionado) (criterio 63; plan, sección 16)
-- [ ] T56 · tester · **[005b]** Pruebas protegidas de la 005b (también las de T49) en verde, suite completa, lint y
+- [x] T56 · tester · **[005b]** Pruebas protegidas de la 005b (también las de T49) en verde, suite completa, lint y
       verificación de tipos, también en Windows (antes de la ronda 2; después de ella lo repite T63)
-- [ ] T55 · adversarial · **[005b]** Ronda 2 sobre los criterios críticos de la 005b, con la spec y el código, incluidos
+- [x] T55 · adversarial · **[005b]** Ronda 2 sobre los criterios críticos de la 005b, con la spec y el código, incluidos
       61 y 62: cortes de la conexión en otros puntos de la transacción de la foto (antes del `UPDATE`, entre el
       `UPDATE` y el `COMMIT`, en la relectura), errores de la base que se hagan pasar por errores de negocio, subidas
       simultáneas con una confirmación incierta; rutas del servidor de desarrollo de la web hacia el almacén o
@@ -375,7 +376,7 @@ en archivos nuevos (por ejemplo `…-ronda1-005b.test.ts`), sin modificar las pr
       falla.) Mismo ciclo por cada falla, hasta
       una ronda sin fallas.
       _(Ronda 2 hecha el 21/11/2026: tres fallas, criterios 64 a 66; sección O de la spec. Sigue con las tareas de
-      abajo y la ronda 3, T64.)_
+      abajo y la ronda 3, T64, que terminó sin fallas.)_
 
 #### Ronda 2 del ataque (005b)
 
@@ -389,7 +390,7 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
       AB1-1 y AB1-3, casos límite, interfaz `resolverAlmacenDirectorio`, impacto, regla "Archivos", riesgos aceptados
       (lo que sirve el servidor de desarrollo, conexión medio abierta, archivo huérfano), AB2-1 a AB2-3; plan
       (secciones 9, 12, 16 y 17 nueva, decisiones y riesgos) (criterios 37, 61, 62, 64 a 66)
-- [ ] T58 · test-writer · **[005b]** Pruebas protegidas en rojo, desde la spec y los contratos públicos:
+- [x] T58 · test-writer · **[005b]** Pruebas protegidas en rojo, desde la spec y los contratos públicos:
       - `proxy-postgres.ts`: modo `retenerCommit` (retiene el `COMMIT` hasta el `Sync`, cierra solo el lado de la API),
         `pidRetenido` desde el `BackendKeyData`, `liberar()`, `descartar()` y `cerrar()` con lo retenido, sin cambiar
         los modos del criterio 61; casos 1 a 5 del criterio 64 (204 tras `liberar()` con la espera vista en
@@ -403,7 +404,7 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
         (criterio 65);
       - `resolverAlmacenDirectorio` con `path.win32` y `path.posix` y las listas de valores del criterio 66, y
         `validarEntorno` en Windows con `\\?\`, `NODE_M~1\x`, `frontend.\public` y `os.tmpdir()` (criterio 66)
-- [ ] T59 · tester · **[005b]** Confirmar que T58 falla por la razón esperada: la subida del caso 1 responde antes de
+- [x] T59 · tester · **[005b]** Confirmar que T58 falla por la razón esperada: la subida del caso 1 responde antes de
       quedar bloqueada ("la relectura no esperó a la transacción original") o responde 500 y borra el archivo nuevo;
       200 `image/jpeg` por el enlace del workspace y `deny` sin los patrones; `resolverAlmacenDirectorio` que todavía no
       existe en `entorno.ts` y, en Windows, `validarEntorno` que acepta `\\?\…\frontend\public` y `NODE_M~1\x` (y no por
@@ -411,20 +412,22 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
       ampliada, y que el proxy funciona en la integración continua de Windows. `git diff --cached --stat` solo con
       archivos de prueba. Commit del orquestador: "Pruebas protegidas (005b, ronda 2): relectura con bloqueo, enlaces
       de los workspaces y rutas de Windows (en rojo)"
-- [ ] T60 · backend · **[005b]** `FotoService.resolverConfirmacionIncierta`: relectura en `conAcademia` con
-      `SET LOCAL lock_timeout` de `FOTO_ESPERA_RELECTURA_MS` (5000) y `SELECT … FOR SHARE`, sin `READ ONLY`; la espera
+- [x] T60 · backend · **[005b]** `FotoService.resolverConfirmacionIncierta`: relectura en `conAcademia` con
+      `lock_timeout` de `FOTO_ESPERA_RELECTURA_MS` (5000) y `SELECT … FOR SHARE`, sin `READ ONLY`; la espera
       agotada y cualquier error de la relectura van a b3 (criterios 61 y 64; plan, sección 9)
-- [ ] T61 · frontend · **[005b]** `frontend/vite.config.ts`: `server.fs.deny` con los valores por defecto de Vite y
+      _(Hecha: `lock_timeout` con la opción nueva `esperaMaximaDeBloqueoMs` de `BaseDatos.conAcademia` y no con `SET
+      LOCAL` en el módulo, que prohíben las reglas de lint; precisado en la ronda 3, criterio 64 a y AB2-1.)_
+- [x] T61 · frontend · **[005b]** `frontend/vite.config.ts`: `server.fs.deny` con los valores por defecto de Vite y
       `**/node_modules/@aquagestion` y `**/node_modules/@aquagestion/**`, sin tocar `allow`, `strict` ni `preview`;
       comprobar `npm run dev` (los contratos se piden por `packages/contratos`) y las E2E (criterio 65; plan, sección
       12)
-- [ ] T62 · backend · **[005b]** `resolverAlmacenDirectorio` pura en `entorno.ts` (formas de Windows, comparación por
+- [x] T62 · backend · **[005b]** `resolverAlmacenDirectorio` pura en `entorno.ts` (formas de Windows, comparación por
       segmentos sin mayúsculas en todos los sistemas, nombres cortos como comodín con `path.win32`) y `validarEntorno`
       que la usa; ajuste de la prueba no protegida `entorno.test.ts` si fija la distinción de mayúsculas en Linux
       (criterio 66; plan, sección 9)
 - [ ] T63 · tester · **[005b]** Pruebas protegidas de la 005b (también las de T49 y T58) en verde, suite completa, lint
       y verificación de tipos, también en Windows (la del 62 b con el directorio temporal con nombre corto)
-- [ ] T64 · adversarial · **[005b]** Ronda 3 sobre los criterios críticos de la 005b, con la spec y el código, incluidos
+- [x] T64 · adversarial · **[005b]** Ronda 3 sobre los criterios críticos de la 005b, con la spec y el código, incluidos
       64 a 66: `COMMIT` retenido en otros puntos (antes del `UPDATE`, con el `UPDATE` en camino), relectura con la
       academia suspendida mientras espera, subidas y cancelaciones del mismo alumno mientras la fila está retenida;
       rutas de Vite hacia `node_modules/@aquagestion/` y hacia otros enlaces del repositorio con codificaciones, `..`,
@@ -432,6 +435,13 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
       (Un `ALMACEN_DIRECTORIO` que pasa por un enlace, una unión, `subst`, una unidad de red o un volumen montado hacia
       `frontend/`, otro enlace de `node_modules/` creado a mano y la conexión medio abierta son riesgos aceptados, no
       fallas.) Mismo ciclo por cada falla, hasta una ronda sin fallas.
+      _Hecha el 21/11/2026 sobre el commit `2f695c2`: sin fallas reproducibles en 64 a 66 ni regresiones en 34 a 39, 61
+      y 62 (sección P de la spec). Fin del ciclo adversarial de la 005b. Sus observaciones quedan como riesgos aceptados
+      (caché de Vitest servida por Vite, enlaces que el sistema ya trae, mayúsculas de Unicode, `NUL\x` en Windows), y se
+      precisa cómo se fija la espera de la relectura (opción `esperaMaximaDeBloqueoMs`, criterio 64 a y AB2-1)._
+- [x] T65 · especificador · **[005b]** Registro de la ronda 3: sección P, estado, clasificación, criterio 64 a, AB2-1,
+      "Interfaces del backend" (`OpcionesTransaccion.esperaMaximaDeBloqueoMs`), impacto en la 001 y riesgos aceptados
+      en la spec; plan (módulos afectados, secciones 9 y 17, decisiones); T60 y estas tareas marcadas
 
 ### Revisión y cierre
 
@@ -449,6 +459,7 @@ sin modificar las protegidas ya escritas de la 005a ni de la 005b; la única exc
 
 ### Solo ruta crítica (005b)
 
-- [ ] Pruebas escritas por test-writer y confirmadas en rojo
-- [ ] Pruebas en verde tras la implementación
-- [ ] Ataque adversarial sin fallas abiertas
+- [x] Pruebas escritas por test-writer y confirmadas en rojo _(T7b, T50 y T59)_
+- [ ] Pruebas en verde tras la implementación _(T19b y T56 hechas; falta T63, después de las correcciones de la ronda
+      2, también en Windows)_
+- [x] Ataque adversarial sin fallas abiertas _(ronda 3, T64)_

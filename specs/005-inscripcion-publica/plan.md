@@ -69,6 +69,7 @@ piscina/
 │   ├── src/comun/http/conexion.ts (+ .test.ts)         claveDeConexion (criterio 59)
 │   ├── prisma/seed.ts                    + solicitudes de ejemplo en delfines (criterio 47)
 │   ├── src/infraestructura/prisma/privilegios-app.ts   + privilegios de las siete tablas
+│   ├── src/infraestructura/prisma/tipos.ts, base-datos.ts   [005b, ronda 2] OpcionesTransaccion + esperaMaximaDeBloqueoMs (lock_timeout local; criterio 64)
 │   ├── src/infraestructura/almacen-archivos/          [005b] nuevo: interfaz, disco local, módulo, claves
 │   ├── src/infraestructura/correo/                    nuevo: interfaz, envío simulado, módulo
 │   ├── src/infraestructura/entorno/entorno.ts         [005b] + ALMACEN_DIRECTORIO; ronda 1: rechazo dentro de lo que sirve la web (criterio 62 b);
@@ -408,9 +409,15 @@ Toda esta sección es de la 005b. _(Ajustada en el repaso del 21/11/2026: PB3 a 
   - con cualquier otro error: `registro.warn({ academiaId, error: { tipo: tipoDeError(error) } }, 'Confirmación de la
     foto incierta')` y una relectura en otro `conAcademia` _(ronda 2, criterio 64, AB2-1; antes decía "sin `FOR
     UPDATE`", y eso es justo lo que dejaba pasar un `COMMIT` tardío)_:
-    `SET LOCAL lock_timeout = '5000ms'` (con la constante `FOTO_ESPERA_RELECTURA_MS = 5000` del servicio) y
-    `SELECT foto_clave FROM alumnos WHERE academia_id = … AND id = … FOR SHARE`. La transacción no se abre como
-    `READ ONLY` (PostgreSQL rechaza `FOR SHARE` en una de solo lectura) y no escribe nada. Si la transacción de
+    `conAcademia(academiaId, trabajo, { esperaMaximaDeBloqueoMs: FOTO_ESPERA_RELECTURA_MS })` (constante del servicio,
+    5000) y `SELECT foto_clave FROM alumnos WHERE academia_id = … AND id = … FOR SHARE`. _(Precisado en la ronda 3:)_ el
+    servicio no ejecuta `SET LOCAL lock_timeout`, porque las reglas de lint `aquagestion-sql/sesion-en-modulos` y
+    `set-config-app` lo prohíben en los módulos; la opción `esperaMaximaDeBloqueoMs` de `BaseDatos` (de la 001, ampliada
+    aquí: `OpcionesTransaccion` en `infraestructura/prisma/tipos.ts`) ejecuta `set_config('lock_timeout', '<n>ms',
+    true)` después de fijar el contexto y antes del trabajo, con el mismo efecto que `SET LOCAL` (local a la
+    transacción). Acepta un entero de 1 a 60000; con otro valor lanza `RangeError` sin ejecutar el trabajo. La
+    transacción no se abre como `READ ONLY` (PostgreSQL rechaza `FOR SHARE` en una de solo lectura) y no escribe nada.
+    Si la transacción de
     confirmación sigue abierta en el servidor (su `COMMIT` está en camino o aplicándose), tiene la fila con `FOR
     UPDATE` y el `UPDATE`, así que la relectura espera a que confirme o revierta; la API solo envía el `COMMIT` después
     de que el `UPDATE` respondió, así que no hay un `COMMIT` posible sin la fila ya bloqueada. Un `55P03`
@@ -667,6 +674,11 @@ cualquier otra cosa.
   límite de seguridad, mientras la promesa de la subida sigue sin terminar (`observar`).
 - **Caso 3 (espera agotada):** la prueba no fija tiempos; solo espera la respuesta con un plazo de Vitest amplio
   (60 s), porque la API responde a los 5 s de `lock_timeout`.
+- **Cómo se fija `lock_timeout` (precisado en la ronda 3):** no con `SET LOCAL` en `foto.service.ts` (lo prohíben las
+  reglas de lint `aquagestion-sql/sesion-en-modulos` y `set-config-app` en los módulos), sino con la opción
+  `esperaMaximaDeBloqueoMs` de `BaseDatos.conAcademia` (sección 9). Las pruebas protegidas del criterio 64 no dependen
+  de cómo se fija: comprueban la espera en `pg_blocking_pids` y la respuesta del caso 3. El adversarial de la ronda 3
+  comprobó además que el valor no sobrevive a la transacción: la siguiente en la misma conexión vuelve a 0.
 - **Enlaces de Vite (criterio 65).** Archivo nuevo junto a `scripts/test/vite-no-sirve-almacen-ronda1-005b.test.mjs`,
   con el mismo arranque del servidor y del archivo del almacén (puede copiar sus funciones de apoyo; no lo modifica).
   La precondición usa `fs.lstatSync` y `fs.realpathSync` sobre `{raíz}/node_modules/@aquagestion/{backend,e2e,scripts}`.
@@ -715,6 +727,7 @@ cualquier otra cosa.
 | [005b, ronda 1] `server.fs.allow` con lista cerrada y rechazo en `validarEntorno` (AB1-3, criterio 62) | `server.fs.deny` con el directorio del almacén; almacén por defecto fuera del repositorio | Sin globs con rutas de Windows; protege todo `backend/`; Bryan conserva su carpeta de desarrollo |
 | [005b, ronda 1] `ALMACEN_DIRECTORIO` temporal en la configuración de las pruebas (AB1-4, criterio 63) | Que cada prueba reemplace el almacén | Una prueba que lo olvide no escribe en el almacén de quien desarrolla |
 | [005b, ronda 2] Relectura con `FOR SHARE` y `lock_timeout` de 5 s (AB2-1, criterio 64) | Lectura sin bloqueo (ronda 1); `FOR UPDATE`; `NOWAIT`; esperar sin límite; mirar `pg_locks` desde la API | Espera justo lo necesario para que la transacción original termine; si no termina, b3 conserva el invariante |
+| [005b, ronda 3] `lock_timeout` con la opción `esperaMaximaDeBloqueoMs` de `BaseDatos.conAcademia` (precisa AB2-1) | `SET LOCAL lock_timeout` en `foto.service.ts`; excepción de lint para ese archivo | Las reglas de lint de la 001 prohíben cambiar parámetros de la transacción en los módulos; mismo efecto, local a la transacción |
 | [005b, ronda 2] Modo `retenerCommit` en el proxy protegido, con el `pid` del `BackendKeyData` (AB2-1) | Un segundo proxy como el del adversarial; un retraso por tiempo | Una sola utilidad que entiende el protocolo; la espera se comprueba en `pg_blocking_pids` |
 | [005b, ronda 2] `server.fs.deny` con `**/node_modules/@aquagestion(/**)` (AB2-2, criterio 65) | Lista de carpetas de `node_modules/` en `allow`; plugin con `realpath`; `preserveSymlinks` | Sin la ruta del usuario en el patrón; Vite lo aplica sin mayúsculas y en todos los caminos de lectura |
 | [005b, ronda 2] `resolverAlmacenDirectorio` pura con `path.win32` o `path.posix`, rechazo de las formas de Windows y nombres cortos como comodín (AB2-3, criterio 66) | Normalizar `\\?\` y `\\.\`; `realpathSync.native`; riesgo aceptado; rechazar todo nombre corto | Determinista y probada en la nube; no rompe el directorio temporal de la integración continua en Windows |
