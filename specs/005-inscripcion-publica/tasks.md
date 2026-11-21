@@ -9,8 +9,8 @@ propio rojo, su ataque y su cierre:
   responsable a la ronda 1). Prueba obligatoria: 11, 43, 44 y 45. Revisor: 47 (con prueba no protegida desde la ronda
   1) y 48.
 - **005b · foto y panel de solicitudes** (siguiente PR): criterios 34 a 40 y 46, más las partes de 28, 33, 43, 44 y 48
-  que tratan de la foto o del panel. Críticos con pruebas protegidas: 34 a 39 y esas partes de 28 y 33. Prueba
-  obligatoria: 40 y 46.
+  que tratan de la foto o del panel, y 61 a 63 (ronda 1 de su ataque). Críticos con pruebas protegidas: 34 a 39, esas
+  partes de 28 y 33, 61 y 62. Prueba obligatoria: 40, 46 y 63.
 
 Las tareas de la 005b llevan la marca **[005b]** y no se empiezan hasta que la 005a esté unida a `main`. El test-writer
 de la 005a no escribe pruebas de la 005b, y las pruebas protegidas de la 005b van en archivos nuevos, sin modificar las
@@ -320,6 +320,60 @@ los estados `CANCELADA`).
       solicitud anterior (21 b), `X-Token-Solicitud` en otras rutas y en los errores, lista y cancelación con ids de otra
       academia o con roles sin permiso, y el parámetro `estado` repetido o raro. Mismo ciclo por cada falla, hasta una
       ronda sin fallas.
+      _(Ronda 1 hecha el 21/11/2026: dos fallas, criterios 61 y 62, y una observación, criterio 63; sección N de la
+      spec. Sigue con las tareas de abajo y la ronda 2, T55.)_
+
+#### Ronda 1 del ataque (005b)
+
+Fallas 1 (confirmación incierta de la foto) y 2 (Vite sirve el almacén), y la observación de las pruebas que escriben
+en el almacén de desarrollo (criterios 61 a 63 y ajustes de 36 y 37, sección N de la spec). Las pruebas protegidas van
+en archivos nuevos (por ejemplo `…-ronda1-005b.test.ts`), sin modificar las protegidas ya escritas de la 005a ni de la
+005b.
+
+- [x] T48 · especificador · **[005b]** Criterios 61 a 63 en `spec.md` (sección N), ajustes de 36 y 37, casos límite,
+      impacto, regla "Archivos", riesgos aceptados (archivo huérfano tras una relectura fallida, confirmación incierta
+      con una subida simultánea, nombres reservados de Windows, lo que sirve el servidor de desarrollo), AB1-1 a AB1-4;
+      plan (secciones 9, 12 y 16, decisiones y riesgos) (criterios 36, 37, 61 a 63)
+- [ ] T49 · test-writer · **[005b]** Pruebas protegidas en rojo, desde la spec y los contratos públicos: utilidad del
+      proxy de PostgreSQL (`backend/test/utilidades/proxy-postgres.ts`, modos `cortarTrasCommit`, `cortarAntesDelCommit`
+      y `caer`, armado desde `AlmacenDeFallosDePrueba.alGuardar` y disparado por el `UPDATE` de `alumnos` con
+      `foto_clave`) y los casos 1 a 5 del criterio 61 (204 con un solo archivo, 500 sin tocar `F1`, 500 sin borrar nada,
+      reintento limpio, invariante, sin auditoría y el `warn` sin el token) (criterio 61); servidor de Vite real con el
+      `frontend/vite.config.ts` en un puerto efímero: 403 y nunca los bytes de un JPEG creado en
+      `backend/almacenamiento/academias/{uuid nuevo}/…` (y sus variantes de ruta), 403 en `backend/`, `docs/` y los
+      archivos de la raíz, 200 en `/`, `/src/main.tsx`, `packages/contratos/package.json` y
+      `node_modules/react/index.js`; `validarEntorno` con `ALMACEN_DIRECTORIO` dentro y fuera de las carpetas de la web
+      (criterio 62)
+- [ ] T50 · tester · **[005b]** Confirmar que T49 falla por la razón esperada (archivo nuevo borrado con `foto_clave`
+      apuntándolo, o 500 en el caso 1; 200 `image/jpeg` por `/@fs/` y 200 en `backend/`; `validarEntorno` que acepta el
+      almacén dentro de `frontend/`) y no por sintaxis, importaciones o configuración; que el proxy funciona también en
+      la integración continua de Windows; y que las demás protegidas siguen igual. `git diff --cached --stat` solo con
+      archivos de prueba. Commit del orquestador: "Pruebas protegidas (005b, ronda 1): confirmación incierta de la foto
+      y servidor de desarrollo (en rojo)"
+- [ ] T51 · backend · **[005b]** `FotoService.subir`: clave anterior fuera de `trabajo`, errores decididos por la
+      transacción como hoy, y para los demás el `warn` `'Confirmación de la foto incierta'` y la relectura de
+      `foto_clave` con las tres salidas b1 a b3 (criterios 37 y 61; plan, sección 9)
+- [ ] T52 · backend · **[005b]** `validarEntorno`: rechazo de `ALMACEN_DIRECTORIO` dentro de `frontend/`, `packages/` o
+      `node_modules/` de la raíz, con sus casos en la prueba no protegida `entorno.test.ts` (criterio 62 b; plan,
+      sección 9)
+- [ ] T53 · frontend · **[005b]** `frontend/vite.config.ts`: `server.fs.allow` con `frontend/`, `packages/contratos/` y
+      `node_modules/` de la raíz, sin tocar `strict`, `deny` ni `preview`; comprobar `npm run dev` y las E2E (criterio
+      62 a; plan, sección 12)
+- [ ] T54 · backend · **[005b]** `ALMACEN_DIRECTORIO` temporal en las pruebas del backend (`vitest.config.mts` o el
+      `globalSetup` compartido, con borrado al terminar) y en la API de las E2E (`e2e/playwright.config.ts` y su
+      `globalTeardown`); prueba no protegida de integración que comprueba que el almacén del proceso de pruebas queda
+      fuera del repositorio; borrar a mano lo que haya quedado de pruebas en `backend/almacenamiento/` de la máquina de
+      la sesión (no está versionado) (criterio 63; plan, sección 16)
+- [ ] T56 · tester · **[005b]** Pruebas protegidas de la 005b (también las de T49) en verde, suite completa, lint y
+      verificación de tipos, también en Windows
+- [ ] T55 · adversarial · **[005b]** Ronda 2 sobre los criterios críticos de la 005b, con la spec y el código, incluidos
+      61 y 62: cortes de la conexión en otros puntos de la transacción de la foto (antes del `UPDATE`, entre el
+      `UPDATE` y el `COMMIT`, en la relectura), errores de la base que se hagan pasar por errores de negocio, subidas
+      simultáneas con una confirmación incierta; rutas del servidor de desarrollo de la web hacia el almacén o
+      `backend/` con codificaciones, `..`, barras invertidas, mayúsculas y unidades de Windows; y regresiones en 34 a
+      39. (Un `ALMACEN_DIRECTORIO` que pasa por un enlace simbólico hacia `frontend/` es un riesgo aceptado, no una
+      falla.) Mismo ciclo por cada falla, hasta
+      una ronda sin fallas.
 
 ### Revisión y cierre
 

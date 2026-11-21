@@ -40,12 +40,16 @@
   quedan decididas con la propuesta de cada una (DR-17 a DR-21, en "Decisiones"). Ningún criterio cambia de intención:
   lo que regía "mientras tanto" queda como lo decidido. Se precisan los criterios 39 (sin correo al cancelar) y 46
   (la foto desde recepción es la del formulario), y lo que pasa a la 007 (B4) y a la 008 (B5) queda anotado en
-  `specs/backlog.md`.
+  `specs/backlog.md`. **Ronda 1 del ataque de la 005b (21/11/2026):** dos fallas técnicas, sin preguntas de negocio:
+  criterios nuevos 61 (confirmación incierta de la foto) y 62 (el servidor de desarrollo de la web no sirve el almacén),
+  más el 63 (las pruebas no escriben en el almacén de desarrollo), de una observación del adversarial (sección N);
+  ajustes de los criterios 36 y 37, decisiones AB1-1 a AB1-4 y riesgos aceptados nuevos.
 - **División (DR-11):** la historia se entrega en dos PR desde esta misma carpeta, las dos de ruta crítica, cada una con
   sus pruebas protegidas, su ataque y su cierre (ver "División en 005a y 005b"):
   - **005a · Inscripción, reserva y seguimiento** (se construye primero): criterios 1 a 33, 41 a 45, 47 a 60, salvo las
     partes de 28, 33, 43, 44 y 48 que tratan de la foto o del panel de solicitudes.
-  - **005b · Foto y panel de solicitudes** (siguiente PR): criterios 34 a 40 y 46, más esas partes.
+  - **005b · Foto y panel de solicitudes** (siguiente PR): criterios 34 a 40 y 46, más esas partes, y los 61 a 63 de la
+    ronda 1 de su ataque (sección N).
 
 ## Objetivo
 
@@ -91,6 +95,11 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   panel, permisos y aislamiento), 39 (libera cupo: aforo y reservas, auditoría y actor vigente), y las partes de la 005b
   de 28 (registro técnico sin token ni datos de la foto) y 33 (límite de la foto por conexión). Siguen con prueba
   obligatoria 40 y 46 y las partes de la 005b de 43 y 44; la de 48, del revisor.
+- **Ronda 1 del ataque de la 005b (61 y 62):** la confirmación incierta de la foto (efectos después de confirmar: una
+  referencia a un archivo borrado rompe el carnet de la 008 y deja la foto anterior, que puede ser de un menor, sin
+  dueño) y el servidor de desarrollo de la web, que servía las fotos del almacén a cualquiera que conociera la ruta
+  (aislamiento de archivos y datos de menores). El 63 (las pruebas no escriben en el almacén de desarrollo) no es
+  crítico: lleva prueba obligatoria y lo verifica el revisor.
 
 No son críticos, pero llevan _(prueba obligatoria)_: 11 (cotización, salvo lo que cubren 8 a 10) y 40 (API), y 43 a
 46 (web, con pruebas de componentes). Los 47 y 48 (semilla y documentación) los verifica el revisor. _(Aprobado por el
@@ -106,7 +115,7 @@ de la 005b, en archivos de prueba nuevos (sin modificar los protegidos de la 005
 | Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- |
 | **005a** · inscripción, reserva y seguimiento | 1 a 10, 12 a 33, 41, 42 y 49 a 60 | 11, 43, 44 y 45 (y la prueba no protegida de la semilla, 47) | 47 y 48 |
-| **005b** · foto y panel de solicitudes | 34 a 39, más la foto en 28 y 33 | 40 y 46 (y la foto en 43 y 44) | parte de 48 |
+| **005b** · foto y panel de solicitudes | 34 a 39, más la foto en 28 y 33; 61 y 62 (ronda 1 del ataque) | 40 y 46 (y la foto en 43 y 44); 63 | parte de 48; 63 (configuración de Playwright) |
 
 **Partes de criterios de la 005a que se completan en la 005b:**
 
@@ -569,13 +578,15 @@ Los criterios 34 a 37 son de la 005b.
     `ALMACEN_DIRECTORIO` y rechaza toda clave que no cumpla el formato o que, resuelta, quede fuera de ese directorio o de
     la carpeta de la academia (`..`, rutas absolutas, separadores de Windows, bytes nulos, enlaces simbólicos). Leer o
     borrar con la academia A una clave de B falla sin tocar el archivo. Ninguna ruta de la API ni del servidor de la web
-    sirve ese directorio. _(crítico)_ (D-21, D-23)
+    sirve ese directorio. _(crítico)_ (D-21, D-23) _(Lo del servidor de la web, precisado por el criterio 62, ataque
+    ronda 1 de la 005b.)_
 
     _Precisión del repaso de la 005b (21/11/2026; PB7)._ Contrato público, en
     `backend/src/infraestructura/almacen-archivos/index.ts`: la interfaz `AlmacenArchivos` (firma de "Interfaces del
     backend"), el token de inyección `ALMACEN_ARCHIVOS` (como `ENVIADOR_CORREO`, P7) y la clase
     `AlmacenArchivosDisco`, con `constructor(raiz: string)`, que las pruebas crean sobre un directorio temporal. La API
-    usa `ALMACEN_DIRECTORIO` del entorno (por defecto, `backend/almacenamiento`, ya ignorado por git).
+    usa `ALMACEN_DIRECTORIO` del entorno (por defecto, `backend/almacenamiento`, ya ignorado por git). Ese directorio
+    nunca puede quedar dentro de lo que sirve el servidor de desarrollo de la web (criterio 62).
     - **Clave válida:** como mucho 255 caracteres ASCII; `academias/{academiaId}/` seguido de uno o más segmentos
       separados por `/`; `{academiaId}` es el mismo UUID, en minúsculas, que el `academiaId` recibido; cada segmento
       cumple `^[a-z0-9][a-z0-9_-]*(\.[a-z0-9]+)?$`. Así quedan fuera `.` y `..`, los segmentos vacíos (`//`), la barra
@@ -599,7 +610,9 @@ Los criterios 34 a 37 son de la 005b.
     falla el borrado del anterior, se registra un aviso (sin datos personales) y la respuesta sigue siendo 204. Dos
     subidas simultáneas con el mismo token dejan una sola foto, la de la última en confirmar, y no dejan un archivo
     referenciado que no exista. Sin auditoría (la foto no es una operación de caja, pago ni horario); la acción queda en
-    el registro técnico sin datos personales. _(crítico)_ (efectos después de confirmar; D-21)
+    el registro técnico sin datos personales. _(crítico)_ (efectos después de confirmar; D-21) _(Ajustado por el
+    criterio 61, ataque ronda 1 de la 005b: "si la transacción falla" es "si es seguro que no se confirmó"; si no se
+    sabe, se relee `foto_clave` antes de borrar nada.)_
 
     _Precisión del repaso de la 005b (21/11/2026; PB8)._
     - **Secuencia.** Las comprobaciones a) a c) del criterio 34 las hacen los middlewares, antes de Nest; d) a f), una
@@ -610,9 +623,10 @@ Los criterios 34 a 37 son de la 005b.
       de bloqueos": primero el alumno, después la solicitud, igual que el envío), se repite f) y, si ya no es editable,
       409 `SOLICITUD_NO_EDITABLE`; se lee la clave anterior y se actualizan `foto_clave` y `actualizado_en` (con
       "ahora"). Después de confirmar se borra la anterior, si había.
-    - **Fallos.** Si `guardar` falla: 500 `ERROR_INTERNO`, y no cambia nada en la base. Si la transacción falla (409 por
-      una carrera o un error de la base): se borra el archivo nuevo, `foto_clave` no cambia y la respuesta es la del
-      fallo. Si falla un borrado (el del nuevo tras un fallo, o el del anterior tras confirmar): un `warn` con el mensaje
+    - **Fallos.** Si `guardar` falla: 500 `ERROR_INTERNO`, y no cambia nada en la base. Si la transacción rechaza por
+      una decisión propia (409 o 404 al repetir f): se borra el archivo nuevo, `foto_clave` no cambia y la respuesta es
+      la del fallo. Con cualquier otro error de la transacción (de la base, de la conexión o del `COMMIT`), lo que
+      manda es el criterio 61: se relee `foto_clave` antes de borrar nada. Si falla un borrado (el del nuevo tras un fallo, o el del anterior tras confirmar): un `warn` con el mensaje
       fijo `'No se pudo borrar un archivo'`, la academia y `error: { tipo }` como el criterio 52 (`tipoDeError`), sin el
       mensaje del error (que lleva la ruta), el token ni datos personales; con el anterior, la respuesta sigue siendo 204.
     - **Registro.** Una subida correcta escribe un `info` con el mensaje fijo `'Foto de la solicitud guardada'` y solo la
@@ -1080,6 +1094,139 @@ reproducibles** en los criterios 49 a 60 ni regresiones en los demás criterios 
 ajustan criterios. Lo que encontró sin llegar a falla queda en "Riesgos aceptados" (IPv6 con un bloque mayor que /64,
 reintento con la reserva ya vencida y tipo del error del correo) y en la pregunta R7.
 
+### N. Ronda 1 adversarial (005b)
+
+Fallas encontradas en la ronda 1 del ataque de la 005b (T20b, 21/11/2026), agregadas antes de tocar el código. Son
+técnicas: ninguna cambia una regla de negocio ni deja preguntas para el responsable. Los criterios 61 y 62 son de la
+005b, de ruta crítica y llevan pruebas protegidas nuevas, en archivos nuevos (sin modificar las protegidas ya escritas de
+la 005a ni de la 005b). El 63 sale de una observación del adversarial y no es crítico. Origen de cada uno: "ataque ronda
+1 de la 005b".
+
+61. **Confirmación incierta de la foto (amplía el 37).** La transacción de confirmación de la foto (la de PB8, que bloquea
+    el alumno y la solicitud y guarda `alumnos.foto_clave`) puede fallar con el `COMMIT` ya aplicado en la base: por
+    ejemplo, si la conexión se corta después de que PostgreSQL confirma y antes de que la respuesta llegue a la API. Hoy
+    el servicio borra el archivo nuevo ante cualquier error, así que `foto_clave` queda apuntando a un archivo borrado y
+    la foto anterior queda sin referencia. Cuando esa transacción termina con un error:
+    - a) **Rechazo decidido por la transacción** (409 `SOLICITUD_NO_EDITABLE` o 404 `SOLICITUD_NO_ENCONTRADA` al repetir
+      la comprobación f del criterio 34, o el 404 o 403 de la academia al abrirla): es seguro que no se confirmó nada. Se
+      borra el archivo nuevo, el anterior no se toca y la respuesta es ese error (como hoy, criterio 37 a).
+    - b) **Cualquier otro error** (de la base, de la conexión, del `COMMIT` o de la comprobación de que la transacción
+      sigue viva): no se sabe si el `COMMIT` llegó. El servicio no borra ningún archivo todavía y relee `foto_clave` de
+      ese alumno en una transacción nueva de la academia (`conAcademia`, solo lectura y sin bloqueos):
+      - b1) si es la clave nueva, la foto quedó guardada: la respuesta es **204**, como una subida correcta (con el
+        `info` `'Foto de la solicitud guardada'`), y se borra el archivo anterior (la clave que leyó la transacción de
+        confirmación, si había y es distinta), con el aviso del criterio 37 si ese borrado falla;
+      - b2) si es otra clave o es nula, la foto no quedó: se borra el archivo nuevo, el anterior no se toca y la
+        respuesta es **500** `ERROR_INTERNO` con el cuerpo de 001;
+      - b3) si la relectura también falla (la base sigue sin responder, la academia se suspendió entretanto…), no se
+        borra ningún archivo, ni el nuevo ni el anterior, y la respuesta es **500** `ERROR_INTERNO`.
+
+      En b1 a b3 se registra un `warn` con el mensaje fijo `'Confirmación de la foto incierta'`, `academiaId` y
+      `error: { tipo }` (`tipoDeError`, como el criterio 52), sin el mensaje del error, el token, la clave ni datos
+      personales. Releer también en el caso a) está permitido: el resultado es el mismo.
+    - c) **Invariante.** Después de cualquier subida (correcta, rechazada o con la conexión cortada en cualquier punto),
+      `foto_clave` es nula o apunta a un archivo que existe en el almacén. Si `foto_clave` quedó con la clave nueva, el
+      archivo anterior ya no está, salvo que su borrado falle (criterio 37 c) o que la relectura falle (b3); esos dos
+      casos dejan un archivo sin referencia, que nadie ve (riesgo "Archivo huérfano").
+
+    **Pruebas,** deterministas, con un proxy TCP de prueba entre la API y PostgreSQL que corta la conexión en un punto
+    exacto del protocolo, sin depender de tiempos (decisión AB1-2):
+    - **Utilidad** (archivo nuevo en `backend/test/utilidades/`, por ejemplo `proxy-postgres.ts`, sin importar nada de la
+      implementación): escucha en `127.0.0.1` con un puerto efímero y reenvía al servidor de `DATABASE_URL_APP`. La
+      aplicación de la prueba se crea con `DATABASE_URL_APP` apuntando al proxy (solo cambia el puerto) y la variable se
+      restaura después de crearla; las lecturas y escrituras de la prueba como dueño de las tablas van directo a la
+      base, sin el proxy. Reconoce los mensajes iniciales sin tipo (`SSLRequest`, `GSSENCRequest` y `StartupMessage`) y
+      después los mensajes con tipo del cliente (`Q` y `P`). Se arma desde `AlmacenDeFallosDePrueba.alGuardar` (después
+      de la comprobación previa y antes de la confirmación) y actúa sobre el primer `COMMIT` que ve, ya armado, en una
+      conexión que dentro de esa transacción envió un `UPDATE` de `alumnos` que menciona `foto_clave` (con o sin
+      esquema ni comillas). Tiene tres modos y cuenta sus cortes:
+      - `cortarTrasCommit`: reenvía el `COMMIT` y, cuando llega del servidor el `CommandComplete` con la etiqueta
+        `COMMIT`, cierra las dos conexiones sin entregarlo a la API (la base ya confirmó);
+      - `cortarAntesDelCommit`: al ver el `COMMIT` del cliente, cierra las dos conexiones sin reenviarlo (PostgreSQL
+        revierte la transacción);
+      - `caer`: además de cortar como `cortarTrasCommit`, cierra todas las conexiones abiertas a través del proxy y
+        rechaza las nuevas (las acepta y las cierra) hasta que la prueba lo restablece.
+    - **Casos,** cada uno con un almacén temporal limpio y una solicitud activa con una primera foto `F1` subida antes
+      sin cortes (204):
+      - 1) `cortarTrasCommit` al subir `F2`: responde 204; el proxy cortó una vez; `foto_clave`, leída como dueño, es
+        una clave nueva distinta de la de `F1`; su archivo existe; el de `F1` ya no; en la carpeta del alumno queda
+        exactamente un archivo, el de `foto_clave`; la vista completa del seguimiento dice `fotoCargada: true`. Lo
+        mismo sin `F1` (la primera subida es la cortada): 204 y un solo archivo;
+      - 2) `cortarAntesDelCommit` al subir `F2`: responde 500 `ERROR_INTERNO`; el proxy cortó una vez; `foto_clave`
+        sigue siendo la de `F1` y su archivo existe; en la carpeta del alumno queda solo ese archivo;
+      - 3) `caer` al subir `F2` (con un plazo de la petición amplio, por ejemplo 60 s: el resultado no depende del
+        tiempo): responde 500 `ERROR_INTERNO`. Con el proxy restablecido, `foto_clave` es la clave nueva y su archivo
+        existe (no se borró), y el archivo de `F1` sigue en el disco (no se borró sin saber);
+      - 4) después del caso 1, una subida `F3` sin cortes responde 204 y en la carpeta del alumno queda exactamente un
+        archivo, el de `F3` (el reintento del cliente no arrastra restos);
+      - 5) en todos los casos, el invariante c); ninguna subida escribe en `auditoria`; y el registro técnico en memoria
+        (nivel `trace`) tiene el `warn` `'Confirmación de la foto incierta'` en los casos 1 a 3, con `academiaId` y
+        `error` igual a `{ tipo }` (sin `message`, `stack` ni otras propiedades), y ninguna línea lleva el token. (El 500 de los casos 2 y 3 se
+        registra como cualquier error interno de la API, criterio 43 de 002.)
+
+    El caso de la 37 a (cancelación mientras sube, 409) no cambia. _(crítico)_ (efectos después de confirmar, D-21;
+    criterio 37; ataque ronda 1 de la 005b, falla 1. Causa: `FotoService.subir` borra el archivo nuevo en el `catch` de
+    la transacción, sin distinguir un error anterior al `COMMIT` de uno del `COMMIT` o de la conexión.)
+62. **El servidor de desarrollo de la web no sirve el almacén ni el resto del repositorio (precisa el 36).** Con la
+    configuración por defecto, `GET /@fs/{raíz}/backend/almacenamiento/academias/{A}/alumnos/{id}/foto-{uuid}.jpg`
+    respondía 200 `image/jpeg` en el servidor de desarrollo de Vite, porque Vite deja leer por `/@fs/` todo el
+    repositorio (la raíz del workspace) salvo `.env` y otros pocos archivos. Desde este criterio:
+    - a) **Lista cerrada en `frontend/vite.config.ts`** (decisión AB1-3): `server.fs.allow` es exactamente la carpeta
+      `frontend/`, la carpeta `packages/contratos/` y el `node_modules/` de la raíz, resueltos desde la raíz del
+      repositorio. Nada más del repositorio se sirve por `/@fs/`: ni `backend/` (con el almacén por defecto), ni
+      `docs/`, `scripts/`, `e2e/`, `specs/` ni los archivos de la raíz. `server.fs.strict` sigue en `true` y
+      `server.fs.deny` conserva todos los valores por defecto de Vite (si se cambia, se suman a ellos). La
+      configuración de `preview` no cambia (sirve solo lo compilado, sin `/@fs/`).
+    - b) **El almacén nunca queda dentro de lo que sirve la web.** Al arrancar, la API rechaza un `ALMACEN_DIRECTORIO`
+      que, ya resuelto como hoy (relativo a la raíz del repositorio), sea `frontend/`, `packages/` o `node_modules/` de
+      la raíz o quede dentro de alguna de esas carpetas (también `frontend/public/…`, que Vite sirve en `/` y copia al
+      compilar). `validarEntorno` suma el problema `'La variable ALMACEN_DIRECTORIO no puede estar dentro de las
+      carpetas que sirve la web.'` (nombra la variable y no muestra la ruta). En Windows la comparación no distingue
+      mayúsculas. El valor por defecto (`backend/almacenamiento`), uno en `backend/`, uno en la raíz (por ejemplo
+      `almacen`) y uno fuera del repositorio siguen aceptándose.
+
+    **Pruebas** (archivo nuevo que corre en Node, sin navegador ni jsdom; por ejemplo en el proyecto `scripts` de
+    Vitest, y también en Windows):
+    - **Servidor real:** se levanta Vite con `createServer` usando el `frontend/vite.config.ts` real como `configFile` y
+      `root` en `frontend/`, cambiando solo lo necesario para la prueba (`server.port: 0`, `strictPort: false`,
+      `hmr: false`, `watch: null`, un `cacheDir` temporal y sin descubrir dependencias); nunca `server.fs`. Se cierra al
+      terminar.
+    - **Archivo real del almacén:** la prueba crea una imagen JPEG con nombres nuevos en la carpeta por defecto,
+      `{raíz}/backend/almacenamiento/academias/{uuid nuevo}/alumnos/{uuid nuevo}/foto-{uuid nuevo}.jpg`, y borra al
+      terminar solo su carpeta `academias/{uuid nuevo}` (en un `finally`; es la única excepción del criterio 63).
+      `GET /@fs/{ruta absoluta del archivo con /}` responde 403, nunca 200, y el cuerpo no contiene los bytes de la
+      imagen. Las variantes que no caen en `/@fs/` (`/../backend/almacenamiento/…`, `/%2e%2e/backend/…`, `/backend/…`,
+      `/@fs/{raíz}/frontend/../backend/almacenamiento/…`, con `%2F` o `%5C` en lugar de `/`, y en Windows con otras
+      mayúsculas o la unidad en minúscula) pueden responder lo que Vite responda (403, 404 o la página de la aplicación),
+      pero nunca `Content-Type: image/jpeg` ni los bytes de la imagen. `GET /@fs/{carpeta de la academia}/` tampoco
+      lista nada de su contenido.
+    - **Resto del repositorio:** `/@fs/{raíz}/backend/package.json`, `/@fs/{raíz}/docs/decisiones.md`,
+      `/@fs/{raíz}/.env.example` y `/@fs/{raíz}/.env` (si existe) responden 403.
+    - **La aplicación sigue servida:** `GET /` responde 200 `text/html` con el `index.html` de la web;
+      `GET /src/main.tsx` responde 200 con JavaScript; `GET /@fs/{raíz}/packages/contratos/package.json` y
+      `GET /@fs/{raíz}/node_modules/react/index.js` responden 200.
+    - **Entorno:** `validarEntorno` con `ALMACEN_DIRECTORIO` igual a `frontend`, `frontend/public/fotos`,
+      `packages/contratos/x`, `packages`, `node_modules/x` y las mismas como rutas absolutas da el problema de b),
+      nombrando la variable y sin la ruta; con `backend/almacenamiento`, `backend/otro`, `almacen` y un directorio
+      temporal fuera del repositorio, no.
+
+    _(crítico)_ (D-21, D-23, RNF-05: fotos de menores; criterio 36; ataque ronda 1 de la 005b, falla 2. Causa:
+    `frontend/vite.config.ts` no fija `server.fs.allow` y el almacén por defecto está dentro del workspace.)
+63. **Las pruebas automatizadas no escriben en el almacén de desarrollo.** El almacén por defecto
+    (`backend/almacenamiento`) es el de quien desarrolla en su máquina. Ninguna prueba sube fotos ni hace que la API
+    escriba archivos ahí:
+    - a) las pruebas del backend (los proyectos de Vitest de `backend/`) corren con `ALMACEN_DIRECTORIO` en un
+      directorio temporal fuera del repositorio, creado para la ejecución y borrado al terminar, aunque una prueba cree
+      la aplicación sin reemplazar el `AlmacenArchivos`;
+    - b) las E2E de Playwright arrancan la API con `ALMACEN_DIRECTORIO` en un directorio temporal fuera del repositorio,
+      que se borra al terminar;
+    - c) la única excepción es la prueba del criterio 62, que crea y borra su propio archivo.
+
+    Prueba no protegida en el proyecto de integración del backend: `validarEntorno(process.env).ALMACEN_DIRECTORIO`, en
+    el proceso de las pruebas, queda fuera de la raíz del repositorio. El revisor comprueba la configuración de
+    Playwright. _(prueba obligatoria; verificación del revisor)_ (D-26; ataque ronda 1 de la 005b, observación: había
+    fotos de pruebas o de una sesión del navegador en `backend/almacenamiento/`.)
+
 ## Casos límite
 
 - **La clase de 19:00 a 20:00 de hoy:** a las 18:59:59 de Lima cuenta como clase restante; a las 19:00:00 ya no
@@ -1155,6 +1302,11 @@ reintento con la reserva ya vencida y tipo del error del correo) y en la pregunt
   alumno (criterio 38, "Datos actuales").
 - **[005b] Persona que cumplió 18 años después de enviar:** la lista la muestra con `menorDeEdad: false` (se calcula con
   la fecha de hoy), aunque su apoderado siga guardado (criterio 38).
+- **[005b] La conexión con la base se corta justo después del `COMMIT` de la foto:** la API relee `foto_clave`; si la
+  foto quedó guardada responde 204 y borra la anterior; si no quedó, borra la nueva y responde 500 (criterio 61).
+- **[005b] Alguien pide una foto al servidor de desarrollo de la web por `/@fs/`:** 403; el servidor solo sirve
+  `frontend/`, `packages/contratos/` y `node_modules/` (criterio 62).
+- **[005b] `ALMACEN_DIRECTORIO=frontend/public/fotos`:** la API no arranca y nombra la variable (criterio 62 b).
 - **[005b] Recepción con muchas inscripciones seguidas:** todas salen de la misma conexión y cuentan en los límites de
   los criterios 25 y 33 (respuesta B4, DR-20). Cuando se agotan, la secretaria cancela las reservas que ya no sirven
   (criterio 39) o espera su vencimiento. Desde la 007, las inscripciones con la sesión de `ADMIN` o `SECRETARIA` de la
@@ -1464,6 +1616,14 @@ Una migración `<marca>_inscripcion_publica`. Ajusta las entidades `ALUMNO`, `AP
   (criterio 46). Ninguna prueba protegida de 001 a 005a cambia, salvo la de las dependencias permitidas del backend,
   solo para sumar `sharp`. Si el tester encuentra otra (por ejemplo, una del criterio 74 de 001 que mande un `PUT`
   binario justo a la ruta de la foto), decide el orquestador.
+- **[005b] Ronda 1 del ataque de la 005b (criterios 61 a 63):** cambian `frontend/vite.config.ts` (de la 000,
+  `server.fs.allow`; ninguna prueba lo fija hoy), `backend/src/infraestructura/entorno/entorno.ts` (el rechazo de
+  `ALMACEN_DIRECTORIO` dentro de lo que sirve la web; la prueba no protegida `entorno.test.ts` suma sus casos en el mismo
+  cambio), la configuración de las pruebas del backend (`vitest.config.mts` o el `globalSetup` compartido) y
+  `e2e/playwright.config.ts` (criterio 63). Ninguna prueba protegida de 001 a 005b cambia. Si alguna fija los nombres
+  de las variables de entorno del proceso de pruebas o de la API de las E2E y choca con `ALMACEN_DIRECTORIO`, decide el
+  orquestador. Las E2E siguen usando el servidor de desarrollo de Vite, así que también comprueban que la lista cerrada
+  del criterio 62 no rompe la web.
 
 ## Reglas para las historias siguientes
 
@@ -1503,7 +1663,14 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
   (criterio 35). _(Precisado el 21/11/2026, PB7 y PB8:)_ la clave cumple el formato del criterio 36 y la elige el
   servidor con un UUID nuevo; las rutas que reciben un archivo binario se agregan a `noLeerCuerpoEn` con su propio
   lector, límite y tipos; la transacción toma las filas en el orden de bloqueos de arriba (alumno antes que solicitud),
-  y el fallo de un borrado se registra solo con el tipo del error.
+  y el fallo de un borrado se registra solo con el tipo del error. _(Ronda 1 del ataque de la 005b:)_ un archivo solo se
+  borra cuando es seguro que nadie lo referencia: si la transacción que guarda la referencia falla sin que se sepa si
+  se confirmó, se relee la referencia en otra transacción antes de borrar el nuevo o el anterior (criterio 61). El
+  almacén de disco nunca vive dentro de lo que sirve la web (`frontend/`, `packages/`, `node_modules/`) y el servidor de
+  desarrollo de la web solo sirve esas carpetas (criterio 62). Las pruebas usan un almacén temporal, nunca el de
+  desarrollo (criterio 63). Las claves que arma el servidor no usan nombres reservados de Windows (`con`, `nul`, `aux`,
+  `prn`, `com1` a `com9`, `lpt1` a `lpt9`, con o sin extensión) como segmento: hoy todos los segmentos son fijos
+  (`academias`, `alumnos`), UUID o empiezan con un prefijo fijo (`foto-`).
 - **Tokens públicos.** Un token que da acceso sin sesión se genera con 32 bytes criptográficos, se guarda solo su
   SHA-256, se busca dentro de la academia del nombre corto y viaja en el cuerpo o en una cabecera, nunca en la dirección
   de la API. Toda cabecera que lo lleve (o que lleve una dirección de la web que lo contenga, como `Referer`) se redacta
@@ -1588,6 +1755,24 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
 - **[005b] Archivo huérfano:** si el proceso se cae entre guardar la foto nueva y confirmar, queda un archivo sin referencia que
   nadie puede leer (criterio 37). Una limpieza periódica queda para cuando haya proveedor de archivos. Lo mismo si falla
   el borrado de la foto anterior (criterio 37, PB8): queda en el disco, sin referencia, con un aviso en el registro.
+  _(Ronda 1 del ataque de la 005b:)_ también queda la foto anterior sin referencia si la confirmación es incierta y la
+  relectura falla (criterio 61 b3); un reintento correcto del cliente no la borra, porque solo borra la que reemplaza.
+  Se prefirió así: borrar sin saber puede dejar `foto_clave` apuntando a un archivo que no existe.
+- **[005b] Confirmación incierta con una subida simultánea** _(ataque ronda 1 de la 005b)_: si la confirmación de una
+  subida es incierta y, antes de la relectura, otra subida del mismo token confirma y la reemplaza, la relectura ve una
+  clave ajena y la primera responde 500 aunque llegó a guardarse un momento (criterio 61 b2); su foto anterior queda sin
+  referencia. `foto_clave` sigue apuntando a un archivo que existe (el de la otra subida). Exige un corte de la conexión
+  con la base justo en el `COMMIT` y dos subidas del mismo cliente a la vez; aceptado.
+- **[005b] Nombres reservados de Windows en las claves** _(observación del ataque ronda 1 de la 005b)_: el formato de la
+  clave del criterio 36 acepta segmentos como `con`, `nul` o `aux.jpg`, que en Windows no son archivos normales. No es
+  explotable, porque las claves las arma siempre el servidor y la de la foto no puede tener esos segmentos (regla
+  "Archivos"). Aceptado; si una historia arma claves con otros segmentos, los evita.
+- **[005b] Lo que sirve el servidor de desarrollo de la web** _(ataque ronda 1 de la 005b)_: con la lista cerrada del
+  criterio 62, el servidor de desarrollo sigue sirviendo `frontend/`, `packages/contratos/` y el `node_modules/` de la
+  raíz, que son código público del repositorio o dependencias. Escucha solo en `127.0.0.1` (configuración de la 000).
+  En producción la web se publica compilada, sin servidor de desarrollo (D-21). El rechazo de `ALMACEN_DIRECTORIO` del
+  criterio 62 b compara las rutas sin resolver enlaces simbólicos: un valor que pase por un enlace o una unión hacia
+  `frontend/` no se detecta. Exige que quien desarrolla cree ese enlace en su propio disco; aceptado.
 - **[005b] Fotos de solicitudes que nunca se pagaron** _(repaso del 21/11/2026)_: como los demás datos de esas personas
   (riesgo "Datos de solicitudes que nunca se pagaron"), la foto de una solicitud vencida o cancelada se conserva hasta que
   se defina la política de retención, antes de producción. Es una foto que puede ser de un menor. Aceptado por el
@@ -1608,7 +1793,7 @@ Para documentar en `docs/arquitectura.md` (criterio 48):
 
 **Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" en esta sección y como "DR-n de
 005" fuera de ella; las del orquestador, "DT-n" y "DT-n de 005"; las técnicas de la ronda 1 del ataque, "AT1-n"; las
-precisiones del repaso de la 005b, "PBn". Los criterios, el contrato y las demás secciones se
+precisiones del repaso de la 005b, "PBn"; las técnicas de la ronda 1 del ataque de la 005b, "AB1-n". Los criterios, el contrato y las demás secciones se
 escribieron antes de la aprobación y no cambian de intención: donde dicen "pregunta Nn" o "Nn" se refieren a DR-n de
 005 y donde dicen "pregunta Tn" o "Tn", a DT-n de 005. Donde dicen "pregunta Bn" o "respuesta Bn" (repaso de la
 005b), se refieren a DR-17 a DR-21 (B1 es DR-17, B2 es DR-18, B3 es DR-19, B4 es DR-20 y B5 es DR-21). Los valores que la spec llama "provisionales" (24 horas de
@@ -1936,6 +2121,34 @@ ningún criterio cambia de intención; se precisan los criterios 39 y 46.
   la foto y el "Foto pendiente" (D-24). Alternativa descartada: sumar en la 005b una ruta del panel para la foto y la
   captura con la cámara de la PC. Criterio 46 ("Foto desde recepción"). Anotada en `specs/backlog.md` junto a la 008.
 
+### Decisiones técnicas de la ronda 1 del ataque (005b, 21/11/2026)
+
+Propuestas del especificador para las dos fallas y la observación de la ronda 1 del ataque de la 005b, sin cambios de
+negocio. Detalle en el plan (secciones 9, 12 y 16).
+
+- **AB1-1 (criterio 61). Releer la referencia cuando la confirmación es incierta.** Un rechazo que decide la propia
+  transacción (409, 404) borra el archivo nuevo como hoy; cualquier otro error relee `foto_clave` en otra transacción y
+  decide con lo que ve (204 y borrar la anterior, o borrar la nueva y 500); si la relectura falla, no borra nada.
+  Alternativas descartadas: (a) borrar siempre el nuevo ante un error (lo de hoy: deja una referencia a un archivo que
+  no existe); (b) no borrar nada ante un error incierto, sin releer (nunca deja una referencia rota, pero responde 500
+  a subidas que sí quedaron y deja siempre la anterior sin referencia); (c) guardar primero una referencia "pendiente" y
+  confirmarla en una segunda transacción (otra columna y otra migración para un caso raro).
+- **AB1-2 (criterio 61, pruebas). Proxy TCP de prueba entre la API y PostgreSQL.** Reproduce la falla real (el `COMMIT`
+  llega a la base y la conexión se corta) usando solo `DATABASE_URL_APP` y el protocolo de PostgreSQL, sin tocar la
+  implementación, y decide el corte por los mensajes del protocolo, no por tiempos. Funciona igual en Windows (D-26).
+  Alternativa descartada: reemplazar `BaseDatos` con `overrideProvider` por un envoltorio que rechaza después de
+  confirmar (depende de una clase interna con campos privados y no prueba lo que hace la conexión de verdad).
+- **AB1-3 (criterio 62). Lista cerrada en `server.fs.allow` y rechazo en el entorno.** El servidor de desarrollo de la
+  web solo sirve `frontend/`, `packages/contratos/` y `node_modules/`, y la API no arranca con el almacén dentro de esas
+  carpetas. Alternativas descartadas: (a) sumar el directorio del almacén a `server.fs.deny` (es un patrón glob: con
+  una ruta de Windows con paréntesis, corchetes o llaves en el nombre de usuario puede no coincidir; además protege solo
+  ese directorio y deja servido el resto de `backend/`); (b) mover el almacén por defecto fuera del repositorio (por
+  ejemplo a `%LOCALAPPDATA%` en Windows): cambia dónde encuentra Bryan sus archivos de desarrollo (D-26) y no protege un
+  `ALMACEN_DIRECTORIO` puesto dentro del repositorio.
+- **AB1-4 (criterio 63). Almacén temporal en las pruebas.** La configuración de las pruebas del backend y de las E2E
+  fija `ALMACEN_DIRECTORIO` en un directorio temporal. Alternativa descartada: confiar en que cada prueba reemplace el
+  `AlmacenArchivos` (una prueba que lo olvide escribe en el almacén de quien desarrolla).
+
 ## Preguntas abiertas
 
 Las preguntas N1 a N11 y T1 a T9 quedaron decididas el 20/11/2026 (DR-1 a DR-11 y DT-1 a DT-9, en "Decisiones", con el
@@ -1949,6 +2162,9 @@ propuesta: B1 a B5 son DR-17 a DR-21 (en "Decisiones"). Se conservan abajo, en "
 el texto completo y la respuesta de cada una.
 
 Siguen pendientes, sin bloquear la 005b, R6 y R7 (al final de esta sección).
+
+La ronda 1 del ataque de la 005b (criterios 61 a 63) no deja preguntas nuevas: sus dos fallas y su observación son
+técnicas (AB1-1 a AB1-4).
 
 ### Resueltas en el repaso de la 005b (respondidas el 21/11/2026)
 

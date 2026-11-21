@@ -39,6 +39,11 @@ cancelación y ocupación), 12 (foto y panel en la web) y 14 (cabecera del token
 preguntas B1 a B5 quedaron respondidas el 21/11/2026 con la propuesta de cada una (DR-17 a DR-21 de la spec), que es lo
 que el plan ya seguía: el diseño no cambia. La cancelación no envía correo ni toca la foto (criterio 39, prueba h).
 
+**Ronda 1 del ataque de la 005b (21/11/2026):** criterios 61 a 63 y ajustes de 36 y 37 (sección N de la spec,
+AB1-1 a AB1-4). Cambian "Módulos afectados", la sección 9 (confirmación incierta de la foto y entorno), la 12
+(`frontend/vite.config.ts`), la nueva 16 (proxy de PostgreSQL y servidor de Vite en las pruebas, almacén temporal),
+"Decisiones" y "Riesgos".
+
 ## Módulos afectados
 
 ```
@@ -61,7 +66,7 @@ piscina/
 │   ├── src/infraestructura/prisma/privilegios-app.ts   + privilegios de las siete tablas
 │   ├── src/infraestructura/almacen-archivos/          [005b] nuevo: interfaz, disco local, módulo, claves
 │   ├── src/infraestructura/correo/                    nuevo: interfaz, envío simulado, módulo
-│   ├── src/infraestructura/entorno/entorno.ts         [005b] + ALMACEN_DIRECTORIO
+│   ├── src/infraestructura/entorno/entorno.ts         [005b] + ALMACEN_DIRECTORIO; ronda 1: rechazo dentro de lo que sirve la web (criterio 62 b)
 │   ├── src/crear-app.ts                               [005b] noLeerCuerpoEn suma PUT …/solicitudes/foto (además de DELETE /api/sesion)
 │   ├── src/comun/http/cuerpos.ts                      sin cambios: ya recibe noLeerCuerpoEn
 │   ├── src/comun/http/cuerpo-imagen.ts                [005b] nuevo: lector binario de la foto (5 242 880 bytes, sin inflar)
@@ -86,11 +91,15 @@ piscina/
 │   ├── src/modulos/clases/clases.service.ts           DR-5 (criterios 41 y 42); [005b] GET /api/clases/ocupacion
 │   └── test/
 │       ├── utilidades/inscripciones.ts                crear clientes, solicitudes y matrículas; llenar clases (test-writer)
+│       ├── utilidades/proxy-postgres.ts               [005b, ronda 1] proxy TCP que corta en el COMMIT (criterio 61; test-writer)
 │       └── integracion/inscripciones/                 pruebas protegidas y no protegidas
 ├── scripts/
 │   ├── lib/rol-app.mjs                    + privilegios de las siete tablas
 │   ├── lib/dependencias-backend.mjs       [005b] + sharp
 │   └── test/integracion/migraciones.test.mjs   + las siete tablas en TABLAS_DESPUES_DE_MIGRAR
+├── frontend/vite.config.ts                [005b, ronda 1] server.fs.allow con lista cerrada (criterio 62 a)
+├── vitest.config.mts (o el globalSetup compartido)   [005b, ronda 1] ALMACEN_DIRECTORIO temporal en las pruebas del backend (criterio 63)
+├── e2e/playwright.config.ts               [005b, ronda 1] ALMACEN_DIRECTORIO temporal para la API de las E2E (criterio 63)
 ├── frontend/src/
 │   ├── modulos/inscripcion/               nuevo: api.ts · hooks.ts · PaginaInscripcion.tsx · pasos/*.tsx · Inscripcion.test.tsx;
 │   │                                      [005b] paso de la foto (por ejemplo pasos/PasoFoto.tsx) y subida tras el 201 (ConfirmacionInscripcion.tsx)
@@ -382,6 +391,30 @@ Toda esta sección es de la 005b. _(Ajustada en el repaso del 21/11/2026: PB3 a 
   se registra con `registro.warn({ academiaId, error: { tipo: tipoDeError(error) } }, 'No se pudo borrar un archivo')`
   (sin el mensaje, que lleva la ruta) y no cambia la respuesta. Una subida correcta registra
   `registro.info({ academiaId }, 'Foto de la solicitud guardada')`. Sin auditoría.
+- **Confirmación incierta (ronda 1 de la 005b, criterio 61, AB1-1).** El `catch` de la transacción de confirmación ya no
+  borra el archivo nuevo sin más:
+  - la clave anterior se guarda en una variable de fuera de `trabajo` en cuanto se lee (dentro de la transacción), para
+    tenerla aunque `conAcademia` rechace después;
+  - si el error es una de las respuestas que decide la transacción (`solicitudNoEditable()`, `solicitudNoEncontrada()`,
+    `ErrorAcademiaNoEncontrada`, `ErrorAcademiaSuspendida`), se borra el nuevo y se relanza, como hoy;
+  - con cualquier otro error: `registro.warn({ academiaId, error: { tipo: tipoDeError(error) } }, 'Confirmación de la
+    foto incierta')` y una relectura en otro `conAcademia`:
+    `SELECT foto_clave FROM alumnos WHERE academia_id = … AND id = …` (sin `FOR UPDATE`: una transacción cortada que
+    todavía no terminó en el servidor no la bloquea y su escritura no se ve);
+  - si la relectura devuelve la clave nueva: `info` de subida correcta, borrar la anterior (si había y es distinta) con
+    `borrarSinFallar` y terminar sin error (204);
+  - si devuelve otra cosa: `borrarSinFallar(nueva)` y relanzar el error original (500 `ERROR_INTERNO` por el filtro
+    global);
+  - si la relectura rechaza: no borrar nada y relanzar el error original (500).
+
+  La relectura no repite la comprobación de la solicitud: solo responde "¿quedó guardada esta clave?". La clave tiene un
+  UUID nuevo, así que si no está ahora no lo estará nunca y borrarla es seguro.
+- **Entorno (ronda 1 de la 005b, criterio 62 b, AB1-3).** `validarEntorno`, después de resolver `ALMACEN_DIRECTORIO`
+  como hoy, rechaza la ruta si `path.relative(carpeta, almacen)` no empieza con `..` ni es absoluta para alguna de
+  `{raíz}/frontend`, `{raíz}/packages` y `{raíz}/node_modules` (es decir, si es esa carpeta o queda debajo). En Windows
+  se compara con las dos rutas pasadas a minúsculas. El problema nombra la variable y no muestra la ruta, como el del
+  byte nulo. La lista de carpetas es la misma de `server.fs.allow` (sección 12; `packages/` entera, que incluye
+  `packages/contratos/`).
 - **`AlmacenArchivosDisco` (PB7):** `constructor(raiz)`; la API lo crea con `ALMACEN_DIRECTORIO` (entorno, por defecto
   `backend/almacenamiento`, ya en `.gitignore`). Valida la clave con el formato del criterio 36 (hasta 255 caracteres,
   `academias/{uuid}/` y segmentos `^[a-z0-9][a-z0-9_-]*(\.[a-z0-9]+)?$`) y que el UUID sea el `academiaId` recibido;
@@ -490,6 +523,13 @@ De esta sección, solo "`ClasesService` (DR-5)" es de la 005a; la lista, la canc
   distingue) se muestra con un mensaje y se vuelve a pedir la lista. Claves: `['solicitudes', nombreCorto, usuarioId,
   estado]` y `['ocupacion', nombreCorto, usuarioId]`; un cambio de clase invalida las dos de clases y ocupación.
 - Montos: `lib/dinero.ts` de la 004 (texto, sin `number`).
+- **[005b, ronda 1] Servidor de desarrollo (criterio 62 a, AB1-3).** En `frontend/vite.config.ts`, dentro de `server`,
+  `fs: { allow: [path.join(raiz, 'frontend'), path.join(raiz, 'packages', 'contratos'), path.join(raiz,
+  'node_modules')] }` (con `raiz` ya calculada en el archivo). Vite deja de usar la raíz del workspace como permitida y
+  agrega solo su propio cliente; el `cacheDir` por defecto (`frontend/node_modules/.vite`) queda dentro de `frontend/`.
+  `strict` y `deny` no se tocan (se quedan los valores por defecto de Vite). `preview` no cambia. Si una dependencia
+  futura se resuelve fuera de esas carpetas (por ejemplo, otro paquete del workspace), se suma a la lista de las dos
+  partes (Vite y `validarEntorno`) en la historia que lo traiga; las E2E, que usan este servidor, lo detectan.
 
 ### 13. Semilla
 
@@ -541,6 +581,33 @@ cualquier otra cosa.
   que esa opción la controle. Hoy ya es así en `proteccion-de-prefijos.ts` y en los controladores.
 - Las pruebas unitarias de `claveDeConexion` y `vencimientoDeReserva` no necesitan la app.
 
+### 16. [005b] Pruebas de la ronda 1 del ataque (criterios 61 a 63)
+
+- **Proxy de PostgreSQL (criterio 61, AB1-2).** Utilidad protegida nueva del test-writer, partiendo de la del
+  adversarial (`ProxyPg`): un `net.Server` en `127.0.0.1:0` que, por cada conexión, abre otra al host y puerto de
+  `DATABASE_URL_APP` y reenvía en los dos sentidos. Lee los mensajes del cliente con su largo: primero los mensajes sin
+  tipo (si el primero es `SSLRequest` o `GSSENCRequest`, el servidor contesta un byte y llega otro mensaje sin tipo, el
+  `StartupMessage`); después, mensajes con tipo. En los `Q` y `P` busca, ya armado, un `UPDATE` de `alumnos` que
+  mencione `foto_clave` (por ejemplo `/\bUPDATE\s+(?:"?public"?\.)?"?alumnos"?\b[\s\S]*\bfoto_clave\b/i`) y marca esa
+  conexión; el siguiente `COMMIT` de esa conexión aplica el modo (`cortarTrasCommit` espera el `CommandComplete`
+  `COMMIT` del servidor, `cortarAntesDelCommit` no lo reenvía, `caer` corta y además cierra todo y rechaza conexiones
+  hasta `restablecer()`). Un `ROLLBACK` quita la marca. Cuenta los cortes. La aplicación se crea con la URL del proxy
+  (como lo hizo el adversarial con `crearAppConAlmacen`) y la variable se restaura en seguida; las utilidades que
+  escriben como dueño siguen yendo directo. `cerrar()` destruye las conexiones abiertas antes de cerrar el servidor.
+- **Servidor de Vite (criterio 62).** Como el `vite-fs.mjs` del adversarial, pero con `createServer` importado desde el
+  `vite` del repositorio, `configFile` el `frontend/vite.config.ts` real, `server: { port: 0, strictPort: false, hmr:
+  false, watch: null }`, `cacheDir` temporal y `optimizeDeps: { noDiscovery: true, include: [] }`, `logLevel:
+  'silent'`. Las rutas `/@fs/` se arman con la ruta absoluta pasada a `/` (en Windows, `/@fs/C:/…`). El archivo del
+  almacén se crea con carpetas de UUID nuevos dentro de `backend/almacenamiento/academias/` y se borra en un `finally`.
+  El proyecto `scripts` de Vitest corre en Node y en la integración continua de Windows.
+- **Almacén temporal en las pruebas (criterio 63, AB1-4).** En `vitest.config.mts`, el `env` de los proyectos de
+  `backend/` suma `ALMACEN_DIRECTORIO` con un directorio de `fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-almacen-'))`
+  creado al cargar la configuración, y el `globalSetup` compartido lo borra al terminar (o se crea y se borra en ese
+  `globalSetup`, si se prefiere; lo que importa es que la variable llegue a los procesos de prueba). En
+  `e2e/playwright.config.ts`, el `env` del servidor `API` suma `ALMACEN_DIRECTORIO` con un directorio temporal, que el
+  `globalTeardown` (nuevo o el existente) borra. Las utilidades que ya usan un directorio temporal propio
+  (`crearAppConAlmacen`) no cambian.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -574,6 +641,10 @@ cualquier otra cosa.
 | [005b] Cancelar: la fila `VENCIDA` da 409 (PB12) | Cancelar también la fila `VENCIDA` | Es lo que dice el contrato ("ya no está `PENDIENTE_PAGO` ni `CANCELADA`"); esa solicitud ya no ocupa nada |
 | [005b] Ocupación: `inscritos` con `contarInscritos` y cupos con `contarOcupacion` (PB13) | Solo `contarOcupacion` | La grilla y el diálogo de DR-5 muestran la misma cifra que los 409; desde la 010 hay meses siguientes |
 | [005b] Constantes de la foto en `packages/contratos` (PB4) | Repetirlas en la web y en la API | La web avisa antes de subir con los mismos límites que aplica la API |
+| [005b, ronda 1] Confirmación incierta: releer `foto_clave` antes de borrar (AB1-1, criterio 61) | Borrar siempre el nuevo; no borrar nada sin releer; referencia "pendiente" en dos pasos | Nunca una referencia a un archivo borrado, 204 si la foto quedó, sin migración |
+| [005b, ronda 1] Proxy TCP de prueba que corta en el `COMMIT` (AB1-2) | Envolver `BaseDatos` con `overrideProvider` | Caja negra (solo `DATABASE_URL_APP` y el protocolo), reproduce la falla real, determinista |
+| [005b, ronda 1] `server.fs.allow` con lista cerrada y rechazo en `validarEntorno` (AB1-3, criterio 62) | `server.fs.deny` con el directorio del almacén; almacén por defecto fuera del repositorio | Sin globs con rutas de Windows; protege todo `backend/`; Bryan conserva su carpeta de desarrollo |
+| [005b, ronda 1] `ALMACEN_DIRECTORIO` temporal en la configuración de las pruebas (AB1-4, criterio 63) | Que cada prueba reemplace el almacén | Una prueba que lo olvide no escribe en el almacén de quien desarrolla |
 
 ## Migraciones
 
@@ -619,6 +690,18 @@ cualquier otra cosa.
   recepción va en la 007, antes de publicar el formulario.
 - **[005b] Enlaces simbólicos en Windows:** crear un enlace pide permisos; la prueba del criterio 36 se omite si da
   `EPERM`, y la comprobación con `lstat` vale igual para las uniones de Windows.
+- **[005b, ronda 1] Clasificar el error de la confirmación (criterio 61):** si un error de negocio de la transacción no
+  se reconoce como tal, se relee de más (inofensivo); si un error de la base o de la conexión se tomara por uno de
+  negocio, se volvería a borrar sin saber. Por eso la lista de "decididos por la transacción" es cerrada (los cuatro de
+  la sección 9) y todo lo demás relee.
+- **[005b, ronda 1] El proxy de prueba y Prisma (criterio 61):** el proxy depende de que Prisma hable el protocolo de
+  PostgreSQL sin cifrar en la conexión local (hoy es así; si la URL pidiera `sslmode=require`, el proxy no vería los
+  mensajes). Si Prisma reintenta una conexión cortada, la relectura del caso `caer` tarda hasta `ESPERA_CONEXION_MS`
+  (10 s); la prueba usa un plazo amplio.
+- **[005b, ronda 1] Lista cerrada de Vite (criterio 62):** una dependencia de la web que se resuelva fuera de
+  `frontend/`, `packages/contratos/` o `node_modules/` de la raíz dejaría de servirse en desarrollo (403 en la consola
+  del navegador). Las E2E usan el servidor de desarrollo, así que lo detectan; la prueba del criterio 62 comprueba lo
+  mínimo (`/`, `/src/main.tsx`, contratos y una dependencia).
 - **Coma flotante:** cualquier `Number(`, `parseFloat` o `+monto` en `matriculas/dominio` o en la web rompe el criterio 9;
   el revisor los busca.
 - **Fechas:** `clasesRestantes` y `esMenorDeEdad` no pueden usar `new Date().getDay()`, `getFullYear()` ni la zona del
