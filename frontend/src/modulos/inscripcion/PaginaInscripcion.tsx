@@ -51,7 +51,7 @@ type Solicitud = RespuestaInscripcionCreada['solicitud'];
 
 /**
  * `/a/{nombreCorto}/inscripcion`: el formulario público de inscripción (HU-01, HU-02; criterio 43 de 005), sin sesión, para el celular y
- * para la PC de recepción. Guía por pasos: datos personales, ficha médica, apoderado (solo si es menor), nivel, plan y clases, y el
+ * para la PC de recepción. Guía por pasos: datos personales, ficha médica, apoderado (solo si es menor), nivel, plan y clases, la
  * foto opcional (que se sube aparte, después del 201) y el resumen con la cotización y los consentimientos.
  */
 export function PaginaInscripcion() {

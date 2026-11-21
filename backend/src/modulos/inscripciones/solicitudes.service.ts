@@ -6,6 +6,7 @@ import {
   type RespuestaListaSolicitudes,
   type RespuestaSolicitudPanel,
   type SolicitudPanel,
+  TOPE_DE_LA_LISTA,
   type CancelarSolicitud,
 } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
@@ -19,9 +20,6 @@ import type { SesionVerificada } from '../autenticacion/tipos';
 import { bloquearClasesParaCupo } from '../clases';
 import { noEncontrado, solicitudNoCancelable } from './errores';
 import { estadoVisible, estadoVisibleSql } from './estado-visible';
-
-/** Cuántas solicitudes trae la lista como mucho (criterio 38): las más recientes después de filtrar. */
-export const TOPE_DE_LA_LISTA = 200;
 
 /** El estado visible que corresponde a cada filtro de la lista (`TODAS` no filtra). */
 const ESTADO_DEL_FILTRO: Readonly<Record<Exclude<FiltroEstadoSolicitudes, 'TODAS'>, EstadoSolicitud>> = {

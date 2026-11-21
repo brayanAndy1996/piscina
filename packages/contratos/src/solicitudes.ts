@@ -111,6 +111,9 @@ export type RespuestaConsultaSolicitud = z.infer<typeof respuestaConsultaSolicit
  * del alumno, pero nunca datos médicos, apoderado, consentimientos, foto, IP ni token.
  */
 
+/** Cuántas solicitudes trae la lista como mucho (criterio 38): las más recientes después de filtrar. La API y la web usan este valor. */
+export const TOPE_DE_LA_LISTA = 200;
+
 /** Filtro de `GET /api/solicitudes?estado=` (por estado visible): `ACTIVAS` si falta; cualquier otro valor, o un arreglo, es un error. */
 export const FILTROS_ESTADO_SOLICITUDES = ['ACTIVAS', 'VENCIDAS', 'CANCELADAS', 'TODAS'] as const;
 export const filtroEstadoSolicitudesSchema = z

@@ -4,6 +4,7 @@ import {
   NOMBRE_DIA,
   NOMBRE_NIVEL,
   type SolicitudPanel,
+  TOPE_DE_LA_LISTA,
 } from '@aquagestion/contratos';
 import { useState } from 'react';
 import { Link } from 'react-router';
@@ -13,9 +14,9 @@ import { Alerta, ESTILO_BOTON, Insignia } from '../../componentes/ui';
 import { formatearSoles } from '../../lib/dinero';
 import { formatearFechaHora, formatearMes } from '../../lib/fechas';
 import { mensajeGeneral } from '../../lib/errores';
+import { ESTADO_EN_PALABRAS } from '../../lib/estado-solicitud';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
-import { ESTADO_EN_PALABRAS } from '../seguimiento/VistaSeguimiento';
 import { DialogoCancelarSolicitud } from './DialogoCancelarSolicitud';
 import { useSolicitudes } from './hooks';
 
@@ -32,9 +33,6 @@ const SIN_SOLICITUDES: Readonly<Record<FiltroEstadoSolicitudes, string>> = {
   CANCELADAS: 'No hay solicitudes canceladas.',
   TODAS: 'Todavía no hay solicitudes.',
 };
-
-/** La API entrega como mucho las 200 más recientes (criterio 38). */
-const TOPE_DE_LA_LISTA = 200;
 
 /** `/panel/solicitudes`: las solicitudes de inscripción de la academia, para cancelarlas si hace falta (HU-01). `ADMIN` y `SECRETARIA`. */
 export function PaginaSolicitudes() {

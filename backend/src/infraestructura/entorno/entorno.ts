@@ -210,7 +210,9 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
   }
 
   const almacen = resolverAlmacenDirectorio(env['ALMACEN_DIRECTORIO'], { raiz: RAIZ_DEL_REPOSITORIO, ruta: path });
+  let almacenDirectorio = '';
   if ('problema' in almacen) problemas.push(almacen.problema);
+  else almacenDirectorio = almacen.directorio;
 
   if (problemas.length > 0 || !urlApp || !secreto) throw new ErrorEntorno(problemas);
   return {
@@ -219,6 +221,6 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
     JWT_SECRETO: secreto,
     PUERTO_API: puerto,
     NODE_ENV: nodeEnv,
-    ALMACEN_DIRECTORIO: 'directorio' in almacen ? almacen.directorio : '',
+    ALMACEN_DIRECTORIO: almacenDirectorio,
   };
 }

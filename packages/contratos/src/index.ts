@@ -225,6 +225,7 @@ export {
   respuestaListaSolicitudesSchema,
   respuestaSolicitudPanelSchema,
   solicitudPanelSchema,
+  TOPE_DE_LA_LISTA,
   tokenSeguimientoSchema,
   vistaSolicitudCompletaSchema,
   vistaSolicitudReducidaSchema,

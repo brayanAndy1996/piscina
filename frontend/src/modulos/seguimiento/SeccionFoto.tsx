@@ -8,7 +8,7 @@ import { useFotoElegida, useSubirFoto } from '../foto/hooks';
 import { FOTO_MEGABYTES_MAXIMOS } from '../foto/validacion';
 
 /** Lo que se le dice a la persona cuando la subida falla, con una salida humana (el teléfono de la academia). */
-export function mensajeDeFalloDeFoto(falla: unknown, telefono: string | null): string {
+function mensajeDeFalloDeFoto(falla: unknown, telefono: string | null): string {
   const ayuda = frasePorTelefono(telefono);
   if (esErrorDeApi(falla, 400, 'IMAGEN_NO_VALIDA')) {
     return `No pudimos usar esa imagen. Elige una foto JPG o PNG de entre ${FOTO_LADO_MINIMO} y ${FOTO_LADO_MAXIMO} píxeles por lado.${ayuda}`;

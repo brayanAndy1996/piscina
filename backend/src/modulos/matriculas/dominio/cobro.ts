@@ -1,6 +1,6 @@
 import { TZDate } from '@date-fns/tz';
 import { type Bloque, type DiaSemana, esBisiesto } from '@aquagestion/contratos';
-import { ZONA_LIMA, hoyEnLima } from '../../../comun/fechas';
+import { ZONA_LIMA, fechaEnLima } from '../../../comun/fechas';
 import { Decimal } from '../../../infraestructura/prisma';
 
 /**
@@ -49,10 +49,7 @@ function diaIsoEnLima(anio: number, mes: number, dia: number): number {
  * pregunta N2 de 005: la que empieza en este instante ya no cuenta). No descuenta días de cierre (RN-33, historia 017).
  */
 export function clasesRestantes(clases: readonly ClaseElegida[], ahora: Date): number {
-  const [anioTexto = '0', mesTexto = '0', diaTexto = '0'] = hoyEnLima(ahora).split('-');
-  const anio = Number(anioTexto);
-  const mes = Number(mesTexto);
-  const hoy = Number(diaTexto);
+  const { anio, mes, dia: hoy } = fechaEnLima(ahora);
   const ultimo = diasDelMes(anio, mes);
   const diaDeHoy = diaIsoEnLima(anio, mes, hoy);
   let cuenta = 0;

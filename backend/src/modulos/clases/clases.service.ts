@@ -12,7 +12,7 @@ import {
 } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
 import { ErrorNegocio } from '../../comun/errores';
-import { hoyEnLima } from '../../comun/fechas';
+import { anioYMesEnLima } from '../../comun/fechas';
 import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
 import {
   BaseDatos,
@@ -173,7 +173,7 @@ export class ClasesService {
    */
   async ocupacion(academiaId: string): Promise<RespuestaOcupacion> {
     const ahora = this.reloj.ahora();
-    const [anioTexto = '0', mesTexto = '0'] = hoyEnLima(ahora).split('-');
+    const { anio, mes } = anioYMesEnLima(ahora);
     return this.baseDatos.conAcademia(academiaId, async (tx) => {
       const clases = await tx.cliente.$queryRaw<{ id: string; aforo: number }[]>`
         SELECT id::text AS id, aforo::int AS aforo FROM clases
@@ -181,9 +181,9 @@ export class ClasesService {
          ORDER BY id`;
       const ids = clases.map((clase) => clase.id);
       const inscritos = await contarInscritos(tx, ids, ahora);
-      const ocupacion = await contarOcupacion(tx, ids, { anio: Number(anioTexto), mes: Number(mesTexto) }, ahora);
+      const ocupacion = await contarOcupacion(tx, ids, { anio, mes }, ahora);
       return {
-        mes: `${anioTexto}-${mesTexto}`,
+        mes: `${anio}-${String(mes).padStart(2, '0')}`,
         ocupacion: clases.map((clase) => ({
           claseId: clase.id,
           inscritos: inscritos.get(clase.id) ?? 0,
