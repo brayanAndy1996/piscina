@@ -3,7 +3,7 @@
 Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-11 (responsable) y DT-1 a DT-6
 (orquestador) de la spec; los valores que el borrador llamaba "provisionales" quedan como definitivos. Lo marcado
 **[006b]** va en el segundo PR (DR-10). Las rondas adversariales de la 006b suman las secciones 2.12 (ronda 1, DT-7 a
-DT-9) y 2.13 (ronda 2, DT-10 a DT-14).
+DT-9), 2.13 (ronda 2, DT-10 a DT-14) y 2.14 (ronda 3, DT-15 a DT-17).
 
 ## 1. Módulos afectados
 
@@ -53,6 +53,9 @@ DT-9) y 2.13 (ronda 2, DT-10 a DT-14).
   - `cajas.controller.ts` y `historial.service.ts`: el corte de la conexión y la sesión verificada de nuevo;
   - `caja.module.ts`: importa `AutenticacionModule`;
   - `backend/src/modulos/autenticacion/sesion-academia.service.ts`: un método para volver a verificar la sesión.
+
+  Desde la ronda adversarial 3 de la 006b (2.14) cambia `cajas.controller.ts`: la conexión se mira al entrar, se
+  escucha también el socket y una descarga cortada no escribe nada.
 - `backend/package.json`: `pdfkit` y `@types/pdfkit`; `scripts/lib/dependencias-backend.mjs`
   (`DEPENDENCIAS_BACKEND_PERMITIDAS`, criterio 127 de 001).
 - `frontend/src/modulos/caja/`: `PaginaHistorialCajas.tsx`, `DetalleCaja.tsx`, las llamadas nuevas en `api.ts` (lista,
@@ -62,6 +65,12 @@ DT-9) y 2.13 (ronda 2, DT-10 a DT-14).
   - `frontend/src/api/cliente.ts`: `pedirArchivo` con una señal opcional;
   - la descarga del detalle (`hooks.ts` y `DetalleCaja.tsx`) con su `AbortController`;
   - el registro de descargas en curso que cancela "Cerrar sesión" (`frontend/src/modulos/sesion/` y `LayoutPanel.tsx`).
+
+  Desde la ronda adversarial 3 de la 006b (2.14):
+  - `DetalleCaja.tsx` y `CierresDeLaCaja.tsx`: el contenido se vuelve a montar al cambiar de caja, y la descarga es
+    de su caja y su cierre;
+  - `frontend/src/modulos/sesion/hooks.ts`: "Cerrar sesión" cancela en `onMutate`;
+  - `hooks.ts` de la caja y `frontend/src/lib/descargas-en-curso.ts`: la descarga se registra al pulsar.
 
 ## 2. Diseño
 
@@ -477,6 +486,81 @@ conviene leer solo las columnas que usa el PDF.
   `cliente.getQueryData(CLAVE_SESION)` no es la de la página, se descarta el `Blob`.
 - **Mensajes:** el error de una descarga cancelada no se muestra.
 
+### 2.14 [006b] Ronda adversarial 3: cortes antes del controlador, cambio de caja y "Cerrar sesión" sin conexión (criterios 55 a 57)
+
+**El corte antes del controlador (`cajas.controller.ts`; criterio 55, DT-15).**
+
+- **Por qué fallaba:** `respuesta.on('close')` se registra recién dentro de `descargarPdf`. Un corte durante el
+  middleware de la sesión o los guards emite `close` antes, y nadie lo oye. En pipelining, la respuesta de la segunda
+  petición no tiene socket (`respuesta.socket === null` hasta que termina la primera) y nunca emite `close`.
+- **Al principio de `descargarPdf`, en un solo paso síncrono:**
+
+  ```ts
+  const controlador = new AbortController();
+  const socket = solicitud.socket;
+  const cortar = () => {
+    if (!respuesta.writableFinished) controlador.abort();
+  };
+  if (conexionCerrada(solicitud, respuesta)) {
+    this.registro.info({ … }, 'Descarga del PDF del cierre abandonada antes de empezar');
+    return; // sin tocar la cola, la base ni la respuesta
+  }
+  respuesta.once('close', cortar);
+  socket.once('close', cortar);
+  try {
+    …
+  } finally {
+    respuesta.off('close', cortar);
+    socket.off('close', cortar);
+  }
+  ```
+
+  - `conexionCerrada`: `respuesta.destroyed || (respuesta.closed && !respuesta.writableFinished) ||
+    socket.destroyed`. `solicitud.destroyed` no se usa solo: en Node 22 puede ser `true` después de leer una petición
+    sin cuerpo (nota de 2.13). Si se suma, el control del 55 f lo vigila.
+  - El `finally` quita los dos oyentes, porque en keep-alive el socket atiende las peticiones siguientes. Sin eso,
+    se acumularían oyentes (`MaxListenersExceededWarning` después de 10) y un corte posterior abortaría una descarga
+    ya terminada.
+- **Nada se escribe con la señal activa (55 d):**
+  - después de `this.historial.pdf`, `if (controlador.signal.aborted) return;`, como hoy;
+  - en el `catch`, con `controlador.signal.aborted`, el controlador no vuelve a lanzar el error. Si es del corte
+    (`esDescargaAbandonada`), anota una línea `info`. Si no lo es (por ejemplo, un generador que ignora la señal y
+    rechaza con un `Error` común), lo anota como error con `errorParaRegistro`, igual que el filtro, pero sin
+    responder. Así no llega al filtro global, que escribiría el JSON.
+  - El 404 de la forma del id y del `numero`, el 429 de la cola y los 401 y 403 de `volverAVerificar` son errores que
+    lanza el servicio: con la señal activa, tampoco se escriben.
+- **El servicio no cambia:** `turno` ya rechaza si la señal está activa al llamarla, y `exigirQueSigaViva` corta en
+  cada paso.
+- **Pruebas:** el caso 1 del 55 f retiene la verificación con `LOCK TABLE usuarios IN ACCESS EXCLUSIVE MODE` desde una
+  conexión del dueño. `verificarSesion` lee `usuarios` con un `SELECT` sin bloqueo, que solo espera ese modo.
+
+**Cambio de caja en el detalle (`DetalleCaja.tsx`; criterio 56, DT-16).**
+
+- `DetalleCaja` monta `<ContenidoDelDetalle key={id} />`, con el `id` de `useParams`. Al cambiar el id:
+  - el contenido anterior se desmonta y corre la limpieza de `useDescargarPdfDelCierre` (54 b);
+  - la mutación de la descarga, los avisos de la reapertura y el diálogo empiezan de cero;
+  - `useRecienPedida` empieza con `yaMostrado` en `false`, y la consulta, con `refetchOnMount: 'always'`, exige la
+    respuesta pedida al entrar (`isFetchedAfterMount`). Mientras tanto, "Cargando la caja…".
+- **`CierresDeLaCaja`:** aunque el remontaje ya lo resuelve, "Preparando el PDF…" y el mensaje de error comparan
+  también `variables.cajaId` con `caja.id`, no solo el número del cierre (56 b). Es una defensa barata si algún día el
+  componente se reutiliza.
+- `useRecienPedida` no cambia: lo comparten configuración (003), planes y clases (004).
+
+**"Cerrar sesión" sin conexión (`sesion/hooks.ts`, `caja/hooks.ts` y `lib/descargas-en-curso.ts`; criterio 57,
+DT-17).**
+
+- **`useCerrarSesionAcademia`:** `cancelarDescargasEnCurso()` pasa de la `mutationFn` a `onMutate`. En
+  `@tanstack/query-core` 5 (`Mutation.execute`), `onMutate` se llama antes de `retryer.start()`, haya conexión o no. Sin
+  un `onMutate` en la `MutationCache` (la app no tiene), se llama en el mismo paso que `mutate`.
+- **La descarga en pausa (57 b):** la descarga se registra al pulsar, no al empezar la `mutationFn`. Por ejemplo:
+  - el `onClick` (o un `descargar(variables)` que expone el hook) llama a `iniciarDescarga()` y pasa el `controlador`
+    en las variables de la mutación;
+  - la `mutationFn` comprueba `controlador.signal.aborted` antes de `useConfirmarSesion` y antes del `fetch`;
+  - la limpieza del desmontaje aborta también las descargas registradas cuya mutación sigue en pausa.
+
+  Quien implementa elige la forma, siempre que los casos del 57 d pasen.
+- **"Cerrando…" y el `DELETE` diferido no cambian:** la mutación sigue con `networkMode: 'online'`.
+
 ## 3. Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -512,6 +596,10 @@ conviene leer solo las columnas que usa el PDF.
 | [006b] Límite de 4 por academia, después del de persona y antes de la cola (criterio 52, DT-11) | Solo el límite por persona | Un `ADMIN` puede crear varias cuentas y llenar la cola de la instancia |
 | [006b] Volver a verificar con la verificación de cada petición, sin su recuerdo (criterio 53, DT-12) | `bloquearActorVigente` (`FOR SHARE`) en la lectura, o copiar las comprobaciones | Las lecturas no bloquean (PQ1), y una copia se desviaría de 002 |
 | [006b] La web cancela la descarga y además comprueba antes de entregar (criterio 54, DT-13) | Solo el desmontaje de la página | `DELETE /api/sesion` tarda, y el PDF podía llegar antes de navegar |
+| [006b] Mirar la conexión al entrar al manejador y escuchar también el `close` del socket (criterio 55, DT-15) | Solo `respuesta.on('close')`, o registrarlo en un middleware | El `close` de la respuesta puede pasar antes del controlador y no existe en una respuesta de pipelining sin socket; un middleware repartiría la lógica del corte y el pipelining igual necesitaría el socket |
+| [006b] Con la señal activa, el controlador no deja llegar ningún error al filtro global (criterio 55 d) | Dejar que el filtro responda el 404, el 429 o el 500 | El filtro escribiría el JSON en una conexión cerrada |
+| [006b] `key={id}` en el contenido del detalle (criterio 56, DT-16) | Un efecto que observe el id, o cambiar `useRecienPedida` | El remontaje reinicia todo el estado de la página de una vez; `useRecienPedida` es compartida con 003 y 004 |
+| [006b] Cancelar en el `onMutate` de "Cerrar sesión" (criterio 57, DT-17) | `networkMode: 'always'`, o cancelar en el `onClick` de `LayoutPanel` | `onMutate` corre aunque la mutación quede en pausa; `always` enviaría el `DELETE` sin conexión y mostraría un error; el `onClick` obliga a cada lugar que cierre sesión a recordarlo |
 | `metodo_pago` creado aquí | Que lo cree la 007 | Los movimientos lo necesitan ya; la 007 lo reutiliza |
 | `pago_id` sin llave foránea hasta la 007 | Crear `pagos` vacía | Cada historia crea sus tablas (D-17) |
 
@@ -556,6 +644,17 @@ conviene leer solo las columnas que usa el PDF.
   cubren las unitarias protegidas, en los dos órdenes, y la comprobación final de que `estado` vuelve a cero.
 - **[006b] `CajaModule` importa `AutenticacionModule` (criterio 53):** hay que comprobar que no se forma un ciclo de
   módulos. Hoy `AutenticacionModule` solo importa `SeguridadModule` y `AuditoriaModule`.
+- **[006b] Pruebas de cortes y pipelining (criterio 55):**
+  - El caso 1 es el determinista: retiene la verificación con un bloqueo de tabla y espera a verlo en
+    `pg_stat_activity`. El caso 2 (20 cortes inmediatos) depende del orden de los eventos de red; si el código es
+    correcto, pasa siempre.
+  - El pipelining depende de que Node lea la segunda petición mientras la primera espera. Lo hace: el servidor emite
+    `request` para cada petición y encola la respuesta. Si en Windows se comportara distinto, el tester lo anota antes
+    de tocar la prueba.
+  - El `LOCK TABLE … ACCESS EXCLUSIVE` retiene cualquier lectura de `usuarios` de la app mientras dura. La prueba lo
+    suelta siempre en un `finally`.
+- **[006b] `onMutate` y la versión de TanStack Query (criterio 57):** si una versión futura dejara de llamar a
+  `onMutate` antes de la pausa, la prueba protegida del 57 lo detecta.
 
 ## 6. Desviaciones aceptadas (006a)
 

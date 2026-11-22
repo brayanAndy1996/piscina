@@ -6,8 +6,8 @@ dividida en dos entregas (DR-10 de la spec), cada una con sus pruebas protegidas
 - **006a · Caja del día** (T1 a T22, y T36 a T42 de la ronda adversarial 1): criterios 1 a 39, 45 y 46 sin el
   historial ni el PDF, y 47 y 48. Se construye primero.
 - **006b · Historial y PDF del cierre** (T23 a T35, marca **[006b, siguiente PR]**, T43 a T50 de la ronda
-  adversarial 1 y T51 a T60 de la ronda adversarial 2): criterios 40 a 44, 49 a 54, y la parte de 45 y 46 que les
-  toca. Se empieza con la 006a unida a `main`.
+  adversarial 1, T51 a T60 de la ronda adversarial 2 y T61 a T69 de la ronda adversarial 3): criterios 40 a 44, 49 a
+  57, y la parte de 45 y 46 que les toca. Se empieza con la 006a unida a `main`.
 
 En cada entrega, los criterios críticos (DT-5) llevan pruebas protegidas escritas y confirmadas en rojo antes de
 implementar y ataque adversarial después.
@@ -390,7 +390,7 @@ La observación O1 (lecturas de cajas enormes) queda como riesgo aceptado, con l
       real, para descartar que sean inestables (criterios 49, 51 a 54).
 - [ ] T59 · orquestador · Revisar con `git diff`, desde el commit de T51 y T52, que T54 a T57 no tocaron pruebas
       protegidas.
-- [ ] T60 · adversarial · Ronda 3 sobre todo lo de la 006b, en especial los criterios 51 a 54, sin perder de vista el
+- [x] T60 · adversarial · Ronda 3 sobre todo lo de la 006b, en especial los criterios 51 a 54, sin perder de vista el
       49 y el 50:
       - cortes en cada paso: antes del turno, en la fila, durante la verificación de la sesión, la lectura y la
         generación;
@@ -398,6 +398,115 @@ La observación O1 (lecturas de cajas enormes) queda como riesgo aceptado, con l
       - varias cuentas y varias academias contra los límites de persona, academia y cola;
       - cambios de sesión, rol y academia en cada momento de la espera;
       - la web, con "Cerrar sesión", cambios de pestaña e identidad y navegación mientras se prepara el PDF.
+
+      Si hay fallas, se repite el ciclo hasta una ronda sin fallas.
+      _(ronda 3 sobre `3d5e6fb`, 22/11/2026: tres fallas y una observación, criterios 55 a 57; ver más abajo)_
+
+### Ataque adversarial de la 006b, ronda 3 (22/11/2026, sobre `3d5e6fb`)
+
+Hubo tres fallas contra criterios que ya existían y una observación que el orquestador decidió corregir. Se
+convirtieron en los criterios 55 a 57 de `spec.md`, todos críticos (DT-15 a DT-17):
+
+- **Criterio 55 (falla F1, alta; amplía el 51):** un corte antes de que el controlador escuche `close`, o el de una
+  petición en pipelining, nunca se abortaba.
+- **Criterio 56 (falla F2, media, y la observación; amplía el 54 b):** pasar del detalle de una caja al de otra que
+  está en la caché no cancelaba la descarga, y el detalle mostraba la caché sin pedirla de nuevo (27 a de 003).
+- **Criterio 57 (falla F3, media; amplía el 54 b):** "Cerrar sesión" sin conexión no cancelaba al pulsar.
+
+Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.md` y en "Riesgos aceptados".
+
+- [ ] T61 · test-writer · Pruebas protegidas de integración del criterio 55, en rojo, en un archivo nuevo de
+      `backend/test/integracion/caja/` (por ejemplo, `pdf-corte-antes-del-controlador.test.ts`), desde la spec y los
+      contratos públicos, sin mirar la implementación y con la marca de pruebas protegidas.
+      - **Utilidades,** en archivos nuevos o sumando a los existentes sin cambiar lo que ya hay:
+        - el cliente `node:http` que corta con `destroy()`;
+        - el cliente `node:net` que escribe varias peticiones en pipelining y corta;
+        - el espía de escritura sobre `http.ServerResponse.prototype` (`writeHead`, `write` y `end`), filtrado por la
+          cabecera `x-prueba-corte`;
+        - la transacción del dueño con `LOCK TABLE usuarios IN ACCESS EXCLUSIVE MODE`, que se suelta siempre en un
+          `finally`, y la espera en `pg_stat_activity` (`wait_event_type = 'Lock'`) para el rol de la app.
+      - **Casos de 55 f:**
+        1. el corte durante la verificación de la sesión (el determinista);
+        2. los 20 cortes inmediatos;
+        3. el pipelining cortado, con `app.get(ColaPdfCierre).estado`;
+        4. el generador real con 20 000 movimientos;
+        5. los controles: descarga normal, pipelining sin cortar y 15 descargas por la misma conexión keep-alive sin
+           `MaxListenersExceededWarning`.
+      - En todos, sin cambios en las filas ni en la auditoría y sin conexiones `idle in transaction`.
+
+      (criterio 55)
+- [ ] T62 · test-writer · Pruebas protegidas de componentes de los criterios 56 y 57, en archivos nuevos de
+      `frontend/src/modulos/caja/` con la marca de pruebas protegidas (por ejemplo,
+      `DescargaPdfCambioDeCaja.test.tsx` y `DescargaPdfSinConexion.test.tsx`), con la preparación del 54 g. El `GET`
+      de cada caja se puede retener y responde distinto la segunda vez.
+      - **Criterio 56 f:**
+        1. el caso de la falla con `navigate(-2)`;
+        2. "adelante" y `navigate` con otra dirección;
+        3. durante `useConfirmarSesion`;
+        4. el error de la descarga es de su caja;
+        5. el aviso de la reapertura es de su caja;
+        6. el control.
+      - **Criterio 57 d:**
+        1. el caso de la falla con `onlineManager.setOnline(false)`;
+        2. durante `useConfirmarSesion`;
+        3. la descarga en pausa, con "Cerrar sesión" y con "volver a la lista";
+        4. el control.
+
+        `onlineManager.setOnline(true)` en `afterEach`.
+
+      Commit de T61 y T62 juntos: "Pruebas protegidas (006): 006b, ataque ronda 3: cortes antes del controlador,
+      cambio de caja en el detalle y cerrar sesión sin conexión (en rojo)" (criterios 55 a 57)
+- [ ] T63 · tester · Confirmar que T61 y T62 fallan por la razón esperada, y no por sintaxis, importaciones,
+      configuración ni el tiempo límite de Vitest. Las razones esperadas son:
+      - **55:** en el caso 1, el generador recibe la llamada de la descarga cortada, `estado` no vuelve a cero y la
+        segunda descarga nueva de S1 recibe 429; en el caso 3, `estado.enEspera` se queda en 1 después de cortar; el
+        espía de escritura anota llamadas de las cortadas; en el caso 4, el espía recibe la llamada de la descarga
+        cortada con la verificación retenida. El caso 2 y los cortes inmediatos del caso 4 pueden pasar ya, porque
+        dependen del orden de los eventos de red: si pasan, el tester lo anota. Los controles del caso 5 ya pasan;
+      - **56:** la señal del PDF no queda `aborted` al volver a la caja 2, se ve "Primera" mientras el `GET` está
+        retenido, el botón dice "Preparando el PDF…" y se llama a `URL.createObjectURL`. El control ya pasa;
+      - **57:** la señal no queda `aborted` al pulsar "Cerrar sesión" sin conexión, y se llama a
+        `URL.createObjectURL`; en el caso 3, la variante "volver a la lista" entrega el PDF. La variante con "Cerrar
+        sesión" del caso 3 puede pasar ya, por el orden en que TanStack Query reanuda las mutaciones en pausa: si pasa,
+        el tester lo anota y no es un error de la prueba. El control ya pasa.
+
+      Confirmar también:
+      - que las pruebas protegidas anteriores (51 a 54 incluidas) siguen pasando;
+      - que `git diff --cached --stat` solo muestra archivos de prueba.
+
+      El orquestador hace el commit con el título de T62 (tres dígitos y sin letra, como exige
+      `scripts/verificar-pruebas-protegidas.mjs`) (criterios 55 a 57).
+- [ ] T64 · backend · El corte antes del controlador, según plan 2.14 (criterio 55):
+      - la comprobación de la conexión al entrar a `descargarPdf`, antes de cualquier otro paso, y los oyentes de la
+        respuesta y del socket en el mismo paso síncrono;
+      - los oyentes se quitan en el `finally`;
+      - con la señal activa, ningún error llega al filtro global y no se escribe la respuesta: `info` si es del corte,
+        error con `errorParaRegistro` si no lo es;
+      - los comentarios de `CajasController` y de `HistorialService` al día;
+      - las pruebas protegidas del 49 al 53 siguen pasando.
+- [ ] T65 · frontend · El cambio de caja en el detalle, según plan 2.14 (criterio 56):
+      - `<ContenidoDelDetalle key={id} />` en `DetalleCaja`;
+      - "Preparando el PDF…" y el mensaje de error de `CierresDeLaCaja` comparan también la caja;
+      - `useRecienPedida` no cambia;
+      - las pruebas de componentes de PQ12 y del 54 siguen pasando.
+- [ ] T66 · frontend · "Cerrar sesión" sin conexión y la descarga en pausa, según plan 2.14 (criterio 57):
+      - `cancelarDescargasEnCurso()` en el `onMutate` de `useCerrarSesionAcademia`;
+      - la descarga se registra al pulsar, no al empezar su `mutationFn`, y comprueba su señal antes de
+        `useConfirmarSesion` y antes del `fetch`;
+      - "Cerrando…" y el `DELETE` diferido sin conexión no cambian.
+- [ ] T67 · tester · Correr en verde las pruebas protegidas (T61, T62 y todas las anteriores) y la suite completa, con
+      lint y verificación de tipos. Correr al menos cinco veces seguidas la prueba del 55 y la del 51 con el generador
+      real, para descartar que sean inestables (criterios 49, 51 a 57).
+- [ ] T68 · orquestador · Revisar con `git diff`, desde el commit de T61 y T62, que T64 a T66 no tocaron pruebas
+      protegidas.
+- [ ] T69 · adversarial · Ronda 4 sobre todo lo de la 006b, en especial los criterios 55 a 57, sin perder de vista
+      del 49 al 54:
+      - cortes en cada momento antes del controlador (middleware de la sesión, academia, cambio obligatorio, guards),
+        con pipelining, keep-alive y `Connection: close`;
+      - oyentes que quedan en sockets reutilizados y cortes que abortan la descarga equivocada;
+      - escrituras sobre conexiones cerradas, también con errores 404, 429, 401, 403 y 500;
+      - la web: cambios de caja con "atrás", "adelante", enlaces y direcciones escritas, con la caja de destino en la
+        caché o no; descargas en pausa sin conexión; "Cerrar sesión" con y sin conexión.
 
       Si hay fallas, se repite el ciclo hasta una ronda sin fallas.
 
