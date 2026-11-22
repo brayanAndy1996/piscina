@@ -17,8 +17,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 004 | Planes y clases con aforo | En parte | ✅ |
 | 005a | Inscripción pública, reserva y seguimiento de la solicitud | Sí | ✅ |
 | 005b | Foto de la inscripción y panel de solicitudes | Sí | ✅ |
-| 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | 🟨 |
-| 006b | Historial y PDF del cierre de caja | Sí | ⬜ |
+| 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | ✅ |
+| 006b | Historial y PDF del cierre de caja | Sí | 🟨 |
 | 007 | Pagos, verificación y paso de cliente a alumno | Sí | ⬜ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
@@ -139,10 +139,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Estado: spec aprobada por Bryan el 22/11/2026 (DR-1 a DR-11 y DT-1 a DT-6 de 006, todas con la propuesta), en
     [`specs/006-caja/`](006-caja/spec.md). Por DR-10 se entrega en dos PR desde esa misma carpeta, los dos de ruta
     crítica:
-    - **006a · caja del día** (primero): criterios 1 a 39, y 45 y 46 sin el historial ni el PDF (tablas, aislamiento,
+    - **006a · caja del día** (unida a main el 22/11/2026, [PR #11](https://github.com/brayanAndy1996/piscina/pull/11)): criterios 1 a 39, y 45 y 46 sin el historial ni el PDF (tablas, aislamiento,
       permisos con `REABRIR_CAJA`, apertura, egresos, cierre, reapertura, la interfaz para la 007 y la pantalla
       `/panel/caja`).
-    - **006b · historial y PDF del cierre** (siguiente PR, con la 006a unida): criterios 40 a 44, más su parte de 45 y 46
+    - **006b · historial y PDF del cierre** (en curso): criterios 40 a 44, más su parte de 45 y 46
       (historial con el alcance de la secretaria, detalle, PDF bajo pedido con `pdfkit`). Sin migración.
   - Lo decidido: una caja abierta a la vez por academia y una por día (DR-1); la caja de un día anterior no admite
     movimientos y se cierra, contando el efectivo y con la marca «tardío», antes de abrir la de hoy (DR-2); el egreso es
