@@ -33,6 +33,12 @@ const OPCIONES: readonly Opcion[] = [
     ruta: (nombreCorto) => `/a/${encodeURIComponent(nombreCorto)}/inscripcion`,
   },
   {
+    permiso: 'ABRIR_CERRAR_CAJA',
+    texto: 'Caja',
+    descripcion: 'Abre la caja del día, registra los egresos y ciérrala al final contando el efectivo.',
+    ruta: () => '/panel/caja',
+  },
+  {
     permiso: 'GESTIONAR_USUARIOS',
     texto: 'Usuarios',
     descripcion: 'Crea, desactiva o reactiva al personal de la academia.',

@@ -15,6 +15,11 @@ const CONTROLES_O_SUSTITUTOS = /[\p{Cc}\p{Cs}]/u;
 /** Control bidireccional (U+061C, U+200E, U+200F, U+202A a U+202E, U+2066 a U+2069) y separadores U+2028 y U+2029. */
 const BIDI_O_SEPARADORES = /[\p{Bidi_Control}\u2028\u2029]/u;
 
+/** `true` si el texto trae un carácter de dirección del texto o un separador de línea o de párrafo (U+2028 y U+2029). */
+export function tieneBidiOSeparadores(texto: string): boolean {
+  return BIDI_O_SEPARADORES.test(texto);
+}
+
 /** Lo que se ve: letras, números, signos de puntuación y símbolos. No cuentan espacios, formato ni marcas combinantes. */
 const VISIBLES = /[\p{L}\p{N}\p{P}\p{S}]/u;
 
@@ -70,7 +75,7 @@ export function textoVisibleSchema(opciones: { sujeto: string; min: number; max:
       .max(max, `${sujeto} debe tener como máximo ${max} caracteres.`),
     `${sujeto} no puede contener caracteres de control ni caracteres no válidos.`,
   )
-    .refine((valor) => !BIDI_O_SEPARADORES.test(valor), {
+    .refine((valor) => !tieneBidiOSeparadores(valor), {
       message: `${sujeto} no puede contener caracteres de dirección del texto ni separadores de línea.`,
     })
     .refine((valor) => contarVisibles(valor) >= visibles, {

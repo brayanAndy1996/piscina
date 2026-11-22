@@ -16,8 +16,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 003 | Configuración de la academia | En parte | ✅ |
 | 004 | Planes y clases con aforo | En parte | ✅ |
 | 005a | Inscripción pública, reserva y seguimiento de la solicitud | Sí | ✅ |
-| 005b | Foto de la inscripción y panel de solicitudes | Sí | 🟨 |
-| 006 | Caja | Sí | ⬜ |
+| 005b | Foto de la inscripción y panel de solicitudes | Sí | ✅ |
+| 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | 🟨 |
+| 006b | Historial y PDF del cierre de caja | Sí | ⬜ |
 | 007 | Pagos, verificación y paso de cliente a alumno | Sí | ⬜ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
@@ -85,7 +86,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
       DR-5 de 004, web pública).
     - **005b · foto y panel de solicitudes** (siguiente PR, con la 005a unida): criterios 34 a 40 y 46 (`AlmacenArchivos`,
       `sharp` y la foto; lista, cancelación y ocupación en el panel), más la foto en 28, 33, 43 y 44 y su parte de 48.
-  - Estado de la 005a: unida a `main` el 20/11/2026 (PR #8), tras dos rondas adversariales. La 005b sigue en curso.
+  - Estado: la 005a se unió a `main` el 20/11/2026 (PR #8), tras dos rondas adversariales; la 005b, el 22/11/2026 (PR #10), tras tres rondas. La historia 005 queda completa.
   - Antes de publicar el formulario: `trust proxy` con el hosting (DT-9 de 005; aviso en las notas de hosting de la 002).
   - Hosting (D-21), pregunta R7 de 005 (ronda 2 del ataque de la 005a, no bloquea): la agrupación de IPv6 por /64 no
     frena a quien controla un /56 o un /48 (con un /56, hasta 256 × 5 reservas sin pagar a la vez). Propuesta: un
@@ -135,6 +136,18 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     - Cualquier índice sobre `lower()` exige una base con `LC_CTYPE` UTF-8 (criterio 34 c de 004).
 - **006 · Caja.** Apertura, movimientos, egresos, cierre con esperado por método y diferencia, reapertura por el
   administrador, PDF del cierre (HU-25 a HU-27, RN-17).
+  - Estado: spec aprobada por Bryan el 22/11/2026 (DR-1 a DR-11 y DT-1 a DT-6 de 006, todas con la propuesta), en
+    [`specs/006-caja/`](006-caja/spec.md). Por DR-10 se entrega en dos PR desde esa misma carpeta, los dos de ruta
+    crítica:
+    - **006a · caja del día** (primero): criterios 1 a 39, y 45 y 46 sin el historial ni el PDF (tablas, aislamiento,
+      permisos con `REABRIR_CAJA`, apertura, egresos, cierre, reapertura, la interfaz para la 007 y la pantalla
+      `/panel/caja`).
+    - **006b · historial y PDF del cierre** (siguiente PR, con la 006a unida): criterios 40 a 44, más su parte de 45 y 46
+      (historial con el alcance de la secretaria, detalle, PDF bajo pedido con `pdfkit`). Sin migración.
+  - Lo decidido: una caja abierta a la vez por academia y una por día (DR-1); la caja de un día anterior no admite
+    movimientos y se cierra, contando el efectivo y con la marca «tardío», antes de abrir la de hoy (DR-2); el egreso es
+    siempre en efectivo, sin superar el efectivo de la caja (DR-3, DR-4); los movimientos no se anulan (DR-5); no hay
+    ingresos manuales (DR-11).
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de
   operación sin duplicados, caja al verificar (D-04), paso de cliente a alumno con usuario (HU-04, HU-07 a HU-09,
   RN-01, RN-04, RN-28), ticket interno (D-09).
@@ -166,6 +179,16 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Desde 005a: las reglas para la 007 (comprobante con reserva sin límite, rechazo que cancela la matrícula y libera el cupo,
     confirmación que crea al alumno, y `calcularTotal` con lo guardado en la matrícula) están en «Inscripción pública, reserva
     y seguimiento (005a)» de [`docs/arquitectura.md`](../docs/arquitectura.md).
+  - **Desde 006a (criterios 24 a 26 y «Reglas para las historias siguientes» de la spec 006):** todo cobro en efectivo y
+    toda verificación de Yape o transferencia registra su ingreso con `registrarIngresoEnCaja(tx, ingreso, ahora)`
+    (`backend/src/modulos/caja/`), dentro de su propia transacción y antes de confirmar, con el método real (un Yape entra
+    como `YAPE` y no suma al efectivo, D-04) y el total ya calculado y redondeado (la caja no cambia montos, D-03). Si lanza
+    409 `SIN_CAJA_ABIERTA` o `CAJA_DE_OTRO_DIA`, la transacción completa del cobro se revierte: no queda un pago
+    confirmado sin su movimiento. Un pago entra una sola vez (`pago_id` único; si se repite, devuelve `repetido: true`).
+    Orden de bloqueos: `bloquearActorVigente` → filas del cliente (`alumnos`, `solicitudes_inscripcion`, `matriculas`,
+    `pagos`) → `bloquearClasesParaCupo` → **la caja, al final**. La 007 le pone la llave foránea a
+    `movimientos_caja.pago_id` cuando cree `pagos`, reutiliza el tipo `metodo_pago` y puede usar `leerCajaAbierta` para
+    avisar "Abre la caja antes de cobrar" sin decidir con ella. La caja de un día anterior no admite cobros (DR-2 de 006).
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
   - **Desde 005b (DR-21 de 005, antes B5):** agregar la foto después desde el panel (a una solicitud o un alumno ya
@@ -215,6 +238,11 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **017:** HU-41, RN-33.
 - **018:** HU-35, HU-36, RN-23, RN-24. Lo crítico: aforo y descuento de clases recuperables.
 - **019:** HU-39, RN-31, RN-35, D-02. Lo crítico: el egreso de caja.
+  - Desde 006a: el pago a un entrenador "desde caja" es un egreso de la caja abierta del día con `registrarEgresoEnCaja`
+    (criterios 19 a 22 de 006: no entra a una caja cerrada ni de otro día, no supera el efectivo, idempotente con clave),
+    con la caja bloqueada al final (orden de bloqueos de la spec 006). La 019 suma su concepto al tipo
+    `concepto_movimiento_caja` en su migración y ajusta el `CHECK` de los egresos de `movimientos_caja`, que hoy solo
+    admite `EGRESO_MENOR`.
 - **020:** HU-38, RN-30. Lo crítico: aforo y descuento del plan.
 
 ## Después del MVP

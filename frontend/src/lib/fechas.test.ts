@@ -5,12 +5,22 @@ import {
   formatearFecha,
   formatearFechaCalendario,
   formatearFechaHora,
+  formatearHora,
   formatearMes,
+  hoyEnLima,
 } from './fechas';
 
 describe('fechas en America/Lima', () => {
   it('formatea la fecha con dd/MM/yyyy', () => {
     expect(formatearFecha('2026-11-12T03:00:00.000Z')).toBe('11/11/2026');
+  });
+
+  it('formatea solo la hora con HH:mm de 24 horas', () => {
+    expect(formatearHora('2026-11-12T03:05:00.000Z')).toBe('22:05');
+    // Medianoche en Lima (05:00 UTC): "00:00" y no "24:00".
+    expect(formatearHora('2026-11-12T05:00:00.000Z')).toBe('00:00');
+    // Las 19:30 en Lima ya son el día siguiente en UTC.
+    expect(formatearHora('2026-12-01T00:30:00.000Z')).toBe('19:30');
   });
 
   it('formatea fecha y hora con dd/MM/yyyy HH:mm de 24 horas', () => {
@@ -46,5 +56,13 @@ describe('mes en palabras', () => {
 
   it('un texto que no es un mes se muestra tal cual', () => {
     expect(formatearMes('2026-13')).toBe('2026-13');
+  });
+});
+
+describe('hoy en Lima', () => {
+  it('es la fecha de Lima, no la de UTC ni la del navegador', () => {
+    expect(hoyEnLima(new Date('2026-11-22T04:59:59.000Z'))).toBe('2026-11-21');
+    expect(hoyEnLima(new Date('2026-11-22T05:00:00.000Z'))).toBe('2026-11-22');
+    expect(hoyEnLima(new Date('2026-11-23T04:30:00.000Z'))).toBe('2026-11-22');
   });
 });

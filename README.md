@@ -184,6 +184,44 @@ lint, los tipos y la integración continua en Windows) y el PR para unirse a `ma
 La historia 005 (la 005a y la 005b) está en [`specs/005-inscripcion-publica/`](specs/005-inscripcion-publica/spec.md). Su estado
 está en [`specs/backlog.md`](specs/backlog.md).
 
+**006a · Caja del día** está construida. Falta la verificación final (la suite completa, el lint, los tipos y la
+integración continua en Windows) y el PR para unirse a `main`. Trae:
+
+- **Apertura:** la secretaria o el administrador abren la caja del día con su monto inicial, que puede ser cero. Hay una
+  caja por día y una abierta a la vez en cada academia. Si la caja de un día anterior sigue abierta, hay que cerrarla
+  antes de abrir la de hoy.
+- **Egresos:** siempre en efectivo, con una descripción (de 3 a 200 caracteres), un monto y un comprobante opcional (hasta
+  60 caracteres, por ejemplo «Boleta B001-123»). No pueden superar el efectivo esperado: el sistema responde 409
+  `EFECTIVO_INSUFICIENTE`. Los movimientos no se editan ni se borran.
+- **Cierre:** antes de contar, la caja muestra el esperado por método: efectivo, Yape y transferencia (estos dos no suman
+  al efectivo). Al declarar el efectivo contado, la diferencia se ve mientras se escribe, y si no cuadra, la observación es
+  obligatoria. El cierre guarda una foto de lo calculado y su resultado: cuadra, sobrante o faltante. Un cierre de una caja
+  de un día anterior queda marcado como «tardío».
+- **Reapertura:** solo el administrador puede reabrir una caja cerrada, con un motivo de 3 a 200 caracteres. Cada cierre
+  queda guardado, también los anteriores a la reapertura. No se puede reabrir si hay otra caja abierta.
+- **Ningún movimiento en una caja cerrada ni de otro día:** la aplicación lo comprueba con la fecha de Lima, y la base de
+  datos rechaza además cualquier movimiento en una caja que no esté abierta (un trigger).
+- **Auditoría:** cada apertura, egreso, cierre y reapertura queda en la auditoría de la academia, con quién, cuándo y qué.
+  Todavía no hay pantalla para verla.
+- **Web:** `/panel/caja`, con la opción **Caja** del inicio del panel, para el administrador y la secretaria. La reapertura
+  solo la ve el administrador.
+- **API:** `GET /api/cajas/actual`, `POST /api/cajas`, `POST /api/cajas/{id}/egresos`, `POST /api/cajas/{id}/cierre` y
+  `POST /api/cajas/{id}/reapertura`. Esta última usa el permiso nuevo `REABRIR_CAJA`, que solo tiene el administrador.
+- **Interfaz para los cobros:** `registrarIngresoEnCaja`, `registrarEgresoEnCaja` y `leerCajaAbierta` (en
+  `backend/src/modulos/caja/`) son la forma en que la 007, la 016 y la 019 registran dinero en la caja. Todavía no hay
+  cobros: llegan con la 007. Sus reglas están en [`docs/arquitectura.md`](docs/arquitectura.md).
+- **Datos de ejemplo:** `delfines` tiene una caja cerrada del 2 de noviembre de 2026, con un egreso de S/ 15.50 y un
+  sobrante de S/ 0.50. `/panel/caja` solo muestra la caja de hoy, así que esa se verá en el historial (006b). `tiburones`
+  queda sin cajas.
+- **Sin paquetes ni variables nuevas.** La migración es `20261122120000_caja`.
+- **Lo que todavía no trae:** los cobros y las verificaciones de pago (007 y 016), el egreso desde caja de los
+  entrenadores (019), el historial y el PDF del cierre (006b), y la reapertura de un día anterior desde la web (006b).
+- **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria y pulsa **Caja**. El paso a paso está
+  en la guía, en «Probar la caja del día».
+
+La historia 006 (la 006a) está en [`specs/006-caja/`](specs/006-caja/spec.md). Su estado está en
+[`specs/backlog.md`](specs/backlog.md).
+
 ## Cómo levantarlo en Windows
 
 La guía paso a paso, escrita para quien no es experto, está en
@@ -222,6 +260,10 @@ Si ya tenías la historia 004 y traes la 005a, ejecuta `npm ci` y `npm run db:pr
 Si ya tenías la historia 005a y traes la 005b, ejecuta `npm ci`: la 005b agrega `sharp`, que recodifica las fotos, y no tiene
 migraciones. Los pasos están en la guía, en "Después de traer la historia 005b".
 
+Si ya tenías la historia 005b y traes la 006a, ejecuta `npm run db:preparar`: la 006a agrega las tablas de la caja, con su
+migración, y la semilla suma la caja cerrada de ejemplo de `delfines`. No hay paquetes ni variables nuevas, así que `npm ci`
+no hace falta. Los pasos están en la guía, en "Después de traer la historia 006a".
+
 ## Comandos principales
 
 | Comando                                                                 | Qué hace                                                                                                          |
@@ -236,7 +278,7 @@ migraciones. Los pasos están en la guía, en "Después de traer la historia 005
 | `npm run db:crear`                                                      | Crea solo el rol `aquagestion_app` y las bases que falten (lo usa `db:preparar`).                                 |
 | `npm run db:migrar`, `npm run db:migrar:pruebas`                        | Aplica las migraciones pendientes a la base de desarrollo o a la de pruebas.                                      |
 | `npm run db:migracion`                                                  | Crea una migración nueva a partir de un cambio en el esquema de Prisma.                                           |
-| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo, el teléfono de ejemplo de `delfines` sus planes y clases de ejemplo y sus clientes con solicitud, si no existen.              |
+| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo, el teléfono de ejemplo de `delfines`, sus planes, clases y clientes con solicitud, y su caja cerrada de ejemplo, si no existen.              |
 | `npm run env:completar`                                                 | Agrega a `.env` las variables de `.env.example` que falten, sin cambiar las que ya tienes.                        |
 | `npm run plataforma:superadmin`                                         | Crea el superadmin de la plataforma o le restablece la clave, con `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE`. |
 | `npm run verificar:pruebas-protegidas`, `npm run verificar:sin-secretos` | Verificaciones del método y de seguridad del repositorio.                                                         |
@@ -260,6 +302,10 @@ migraciones. Los pasos están en la guía, en "Después de traer la historia 005
 - **Aforo y choques de clases:** el cupo de cada clase se bloquea con `bloquearClasesParaCupo` antes de contar u escribir, y
   los choques de clases (el mismo entrenador o el mismo nivel en un bloque) los decide la base con índices únicos. Las reglas
   para las historias siguientes están en `docs/arquitectura.md`.
+- **Dinero y caja:** los montos son `Decimal` en la base y en el código, y viajan como texto (`"120.00"`). Las
+  transacciones de la caja toman primero al usuario que pide, y la caja al final. Las de los cobros (007) toman antes las
+  filas del cliente y las clases. Así ningún cobro entra en una caja que se está cerrando. Las reglas están en
+  `docs/arquitectura.md`.
 - **Archivos:** las fotos se guardan con `AlmacenArchivos`, en la carpeta de `ALMACEN_DIRECTORIO`, fuera de lo que sirve la web.
   Cada historia que guarda archivos los guarda antes de confirmar la transacción, y borra lo que reemplaza después de confirmar
   (reglas en `docs/arquitectura.md`).
@@ -296,7 +342,7 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 - [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, cómo
-  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes y las clases.
+  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases y la caja del día.
 
 ## Forma de trabajo
 

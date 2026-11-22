@@ -12,8 +12,10 @@ import {
   problemaDeUrlDeConexion,
 } from '../src/cli/conexion';
 import { mensajeSeguro } from '../src/cli/mensaje-seguro';
+import { aTextoMonto } from '../src/comun/dinero';
 import { hoyEnLima } from '../src/comun/fechas';
 import { Decimal } from '../src/infraestructura/prisma';
+import { calcularDiferencia, calcularResumen } from '../src/modulos/caja/dominio/esperado';
 import { montoProporcional } from '../src/modulos/matriculas/dominio/cobro';
 import { finDelMesEnLima } from '../src/modulos/matriculas/dominio/reserva';
 import { guardarSuperadmin, hayDatosDeSuperadmin, leerDatosSuperadmin } from '../src/cli/superadmin-datos';
@@ -140,6 +142,30 @@ const CLASES_DE_LOS_CLIENTES = [
   { dia: 5, hora: '18:00' },
 ] as const;
 const PLAN_DE_LOS_CLIENTES = '3 veces por semana';
+
+/**
+ * Caja de ejemplo de `delfines` (spec 006, criterio 45): una caja cerrada en una fecha fija pasada (no depende del día en que se ejecuta la
+ * semilla), abierta y cerrada por la secretaria de ejemplo, con un egreso y un cierre con un sobrante pequeño y su observación. Ninguna caja
+ * queda abierta, y `tiburones` queda sin cajas. Las claves de idempotencia son fijas: repetir la semilla no duplica ni falla.
+ */
+const CAJA_DE_EJEMPLO = {
+  fecha: '2026-11-02',
+  dniSecretaria: '10000002',
+  montoInicial: '100.00',
+  abiertaEn: new Date('2026-11-02T09:00:00-05:00'),
+  egreso: {
+    monto: '15.50',
+    descripcion: 'Compra de útiles de limpieza',
+    comprobante: 'Boleta B001-123',
+    registradoEn: new Date('2026-11-02T10:30:00-05:00'),
+  },
+  montoDeclarado: '85.00',
+  observacion: 'Sobró medio sol del vuelto de la compra',
+  cerradoEn: new Date('2026-11-02T18:00:00-05:00'),
+  claveDeLaCaja: '6a1c0000-0000-4000-8000-000000000001',
+  claveDelEgreso: '6a1c0000-0000-4000-8000-000000000002',
+  claveDelCierre: '6a1c0000-0000-4000-8000-000000000003',
+} as const;
 
 async function sembrar(): Promise<number> {
   cargarEnvDeLaRaiz();
@@ -424,6 +450,66 @@ async function sembrar(): Promise<number> {
         : clientesCreados > 0
           ? `Clientes de ejemplo con solicitud agregados a delfines: ${clientesCreados}`
           : 'Los clientes de ejemplo de delfines ya existían',
+    );
+    // La caja de ejemplo (criterio 45): se abre, se registra su egreso, se cierra y recién entonces queda cerrada (el trigger de la base no
+    // deja insertar movimientos en una caja cerrada). Si la fecha, la clave o una caja abierta chocan, no se agrega nada.
+    const secretarias = await enAcademia(
+      cliente,
+      delfinesId,
+      (tx) =>
+        tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM usuarios
+           WHERE academia_id = ${delfinesId}::uuid AND dni = ${CAJA_DE_EJEMPLO.dniSecretaria} AND rol = 'SECRETARIA'::rol_usuario`,
+    );
+    const secretariaId = secretarias[0]?.id;
+    const cajaSembrada = secretariaId
+      ? await enAcademia(cliente, delfinesId, async (tx) => {
+          const ejemplo = CAJA_DE_EJEMPLO;
+          const cajas = await tx.$queryRaw<{ id: string }[]>`
+            INSERT INTO cajas (id, academia_id, fecha, estado, monto_inicial, abierta_por, abierta_en, clave_idempotencia, creado_en,
+                               actualizado_en)
+            VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${ejemplo.fecha}::date, 'ABIERTA'::estado_caja, ${ejemplo.montoInicial}::numeric,
+                    ${secretariaId}::uuid, ${ejemplo.abiertaEn}::timestamptz, ${ejemplo.claveDeLaCaja}::uuid, ${ahora}::timestamptz,
+                    ${ahora}::timestamptz)
+            ON CONFLICT DO NOTHING
+            RETURNING id::text AS id`;
+          const caja = cajas[0];
+          if (!caja) return false;
+          await tx.$executeRaw`
+            INSERT INTO movimientos_caja (id, academia_id, caja_id, numero, tipo, concepto, metodo, monto, descripcion, comprobante,
+                                          registrado_por, registrado_en, clave_idempotencia)
+            VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${caja.id}::uuid, 1, 'EGRESO'::tipo_movimiento_caja,
+                    'EGRESO_MENOR'::concepto_movimiento_caja, 'EFECTIVO'::metodo_pago, ${ejemplo.egreso.monto}::numeric,
+                    ${ejemplo.egreso.descripcion}, ${ejemplo.egreso.comprobante}, ${secretariaId}::uuid,
+                    ${ejemplo.egreso.registradoEn}::timestamptz, ${ejemplo.claveDelEgreso}::uuid)`;
+          // Las cuentas del cierre son las del dominio (la misma función que la API), no literales.
+          const resumen = calcularResumen({
+            montoInicial: new Decimal(ejemplo.montoInicial),
+            movimientos: [{ tipo: 'EGRESO', metodo: 'EFECTIVO', monto: new Decimal(ejemplo.egreso.monto) }],
+          });
+          const { diferencia } = calcularDiferencia(new Decimal(ejemplo.montoDeclarado), resumen.esperado.efectivo);
+          await tx.$executeRaw`
+            INSERT INTO cierres_caja (id, academia_id, caja_id, numero, movimientos_hasta, monto_inicial, ingresos_efectivo, ingresos_yape,
+                                      ingresos_transferencia, egresos_efectivo, esperado_efectivo, monto_declarado, diferencia, observacion,
+                                      tardio, cerrado_por, cerrado_en, clave_idempotencia, creado_en)
+            VALUES (gen_random_uuid(), ${delfinesId}::uuid, ${caja.id}::uuid, 1, 1, ${aTextoMonto(ejemplo.montoInicial)}::numeric,
+                    ${aTextoMonto(resumen.ingresos.efectivo)}::numeric, ${aTextoMonto(resumen.ingresos.yape)}::numeric,
+                    ${aTextoMonto(resumen.ingresos.transferencia)}::numeric, ${aTextoMonto(resumen.egresos.efectivo)}::numeric,
+                    ${aTextoMonto(resumen.esperado.efectivo)}::numeric, ${aTextoMonto(ejemplo.montoDeclarado)}::numeric,
+                    ${aTextoMonto(diferencia)}::numeric, ${ejemplo.observacion}, false, ${secretariaId}::uuid,
+                    ${ejemplo.cerradoEn}::timestamptz, ${ejemplo.claveDelCierre}::uuid, ${ejemplo.cerradoEn}::timestamptz)`;
+          await tx.$executeRaw`
+            UPDATE cajas SET estado = 'CERRADA'::estado_caja, actualizado_en = ${ejemplo.cerradoEn}::timestamptz
+             WHERE academia_id = ${delfinesId}::uuid AND id = ${caja.id}::uuid`;
+          return true;
+        })
+      : false;
+    console.log(
+      !secretariaId
+        ? 'No se agregó la caja de ejemplo a delfines: falta la secretaria de ejemplo'
+        : cajaSembrada
+          ? 'Caja de ejemplo cerrada agregada a delfines'
+          : 'La caja de ejemplo de delfines ya existía (o hay una caja abierta que impide agregarla)',
     );
     return 0;
   } catch (error) {

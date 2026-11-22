@@ -79,6 +79,9 @@ model Academia {
   solicitudes     SolicitudInscripcion[]
   matriculas      Matricula[]
   matriculaClases MatriculaClase[]
+  cajas           Caja[]
+  movimientosCaja MovimientoCaja[]
+  cierresCaja     CierreCaja[]
 
   @@map("academias")
 }
@@ -172,9 +175,13 @@ model Usuario {
   creadoEn         DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn    DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
-  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  clases   Clase[]
-  alumnos  Alumno[]
+  academia          Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  clases            Clase[]
+  alumnos           Alumno[]
+  cajasAbiertas     Caja[]           @relation("CajaAbiertaPor")
+  movimientosCaja   MovimientoCaja[]
+  cierresCerrados   CierreCaja[]     @relation("CierreCerradoPor")
+  cierresReabiertos CierreCaja[]     @relation("CierreReabiertoPor")
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
@@ -351,6 +358,7 @@ model Alumno {
   consentimientos Consentimiento[]
   solicitudes     SolicitudInscripcion[]
   matriculas      Matricula[]
+  movimientosCaja MovimientoCaja[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
@@ -500,4 +508,133 @@ model MatriculaClase {
   @@id([academiaId, matriculaId, claseId])
   @@index([academiaId, claseId])
   @@map("matricula_clases")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Historia 006a · Caja del día (D-17, D-23, D-25; HU-25 a HU-27, RN-17, RN-22). Los CHECK de los montos y de las cuentas del cierre, los
+// índices únicos parciales (una caja abierta, una entrada por pago, una clave por egreso, un cierre vigente), el trigger de la caja cerrada,
+// las políticas de RLS y los privilegios van a mano en la migración. La API escribe con SQL (`$queryRaw` y `$executeRaw`), no con estos
+// modelos: existen para que Prisma conozca las tablas y sus llaves compuestas.
+// ---------------------------------------------------------------------------------------------------------------------
+
+enum EstadoCaja {
+  ABIERTA
+  CERRADA
+
+  @@map("estado_caja")
+}
+
+enum TipoMovimientoCaja {
+  INGRESO
+  EGRESO
+
+  @@map("tipo_movimiento_caja")
+}
+
+enum ConceptoMovimientoCaja {
+  INSCRIPCION
+  MENSUALIDAD
+  CLASE_PARTICULAR
+  EGRESO_MENOR
+
+  @@map("concepto_movimiento_caja")
+}
+
+enum MetodoPago {
+  EFECTIVO
+  YAPE
+  TRANSFERENCIA
+
+  @@map("metodo_pago")
+}
+
+/// La caja del día de una academia: una abierta a la vez y una por día (DR-1). `fecha` es la de America/Lima de `abiertaEn`. El rol de la
+/// API solo cambia el estado y `actualizadoEn`, y no borra filas (spec 006, criterio 2).
+model Caja {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId        String     @map("academia_id") @db.Uuid
+  fecha             DateTime   @db.Date
+  estado            EstadoCaja @default(ABIERTA)
+  montoInicial      Decimal    @map("monto_inicial") @db.Decimal(10, 2)
+  abiertaPorId      String     @map("abierta_por") @db.Uuid
+  abiertaEn         DateTime   @map("abierta_en") @db.Timestamptz(3)
+  claveIdempotencia String     @map("clave_idempotencia") @db.Uuid
+  creadoEn          DateTime   @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn     DateTime   @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia    Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  abiertaPor  Usuario          @relation("CajaAbiertaPor", fields: [academiaId, abiertaPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  movimientos MovimientoCaja[]
+  cierres     CierreCaja[]
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, claveIdempotencia])
+  @@unique([academiaId, fecha])
+  @@map("cajas")
+}
+
+/// Un ingreso (de un cobro, 007) o un egreso menor (en efectivo) de la caja. No cambia ni se borra (DR-5). `pagoId` no tiene llave foránea
+/// hasta la 007. Los índices únicos parciales por `pago_id` y por `clave_idempotencia` y el trigger de la caja cerrada van a mano.
+model MovimientoCaja {
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId        String                 @map("academia_id") @db.Uuid
+  cajaId            String                 @map("caja_id") @db.Uuid
+  numero            Int
+  tipo              TipoMovimientoCaja
+  concepto          ConceptoMovimientoCaja
+  metodo            MetodoPago
+  monto             Decimal                @db.Decimal(10, 2)
+  descripcion       String?
+  comprobante       String?
+  alumnoId          String?                @map("alumno_id") @db.Uuid
+  pagoId            String?                @map("pago_id") @db.Uuid
+  registradoPorId   String                 @map("registrado_por") @db.Uuid
+  registradoEn      DateTime               @map("registrado_en") @db.Timestamptz(3)
+  claveIdempotencia String?                @map("clave_idempotencia") @db.Uuid
+
+  academia      Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  caja          Caja     @relation(fields: [academiaId, cajaId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  alumno        Alumno?  @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor Usuario  @relation(fields: [academiaId, registradoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, cajaId, numero])
+  @@map("movimientos_caja")
+}
+
+/// Cada cierre de una caja: la foto de lo calculado al cerrar (D1). Solo cambia para registrar su reapertura (quién, cuándo y el motivo).
+/// Los CHECK de las cuentas y el índice único parcial del cierre vigente van a mano.
+model CierreCaja {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId            String    @map("academia_id") @db.Uuid
+  cajaId                String    @map("caja_id") @db.Uuid
+  numero                Int       @db.SmallInt
+  movimientosHasta      Int       @map("movimientos_hasta")
+  montoInicial          Decimal   @map("monto_inicial") @db.Decimal(12, 2)
+  ingresosEfectivo      Decimal   @map("ingresos_efectivo") @db.Decimal(12, 2)
+  ingresosYape          Decimal   @map("ingresos_yape") @db.Decimal(12, 2)
+  ingresosTransferencia Decimal   @map("ingresos_transferencia") @db.Decimal(12, 2)
+  egresosEfectivo       Decimal   @map("egresos_efectivo") @db.Decimal(12, 2)
+  esperadoEfectivo      Decimal   @map("esperado_efectivo") @db.Decimal(12, 2)
+  montoDeclarado        Decimal   @map("monto_declarado") @db.Decimal(12, 2)
+  diferencia            Decimal   @db.Decimal(12, 2)
+  observacion           String?
+  tardio                Boolean
+  cerradoPorId          String    @map("cerrado_por") @db.Uuid
+  cerradoEn             DateTime  @map("cerrado_en") @db.Timestamptz(3)
+  claveIdempotencia     String    @map("clave_idempotencia") @db.Uuid
+  reabiertoPorId        String?   @map("reabierto_por") @db.Uuid
+  reabiertoEn           DateTime? @map("reabierto_en") @db.Timestamptz(3)
+  motivoReapertura      String?   @map("motivo_reapertura")
+  creadoEn              DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  academia     Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  caja         Caja     @relation(fields: [academiaId, cajaId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  cerradoPor   Usuario  @relation("CierreCerradoPor", fields: [academiaId, cerradoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  reabiertoPor Usuario? @relation("CierreReabiertoPor", fields: [academiaId, reabiertoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, cajaId, numero])
+  @@unique([academiaId, claveIdempotencia])
+  @@map("cierres_caja")
 }

@@ -295,6 +295,23 @@ npm run dev
   y no hace falta: si no está, las fotos se guardan en `backend\almacenamiento`, dentro de la carpeta del proyecto, que Git no
   sube. Si quieres otra carpeta, mira "Dónde se guardan las fotos".
 
+## Después de traer la historia 006a
+
+Si ya tenías el proyecto con la historia 005b, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- `npm run db:preparar` aplica la migración de la caja (`20261122120000_caja`), que crea sus tres tablas, y ejecuta la
+  semilla, que agrega a `delfines` una caja cerrada de ejemplo. Si esa caja ya existe, no agrega nada, así que puedes
+  repetirlo.
+- La 006a no trae paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta.
+- Si `npm run db:preparar` se detiene, lee el mensaje que muestra y vuelve a ejecutarlo.
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -395,14 +412,18 @@ La contraseña inicial de cada uno es su DNI, y debe cambiarla al entrar. El DNI
 
 `delfines` también tiene un teléfono de ejemplo, `+51 999 000 111`, que se ve en **Configuración** (ver "Probar la
 configuración de la academia"). Además tiene un segundo entrenador (Paula Fuentes Ibarra), dos planes y ocho clases de
-ejemplo (ver "Probar planes y clases"), y tres clientes con una solicitud de inscripción (ver "Probar la inscripción pública").
+ejemplo (ver "Probar planes y clases"), y tres clientes con una solicitud de inscripción (ver "Probar la inscripción pública"). Además tiene una caja cerrada de
+ejemplo del 2 de noviembre de 2026 (ver "Probar la caja del día").
 
 Lo que ves en `/panel` depende del rol:
 
-- **Administrador:** **Usuarios** (el personal), **Restablecer contraseña**, **Configuración** (la configuración de la
-  academia, más abajo) y **Planes** y **Clases y horarios** (ver "Probar planes y clases"). En **Usuarios** puedes crear, desactivar,
+- **Administrador:** **Solicitudes de inscripción** y **Nueva inscripción** (ver "Probar la foto y el panel de
+  solicitudes"), **Caja** (ver "Probar la caja del día"), **Usuarios** (el personal), **Restablecer contraseña**,
+  **Configuración** (la configuración de la academia, más abajo) y **Planes** y **Clases y horarios** (ver "Probar planes y
+  clases"). En **Usuarios** puedes crear, desactivar,
   reactivar y restablecer al personal. No puedes desactivar ni restablecer tu propia cuenta.
-- **Secretaria:** **Restablecer contraseña**, solo para alumnos.
+- **Secretaria:** **Solicitudes de inscripción**, **Nueva inscripción** y **Caja** (ver "Probar la caja del día"), y
+  **Restablecer contraseña**, solo para alumnos.
 - **Entrenador y alumno:** solo **Cambiar contraseña**. Las demás pantallas llegan con sus historias.
 
 Quién restablece a quién: el administrador, a cualquier usuario de su academia menos a sí mismo; la secretaria, solo a
@@ -618,6 +639,48 @@ La API **no arranca** si la ruta tiene alguna de estas formas. El mensaje de err
 
 Un nombre corto justo debajo del proyecto, como `ALMAC~1`, también se rechaza: escribe el nombre largo. Después de cambiar el
 valor, guarda `.env` como UTF-8 y vuelve a ejecutar `npm run dev`.
+
+## Probar la caja del día
+
+La caja del día (historia 006a) la usan el administrador y la secretaria. Con `npm run dev` encendido:
+
+1. Abre **http://localhost:5173/a/delfines/ingresar** y entra como la secretaria (`10000002`) o como el administrador
+   (`10000001`), de la tabla de "Entrar como usuario de una academia".
+2. En el inicio del panel, pulsa **Caja** (`/panel/caja`). La página muestra la caja de hoy, o la que siga abierta de un
+   día anterior, y lo que ves depende de su estado:
+   - **Sin caja de hoy:** el formulario **Abrir caja**. Escribe el **Monto inicial (S/)**, el efectivo con el que empiezas
+     el día. Puede ser 0.
+   - **Caja de hoy abierta:** el resumen, la lista de movimientos y los botones **Registrar egreso** y **Cerrar caja**.
+   - **Caja de hoy cerrada:** el resultado del cierre (esperado, contado, diferencia y observación). El administrador ve
+     **Reabrir caja**. La secretaria ve el aviso de pedirle al administrador que la reabra.
+   - **Caja de un día anterior abierta:** un aviso para cerrarla. Mientras siga abierta no admite egresos ni cobros, y
+     solo aparece **Cerrar caja**. Antes de abrir la de hoy, hay que cerrarla.
+3. Para registrar un **egreso**, pulsa **Registrar egreso** y completa la **Descripción** (de 3 a 200 caracteres), el
+   **Monto (S/)** y, si quieres, el **Comprobante (opcional)**, por ejemplo `Boleta B001-123`. Un egreso sale siempre del
+   efectivo: el diálogo muestra el **Efectivo disponible**, y si el monto es mayor, el sistema lo rechaza. Un egreso no se
+   edita ni se borra. Si te equivocas, explícalo en la observación del cierre.
+4. Para **cerrar la caja**, pulsa **Cerrar caja**. Antes de contar, el diálogo muestra el **Efectivo esperado en el cajón**
+   y el esperado de Yape y de transferencia, que no suman al efectivo. Escribe el **Efectivo contado (S/)**: la diferencia
+   aparece mientras escribes. Si no cuadra, la **Observación (obligatoria)** es obligatoria (de 3 a 500 caracteres). Pulsa
+   **Cerrar caja** para confirmar. Si entró un movimiento mientras el diálogo estaba abierto, la página lo avisa ("Entró
+   un movimiento nuevo: revisa el conteo.") y vuelve a cargar la caja antes de cerrar.
+5. Para **reabrir** la caja de hoy (solo el administrador): con la caja cerrada, pulsa **Reabrir caja**, escribe el motivo
+   (de 3 a 200 caracteres) y confirma. La caja vuelve a estar abierta, con sus movimientos y los cierres anteriores, para
+   que puedas volver a contar y cerrar. No puede haber otra caja abierta.
+
+Un ejemplo para probar un faltante: abre la caja con **S/ 100.00**, registra un egreso de **S/ 15.50** (por ejemplo,
+"Compra de útiles de limpieza") y cierra con **S/ 80.00** contados. El esperado es S/ 84.50, así que faltan **S/ 4.50**.
+Escribe una observación y confirma: el resultado del cierre queda como **Faltante de S/ 4.50**.
+
+Cada apertura, egreso, cierre y reapertura queda en la auditoría de la academia. La pantalla de auditoría llega en la
+Fase 3.
+
+La caja de ejemplo de `delfines` (2 de noviembre de 2026) no aparece en **Caja**: la pantalla solo muestra la caja de hoy o
+la que siga abierta. Su historial y su PDF llegan con la 006b. Todavía no hay cobros: la caja tiene el monto inicial y los
+egresos, y los cobros llegan con la 007.
+
+Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`. La prueba
+de navegador de la caja corre con `npm run e2e`.
 
 ## Día a día
 

@@ -42,9 +42,48 @@ async function sembrarClienteConSolicitud(academiaId: string) {
   return sembrarSolicitud(academiaId, { planId, claseIds: [claseId], conApoderado: true });
 }
 
+/** Un usuario nuevo de la academia (la caja lo necesita para `abierta_por`, `registrado_por` y `cerrado_por`), con un DNI distinto. */
+async function sembrarUsuarioDeCaja(academiaId: string): Promise<string> {
+  const id = randomUUID();
+  const dni = String(10_000_000 + (randomBytes(4).readUInt32BE(0) % 89_999_999));
+  await ejecutarComo(
+    'propietario',
+    `INSERT INTO public.usuarios (id, academia_id, dni, nombres, apellidos, rol, clave_hash, creado_en, actualizado_en)
+     VALUES ($1::uuid, $2::uuid, $3, 'Secretaria', 'Sembrada', 'SECRETARIA', 'no-es-un-hash-real', now(), now())`,
+    [id, academiaId, dni],
+    { academiaId },
+  );
+  return id;
+}
+
+let contadorDeCajas = 0;
+const diaBaseDeCajas = Math.floor(Math.random() * 9_000);
+
+/**
+ * Historia 006: una caja nueva de la academia (siempre `CERRADA` y con un día distinto en cada llamada: la base exige una sola caja
+ * abierta y una sola por fecha en cada academia, así que ninguna llamada choca con otra). El día se cuenta desde 2000-01-01 y
+ * `abierta_en` es las 09:00 de ese día en Lima (el `CHECK` de la fecha de Lima).
+ */
+async function sembrarCaja(academiaId: string, estado: 'ABIERTA' | 'CERRADA' = 'CERRADA') {
+  contadorDeCajas += 1;
+  const dias = diaBaseDeCajas + contadorDeCajas;
+  const usuarioId = await sembrarUsuarioDeCaja(academiaId);
+  const cajaId = randomUUID();
+  await ejecutarComo(
+    'propietario',
+    `INSERT INTO public.cajas (id, academia_id, fecha, estado, monto_inicial, abierta_por, abierta_en, clave_idempotencia, creado_en,
+                              actualizado_en)
+     VALUES ($1::uuid, $2::uuid, (DATE '2000-01-01' + $3::int), $4::estado_caja, 0, $5::uuid,
+             ((DATE '2000-01-01' + $3::int) + TIME '09:00') AT TIME ZONE 'America/Lima', $6::uuid, now(), now())`,
+    [cajaId, academiaId, dias, estado, usuarioId, randomUUID()],
+    { academiaId },
+  );
+  return { cajaId, usuarioId };
+}
+
 export const SEMBRADORES_POR_TABLA: Readonly<Record<string, Sembrador>> = {
-  // hoy: 'public.auditoria', 'public.configuraciones', (historia 002) 'public.usuarios', (historia 004) 'public.planes' y 'public.clases' y
-  // (historia 005) las siete tablas de la inscripción.
+  // hoy: 'public.auditoria', 'public.configuraciones', (historia 002) 'public.usuarios', (historia 004) 'public.planes' y 'public.clases',
+  // (historia 005) las siete tablas de la inscripción y (historia 006) las tres tablas de la caja.
   'public.auditoria': async (academiaId) => {
     await ejecutarComo(
       'propietario',
@@ -133,5 +172,42 @@ export const SEMBRADORES_POR_TABLA: Readonly<Record<string, Sembrador>> = {
   },
   'public.matricula_clases': async (academiaId) => {
     await sembrarClienteConSolicitud(academiaId);
+  },
+  // Historia 006 (criterio 1: las pruebas de catálogo de la 001 siguen pasando con las tres tablas nuevas). Cada llamada crea una caja
+  // nueva (cerrada, de un día distinto) y lo que cuelga de ella.
+  'public.cajas': async (academiaId) => {
+    await sembrarCaja(academiaId);
+  },
+  // Un ingreso en una caja que se abre, se usa y se cierra enseguida: la base no deja insertar en una caja cerrada ni tener dos abiertas.
+  'public.movimientos_caja': async (academiaId) => {
+    const { cajaId, usuarioId } = await sembrarCaja(academiaId, 'ABIERTA');
+    const alumnoId = await crearAlumnoSolo(academiaId);
+    await ejecutarComo(
+      'propietario',
+      `INSERT INTO public.movimientos_caja (id, academia_id, caja_id, numero, tipo, concepto, metodo, monto, alumno_id, pago_id,
+                                           registrado_por, registrado_en)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 'INGRESO', 'INSCRIPCION', 'EFECTIVO', 42.00, $4::uuid, $5::uuid, $6::uuid, now())`,
+      [randomUUID(), academiaId, cajaId, alumnoId, randomUUID(), usuarioId],
+      { academiaId },
+    );
+    await ejecutarComo(
+      'propietario',
+      "UPDATE public.cajas SET estado = 'CERRADA' WHERE academia_id = $1::uuid AND id = $2::uuid",
+      [academiaId, cajaId],
+      { academiaId },
+    );
+  },
+  // Un cierre vigente con todos los montos en cero (las cuentas cuadran).
+  'public.cierres_caja': async (academiaId) => {
+    const { cajaId, usuarioId } = await sembrarCaja(academiaId);
+    await ejecutarComo(
+      'propietario',
+      `INSERT INTO public.cierres_caja (id, academia_id, caja_id, numero, movimientos_hasta, monto_inicial, ingresos_efectivo,
+                                       ingresos_yape, ingresos_transferencia, egresos_efectivo, esperado_efectivo, monto_declarado,
+                                       diferencia, observacion, tardio, cerrado_por, cerrado_en, clave_idempotencia, creado_en)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, false, $4::uuid, now(), $5::uuid, now())`,
+      [randomUUID(), academiaId, cajaId, usuarioId, randomUUID()],
+      { academiaId },
+    );
   },
 };

@@ -28,10 +28,36 @@ export function formatearFechaHora(iso: string): string {
   return `${partes['day']}/${partes['month']}/${partes['year']} ${partes['hour']}:${partes['minute']}`;
 }
 
+const FORMATO_HORA = new Intl.DateTimeFormat('es-PE', {
+  timeZone: 'America/Lima',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** La hora en America/Lima con formato `HH:mm` (24 horas) a partir de un instante ISO 8601 (UTC). */
+export function formatearHora(iso: string): string {
+  const partes = Object.fromEntries(FORMATO_HORA.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  return `${partes['hour']}:${partes['minute']}`;
+}
+
 /** Una fecha de calendario `AAAA-MM-DD` (por ejemplo, la vigencia de un plan) como `dd/MM/yyyy`. Es texto: no pasa por zona horaria. */
 export function formatearFechaCalendario(fecha: string): string {
   const [anio, mes, dia] = fecha.split('-');
   return anio && mes && dia ? `${dia}/${mes}/${anio}` : fecha;
+}
+
+const FORMATO_DIA_LIMA = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Lima',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** La fecha de calendario `AAAA-MM-DD` de hoy en America/Lima, sin depender de la zona del navegador. Se compara como texto. */
+export function hoyEnLima(instante: Date = new Date()): string {
+  const partes = Object.fromEntries(FORMATO_DIA_LIMA.formatToParts(instante).map((p) => [p.type, p.value]));
+  return `${partes['year']}-${partes['month']}-${partes['day']}`;
 }
 
 const DIA_ISO: Readonly<Record<string, DiaSemana>> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
