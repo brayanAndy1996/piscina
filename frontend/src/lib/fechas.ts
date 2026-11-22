@@ -28,6 +28,19 @@ export function formatearFechaHora(iso: string): string {
   return `${partes['day']}/${partes['month']}/${partes['year']} ${partes['hour']}:${partes['minute']}`;
 }
 
+const FORMATO_HORA = new Intl.DateTimeFormat('es-PE', {
+  timeZone: 'America/Lima',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** La hora en America/Lima con formato `HH:mm` (24 horas) a partir de un instante ISO 8601 (UTC). */
+export function formatearHora(iso: string): string {
+  const partes = Object.fromEntries(FORMATO_HORA.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  return `${partes['hour']}:${partes['minute']}`;
+}
+
 /** Una fecha de calendario `AAAA-MM-DD` (por ejemplo, la vigencia de un plan) como `dd/MM/yyyy`. Es texto: no pasa por zona horaria. */
 export function formatearFechaCalendario(fecha: string): string {
   const [anio, mes, dia] = fecha.split('-');

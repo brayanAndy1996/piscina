@@ -5,12 +5,21 @@ import {
   formatearFecha,
   formatearFechaCalendario,
   formatearFechaHora,
+  formatearHora,
   formatearMes,
 } from './fechas';
 
 describe('fechas en America/Lima', () => {
   it('formatea la fecha con dd/MM/yyyy', () => {
     expect(formatearFecha('2026-11-12T03:00:00.000Z')).toBe('11/11/2026');
+  });
+
+  it('formatea solo la hora con HH:mm de 24 horas', () => {
+    expect(formatearHora('2026-11-12T03:05:00.000Z')).toBe('22:05');
+    // Medianoche en Lima (05:00 UTC): "00:00" y no "24:00".
+    expect(formatearHora('2026-11-12T05:00:00.000Z')).toBe('00:00');
+    // Las 19:30 en Lima ya son el día siguiente en UTC.
+    expect(formatearHora('2026-12-01T00:30:00.000Z')).toBe('19:30');
   });
 
   it('formatea fecha y hora con dd/MM/yyyy HH:mm de 24 horas', () => {

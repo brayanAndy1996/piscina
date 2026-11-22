@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router';
+import { PaginaCaja } from '../modulos/caja/PaginaCaja';
 import { PaginaClases } from '../modulos/clases/PaginaClases';
 import { PaginaConfiguracion } from '../modulos/configuracion/PaginaConfiguracion';
 import { Inicio } from '../modulos/inicio/Inicio';
@@ -37,6 +38,7 @@ export function Rutas() {
         <Route path="/panel/planes" element={<PaginaPlanes />} />
         <Route path="/panel/clases" element={<PaginaClases />} />
         <Route path="/panel/solicitudes" element={<PaginaSolicitudes />} />
+        <Route path="/panel/caja" element={<PaginaCaja />} />
       </Route>
       <Route path="*" element={<PaginaNoEncontrada />} />
     </Routes>

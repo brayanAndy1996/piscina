@@ -113,6 +113,22 @@ conAcademia(A):
 viene vacío). Dos envíos simultáneos con la misma clave se ordenan en la fila de la caja: el segundo encuentra el
 movimiento del primero (`ReadCommitted` ve lo confirmado al empezar cada sentencia) y responde 200.
 
+**Ronda adversarial 1 (criterios 47 y 48).**
+
+- **Comprobante (criterio 47), en `packages/contratos/src/`:** el comprobante pasa a rechazar `BIDI_O_SEPARADORES` como
+  `textoVisibleSchema` y a normalizar a `null` lo que no tiene visibles (`contarVisibles(valor) === 0`, que incluye
+  `""`). Orden dentro del esquema: `trim` → controles → dirección y separadores → máximo 60 → `transform` a `null`. Para
+  no copiar la expresión, `texto.ts` exporta una función pequeña (por ejemplo `tieneBidiOSeparadores(texto)`, junto a
+  `tieneControles`) que usan `textoVisibleSchema` y el comprobante; `BIDI_O_SEPARADORES` no cambia.
+- **Interfaz del egreso (criterio 48 a y b):** `registrarEgresoEnCaja` empieza validando con los mismos esquemas de la
+  ruta: `registrarEgresoSchema.shape.descripcion`, `.shape.comprobante` y `.shape.claveIdempotencia` (o los esquemas
+  que el contrato exporte para eso), `PATRON_UUID` para `usuarioId` y `validarMonto` como hoy. Con un `safeParse` que
+  falla, `RangeError` (sin el valor en el mensaje, para no llevar texto del usuario a los registros). Desde ahí trabaja
+  solo con los valores normalizados que devolvió el esquema: el `INSERT`, `datosDespues` y "mismos datos".
+- **Interfaz del ingreso (criterio 48 c):** antes de `bloquearCajaAbierta`, `PATRON_UUID` en `alumnoId`, `pagoId` y
+  `usuarioId`, y la lista del contrato (`CONCEPTOS_MOVIMIENTO` sin `EGRESO_MENOR`, `METODOS_PAGO`) en `concepto` y
+  `metodo`. `validarMonto` se queda en el paso c (PP7).
+
 ### 2.4 Ingreso de la 007 (`registrarIngresoEnCaja`)
 
 ```
@@ -131,6 +147,13 @@ devuelve su movimiento sin mirar el monto nuevo.
 
 No llama a `bloquearActorVigente` (lo hizo quien llama) ni abre su propia transacción. Lanza `ErrorNegocio`: la 007 lo
 deja subir para que `conAcademia` revierta todo.
+
+Antes de a, la forma de las entradas (criterio 48 c, ronda adversarial 1): `RangeError` si `alumnoId`, `pagoId` o
+`usuarioId` no tienen forma de UUID, o si `concepto` o `metodo` no son de su lista; sin tocar la base.
+
+El `INSERT` toma un `FOR KEY SHARE` implícito sobre la fila del alumno (llave compuesta) y sobre la de `usuarios`
+(`registrado_por`), con la caja ya bloqueada. Por eso quien llama bloquea antes la fila del alumno o cliente y pasa como
+`usuarioId` al actor ya bloqueado (spec, "Reglas para las historias siguientes", nota de la ronda adversarial 1).
 
 ### 2.5 Resumen
 
@@ -260,6 +283,8 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 | Trigger contra movimientos en caja cerrada (D6, DT-4) | Solo el bloqueo de la API | Defensa en profundidad, como los `CHECK` de 004 |
 | El trigger rechaza solo si ve la caja y no está `ABIERTA` (PP1) | Rechazar también si no la ve (`IS DISTINCT FROM`) | El criterio 3 exige `23503` y `42501`, y el trigger corre antes que la llave foránea y la RLS |
 | `RangeError` del ingreso en el paso c, después de bloquear la caja y buscar el `pagoId` (PP7) | Validar el monto antes de tocar la base | Es el orden aprobado en la spec (criterio 24) |
+| Las interfaces validan sus entradas y lanzan `RangeError` antes de tocar la base (criterio 48, ronda adversarial 1) | Confiar en que quien llama validó | La 007 y la 019 escriben dinero por ahí; una entrada mal formada no debe guardarse ni terminar en un error crudo de la base |
+| Comprobante sin nada visible → `null` (criterio 47) | Rechazarlo con 400 | Es coherente con el vacío y los espacios, que ya se guardan `null` (DR-3) |
 | Bloqueo consultivo de la academia en apertura y reapertura | Solo los índices únicos | Orden fijo de los 409 y sin 500 en la carrera |
 | `REABRIR_CAJA` en la matriz (DT-1) | Rol comprobado en el servicio | El guard decide y la web usa `puede` |
 | PDF bajo pedido (DT-2) | PDF guardado en `AlmacenArchivos` | Sin archivos ni confirmación incierta; el cierre no cambia |
