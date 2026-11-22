@@ -122,3 +122,22 @@ export function restarMontos(a: string, b: string): string {
   const decimales = (absoluta % 100n).toString().padStart(2, '0');
   return `${negativa ? '-' : ''}${enteros}.${decimales}`;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Texto de un monto (spec 006b, PQ10)
+// ---------------------------------------------------------------------------------------------------------------------
+
+const PATRON_MONTO_A_MOSTRAR = /^([0-9]+)(?:\.([0-9]{1,2}))?$/;
+
+/**
+ * `"120.00"` como `S/ 120.00`, con coma de millares (`S/ 1,200.00`) y siempre con dos decimales (`"88"` es `S/ 88.00`). La usan la web y el
+ * PDF del cierre de caja (PQ10). Trabaja sobre el texto, sin `Number` ni `parseFloat`: un monto grande no pierde precisión. Un texto que no
+ * es un monto (negativo, con coma decimal, con espacios) se muestra tal cual, después de `S/ `.
+ */
+export function formatearSoles(monto: string): string {
+  const partes = PATRON_MONTO_A_MOSTRAR.exec(monto);
+  if (!partes) return `S/ ${monto}`;
+  const entera = (partes[1] ?? '').replace(/^0+(?=[0-9])/, '');
+  const decimales = (partes[2] ?? '').padEnd(2, '0');
+  return `S/ ${entera.replace(/\B(?=(?:[0-9]{3})+(?![0-9]))/g, ',')}.${decimales}`;
+}

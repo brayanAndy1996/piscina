@@ -24,3 +24,13 @@ export function anioYMesEnLima(instante: Date): { anio: number; mes: number } {
   const { anio, mes } = fechaEnLima(instante);
   return { anio, mes };
 }
+
+/** La fecha de `instante` en America/Lima como `dd/MM/aaaa` (para mostrar), sin depender de la zona del proceso. Lanza `RangeError` con una fecha inválida. */
+export function fechaCortaEnLima(instante: Date): string {
+  return format(new TZDate(instante, ZONA_LIMA), 'dd/MM/yyyy');
+}
+
+/** La hora de `instante` en America/Lima como `HH:mm` de 24 horas (para mostrar), sin depender de la zona del proceso. Lanza `RangeError` con una fecha inválida. */
+export function horaEnLima(instante: Date): string {
+  return format(new TZDate(instante, ZONA_LIMA), 'HH:mm');
+}

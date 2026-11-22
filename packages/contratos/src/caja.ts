@@ -206,3 +206,126 @@ export type RespuestaCajaActual = z.infer<typeof respuestaCajaActualSchema>;
 
 export const respuestaEgresoSchema = z.strictObject({ movimiento: movimientoCajaSchema, caja: cajaSchema });
 export type RespuestaEgreso = z.infer<typeof respuestaEgresoSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Historial de cajas (spec 006b, criterio 40, PQ3, PQ4 y PQ13)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Los límites del rango del historial (PQ3): sin parámetros, los últimos 31 días contando los dos extremos (hasta hoy en Lima), y como mucho
+ * 366 días contando los dos extremos.
+ */
+export const LIMITES_HISTORIAL_CAJAS = { diasPorDefecto: 31, diasMaximos: 366 } as const;
+
+export const MENSAJE_RANGO_INVERTIDO = 'La fecha inicial no puede ser posterior a la final.';
+export const MENSAJE_RANGO_DEMASIADO_LARGO = `El rango puede ser de como mucho ${LIMITES_HISTORIAL_CAJAS.diasMaximos} días.`;
+
+const MS_POR_DIA = 86_400_000;
+const PRIMERA_FECHA = '0001-01-01';
+
+/** Los días de calendario desde 1970-01-01 de una fecha `AAAA-MM-DD` ya comprobada. Sin zona horaria: solo UTC sobre el calendario. */
+function diaDeCalendario(fecha: string): number {
+  const [anio = 0, mes = 1, dia = 1] = fecha.split('-').map(Number);
+  const instante = new Date(0);
+  // `setUTCFullYear` con las tres partes no desplaza los años 0 a 99 como lo hace `Date.UTC`.
+  instante.setUTCFullYear(anio, mes - 1, dia);
+  return Math.round(instante.getTime() / MS_POR_DIA);
+}
+
+/** La fecha `AAAA-MM-DD` de unos días de calendario desde 1970-01-01. */
+function fechaDeDiaDeCalendario(dias: number): string {
+  const instante = new Date(dias * MS_POR_DIA);
+  const anio = String(instante.getUTCFullYear()).padStart(4, '0');
+  const mes = String(instante.getUTCMonth() + 1).padStart(2, '0');
+  const dia = String(instante.getUTCDate()).padStart(2, '0');
+  return `${anio}-${mes}-${dia}`;
+}
+
+/**
+ * El rango que se aplica (PQ3), con `hoy` (la fecha de hoy en Lima) para lo que falte: sin `hasta`, `hasta` es `hoy`; sin `desde`, `desde` es
+ * `hasta` menos 30 días (31 días contando los dos extremos), sin bajar de `0001-01-01`. Las cuentas son en días de calendario, sin zona horaria.
+ * Las fechas de entrada ya deben ser válidas (`fechaSchema`); no valida el rango (`mensajeDelRangoDelHistorial`).
+ */
+export function rangoDelHistorial(
+  filtro: { readonly desde?: string | undefined; readonly hasta?: string | undefined },
+  hoy: string,
+): { desde: string; hasta: string } {
+  const hasta = filtro.hasta ?? hoy;
+  if (filtro.desde !== undefined) return { desde: filtro.desde, hasta };
+  const desde = fechaDeDiaDeCalendario(diaDeCalendario(hasta) - (LIMITES_HISTORIAL_CAJAS.diasPorDefecto - 1));
+  return { desde: desde < PRIMERA_FECHA ? PRIMERA_FECHA : desde, hasta };
+}
+
+/**
+ * El mensaje de error del rango (PQ3), o `null` si vale: `desde` posterior a `hasta`, o más de 366 días contando los dos extremos
+ * (`hasta - desde > 365`). Ambos errores se informan en el campo `desde`. Las fechas ya deben ser válidas.
+ */
+export function mensajeDelRangoDelHistorial(desde: string, hasta: string): string | null {
+  if (desde > hasta) return MENSAJE_RANGO_INVERTIDO;
+  if (diaDeCalendario(hasta) - diaDeCalendario(desde) > LIMITES_HISTORIAL_CAJAS.diasMaximos - 1) {
+    return MENSAJE_RANGO_DEMASIADO_LARGO;
+  }
+  return null;
+}
+
+/**
+ * Una fecha de la consulta: `fechaSchema` con un solo error por campo (PQ3, "uno por campo"). Con el formato mal escrito, `fechaSchema` diría
+ * también que la fecha no existe; aquí el primer error corta (`abort`) y el segundo nunca se agrega. Un texto vacío, un arreglo, un objeto y
+ * `null` fallan en el primer paso.
+ */
+const fechaDeConsultaSchema = z
+  .string('La fecha debe ser un texto AAAA-MM-DD.')
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha debe tener el formato AAAA-MM-DD.', abort: true })
+  .pipe(fechaSchema);
+
+/**
+ * La consulta de `GET /api/cajas` (PQ3): solo `desde` y `hasta`, cada uno con `fechaSchema`; los demás parámetros se ignoran. La API arma el
+ * objeto con `undefined` si el parámetro no viene, el texto si viene una vez y un arreglo si se repite o se escribe con corchetes (un error en
+ * su campo); un valor vacío tampoco es una fecha. Si los dos valores vienen y tienen formato válido, también se comprueba el rango (error en
+ * `desde`). Los valores por defecto los aplica el servicio con el reloj (`rangoDelHistorial`).
+ */
+export const filtroHistorialCajasSchema = z
+  .object({ desde: fechaDeConsultaSchema.optional(), hasta: fechaDeConsultaSchema.optional() })
+  .superRefine((filtro, contexto) => {
+    // Con un formato inválido en cualquiera de los dos, el rango no se evalúa (la regla corre aunque haya errores de campo).
+    if (!fechaSchema.safeParse(filtro.desde).success || !fechaSchema.safeParse(filtro.hasta).success) return;
+    const mensaje = mensajeDelRangoDelHistorial(filtro.desde as string, filtro.hasta as string);
+    if (mensaje !== null) contexto.addIssue({ code: 'custom', path: ['desde'], message: mensaje });
+  });
+export type FiltroHistorialCajas = z.infer<typeof filtroHistorialCajasSchema>;
+
+/** El último cierre de una caja en la lista: el de mayor `numero`, vigente o reabierto. */
+const ultimoCierreDeHistorialSchema = z.strictObject({
+  numero: z.number().int().min(1),
+  montoDeclarado: montoDeLecturaSchema,
+  diferencia: montoConSignoSchema,
+  resultado: resultadoCierreSchema,
+  tardio: z.boolean(),
+  cerradoPor: personaCajaSchema,
+  cerradoEn: z.iso.datetime(),
+});
+
+/**
+ * Una caja de la lista del historial (PQ4): sin movimientos ni cierres, con los totales de ahora (no la foto del cierre) y el último cierre o
+ * `null`. Una caja `ABIERTA` con `ultimoCierre` es una caja reabierta. Sin DNI.
+ */
+export const cajaHistorialSchema = z.strictObject({
+  id: z.uuid(),
+  fecha: fechaSchema,
+  estado: estadoCajaSchema,
+  deOtroDia: z.boolean(),
+  montoInicial: montoDeLecturaSchema,
+  abiertaPor: personaCajaSchema,
+  totalIngresos: ingresosPorMetodoSchema,
+  totalEgresos: z.strictObject({ efectivo: montoDeLecturaSchema }),
+  ultimoCierre: ultimoCierreDeHistorialSchema.nullable(),
+});
+export type CajaHistorial = z.infer<typeof cajaHistorialSchema>;
+
+/** `GET /api/cajas`: el rango que se aplicó (después de los valores por defecto) y las cajas, de la fecha más reciente a la más antigua. */
+export const respuestaHistorialCajasSchema = z.strictObject({
+  desde: fechaSchema,
+  hasta: fechaSchema,
+  cajas: z.array(cajaHistorialSchema),
+});
+export type RespuestaHistorialCajas = z.infer<typeof respuestaHistorialCajasSchema>;

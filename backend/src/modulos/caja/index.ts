@@ -6,6 +6,7 @@
 //     sola vez a la caja (`pagoId` único).
 //   registrarEgresoEnCaja(tx, egreso, ahora)    la ruta de egresos y la 019 (pago a un entrenador desde caja, RN-35).
 //   leerCajaAbierta(tx, ahora)                  lectura sin bloqueo, para avisar "abre la caja" sin decidir con ella.
+// El PDF del cierre (006b): `generarPdfCierre` (pura respecto de la base) y el token `GENERADOR_PDF_CIERRE` con el que `CajaModule` la provee.
 export { CajaModule } from './caja.module';
 export { CajasService } from './cajas.service';
 export {
@@ -18,3 +19,5 @@ export {
   registrarEgresoEnCaja,
   registrarIngresoEnCaja,
 } from './movimientos';
+export { type DatosPdfCierre, GENERADOR_PDF_CIERRE, type GeneradorPdfCierre, generarPdfCierre } from './pdf/cierre-pdf';
+export { textoParaPdf } from './pdf/texto-pdf';
