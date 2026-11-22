@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { enviarJson, enviarSinRespuesta, ErrorDeApi, ErrorDeRespuesta, pedirJson } from './cliente';
+import { enviarJson, enviarSinRespuesta, ErrorDeApi, ErrorDeRespuesta, pedirArchivo, pedirJson } from './cliente';
 
 function respuesta(cuerpo: string | null, estado: number): Response {
   return new Response(cuerpo, { status: estado, headers: { 'Content-Type': 'application/json' } });
@@ -80,5 +80,54 @@ describe('Cliente HTTP', () => {
     );
 
     await expect(pedirJson('/api/x', esquema)).rejects.toThrow('formato esperado');
+  });
+
+  it('pedirArchivo devuelve el contenido de un 200 con el tipo esperado (aunque lleve parámetros) y envía las cookies', async () => {
+    const simulado = vi.fn(() =>
+      Promise.resolve(
+        new Response('%PDF-1.3', { status: 200, headers: { 'Content-Type': 'Application/PDF; charset=binary' } }),
+      ),
+    );
+    vi.stubGlobal('fetch', simulado);
+
+    const archivo = await pedirArchivo('/api/x.pdf', 'application/pdf');
+
+    expect(await archivo.text()).toBe('%PDF-1.3');
+    expect(simulado).toHaveBeenCalledWith(
+      '/api/x.pdf',
+      expect.objectContaining({ method: 'GET', credentials: 'same-origin' }),
+    );
+  });
+
+  it('pedirArchivo lanza ErrorDeApi con un error de la API, y ErrorDeRespuesta con cualquier otra cosa', async () => {
+    const api = { codigo: 'NO_ENCONTRADO', mensaje: 'No existe.' };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(respuesta(JSON.stringify(api), 404))),
+    );
+    await expect(pedirArchivo('/api/x.pdf', 'application/pdf')).rejects.toMatchObject({
+      estado: 404,
+      codigo: 'NO_ENCONTRADO',
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('<html>', { status: 502 }))),
+    );
+    const otro: unknown = await pedirArchivo('/api/x.pdf', 'application/pdf').catch((e: unknown) => e);
+    expect(otro).toBeInstanceOf(ErrorDeRespuesta);
+    expect(otro).not.toBeInstanceOf(ErrorDeApi);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(respuesta('{"ok":true}', 200))),
+    );
+    await expect(pedirArchivo('/api/x.pdf', 'application/pdf')).rejects.toBeInstanceOf(ErrorDeRespuesta);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('red'))),
+    );
+    await expect(pedirArchivo('/api/x.pdf', 'application/pdf')).rejects.toBeInstanceOf(ErrorDeRespuesta);
   });
 });

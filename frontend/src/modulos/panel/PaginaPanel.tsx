@@ -39,6 +39,12 @@ const OPCIONES: readonly Opcion[] = [
     ruta: () => '/panel/caja',
   },
   {
+    permiso: 'VER_REPORTES_FINANCIEROS',
+    texto: 'Historial de caja',
+    descripcion: 'Consulta las cajas de días anteriores, sus cierres y descarga el PDF de cada cierre.',
+    ruta: () => '/panel/cajas',
+  },
+  {
     permiso: 'GESTIONAR_USUARIOS',
     texto: 'Usuarios',
     descripcion: 'Crea, desactiva o reactiva al personal de la academia.',

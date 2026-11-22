@@ -115,6 +115,36 @@ export async function enviarJson<T>(
   return { estado: respuesta.status, datos: validarCuerpo(texto, esquema) };
 }
 
+/**
+ * Pide un archivo (`ruta` debe empezar por `/api`) y devuelve su contenido si la respuesta es 200 con el `tipo` indicado en `Content-Type`.
+ * Los errores son los de `pedirJson`: un error de la API (401, 404, 500…) lanza `ErrorDeApi`; la red caída, un código inesperado o un tipo
+ * distinto del esperado lanzan `ErrorDeRespuesta`.
+ */
+export async function pedirArchivo(ruta: string, tipo: string): Promise<Blob> {
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(ruta, { method: 'GET', credentials: 'same-origin' });
+    if (
+      respuesta.status === 200 &&
+      respuesta.headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase() === tipo
+    ) {
+      return await respuesta.blob();
+    }
+  } catch {
+    throw new ErrorDeRespuesta('No se pudo contactar al servidor.');
+  }
+  if (respuesta.status === 200) throw new ErrorDeRespuesta('La respuesta del servidor no es el archivo esperado.');
+  let texto = '';
+  try {
+    texto = await respuesta.text();
+  } catch {
+    // Sin cuerpo legible: se informa solo el código.
+  }
+  const error = leerErrorApi(texto);
+  if (error) throw new ErrorDeApi(respuesta.status, error);
+  throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${respuesta.status}).`);
+}
+
 /** Envía una petición cuya respuesta correcta no tiene cuerpo (204), por ejemplo `DELETE`. */
 export async function enviarSinRespuesta(metodo: MetodoConCuerpo, ruta: string, cuerpo?: unknown): Promise<void> {
   await solicitar(metodo, ruta, cuerpo, [200, 204]);

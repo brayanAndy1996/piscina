@@ -1,15 +1,27 @@
-import type { Caja } from '@aquagestion/contratos';
+import type { Caja, FiltroHistorialCajas } from '@aquagestion/contratos';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { hoyEnLima } from '../../lib/fechas';
 import { useUsuario } from '../sesion/contexto';
 import { useConfirmarSesion } from '../sesion/hooks';
 import * as api from './api';
+import { entregarArchivo, nombreDelPdfDelCierre } from './descarga';
 
-/** La clave lleva la identidad de la sesión: la caja de otra academia o de otra persona nunca se reutiliza (criterio 28 de 003). */
+/**
+ * Las claves llevan la identidad de la sesión: la caja de otra academia o de otra persona nunca se reutiliza (criterio 28 de 003). Las del
+ * historial y del detalle son las de PQ12.
+ */
 export function useClavesCaja() {
   const usuario = useUsuario();
-  return { actual: ['caja-actual', usuario.academia.nombreCorto, usuario.id] as const };
+  const identidad = [usuario.academia.nombreCorto, usuario.id] as const;
+  return {
+    actual: ['caja-actual', ...identidad] as const,
+    historialTodos: ['cajas-historial', ...identidad] as const,
+    historial: (filtro: FiltroHistorialCajas) =>
+      ['cajas-historial', ...identidad, filtro.desde ?? null, filtro.hasta ?? null] as const,
+    detalleTodos: ['caja', ...identidad] as const,
+    detalle: (id: string) => ['caja', ...identidad, id] as const,
+  };
 }
 
 /**
@@ -65,9 +77,17 @@ function useEscrituraDeCaja<Entrada, Salida>(
       return escribir(entrada);
     },
     onSuccess: (salida) => {
-      cliente.setQueryData(claves.actual, cajaDe(salida));
+      const caja = cajaDe(salida);
+      cliente.setQueryData(claves.actual, caja);
+      cliente.setQueryData(claves.detalle(caja.id), caja);
     },
-    onSettled: () => cliente.invalidateQueries({ queryKey: claves.actual }),
+    // El historial y el detalle también cambian con cada escritura: se vuelven a pedir cuando se abran.
+    onSettled: () =>
+      Promise.all([
+        cliente.invalidateQueries({ queryKey: claves.actual }),
+        cliente.invalidateQueries({ queryKey: claves.historialTodos }),
+        cliente.invalidateQueries({ queryKey: claves.detalleTodos }),
+      ]),
   });
 }
 
@@ -85,4 +105,43 @@ export function useCerrarCaja() {
 
 export function useReabrirCaja() {
   return useEscrituraDeCaja(api.reabrirCaja, (caja) => caja);
+}
+
+/** El historial de cajas del filtro pedido (criterio 40). Siempre se vuelve a pedir al entrar; no se reintenta. */
+export function useHistorialCajas(filtro: FiltroHistorialCajas) {
+  const claves = useClavesCaja();
+  return useQuery({
+    queryKey: claves.historial(filtro),
+    queryFn: () => api.obtenerHistorial(filtro),
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** El detalle de una caja (criterio 41). Siempre se vuelve a pedir al entrar; no se reintenta. */
+export function useDetalleCaja(id: string) {
+  const claves = useClavesCaja();
+  return useQuery({
+    queryKey: claves.detalle(id),
+    queryFn: () => api.obtenerCaja(id),
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * Descarga el PDF de un cierre (criterio 42): antes confirma que la sesión sigue siendo la de la página (como las escrituras), pide el
+ * archivo con la misma cookie y se lo entrega al navegador con su nombre.
+ */
+export function useDescargarPdfDelCierre() {
+  const confirmarSesion = useConfirmarSesion();
+  return useMutation({
+    mutationFn: async ({ cajaId, fecha, numero }: { cajaId: string; fecha: string; numero: number }) => {
+      await confirmarSesion();
+      const pdf = await api.obtenerPdfDelCierre({ cajaId, numero });
+      entregarArchivo(pdf, nombreDelPdfDelCierre(fecha, numero));
+    },
+  });
 }

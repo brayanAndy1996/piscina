@@ -11,6 +11,8 @@ import { esErrorQueCambiaLaCaja, mensajeDeCaja } from './mensajes';
 
 interface Propiedades {
   caja: Caja;
+  /** La caja no es la de hoy en Lima (criterio 36 c, DR-8): al reabrirla solo se podrá volver a contar el efectivo y cerrarla. */
+  deOtroDia?: boolean;
   alCerrar: () => void;
   alReabrir: () => void;
   /** Un error que cambió la caja (hay otra abierta, ya no existe…): la página se actualiza y muestra el mensaje. */
@@ -21,7 +23,7 @@ interface Propiedades {
  * Reabrir una caja cerrada, solo para el administrador (HU-27, criterios 35 y 36 de 006): el motivo es obligatorio y queda en el cierre y en
  * la auditoría (sección 11.4). El diálogo pide el motivo una sola vez por envío: reabrir una caja ya abierta responde 200 sin repetir nada.
  */
-export function DialogoReapertura({ caja, alCerrar, alReabrir, alFallar }: Propiedades) {
+export function DialogoReapertura({ caja, deOtroDia = false, alCerrar, alReabrir, alFallar }: Propiedades) {
   const form = useForm<{ motivo: string }>({ defaultValues: { motivo: '' } });
   const { register, handleSubmit, setError, clearErrors, formState } = form;
   const reabrir = useReabrirCaja();
@@ -64,8 +66,11 @@ export function DialogoReapertura({ caja, alCerrar, alReabrir, alFallar }: Propi
     <Modal titulo="Reabrir caja" alCerrar={cerrar}>
       <form onSubmit={(evento) => void enviar(evento)} noValidate className="mt-2 space-y-4">
         <p className="text-slate-700">
-          Vas a reabrir la caja del {formatearFechaCalendario(caja.fecha)}. Volverá a admitir egresos y cobros, y el
-          cierre anterior queda guardado con tu motivo.
+          Vas a reabrir la caja del {formatearFechaCalendario(caja.fecha)}.{' '}
+          {deOtroDia
+            ? 'Es la caja de un día anterior: solo podrás volver a contar el efectivo y cerrarla.'
+            : 'Volverá a admitir egresos y cobros.'}{' '}
+          El cierre anterior queda guardado con tu motivo.
         </p>
         <fieldset disabled={pendiente} className="min-w-0">
           <legend className="sr-only">Motivo de la reapertura</legend>
