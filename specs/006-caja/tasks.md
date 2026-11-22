@@ -3,7 +3,8 @@
 Cada tarea indica su rol y los criterios de aceptación de [`spec.md`](spec.md) que cubre. Historia de ruta crítica,
 dividida en dos entregas (DR-10 de la spec), cada una con sus pruebas protegidas, su ataque y su PR:
 
-- **006a · Caja del día** (T1 a T22): criterios 1 a 39, y 45 y 46 sin el historial ni el PDF. Se construye primero.
+- **006a · Caja del día** (T1 a T22, y T36 a T42 de la ronda adversarial 1): criterios 1 a 39, 45 y 46 sin el
+  historial ni el PDF, y 47 y 48. Se construye primero.
 - **006b · Historial y PDF del cierre** (T23 a T35, marca **[006b, siguiente PR]**): criterios 40 a 44 y la parte de 45
   y 46 que les toca. Se empieza con la 006a unida a `main`.
 
@@ -93,6 +94,44 @@ implementar y ataque adversarial después.
       criterio a `spec.md`, test-writer la prueba protegida en rojo, se corrige y se vuelve a atacar, hasta una ronda sin
       fallas.
 
+### Ataque adversarial, ronda 1 (22/11/2026, sobre `deb9ee4`)
+
+Sin fallas de los criterios escritos. El orquestador convirtió dos observaciones en los criterios 47 (comprobante del
+egreso) y 48 (las interfaces validan sus entradas) de `spec.md`, críticos, y dejó la nota de la fila del alumno para la
+007 en "Reglas para las historias siguientes" (sin criterio ni tarea de código).
+
+- [ ] T36 · test-writer · Pruebas protegidas en rojo, desde la spec y los contratos públicos, sin mirar la
+      implementación, con la marca de pruebas protegidas:
+      - criterio 47: unitarias de `registrarEgresoSchema` (los 400 en `comprobante` por dirección del texto y
+        separadores en medio, también `{U+202E}` solo; el recorte de U+2028 en los bordes; la normalización a `null` de
+        los comprobantes sin visibles; `B{U+200B}1` y `"1"` se conservan) e integración de la ruta (400 sin escribir ni
+        auditar; `movimiento.comprobante` y `datosDespues.comprobante` en `null`; idempotencia: 200 entre comprobantes
+        que se guardan `null`, 409 `CLAVE_YA_USADA` frente a uno visible en los dos órdenes, 400 con la clave ya usada y
+        un comprobante inválido);
+      - criterio 48: integración de `registrarEgresoEnCaja` y `registrarIngresoEnCaja` dentro de `conAcademia` con la
+        caja de hoy abierta, con las entradas del 48 d: `RangeError` (no `ErrorNegocio` ni error de Prisma) y sin
+        cambios en `movimientos_caja` ni en `auditoria`; recorte, comprobante `null` y `repetido: true` del 48 b; `cajaId`
+        que no es UUID, 404 `NO_ENCONTRADO`.
+
+      Commit: "Pruebas protegidas (006a), ataque ronda 1: comprobante del egreso e interfaces de la caja (en rojo)"
+      (criterios 47, 48)
+- [ ] T37 · tester · Confirmar que T36 falla por la razón esperada (comprobante con dirección del texto aceptado,
+      comprobante invisible guardado como texto, inserción o error de Prisma en lugar de `RangeError`, descripción sin
+      recortar) y no por sintaxis, importaciones o configuración; que las pruebas protegidas anteriores siguen pasando; y
+      `git diff --cached --stat` solo con archivos de prueba (criterios 47, 48)
+- [ ] T38 · backend · Contratos: el comprobante de `registrarEgresoSchema` rechaza dirección del texto y separadores y
+      normaliza a `null` lo que no tiene visibles, reutilizando la regla de `texto.ts` sin copiarla (plan 2.3, "Ronda
+      adversarial 1"); pruebas unitarias no protegidas de los bordes (criterio 47)
+- [ ] T39 · backend · `movimientos.ts`: `registrarEgresoEnCaja` valida con los esquemas de la ruta y trabaja con los
+      valores normalizados (inserción, auditoría y comparación de la clave); `registrarIngresoEnCaja` comprueba la forma
+      de ids, concepto y método antes de tocar la base; `RangeError` sin escribir; comentarios de la interfaz al día
+      (criterio 48)
+- [ ] T40 · tester · Pruebas protegidas en verde (T36 y todas las anteriores) y suite completa (criterios 47, 48)
+- [ ] T41 · orquestador · `git diff` desde el commit de T36: T38 y T39 no tocaron pruebas protegidas
+- [ ] T42 · adversarial · Ronda 2 sobre todo lo de la 006a, en especial 47 y 48 (Unicode en el comprobante y la
+      descripción, la idempotencia con comprobantes normalizados, llamadas directas a las interfaces con entradas mal
+      formadas) y las carreras pendientes de PP8; si hay fallas, se repite el ciclo hasta una ronda sin fallas
+
 ### Revisión y cierre
 
 - [ ] T19 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
@@ -102,8 +141,9 @@ implementar y ataque adversarial después.
       (criterios 45 y 46, sin el historial ni el PDF)
 - [ ] T21 · tester · Suite completa, lint y verificación de tipos
 - [ ] T22 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, permiso, interfaz para la 007 y la
-      019, reglas para las historias siguientes), `README.md` y guía de uso de la caja del día; notas de la 007 y la 019
-      en `specs/backlog.md` (criterio 46)
+      019 con la validación de entradas del criterio 48, reglas para las historias siguientes con la nota de la ronda
+      adversarial 1 sobre la fila del alumno y `registrado_por`), `README.md` y guía de uso de la caja del día; notas de
+      la 007 y la 019 en `specs/backlog.md` (criterio 46)
 
 ## 006b · Historial y PDF del cierre [006b, siguiente PR]
 

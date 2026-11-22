@@ -27,10 +27,15 @@
   a DT-6), en "Decisiones". Los valores que el borrador llamaba "provisionales" quedan como definitivos; ningún criterio
   cambió de intención. Al escribir las pruebas protegidas de la 006a se agregaron las precisiones PP1 a PP8 (en
   "Decisiones"), sin cambios de negocio, y la pregunta P12, que no bloquea.
+- **Ronda adversarial 1 de la 006a (22/11/2026, sobre `deb9ee4`):** sin fallas de los criterios escritos. El orquestador
+  convirtió dos observaciones técnicas en los criterios 47 (el comprobante del egreso, con las reglas de texto de la
+  descripción) y 48 (las interfaces `registrarEgresoEnCaja` y `registrarIngresoEnCaja` validan sus entradas), los dos
+  críticos y de la 006a, sin cambios de negocio, y dejó una nota para la 007 en "Reglas para las historias siguientes"
+  (orden de bloqueos con la fila del alumno), sin criterio propio.
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
-    del historial y del PDF.
+    del historial y del PDF, más 47 y 48 (ronda adversarial 1).
   - **006b · Historial y PDF del cierre** (siguiente PR, con la 006a unida a `main`): criterios 40 a 44, más esas
     partes.
 
@@ -57,9 +62,12 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   curso no mueve dinero (DT-5 de 002).
 - **Apertura (10 a 16):** una sola caja abierta por academia, la fecha de la caja en America/Lima, la caja de otro día
   sin cerrar y el doble clic (RN-17, D-04).
-- **Movimientos (17 a 26):** ningún movimiento con la caja cerrada ni en la de otro día (RN-17), egresos con motivo e
-  idempotentes, montos sin coma flotante, movimientos inmutables, y la interfaz que usará la 007 para que "ningún cobro con
-  la caja cerrada" sea cierto también cuando el cobro y el cierre llegan a la vez.
+- **Movimientos (17 a 26, 47 y 48):** ningún movimiento con la caja cerrada ni en la de otro día (RN-17), egresos con
+  motivo e idempotentes, montos sin coma flotante, movimientos inmutables, y la interfaz que usará la 007 para que "ningún
+  cobro con la caja cerrada" sea cierto también cuando el cobro y el cierre llegan a la vez. El 47 y el 48 (ronda
+  adversarial 1) son críticos porque los textos del egreso quedan en la auditoría de caja (RN-22) y en el PDF del cierre,
+  donde un carácter de dirección del texto puede disfrazar lo que se lee, y porque la interfaz es la puerta por la que la
+  007 y la 019 escriben dinero en la caja: una entrada mal formada no puede guardarse ni terminar en un 500 crudo.
 - **Esperado y cierre (27 a 34):** el esperado por método (Yape y transferencia no suman al efectivo, D-04 y 4.3), la
   diferencia y la observación, el cierre de una caja de otro día, el cierre que se cruza con un movimiento y el doble
   clic.
@@ -77,7 +85,7 @@ lleva la marca **[006b, siguiente PR]**. La 007 solo necesita la 006a.
 
 | Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- |
-| **006a** · caja del día | 1 a 36 | 37, 38 y 39 | 45 y 46 (sin el historial ni el PDF) |
+| **006a** · caja del día | 1 a 36, 47 y 48 | 37, 38 y 39 | 45 y 46 (sin el historial ni el PDF) |
 | **006b** · historial y PDF | 40 a 43 | 44 | parte de 45 y 46 |
 
 **Dependencias resueltas:**
@@ -242,7 +250,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     `monto` que no cumple `montoSchema` (`"0"`, `"0.00"`, `"-5"`, `"5.555"`, `5`, `"1e2"`, `" 5"`, `"100000"`, `null`);
     `comprobante` recortado de más de 60 caracteres o con controles (vacío o solo espacios cuenta como ausente y se guarda
     `null`; DR-3); `claveIdempotencia` que no es UUID; cualquier campo de más (`metodo`, `concepto`,
-    `tipo`, `alumnoId`). _(crítico)_ (HU-26)
+    `tipo`, `alumnoId`). El `comprobante` rechaza además los caracteres de dirección del texto y los separadores, y uno
+    sin ningún carácter visible cuenta como ausente (criterio 47, ronda adversarial 1). _(crítico)_ (HU-26)
 19. **Ningún movimiento con la caja cerrada (RN-17).** Dada la caja C de A cerrada, cuando alguien envía un egreso a C con
     una clave nueva, entonces responde 409 `CAJA_CERRADA` sin escribir ni auditar. Si el administrador la reabre (criterio
     35), el egreso se acepta. _(crítico)_ (RN-17)
@@ -301,6 +310,83 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     una clase, `registrarIngresoEnCaja`) corre a la vez que un egreso, un cierre y la cancelación de una solicitud de 005b
     sobre esa clase; todas terminan, nunca con `40P01` ni 500. _(crítico)_ (regla "aforo y caja en transacciones sin
     carreras" de `CLAUDE.md`; «Cupo de una clase» de 004)
+
+    _Nota de la ronda adversarial 1 (sin cambio de criterio):_ "ninguna transacción de esta historia bloquea filas de
+    `alumnos`" se refiere a los bloqueos explícitos. El `INSERT` de un ingreso en `movimientos_caja` toma además, por la
+    llave compuesta `(academia_id, alumno_id)`, un `FOR KEY SHARE` implícito sobre la fila del alumno, con la caja ya
+    bloqueada (y otro sobre `usuarios` por `registrado_por`). Por eso la regla "Orden de bloqueos con la caja" exige a
+    la 007 bloquear antes la fila del alumno o cliente ("Reglas para las historias siguientes").
+47. **El comprobante del egreso, con las reglas de texto de la descripción.** _(Ronda adversarial 1; amplía el criterio
+    18.)_ El `comprobante` de `POST /api/cajas/{C}/egresos` se trata en este orden:
+    - a) **Recorte:** se recorta igual que la descripción (el `trim` de `textoVisibleSchema`, que también quita U+2028 y
+      U+2029 de los bordes).
+    - b) **Rechazo:** responde 400 `SOLICITUD_INVALIDA` con el campo `comprobante`, sin escribir ni auditar, si el texto
+      recortado tiene controles o sustitutos sueltos (como hoy), más de 60 caracteres (como hoy), o los mismos caracteres
+      que rechaza la descripción (`BIDI_O_SEPARADORES` de `packages/contratos/src/texto.ts`): de dirección del texto
+      (`\p{Bidi_Control}`: U+061C, U+200E, U+200F, U+202A a U+202E, U+2066 a U+2069) y separadores de línea o de párrafo
+      (U+2028, U+2029). En los ejemplos de este criterio y del 48, `{U+XXXX}` es ese carácter. Responden 400:
+      `B001{U+202E}321`, `{U+202E}B001`, `{U+2066}B001{U+2069}`, `B001{U+200F}`, `B001{U+2028}123`,
+      `B001{U+2029}123`, y también `{U+202E}` solo: el rechazo va antes que la normalización de c. En cambio,
+      `{U+2028}` solo y `B001{U+2028}` pierden el separador en el recorte (quedan `""` y `"B001"`), como en la
+      descripción.
+    - c) **Sin nada visible es como vacío:** si el texto recortado que pasó b no tiene ningún carácter visible según
+      `contarVisibles` (`packages/contratos/src/texto.ts`: los de `Default_Ignorable_Code_Point`, U+2800 y las marcas
+      combinantes no cuentan), cuenta como ausente y se guarda `null`, igual que `""`, solo espacios, `null` o la clave
+      ausente (criterio 18, DR-3). Se guardan `null`: `{U+200B}` (espacio de ancho cero), `{U+3164}` (relleno hangul,
+      se ve en blanco), `{U+2800}`, `{U+00AD}`, `{U+0301}` (marca combinante sola) y `{U+200B}{U+3164}` con un espacio
+      antes y otro después. Con al menos un carácter visible, se guarda el texto recortado tal como llega, invisibles incluidos
+      (`B{U+200B}1` se guarda así), sin exigir un mínimo de visibles: un comprobante de un carácter (`"1"`) es válido.
+    - d) **Respuesta y auditoría:** en los casos de c, `movimiento.comprobante` y `datosDespues.comprobante` de
+      `CAJA_EGRESO_REGISTRADO` son `null`.
+    - e) **Idempotencia (criterio 22):** la clave repetida se compara con el comprobante ya normalizado. Un egreso
+      registrado con la clave K y cualquiera de los comprobantes que se guardan `null` (`""`, `"   "`, `null`, ausente,
+      `{U+200B}`, `{U+3164}`), y un reintento con la clave K, la misma descripción, el mismo monto y cualquier otro de
+      ellos, responden 200 con el mismo movimiento, sin otra fila ni otra auditoría. Con la clave K y un comprobante
+      visible (`"B001"`) frente a uno de esos, en cualquier orden, 409 `CLAVE_YA_USADA` sin escribir. Un reintento con la
+      clave K y un comprobante que cae en b responde 400, aunque la clave ya exista (el esquema va antes que la clave,
+      PP6 g).
+
+    La base no comprueba estas reglas de texto (son del contrato, como las de la descripción); la interfaz las aplica
+    también (criterio 48). _(crítico)_ (HU-26, DR-3, RN-22; reglas de texto de los criterios 76, 77 y 87 de 001)
+48. **Las interfaces de la caja validan sus entradas.** _(Ronda adversarial 1; amplía el criterio 24 y el contrato de
+    `registrarEgresoEnCaja`.)_ Las funciones de `backend/src/modulos/caja/movimientos.ts` que usarán la 007 y la 019 no
+    confían en que quien llama haya validado:
+    - a) **`registrarEgresoEnCaja(tx, egreso, ahora)`** aplica las mismas reglas que la ruta (`registrarEgresoSchema`),
+      recorte incluido: `descripcion` como el criterio 18 (recortada, de 3 a 200 caracteres, sin controles ni sustitutos
+      sueltos, sin caracteres de dirección del texto ni separadores, con al menos 3 visibles); `comprobante` (`string` o
+      `null`) como los criterios 18 y 47; `claveIdempotencia`, un UUID con la misma regla que la ruta (`z.uuid()` del
+      contrato); `usuarioId`, con forma de UUID (`PATRON_UUID`); y el monto como ya lo hace (mayor que 0, con hasta dos
+      decimales y que quepa en `numeric(10,2)`). Si una entrada no cumple, lanza `RangeError` antes de tocar la base
+      (antes de bloquear la caja y de buscar la clave), sin insertar movimiento ni auditoría. Un `cajaId` que no es UUID
+      sigue respondiendo como hoy: 404 `NO_ENCONTRADO`, igual que uno que no existe (como la ruta, AT-2 de 004).
+    - b) **Se guarda lo normalizado:** la descripción recortada y el comprobante recortado o `null` son los que se
+      insertan, se auditan (`datosDespues`) y se comparan con el egreso previo de la misma clave (criterio 22). Un egreso
+      con `"  Compra de útiles  "` se guarda como `"Compra de útiles"`, y otro con la misma clave, `"Compra de útiles"`,
+      el mismo monto y el mismo comprobante devuelve `repetido: true`; un comprobante `"   "` o `{U+200B}` se guarda
+      `null` y equivale a `null`.
+    - c) **`registrarIngresoEnCaja(tx, ingreso, ahora)`** no recibe textos libres ni clave de idempotencia; comprueba la
+      forma de lo que recibe: `alumnoId`, `pagoId` y `usuarioId` con forma de UUID, `concepto` uno de `INSCRIPCION`,
+      `MENSUALIDAD` o `CLASE_PARTICULAR`, y `metodo` uno de `EFECTIVO`, `YAPE` o `TRANSFERENCIA`. Si no, lanza
+      `RangeError` antes de tocar la base (el `pagoId` se usa en la consulta del paso b del criterio 24, así que su forma
+      se comprueba antes), sin insertar ni auditar. El monto sigue el orden de PP7 (paso c del criterio 24). Un
+      `alumnoId` con forma de UUID que es de otra academia o no existe sigue fallando con `23503` (criterio 24).
+    - d) **Pruebas** de integración que llaman a cada función dentro de `conAcademia`, con el reloj fijo y la caja de hoy
+      abierta (para que el `RangeError` no se confunda con `SIN_CAJA_ABIERTA` ni con el 404). En el egreso:
+      `descripcion` `""`, `"  "`, `"ab"`, de 201 caracteres, con `"\n"` en medio, con U+202E, con U+2028 en medio y
+      `{U+200B}{U+200B}{U+200B}`; `comprobante` con U+202E, con U+2028 en medio, de 61 caracteres y con `"\t"` en medio;
+      `claveIdempotencia` `"no-es-uuid"` y `""`; `usuarioId` `"x"`. En el ingreso: `alumnoId`, `pagoId` y `usuarioId`
+      `"x"`, `concepto` `'EGRESO_MENOR'` y `'OTRO'`, `metodo` `'TARJETA'`. Cada llamada lanza `RangeError` (no
+      `ErrorNegocio` ni un error de Prisma o de PostgreSQL), y después las filas de `movimientos_caja` y de `auditoria`
+      de la academia no cambiaron. Además, el caso b (recorte y `repetido: true`) y un comprobante `"   "` y otro
+      `{U+3164}` que se guardan `null`.
+    - e) **Responsabilidad de quien llama:** la interfaz no comprueba el rol ni el permiso de `usuarioId`, ni que sea el
+      actor de la sesión. Quien llama ya pasó `@Permiso`, llamó a `bloquearActorVigente` en la misma transacción y pasa
+      como `usuarioId` a ese actor (la 007, con su permiso de cobrar o verificar; la 019, con el de pagar a entrenadores).
+      Un `usuarioId` con forma de UUID que no es de la academia falla con `23503` (llave compuesta, criterio 3). Desde la
+      ruta de egresos nunca se llega al `RangeError`, porque `registrarEgresoSchema` responde 400 antes; un `RangeError`
+      que llegue a la capa HTTP es un error de programación de quien llama (500), no una respuesta de negocio.
+
+    _(crítico)_ (HU-26, RN-17, RN-22; reglas de texto compartidas de los criterios 76 y 77 de 001)
 
 ### E. Esperado y caja del día
 
@@ -497,6 +583,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
 - **Ids en mayúsculas:** un UUID en mayúsculas en la dirección se trata igual que en minúsculas (como AT-2 de 004).
 - **Descripción del egreso con emojis o letras de otros alfabetos:** se guarda tal cual; en el PDF de la 006b, lo que la
   fuente estándar no puede mostrar sale como `?` (criterio 42).
+- **Comprobante que parece vacío** (`{U+3164}`, que se ve en blanco, o `{U+200B}`, un espacio de ancho cero): se guarda `null`, como el vacío; uno con un
+  carácter que invierte la dirección del texto responde 400 (criterio 47, ronda adversarial 1).
 
 ## Reglas de negocio aplicables
 
@@ -573,7 +661,8 @@ caja ya abierta también (PP6 g).
     (`ABIERTA`, `CERRADA`); `resultadoCierreSchema` (`CUADRA`, `SOBRANTE`, `FALTANTE`).
   - `abrirCajaSchema = { claveIdempotencia: uuid, montoInicial: montoNoNegativoSchema }`.
   - `registrarEgresoSchema = { claveIdempotencia, descripcion: textoVisibleSchema(3 a 200), monto: montoSchema,
-    comprobante?: texto recortado de hasta 60, sin controles, vacío → ausente, o null }`.
+    comprobante?: texto recortado de hasta 60, sin controles, sin caracteres de dirección del texto ni separadores,
+    vacío o sin ningún carácter visible → null, o null }` (criterio 47, ronda adversarial 1).
   - `cerrarCajaSchema = { claveIdempotencia, montoDeclarado: montoNoNegativoSchema, ultimoMovimientoVisto: entero de 0 a
     1 000 000, observacion?: textoVisibleSchema(3 a 500) o null }`.
   - `reabrirCajaSchema = { motivo: textoVisibleSchema(3 a 200) }`.
@@ -620,12 +709,17 @@ interface MovimientoRegistrado {
 
 // Bloquea la caja abierta (FOR UPDATE), comprueba el día con `ahora` en Lima, inserta y audita CAJA_INGRESO_REGISTRADO.
 // Lanza ErrorNegocio 409 SIN_CAJA_ABIERTA o CAJA_DE_OTRO_DIA (la transacción de quien llama debe revertirse).
+// Antes de tocar la base, RangeError si alumnoId, pagoId o usuarioId no tienen forma de UUID o si concepto o metodo no
+// son de su lista (criterio 48 c); el RangeError del monto, en el paso c del criterio 24 (PP7).
 function registrarIngresoEnCaja(tx: TransaccionAcademia, ingreso: IngresoEnCaja, ahora: Date): Promise<MovimientoRegistrado>;
 
 // La usa la ruta de egresos de esta historia y la usará la 019 (pago a un entrenador desde caja, RN-35), que sumará su
 // concepto al tipo `concepto_movimiento_caja` en su migración. Bloquea la caja `cajaId` (FOR UPDATE) y aplica los
 // criterios 19 a 22. Lanza ErrorNegocio 404 NO_ENCONTRADO, 409 CLAVE_YA_USADA, CAJA_CERRADA, CAJA_DE_OTRO_DIA o
-// EFECTIVO_INSUFICIENTE.
+// EFECTIVO_INSUFICIENTE. Antes de tocar la base valida descripcion, comprobante, claveIdempotencia, usuarioId y monto
+// con las reglas de la ruta (criterios 18, 47 y 48 a) y lanza RangeError sin escribir; inserta, audita y compara la
+// clave con la descripción recortada y el comprobante recortado o null (criterio 48 b). No comprueba el rol de
+// usuarioId: es el actor que quien llama ya autorizó y bloqueó (criterio 48 e).
 function registrarEgresoEnCaja(
   tx: TransaccionAcademia,
   egreso: { cajaId: string; claveIdempotencia: string; descripcion: string; monto: Decimal; comprobante: string | null;
@@ -749,6 +843,17 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
   caja, al final**. Después de la caja solo se insertan filas y auditoría. Ninguna transacción bloquea la caja y después
   otra fila del negocio. La apertura y la reapertura toman el bloqueo consultivo `'caja:' || academia_id` después del
   actor y antes de la fila de la caja.
+  - **La fila del alumno, siempre antes de la caja (nota de la ronda adversarial 1, para la 007 y la 016).** El `INSERT`
+    de un ingreso en `movimientos_caja` toma, por la llave compuesta `(academia_id, alumno_id)`, un `FOR KEY SHARE`
+    implícito sobre la fila de `alumnos`, y lo toma con la caja ya bloqueada. Si otra transacción tiene esa fila con
+    `FOR UPDATE` (o la borra o cambia su llave) y espera la caja, las dos se esperan entre sí (`40P01`). Por eso, toda
+    transacción que registre un ingreso bloquea antes, de forma explícita, la fila del alumno o cliente del cobro (con el
+    modo que use la operación, `FOR UPDATE` si la va a cambiar), y la bloquea antes de las clases
+    (`bloquearClasesParaCupo`), como la inscripción de la 005, y antes de la caja. Sin excepción: aunque el cobro no
+    cambie la fila del alumno, y también en la verificación de un Yape o una transferencia.
+  - **`registrado_por` es el actor ya bloqueado.** El mismo `INSERT` toma un `FOR KEY SHARE` sobre la fila de `usuarios`
+    de `usuarioId`. Como `usuarioId` es el actor que `bloquearActorVigente` ya bloqueó en la misma transacción (criterio
+    48 e), no espera a nadie. Quien llama no pasa como `usuarioId` a otra persona.
 - **El día es el de Lima.** Toda decisión sobre "la caja de hoy" usa `hoyEnLima(RELOJ.ahora())`, nunca `CURRENT_DATE`.
 - **El ingreso guarda el método real.** Un Yape entra como `YAPE` y una transferencia como `TRANSFERENCIA` (D-04): no suman
   al efectivo esperado.
@@ -854,7 +959,7 @@ es la propuesta.
   defensa en profundidad. Alternativa descartada: solo el bloqueo de la fila en la API. _(006a; criterio 6.)_
 - **DT-5 (pregunta T5). Clasificación.** **Decidido (la propuesta):** críticos 1 a 36 y 40 a 43 (del 42, el alcance y el
   404); prueba obligatoria 37 a 39, el contenido del 42 y el 44; revisor 45 y 46. Repartidos como dice "División en 006a
-  y 006b".
+  y 006b". La ronda adversarial 1 de la 006a suma 47 y 48, críticos, por decisión del orquestador.
 - **DT-6 (pregunta T6). `ultimoMovimientoVisto` en el cierre** (D3). **Decidido (la propuesta).** Alternativa
   descartada: cerrar con lo que haya en ese momento, aunque la persona no lo haya visto. _(006a; criterio 31.)_
 
