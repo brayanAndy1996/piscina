@@ -186,7 +186,8 @@ describe('ColaPdfCierre.turno con señal (criterio 51 c)', () => {
     const enCurso = [pedir(cola, 'u1'), pedir(cola, 'u2')];
     const w1 = pedir(cola, 'u3', 'academia-a', controlador.signal);
     const w2 = pedir(cola, 'u4');
-    const w3 = pedir(cola, 'u5');
+    // u5 es de otra academia: con las cuatro de 'academia-a' (u1 a u4) y la quinta de la misma, el criterio 52 daría 429 y no habría 3 en espera.
+    const w3 = pedir(cola, 'u5', 'academia-b');
     await asentar();
     expect(cola.estado).toEqual({ enCurso: 2, enEspera: 3 });
 
