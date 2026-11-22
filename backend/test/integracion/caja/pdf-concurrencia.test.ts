@@ -26,6 +26,11 @@ import {
   type RespuestaHistorial,
   rutaPdf,
 } from '../../utilidades/caja-historial';
+import {
+  crearAcademiaConPersonas,
+  crearCajaDeHoyCerrada,
+  type PersonaConCookie,
+} from '../../utilidades/caja-pdf-academias';
 import { esperarHasta, GeneradorMultiple, pausa } from '../../utilidades/caja-pdf-concurrencia';
 import { conLimite, observar } from '../../utilidades/planes-clases';
 import { AHORA_PRUEBAS } from '../../utilidades/usuarios';
@@ -42,6 +47,10 @@ import { AHORA_PRUEBAS } from '../../utilidades/usuarios';
 //      descarga que espera no tiene ninguna transacción abierta. Toda descarga libera su lugar al terminar, con 200, 404 o 500.
 //   c) Una persona (`sesion.usuario.id`, no la academia ni la IP) tiene como mucho 2 descargas en curso o esperando turno: la tercera simultánea
 //      responde el 429 de b, aunque la cola tenga lugar, y no llama al generador. Un doble clic (dos descargas) sigue funcionando.
+// Ronda adversarial 2 de la 006b (criterio 52 f): cambia el reparto de las diez descargas de b, sin cambiar su intención ni debilitar ninguna comprobación.
+// Antes eran de cinco personas de A y de B, dos cada una; con el límite de 4 por academia (criterio 52), la quinta descarga de A ya respondería 429.
+// Ahora son de tres academias, como mucho 4 por academia: dos personas de A, dos de B y una de C, dos descargas cada una. La 11.ª es de una sexta
+// persona de una academia con cupo (otra de C), así que su 429 es por la cola llena.
 
 const MENSAJE_DE_429 = 'Hiciste demasiadas solicitudes. Espera un momento e intenta de nuevo.';
 
@@ -53,6 +62,10 @@ describe('cuántos PDF se generan a la vez y cuántos puede pedir una persona (c
   /** KA: la caja de hoy de A, cerrada (cierre 1): la ven el ADMIN y las dos SECRETARIAS (DR-13). KB: la de B. */
   let kA: { id: string };
   let kB: { id: string };
+  /** C (criterio 52 f): una academia más, con dos personas con `VER_REPORTES_FINANCIEROS` y su caja de hoy cerrada. */
+  let kC: { id: string };
+  let cAdmin: PersonaConCookie;
+  let cSecretaria: PersonaConCookie;
   /** Todas las descargas lanzadas por la prueba, para esperarlas (o soltarlas) al final aunque la prueba falle. */
   let lanzadas: Promise<unknown>[];
 
@@ -76,6 +89,9 @@ describe('cuántos PDF se generan a la vez y cuántos puede pedir una persona (c
     await cerrarCajaDePrueba(e.A.id, kA.id, e.adminA.id, { cerradoEn: enLima(HOY, '09:50:00') });
     kB = await crearCajaDePrueba(e.B.id, e.secretariaB.id, { monto_inicial: '50.00' });
     await cerrarCajaDePrueba(e.B.id, kB.id, e.adminB.id, { cerradoEn: enLima(HOY, '09:50:00') });
+    const c = await crearAcademiaConPersonas('academia-c', 'Academia C', ['ADMIN', 'SECRETARIA']);
+    [cAdmin, cSecretaria] = c.personas as [PersonaConCookie, PersonaConCookie];
+    kC = await crearCajaDeHoyCerrada(c.academia.id, cSecretaria.usuario.id, cAdmin.usuario.id);
   });
   afterEach(async () => {
     // Pase lo que pase en la prueba, ninguna descarga queda colgada del generador ni ocupando un lugar de la cola del proceso.
@@ -127,19 +143,22 @@ describe('cuántos PDF se generan a la vez y cuántos puede pedir una persona (c
   }
 
   describe('b) pocas generaciones a la vez y una espera acotada', () => {
-    /** Las diez descargas de la spec: cinco personas con permiso de A y de B (el ADMIN, el otro ADMIN y las dos SECRETARIAS de A, y el ADMIN de B), dos cada una. */
+    /**
+     * Las diez descargas de la spec (criterio 52 f): de tres academias, como mucho 4 por academia, dos descargas cada persona: el ADMIN y el otro ADMIN
+     * de A, el ADMIN y la SECRETARIA de B, y el ADMIN de C.
+     */
     const lanzarLasDiez = () =>
       (
         [
           [kA.id, cookies.admin],
           [kA.id, cookies.admin2],
-          [kA.id, cookies.secretaria],
-          [kA.id, cookies.secretaria2],
           [kB.id, cookies.adminB],
+          [kB.id, cookies.secretariaB],
+          [kC.id, cAdmin.cookie],
         ] as const
       ).flatMap(([cajaId, cookie]) => [lanzar(cajaId, 1, cookie), lanzar(cajaId, 1, cookie)]);
 
-    it('PQ9 c y criterio 49 b: diez descargas de cinco personas de A y de B con el generador retenido: nunca hay más de dos llamadas a la vez, la 11.ª responde 429, nadie queda idle in transaction y al soltar las diez responden 200 con diez llamadas', async () => {
+    it('PQ9 c y criterio 49 b: diez descargas de cinco personas de tres academias (A, B y C, como mucho 4 por academia) con el generador retenido: nunca hay más de dos llamadas a la vez, la 11.ª responde 429, nadie queda idle in transaction y al soltar las diez responden 200 con diez llamadas', async () => {
       const diez = lanzarLasDiez();
       await conLimite(generador.esperarEnCurso(2), 'el generador del PDF nunca tuvo dos llamadas en curso');
       // Pasa el tiempo suficiente para que las otras ocho lleguen a la cola (o, si no hay cola, al generador).
@@ -157,11 +176,12 @@ describe('cuántos PDF se generan a la vez y cuántos puede pedir una persona (c
         'las diez esperan: ninguna respondió',
       ).toHaveLength(0);
 
-      // La 11.ª descarga, de una sexta persona (la SECRETARIA de B), responde 429 enseguida, sin llamar al generador ni escribir.
+      // La 11.ª descarga, de una sexta persona de una academia con cupo (la SECRETARIA de C), responde 429 enseguida por la cola llena, sin llamar al
+      // generador ni escribir.
       const antes = await estado();
       const archivosAntes = archivosDelAlmacen();
       const llamadasAntes = generador.llamadas.length;
-      const undecima = lanzar(kB.id, 1, cookies.secretariaB);
+      const undecima = lanzar(kC.id, 1, cSecretaria.cookie);
       const respuesta = await respuestaEnseguida(undecima);
 
       esperar429(respuesta, 'la 11.ª descarga');
@@ -189,10 +209,11 @@ describe('cuántos PDF se generan a la vez y cuántos puede pedir una persona (c
       await conLimite(generador.esperarEnCurso(2), 'el generador del PDF nunca tuvo dos llamadas en curso');
       await pausa(500);
 
-      const inexistente = await esperarHasta(ctxHttp(cookies.secretariaB, rutaPdf(randomUUID(), 1)), 5000);
-      const cero = await esperarHasta(ctxHttp(cookies.secretariaB, rutaPdf(kB.id, 0)), 5000);
-      const noEsUuid = await esperarHasta(ctxHttp(cookies.secretariaB, rutaPdf('no-es-un-uuid', 1)), 5000);
-      const numeroValidoQueNoExiste = lanzar(kB.id, 2, cookies.secretariaB);
+      // Las pide la sexta persona (la SECRETARIA de C, de una academia con cupo): el 429 es por la cola llena.
+      const inexistente = await esperarHasta(ctxHttp(cSecretaria.cookie, rutaPdf(randomUUID(), 1)), 5000);
+      const cero = await esperarHasta(ctxHttp(cSecretaria.cookie, rutaPdf(kC.id, 0)), 5000);
+      const noEsUuid = await esperarHasta(ctxHttp(cSecretaria.cookie, rutaPdf('no-es-un-uuid', 1)), 5000);
+      const numeroValidoQueNoExiste = lanzar(kC.id, 2, cSecretaria.cookie);
       const sinSesion = await esperarHasta(ctx.http.get(rutaPdf(kB.id, 1)), 5000);
       const sinPermiso = await esperarHasta(ctxHttp(cookies.entrenador, rutaPdf(kB.id, 1)), 5000);
 
