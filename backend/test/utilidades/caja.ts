@@ -537,7 +537,8 @@ export interface CierreDePrueba {
 
 /**
  * Cierra una caja como lo haría el servicio (para preparar casos): calcula los totales de sus movimientos, crea el cierre con el
- * número siguiente y pasa la caja a `CERRADA`. `montoDeclarado` por defecto es el esperado en efectivo (la diferencia es 0).
+ * número siguiente y pasa la caja a `CERRADA`. `montoDeclarado` por defecto es el esperado en efectivo (la diferencia es 0). `cerradoEn` por
+ * defecto: 09:50 de Lima si la caja es de hoy (anterior a `AHORA_PRUEBAS`) y 18:00 de su fecha si es de otro día.
  */
 export async function cerrarCajaDePrueba(
   academiaId: string,
@@ -547,11 +548,14 @@ export async function cerrarCajaDePrueba(
 ): Promise<CierreDePrueba> {
   const { rows: filasCaja } = await ejecutarComo(
     'propietario',
-    'SELECT monto_inicial::text AS monto_inicial FROM cajas WHERE academia_id = $1::uuid AND id = $2::uuid',
+    'SELECT monto_inicial::text AS monto_inicial, fecha::text AS fecha FROM cajas WHERE academia_id = $1::uuid AND id = $2::uuid',
     [academiaId, cajaId],
     { academiaId },
   );
-  const montoInicial = (filasCaja[0] as { monto_inicial: string }).monto_inicial;
+  const { monto_inicial: montoInicial, fecha: fechaDeLaCaja } = filasCaja[0] as {
+    monto_inicial: string;
+    fecha: string;
+  };
   const totales = await totalesDeCaja(academiaId, cajaId);
   const { rows: filasNumero } = await ejecutarComo(
     'propietario',
@@ -565,7 +569,9 @@ export async function cerrarCajaDePrueba(
   );
   const declarado = opciones.montoDeclarado ?? esperado;
   const diferencia = montoTexto(centimos(declarado) - centimos(esperado));
-  const cerradoEn = opciones.cerradoEn ?? enLima(HOY, '18:00');
+  // Por defecto el cierre es del mismo día de la caja y nunca queda en el futuro del reloj de las pruebas (10:00 de hoy): una caja de
+  // hoy se cierra a las 09:50 (así una reapertura con `AHORA_PRUEBAS` cumple `reabierto_en >= cerrado_en`); las de otros días, a las 18:00.
+  const cerradoEn = opciones.cerradoEn ?? enLima(fechaDeLaCaja, fechaDeLaCaja === HOY ? '09:50' : '18:00');
   const fila = filaCierreValida(
     cajaId,
     cerradoPor,

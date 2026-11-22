@@ -8,6 +8,8 @@ import {
   ACCION_CAJA_EGRESO,
   ACCION_CAJA_REABIERTA,
   type AppCaja,
+  AYER,
+  type CajaDePrueba,
   cerrarCajaDePrueba,
   codigoDe,
   cookiesDeCaja,
@@ -18,6 +20,7 @@ import {
   cuerpoCierre,
   cuerpoEgreso,
   cuerpoReapertura,
+  enLima,
   type EscenarioCaja,
   exigirRutasDeCaja,
   instantaneaDeCaja,
@@ -62,6 +65,19 @@ describe('criterio 7: permisos de las rutas de la caja', () => {
   let ctx: AppCaja;
   let e: EscenarioCaja;
   let cookies: ReturnType<typeof cookiesDeCaja>;
+  // Una academia admite una sola caja por día y una sola abierta a la vez (criterios 1 y 5): las cajas que preparan las rutas se crean
+  // una vez por prueba y se reutilizan cuando una prueba prepara varias rutas seguidas. Egreso y cierre comparten la caja abierta de hoy
+  // (los rechazos no la cambian) y la reapertura usa la caja cerrada de ayer (criterio 36 c).
+  let cajaAbiertaDeHoy: Promise<CajaDePrueba> | undefined;
+  let cajaCerradaDeAyer: Promise<CajaDePrueba> | undefined;
+  const abiertaDeHoy = () => (cajaAbiertaDeHoy ??= crearCajaDePrueba(e.A.id, e.secretariaA.id));
+  const cerradaDeAyer = () =>
+    (cajaCerradaDeAyer ??= (async () => {
+      // Nace ya CERRADA: así no choca con la caja abierta de hoy (`cajas_una_abierta_por_academia`) si esa se creó antes.
+      const caja = await crearCajaDePrueba(e.A.id, e.secretariaA.id, { fecha: AYER, estado: 'CERRADA' });
+      await cerrarCajaDePrueba(e.A.id, caja.id, e.secretariaA.id, { cerradoEn: enLima(AYER, '18:00') });
+      return caja;
+    })());
 
   beforeAll(async () => {
     ctx = await crearAppCaja();
@@ -71,6 +87,8 @@ describe('criterio 7: permisos de las rutas de la caja', () => {
     ctx.reloj.fijar(AHORA_PRUEBAS);
     e = await crearEscenarioDeCaja();
     cookies = cookiesDeCaja(e);
+    cajaAbiertaDeHoy = undefined;
+    cajaCerradaDeAyer = undefined;
     // Auditoría previa en A: "no audita nada" tiene que poder verse.
     await insertarAuditoria(e.A.id, 'ACCION_PREVIA_A');
   });
@@ -101,7 +119,7 @@ describe('criterio 7: permisos de las rutas de la caja', () => {
       exito: 201,
       accion: ACCION_CAJA_EGRESO,
       preparar: async () => {
-        const caja = await crearCajaDePrueba(e.A.id, e.secretariaA.id);
+        const caja = await abiertaDeHoy();
         return { ruta: rutaCaja(caja.id, '/egresos'), cuerpo: cuerpoEgreso() };
       },
     },
@@ -112,7 +130,7 @@ describe('criterio 7: permisos de las rutas de la caja', () => {
       exito: 200,
       accion: ACCION_CAJA_CERRADA,
       preparar: async () => {
-        const caja = await crearCajaDePrueba(e.A.id, e.secretariaA.id);
+        const caja = await abiertaDeHoy();
         return { ruta: rutaCaja(caja.id, '/cierre'), cuerpo: cuerpoCierre() };
       },
     },
@@ -123,8 +141,7 @@ describe('criterio 7: permisos de las rutas de la caja', () => {
       exito: 200,
       accion: ACCION_CAJA_REABIERTA,
       preparar: async () => {
-        const caja = await crearCajaDePrueba(e.A.id, e.secretariaA.id);
-        await cerrarCajaDePrueba(e.A.id, caja.id, e.secretariaA.id);
+        const caja = await cerradaDeAyer();
         return { ruta: rutaCaja(caja.id, '/reapertura'), cuerpo: cuerpoReapertura() };
       },
     },

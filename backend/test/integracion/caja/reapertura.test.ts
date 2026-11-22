@@ -72,12 +72,13 @@ describe('reapertura de la caja (criterios 35 y 36)', () => {
     caja = await crearCajaDePrueba(e.A.id, e.secretariaA.id, { fecha, monto_inicial: '100.00' });
     await crearEgresoDePrueba(e.A.id, caja.id, e.secretariaA.id, {
       monto: '15.50',
-      registrado_en: enLima(fecha, '10:00'),
+      registrado_en: enLima(fecha, fecha === HOY ? '09:40' : '10:00'),
     });
     await cerrarCajaDePrueba(e.A.id, caja.id, e.secretariaA.id, {
       montoDeclarado,
       observacion,
-      cerradoEn: enLima(fecha, '18:00'),
+      // Hoy se cierra antes del reloj de las pruebas (10:00): así `reabierto_en` es exactamente `AHORA_PRUEBAS` y cumple `reabierto_en >= cerrado_en`.
+      cerradoEn: enLima(fecha, fecha === HOY ? '09:50' : '18:00'),
     });
     return caja;
   }
