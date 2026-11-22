@@ -1,8 +1,8 @@
 # 006 · Plan técnico
 
-Plan de la [spec](spec.md). Los valores marcados "provisional" en la spec dependen de las preguntas P1 a P11; si una
-respuesta los cambia, el especificador ajusta los criterios y este plan antes de las pruebas protegidas. Lo marcado
-**[006b]** va en el segundo PR (pregunta P10).
+Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-11 (responsable) y DT-1 a DT-6
+(orquestador) de la spec; los valores que el borrador llamaba "provisionales" quedan como definitivos. Lo marcado
+**[006b]** va en el segundo PR (DR-10).
 
 ## 1. Módulos afectados
 
@@ -11,7 +11,7 @@ respuesta los cambia, el especificador ajusta los criterios y este plan antes de
 - `packages/contratos/src/dinero.ts`: `montoNoNegativoSchema`, `montoConSignoSchema` y `restarMontos` (céntimos con
   `bigint`), con pruebas unitarias.
 - `packages/contratos/src/caja.ts` _(nuevo)_ y su reexportación en `index.ts`: esquemas del contrato de la spec.
-- `packages/contratos/src/permisos.ts`: `REABRIR_CAJA: { ADMIN: 'TODO' }` (pregunta T1).
+- `packages/contratos/src/permisos.ts`: `REABRIR_CAJA: { ADMIN: 'TODO' }` (DT-1).
 - `backend/prisma/schema.prisma` y la migración `<marca>_caja`.
 - `backend/src/infraestructura/prisma/privilegios-app.ts` (`PRIVILEGIOS_APP`), `scripts/lib/rol-app.mjs` y
   `TABLAS_DESPUES_DE_MIGRAR` de `scripts/test/integracion/migraciones.test.mjs`.
@@ -77,7 +77,7 @@ conAcademia(A):
   si existente: monto igual → 200 { caja: leerCaja(existente) }; si no → 409 CLAVE_YA_USADA
   abierta = SELECT id, fecha FROM cajas WHERE academia_id = A AND estado = 'ABIERTA'
   si abierta: fecha = hoy → 409 CAJA_YA_ABIERTA; si no → 409 CAJA_PENDIENTE_DE_CIERRE
-  si existe caja con fecha = hoy (cerrada) → 409 CAJA_DEL_DIA_CERRADA      (provisional P1)
+  si existe caja con fecha = hoy (cerrada) → 409 CAJA_DEL_DIA_CERRADA      (DR-1)
   INSERT cajas (fecha = hoy, estado ABIERTA, monto_inicial, abierta_por, abierta_en = ahora, clave)
   auditoría CAJA_ABIERTA
   201 { caja }
@@ -100,7 +100,7 @@ conAcademia(A):
   caja.estado = CERRADA → 409 CAJA_CERRADA
   esDeOtroDia(caja.fecha, ahora) → 409 CAJA_DE_OTRO_DIA
   resumen = leerResumen(caja)     -- sumas con numeric en SQL, convertidas a Decimal
-  monto > resumen.esperado.efectivo → 409 EFECTIVO_INSUFICIENTE { disponible }      (provisional P4)
+  monto > resumen.esperado.efectivo → 409 EFECTIVO_INSUFICIENTE { disponible }      (DR-4)
   numero = coalesce(max(numero), 0) + 1 de la caja (seguro: la caja está bloqueada)
   INSERT movimientos_caja (EGRESO, EGRESO_MENOR, EFECTIVO, …)    -- el trigger vuelve a mirar el estado
   auditoría CAJA_EGRESO_REGISTRADO
@@ -217,7 +217,7 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 
 ### 2.11 [006b] Historial y PDF
 
-- **Alcance de la secretaria (P9):** `WHERE c.estado = 'ABIERTA' OR c.abierta_por = $yo OR EXISTS (SELECT 1 FROM
+- **Alcance de la secretaria (DR-9):** `WHERE c.estado = 'ABIERTA' OR c.abierta_por = $yo OR EXISTS (SELECT 1 FROM
   cierres_caja k WHERE k.academia_id = c.academia_id AND k.caja_id = c.id AND k.cerrado_por = $yo)`. Fuera del alcance,
   el detalle y el PDF responden el mismo 404 que una caja de otra academia.
 - **PDF:** una transacción corta lee la academia (nombre), la caja, el cierre pedido y sus movimientos (`numero <=
@@ -235,13 +235,13 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 | --- | --- | --- |
 | Cierres en su propia tabla, con la reapertura en la misma fila (D1) | Campos de cierre en `cajas` (sección 9.1) | La reapertura borraría el primer cierre y su PDF |
 | `numero` por caja, asignado con la caja bloqueada (D2) | Orden por `registrado_en` | Puede repetirse; además `numero` dice qué vio quien cierra |
-| `ultimoMovimientoVisto` en el cierre (D3, T6) | El esperado mostrado | No sirve con arqueo ciego (P7) |
+| `ultimoMovimientoVisto` en el cierre (D3, DT-6) | El esperado mostrado | No serviría si algún día se adopta el arqueo ciego (DR-7) |
 | Caja en la dirección del egreso y del cierre (D4) | La caja abierta implícita | El egreso nunca cae en otra caja que la de la pantalla |
 | Clave del cliente en apertura, egreso y cierre; `pago_id` en el ingreso (D5) | 409 en el segundo clic | Un reintento con respuesta perdida debe ver lo ya hecho |
-| Trigger contra movimientos en caja cerrada (D6, T4) | Solo el bloqueo de la API | Defensa en profundidad, como los `CHECK` de 004 |
+| Trigger contra movimientos en caja cerrada (D6, DT-4) | Solo el bloqueo de la API | Defensa en profundidad, como los `CHECK` de 004 |
 | Bloqueo consultivo de la academia en apertura y reapertura | Solo los índices únicos | Orden fijo de los 409 y sin 500 en la carrera |
-| `REABRIR_CAJA` en la matriz (T1) | Rol comprobado en el servicio | El guard decide y la web usa `puede` |
-| PDF bajo pedido (T2) | PDF guardado en `AlmacenArchivos` | Sin archivos ni confirmación incierta; el cierre no cambia |
+| `REABRIR_CAJA` en la matriz (DT-1) | Rol comprobado en el servicio | El guard decide y la web usa `puede` |
+| PDF bajo pedido (DT-2) | PDF guardado en `AlmacenArchivos` | Sin archivos ni confirmación incierta; el cierre no cambia |
 | `metodo_pago` creado aquí | Que lo cree la 007 | Los movimientos lo necesitan ya; la 007 lo reutiliza |
 | `pago_id` sin llave foránea hasta la 007 | Crear `pagos` vacía | Cada historia crea sus tablas (D-17) |
 

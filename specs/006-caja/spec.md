@@ -22,13 +22,16 @@
   por método y diferencia, reapertura solo por el administrador, ningún cobro con la caja cerrada) y toca además el
   aislamiento entre academias, los permisos (datos financieros) y la auditoría. La web, la semilla y la documentación no
   son críticas.
-- **Estado:** borrador (22/11/2026), pendiente de la aprobación del responsable. Preguntas de negocio P1 a P11 y técnicas
-  T1 a T6 en "Preguntas abiertas", cada una con su propuesta y el valor provisional que usan los criterios.
-- **División propuesta (pregunta P10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, como DR-11 de
-  005 (ver "División en 006a y 006b"):
-  - **006a · Caja del día** (primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan del historial y
-    del PDF.
-  - **006b · Historial y PDF del cierre** (siguiente PR): criterios 40 a 44, más esas partes.
+- **Estado:** aprobada por el responsable (22/11/2026), con la propuesta de cada pregunta de negocio (P1 a P11, que son
+  DR-1 a DR-11 de esta spec) y con las técnicas aprobadas por el orquestador tal como se propusieron (T1 a T6, que son DT-1
+  a DT-6), en "Decisiones". Los valores que el borrador llamaba "provisionales" quedan como definitivos; ningún criterio
+  cambió de intención.
+- **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
+  protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
+  - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
+    del historial y del PDF.
+  - **006b · Historial y PDF del cierre** (siguiente PR, con la 006a unida a `main`): criterios 40 a 44, más esas
+    partes.
 
 ## Objetivo
 
@@ -64,11 +67,11 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   genera con datos ya confirmados y fuera de toda transacción de escritura.
 
 No son críticos, pero llevan _(prueba obligatoria)_: 37 a 39 (web de la caja del día, con pruebas de componentes y una
-E2E) y 44 (web del historial). Los 45 y 46 (semilla y documentación) los verifica el revisor. _(Propuesta T5.)_
+E2E) y 44 (web del historial). Los 45 y 46 (semilla y documentación) los verifica el revisor. _(DT-5.)_
 
 ## División en 006a y 006b
 
-Propuesta (pregunta P10), como DR-11 de 005. Las dos entregas comparten esta spec, `plan.md` y `tasks.md`; lo de la 006b
+Decidida en DR-10, como DR-11 de 005. Las dos entregas comparten esta spec, `plan.md` y `tasks.md`; lo de la 006b
 lleva la marca **[006b, siguiente PR]**. La 007 solo necesita la 006a.
 
 | Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
@@ -81,17 +84,18 @@ lleva la marca **[006b, siguiente PR]**. La 007 solo necesita la 006a.
 - **La migración de la 006a crea las tres tablas completas** (criterios 1 a 6), incluidas las columnas que solo lee la
   006b (`cierres_caja.movimientos_hasta`, la reapertura en `cierres_caja`). La 006b no tiene migración.
 - **`VER_REPORTES_FINANCIEROS` ya existe en la matriz** (`SECRETARIA: 'SU_CAJA'`): la 006b no cambia la matriz.
-  `REABRIR_CAJA` (pregunta T1) entra con la 006a.
+  `REABRIR_CAJA` (DT-1) entra con la 006a.
 - **La reapertura en la web:** en la 006a, el administrador reabre desde `/panel/caja` la caja del día ya cerrada. Reabrir
   una caja de un día anterior desde la web llega con el historial (006b); la API la admite desde la 006a (criterio 36).
-- **`pdfkit`** entra con la 006b (impacto en el criterio 127 de 001, pregunta T3).
+- **`pdfkit`** entra con la 006b (impacto en el criterio 127 de 001, DT-3).
 
 ## Criterios de aceptación
 
 En estos criterios, "ruta de academia", "sesión válida" y "actor vigente" son los de la spec 002; A y B son dos academias
 activas; "hoy" es la fecha de America/Lima de `RELOJ.ahora()` (`hoyEnLima`), nunca la del servidor ni la de la base.
 "Caja de otro día" es una caja cuya `fecha` es anterior a hoy. Los montos viajan como texto con dos decimales (`"120.00"`)
-y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisional" dependen de la pregunta indicada.
+y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paréntesis la decisión del responsable
+(DR-n) o del orquestador (DT-n) que fija sus valores.
 
 ### A. Tablas, aislamiento e invariantes en la base
 
@@ -130,7 +134,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
    _(crítico)_ (RN-17, HU-27, sección 4.3, RNF-12)
 5. **Índices únicos.** Dado un `INSERT` o `UPDATE` directo, entonces falla con `23505`: una segunda caja `ABIERTA` en la
    misma academia (`cajas_una_abierta_por_academia`, índice único parcial); una segunda caja con la misma `fecha` en la
-   misma academia (`cajas_academia_id_fecha_key`, provisional, pregunta P1); la misma `clave_idempotencia` en dos cajas,
+   misma academia (`cajas_academia_id_fecha_key`, una caja por día, DR-1); la misma `clave_idempotencia` en dos cajas,
    dos egresos o dos cierres de la academia; dos movimientos con el mismo `numero` en una caja; dos movimientos con el
    mismo `pago_id` en la academia (un pago entra una sola vez a la caja); dos cierres con el mismo `numero` en una caja; y
    dos cierres vigentes (sin `reabierto_en`) en una caja. En B, los mismos valores se aceptan. _(crítico)_ (RN-17, D-04)
@@ -150,7 +154,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
 7. **Permisos.** Dadas sesiones válidas de cada rol de A:
    - `GET /api/cajas/actual`, `POST /api/cajas`, `POST /api/cajas/{id}/egresos` y `POST /api/cajas/{id}/cierre` (permiso
      `ABRIR_CERRAR_CAJA`) responden a `ADMIN` y `SECRETARIA`, y 403 `SIN_PERMISO` a `ENTRENADOR` y `ALUMNO`;
-   - `POST /api/cajas/{id}/reapertura` (permiso nuevo `REABRIR_CAJA`, solo `ADMIN: 'TODO'`, pregunta T1) responde al
+   - `POST /api/cajas/{id}/reapertura` (permiso nuevo `REABRIR_CAJA`, solo `ADMIN: 'TODO'`, DT-1) responde al
      `ADMIN` y 403 `SIN_PERMISO` a `SECRETARIA`, `ENTRENADOR` y `ALUMNO`;
    - **[006b]** `GET /api/cajas`, `GET /api/cajas/{id}` y `GET /api/cajas/{id}/cierres/{numero}/pdf` (permiso
      `VER_REPORTES_FINANCIEROS`) responden a `ADMIN` y `SECRETARIA` (con el alcance del criterio 40), y 403 a `ENTRENADOR` y
@@ -184,7 +188,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
     `entidadId` el id, actor `USUARIO`, IP) con `datosDespues: { fecha, montoInicial }`. La fecha nunca viene del cliente.
     _(crítico)_ (HU-25, RN-17, RN-22)
 11. **Monto inicial.** `montoInicial` es un texto de `montoNoNegativoSchema`: de `"0"` a `"99999.99"`, con hasta dos
-    decimales (provisional: se acepta cero, pregunta P6). `"0"`, `"0.00"`, `"150"`, `"150.5"` y `"99999.99"` se aceptan,
+    decimales (se acepta cero, DR-6). `"0"`, `"0.00"`, `"150"`, `"150.5"` y `"99999.99"` se aceptan,
     se guardan en `numeric(10,2)` sin pasar por coma flotante y se devuelven como `"0.00"`, `"150.00"`, `"150.50"` y
     `"99999.99"`. Responden 400 `SOLICITUD_INVALIDA` (campo `montoInicial`) sin escribir ni auditar: un número JSON (`150`),
     `"-1"`, `"-0"`, `"150.505"`, `"1e2"`, `"150,50"`, `" 150"`, `"100000"`, `""`, `null` y la clave ausente.
@@ -205,10 +209,10 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
 14. **La caja de otro día sin cerrar.** Dada una caja de A abierta el día anterior (o antes) y nunca cerrada, cuando
     alguien de A intenta abrir la de hoy, entonces responde 409 `CAJA_PENDIENTE_DE_CIERRE` con `detalles: { cajaId, fecha }`
     (la fecha de la caja pendiente), sin escribir ni auditar: primero hay que cerrarla (criterio 32). No se cierra sola ni
-    se abre otra encima (provisional, pregunta P2). _(crítico)_ (RN-17)
+    se abre otra encima (DR-2). _(crítico)_ (RN-17)
 15. **Una caja por día.** Dada la caja de hoy de A ya cerrada, cuando alguien de A intenta abrir otra, entonces responde
     409 `CAJA_DEL_DIA_CERRADA` con `detalles: { cajaId, fecha }`, sin escribir ni auditar: para seguir cobrando hoy, el
-    administrador reabre la caja del día (criterio 35). (Provisional, pregunta P1: una caja por academia y por día.)
+    administrador reabre la caja del día (criterio 35). (DR-1: una caja abierta a la vez por academia y una por día.)
     _(crítico)_ (HU-25: "la caja del día"; RN-17)
 16. **Doble clic en la apertura.** Dada una apertura que ya creó la caja C con la clave K, cuando llega otra con la misma
     clave K y el mismo monto (doble clic o reintento), entonces responde 200 con `{ caja }` de C tal como está ahora, sin
@@ -222,7 +226,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
 17. **Registrar un egreso.** Dada la caja abierta de hoy C de A, cuando una `SECRETARIA` o un `ADMIN` envía
     `POST /api/cajas/{C}/egresos` con `{ claveIdempotencia, descripcion, monto, comprobante? }`, entonces responde 201 con
     `{ movimiento, caja }`: el movimiento tiene `tipo: 'EGRESO'`, `concepto: 'EGRESO_MENOR'`, `metodo: 'EFECTIVO'`
-    (provisional, pregunta P3), el monto con dos decimales, la `descripcion` y el `comprobante` (o `null`), `numero` (el
+    (DR-3: el egreso es siempre en efectivo), el monto con dos decimales, la `descripcion` y el `comprobante` (o `null`), `numero` (el
     siguiente de la caja: 1, 2, 3…), `registradoPor` y `registradoEn`; la caja trae el resumen ya con el egreso (el
     esperado en efectivo baja en el monto). Registra `CAJA_EGRESO_REGISTRADO` (entidad `movimiento_caja`, `entidadId` el id
     del movimiento) con `datosDespues: { cajaId, numero, descripcion, monto, comprobante }`. _(crítico)_ (HU-26, RN-22)
@@ -230,7 +234,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
     recortada de menos de 3 o más de 200 caracteres, con controles o con menos de 3 visibles (`textoVisibleSchema`);
     `monto` que no cumple `montoSchema` (`"0"`, `"0.00"`, `"-5"`, `"5.555"`, `5`, `"1e2"`, `" 5"`, `"100000"`, `null`);
     `comprobante` recortado de más de 60 caracteres o con controles (vacío o solo espacios cuenta como ausente y se guarda
-    `null`; provisional, pregunta P3); `claveIdempotencia` que no es UUID; cualquier campo de más (`metodo`, `concepto`,
+    `null`; DR-3); `claveIdempotencia` que no es UUID; cualquier campo de más (`metodo`, `concepto`,
     `tipo`, `alumnoId`). _(crítico)_ (HU-26)
 19. **Ningún movimiento con la caja cerrada (RN-17).** Dada la caja C de A cerrada, cuando alguien envía un egreso a C con
     una clave nueva, entonces responde 409 `CAJA_CERRADA` sin escribir ni auditar. Si el administrador la reabre (criterio
@@ -243,12 +247,13 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
     - d) la interfaz de la 007 (criterio 24) responde igual: con la caja del 30 abierta, a las 00:00 del 1 en Lima lanza
       `CAJA_DE_OTRO_DIA` y no inserta.
 
-    Lo único que admite una caja de otro día es su cierre (criterio 32). _(crítico)_ (RN-17; "cobrar con la caja de otro
-    día" de `CLAUDE.md`)
+    Lo único que admite una caja de otro día es su cierre (criterio 32; DR-2). _(crítico)_ (RN-17; "cobrar con la caja de
+    otro día" de `CLAUDE.md`)
 21. **Un egreso no deja el efectivo en negativo.** Dado que el esperado en efectivo de C es S/ 50.00, un egreso de
     `"50.00"` se acepta (queda en `"0.00"`) y uno de `"50.01"` responde 409 `EFECTIVO_INSUFICIENTE` con
     `detalles: { disponible: "50.00" }`, sin escribir ni auditar. Dos egresos simultáneos de `"30.00"` con S/ 50.00: uno
-    responde 201 y el otro 409 `EFECTIVO_INSUFICIENTE`; nunca quedan los dos. (Provisional, pregunta P4.) _(crítico)_
+    responde 201 y el otro 409 `EFECTIVO_INSUFICIENTE`; nunca quedan los dos. No hay otro tope para los egresos (DR-4).
+    _(crítico)_
     (sección 4.3)
 22. **Doble clic en el egreso.** Dado un egreso ya registrado en C con la clave K, cuando llega otro con la misma clave y
     los mismos `descripcion`, `monto` y `comprobante` (después de recortar y normalizar el monto: `"20"` y `"20.00"` son el
@@ -260,7 +265,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
 23. **Los movimientos no se editan ni se borran.** No hay ruta para cambiar o borrar un movimiento ni un cierre:
     `PATCH` y `DELETE` sobre `/api/cajas/{id}/egresos/{movimientoId}`, `/api/cajas/{id}` y `/api/movimientos-caja/{id}`
     responden 404 sin tocar nada; y la base no da a la app ni `UPDATE` ni `DELETE` de `movimientos_caja` (criterio 2). Un
-    egreso equivocado se explica en la observación del cierre (provisional, pregunta P5). _(crítico)_ (RN-22)
+    egreso equivocado se explica en la observación del cierre (DR-5: los movimientos no se anulan). _(crítico)_ (RN-22)
 24. **Interfaz para la 007: el ingreso de un cobro.** `registrarIngresoEnCaja(tx, ingreso, ahora)` (sin Nest, en
     `backend/src/modulos/caja/movimientos.ts`, reexportada en `caja/index.ts`; firma en "Contrato") corre dentro de la
     transacción de quien llama, que ya llamó a `bloquearActorVigente`. En este orden:
@@ -305,7 +310,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
     (ingresos, egresos y esperado por método, como el criterio 25, y `ultimoMovimiento`: el mayor `numero`, o 0),
     `movimientos` ordenados por `numero` (cada uno con `alumno` como `{ id, nombres, apellidos }` o `null`, nunca el DNI) y
     `cierres` ordenados por `numero` (criterio 29). No bloquea, no escribe y no audita. Con la caja abierta, el esperado
-    en efectivo se muestra antes de declarar (provisional, pregunta P7). _(crítico)_ (HU-26, HU-27)
+    en efectivo se muestra antes de declarar (DR-7, como dice HU-27; sin arqueo ciego). _(crítico)_ (HU-26, HU-27)
 
 ### F. Cierre (HU-27)
 
@@ -328,12 +333,12 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
 31. **El cierre se hace sobre lo que se vio.** Si `ultimoMovimientoVisto` no es igual al `ultimoMovimiento` de C dentro de
     la transacción (entró un egreso o un cobro después de que la persona cargó la pantalla), responde 409 `CAJA_CAMBIO` con
     `detalles: { ultimoMovimiento }`, sin escribir ni auditar; la web vuelve a cargar la caja y la persona revisa su conteo.
-    _(crítico)_ (HU-27; decisión de diseño D3)
+    _(crítico)_ (HU-27; decisión de diseño D3 y DT-6)
 32. **Cierre de una caja de otro día.** Dada la caja C abierta el 30 de noviembre y nunca cerrada, cuando alguien de A la
     cierra el 1 de diciembre, entonces se acepta como cualquier cierre, con `tardio: true` (la fecha de Lima de
     `cerradoEn` es posterior a la de C); después, la apertura de la caja del 1 de diciembre responde 201. Un cierre el
-    mismo día en Lima (también a las 19:30, que en UTC ya es el día siguiente) tiene `tardio: false`. _(crítico)_ (RN-17,
-    RNF-12)
+    mismo día en Lima (también a las 19:30, que en UTC ya es el día siguiente) tiene `tardio: false`. La cierra la
+    `SECRETARIA` o el `ADMIN`, contando el efectivo (DR-2). _(crítico)_ (RN-17, RNF-12)
 33. **Un movimiento contra el cierre.** Pruebas deterministas, sin depender de tiempos (espera comprobada en `pg_locks` o
     `pg_stat_activity`):
     - a) **el cierre primero:** una transacción de la prueba bloquea C (`SELECT … FOR UPDATE`) sin confirmar; se envía un
@@ -373,7 +378,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
       y la otra 409 (`HAY_OTRA_CAJA_ABIERTA`, `CAJA_YA_ABIERTA`, `CAJA_PENDIENTE_DE_CIERRE` o `CAJA_DEL_DIA_CERRADA`), nunca
       500.
     - c) Se puede reabrir la caja de un día anterior; queda abierta como caja de otro día: no admite movimientos (criterio
-      20) y solo se puede volver a cerrar, con `tardio: true` (provisional, pregunta P8).
+      20) y solo se puede volver a cerrar, con `tardio: true` (DR-8).
     - d) Un `ADMIN` de B sobre una caja de A, un id que no existe o que no es UUID: 404 `NO_ENCONTRADO`, el mismo cuerpo.
 
     _(crítico)_ (HU-27, RN-17)
@@ -413,7 +418,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
     `tardio`, quién y cuándo) o `null`. Sin parámetros, los últimos 31 días hasta hoy en Lima; el rango es de como mucho
     366 días y `desde` no puede ser posterior a `hasta` (si no, 400 con el campo). **Alcance:** el `ADMIN` ve todas las cajas
     de A; la `SECRETARIA` ("parcial, su caja", sección 2.1) ve solo las cajas que abrió, las que cerró alguna vez y la caja
-    abierta (provisional, pregunta P9). No bloquea, no escribe y no audita. _(crítico)_ (sección 2.1, HU-27, D-23)
+    abierta (DR-9). No bloquea, no escribe y no audita. _(crítico)_ (sección 2.1, HU-27, D-23)
 41. **Detalle de una caja.** `GET /api/cajas/{id}` responde 200 con `{ caja }` (`cajaSchema`, como el criterio 28), con
     todos sus cierres y sus reaperturas (quién, cuándo y el motivo). Una caja de B, un id que no existe o que no es UUID, y
     una caja fuera del alcance de la `SECRETARIA` (criterio 40) responden el mismo 404 `NO_ENCONTRADO`. _(crítico)_ (HU-27:
@@ -458,8 +463,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Los valores marcados "provisio
   y solo se cierra; después se abre la del día nuevo (criterios 14, 20 y 32). Perú no tiene horario de verano.
 - **Servidor en otra zona o base en UTC:** la fecha de la caja sale de `hoyEnLima(RELOJ.ahora())`, y la base la vuelve a
   exigir con `AT TIME ZONE 'America/Lima'` (criterios 4 a y 12).
-- **Monto inicial en cero:** se acepta (provisional, P6); el esperado en efectivo empieza en `"0.00"`.
-- **Egreso igual al efectivo disponible:** se acepta y el esperado queda en `"0.00"`; un céntimo más, 409 (P4).
+- **Monto inicial en cero:** se acepta (DR-6); el esperado en efectivo empieza en `"0.00"`.
+- **Egreso igual al efectivo disponible:** se acepta y el esperado queda en `"0.00"`; un céntimo más, 409 (DR-4).
 - **Caja sin movimientos:** se cierra igual; el esperado es el monto inicial; `ultimoMovimientoVisto` es 0.
 - **Declarado en cero con esperado mayor:** faltante igual a todo el esperado, con observación obligatoria.
 - **Diferencia de un céntimo:** cuenta como diferencia (`"0.01"` o `"-0.01"`) y exige observación.
@@ -568,7 +573,7 @@ responde el mismo 404 que uno inexistente o de otra academia. `GET /api/cajas/ac
     `respuestaEgresoSchema = { movimiento, caja }`.
   - **[006b]** `filtroHistorialCajasSchema` (`desde` y `hasta` opcionales con `fechaSchema`; un parámetro repetido es
     400), `cajaHistorialSchema` (criterio 40) y `respuestaHistorialCajasSchema = { cajas }`.
-- `permisos.ts`: suma `REABRIR_CAJA: { ADMIN: 'TODO' }` (pregunta T1).
+- `permisos.ts`: suma `REABRIR_CAJA: { ADMIN: 'TODO' }` (DT-1).
 
 ### Interfaces del backend (para las historias siguientes)
 
@@ -650,7 +655,7 @@ su reapertura) en lugar de los campos de cierre de `CAJA`, para no perder un cie
   `abierta_por uuid not null` con `FOREIGN KEY (academia_id, abierta_por) REFERENCES usuarios (academia_id, id)`;
   `abierta_en timestamptz(3) not null`; `clave_idempotencia uuid not null`; `creado_en`, `actualizado_en`.
   `UNIQUE (academia_id, id)`; `UNIQUE (academia_id, clave_idempotencia)`; `UNIQUE (academia_id, fecha)`
-  (`cajas_academia_id_fecha_key`, provisional P1); índice único parcial `cajas_una_abierta_por_academia` sobre
+  (`cajas_academia_id_fecha_key`, DR-1); índice único parcial `cajas_una_abierta_por_academia` sobre
   `(academia_id) WHERE estado = 'ABIERTA'`; `CHECK` de `monto_inicial` y de `fecha = (abierta_en AT TIME ZONE
   'America/Lima')::date`.
 - **`movimientos_caja`:** `id uuid` PK; `academia_id`; `caja_id uuid not null` con `FOREIGN KEY (academia_id, caja_id)
@@ -683,12 +688,15 @@ su reapertura) en lugar de los campos de cierre de `CAJA`, para no perder un cie
 - **Cobros, pagos, verificación de Yape y transferencia, ticket interno y el paso de cliente a alumno:** 007. La 007 llama
   a `registrarIngresoEnCaja` dentro de su transacción; guarda en `pagos` la fecha de la operación y la de verificación
   (D-04, D-07) y le pone la llave foránea a `movimientos_caja.pago_id`.
-- **Ingresos manuales** que no vienen de un cobro (venta de gorros, donaciones…): no, según HU-26 (pregunta P11).
+- **Ingresos manuales** que no vienen de un cobro (venta de gorros, donaciones…): no; todo ingreso nace de un cobro
+  (HU-26, DR-11).
 - **Pago a entrenadores desde caja (RN-35, HU-39):** 019, con `registrarEgresoEnCaja`.
-- **Anular o corregir movimientos:** no en esta historia (pregunta P5).
-- **Foto del comprobante de un egreso:** no en esta historia; el comprobante es un texto (pregunta P3).
+- **Anular o corregir movimientos:** no (DR-5).
+- **Foto del comprobante de un egreso:** no; el comprobante es un texto opcional (DR-3).
+- **Turnos (varias cajas en el mismo día):** no; una caja por día (DR-1).
+- **Arqueo ciego:** no; el esperado se muestra antes de contar (DR-7).
 - **Conteo por billetes y monedas, arqueos parciales durante el día, varias monedas:** no están en los documentos.
-- **Cierre automático de la caja a medianoche:** no (pregunta P2).
+- **Cierre automático de la caja a medianoche:** no (DR-2).
 - **Reportes R1 a R3 exportables a Excel y el dashboard:** Fase 3. La 006b solo da el historial y el PDF de cada cierre.
 - **Facturación SUNAT:** último módulo (D-09).
 
@@ -700,9 +708,10 @@ su reapertura) en lugar de los campos de cierre de `CAJA`, para no perder un cie
 - **001, catálogo (criterios 124 y 131):** la función del trigger es `SECURITY INVOKER` y sin valores propios: no hace falta
   ninguna excepción en `FUNCIONES_SECURITY_DEFINER_PERMITIDAS`.
 - **001, criterio 127 (dependencias del backend), [006b]:** `pdfkit` (y `@types/pdfkit` en las de desarrollo) se suman a
-  `DEPENDENCIAS_BACKEND_PERMITIDAS` en el mismo cambio (pregunta T3). Ya estaba en el stack (D-10, D-25).
+  `DEPENDENCIAS_BACKEND_PERMITIDAS` en el mismo cambio (DT-3). Ya estaba en el stack (D-10, D-25).
 - **002, criterio 26 (matriz):** suma `REABRIR_CAJA` con `ADMIN: 'TODO'` (de 24 a 25 filas), como hizo la 003 con
-  `CONFIGURAR_ACADEMIA`. La prueba protegida la actualiza el test-writer solo para sumar la fila (pregunta T1).
+  `CONFIGURAR_ACADEMIA`. La prueba protegida la actualiza el test-writer solo para sumar la fila, en el commit de pruebas
+  protegidas de la 006a (DT-1).
 - **003 y 004:** ninguno.
 - **005:** ninguno. La caja no bloquea filas del cliente ni clases (criterio 26).
 - **Web de 002:** el inicio del panel suma "Caja" (006a) e "Historial de caja" (006b).
@@ -733,12 +742,14 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 - **La caja abierta es una fila que serializa los cobros de una academia:** cada cobro y cada egreso la bloquean un
   instante. Para el volumen de una recepción (decenas de cobros al día) no se nota; es lo que garantiza que ningún cobro
   entre a una caja que se está cerrando.
-- **El esperado se ve antes de contar** (provisional, P7): la persona que cierra podría escribir el esperado sin contar.
-  Lo mitigan la auditoría y el PDF con quién cerró. El arqueo ciego queda como alternativa.
-- **Una caja por día** (provisional, P1): si alguien cierra por error a mediodía, nadie cobra hasta que el administrador
-  reabra.
-- **Movimientos inmutables** (provisional, P5): un egreso mal registrado no se corrige; se explica en la observación del
-  cierre y queda la diferencia.
+- **El esperado se ve antes de contar** (DR-7): la persona que cierra podría escribir el esperado sin contar. Lo
+  mitigan la auditoría y el PDF con quién cerró. El arqueo ciego queda como mejora futura, no decidida; la API no
+  cambiaría (D3).
+- **Una caja por día** (DR-1): si alguien cierra por error a mediodía, nadie cobra hasta que el administrador reabra.
+- **Movimientos inmutables** (DR-5): un egreso mal registrado no se corrige; se explica en la observación del cierre y
+  queda la diferencia.
+- **Egresos sin tope propio** (DR-4): el único límite es el efectivo de la caja; un egreso grande se acepta si hay
+  efectivo. Lo mitigan la auditoría (`CAJA_EGRESO_REGISTRADO` con quién y cuánto) y el cierre.
 - **La coherencia entre el estado de la caja y su cierre vigente** (una caja `CERRADA` tiene un cierre vigente y una
   `ABIERTA` ninguno) la garantiza el servicio dentro de la transacción y la comprueban las pruebas; la base solo exige un
   vigente como mucho.
@@ -749,9 +760,89 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 
 ## Decisiones
 
+**Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" dentro de ella y como "DR-n de 006"
+fuera; las del orquestador, "DT-n" y "DT-n de 006"; las de diseño del especificador, "Dn". Las de otras specs llevan
+siempre su número ("DT-5 de 002", "DR-11 de 005"). La pregunta Pn del borrador es DR-n y la Tn es DT-n (P1 es DR-1, T1
+es DT-1, y así hasta P11 y T6).
+
+### Decisiones del responsable (22/11/2026)
+
+Bryan aprobó la especificación y aceptó la propuesta de cada pregunta de negocio, incluida la división en 006a y 006b.
+Como los criterios ya usaban la propuesta como valor provisional, ninguno cambia de intención: esos valores quedan como
+definitivos. Se conserva el texto de cada pregunta; lo decidido es la propuesta.
+
+- **DR-1 (pregunta P1). ¿Una caja por academia y por día, o turnos?** Los documentos hablan de "la caja del día" (HU-25),
+  "la caja que esté abierta" (D-04) y "la caja abierta del día" (RN-35), siempre en singular. **Decidido (la propuesta):**
+  una sola caja abierta a la vez por academia, que comparten la secretaria y el administrador (cada movimiento guarda quién
+  lo registró), y **una caja por día**; si se cierra por error, el administrador la reabre. Alternativa descartada: varias
+  cajas seguidas en el mismo día (turnos de mañana y tarde). (Criterios 5, 13 y 15.)
+- **DR-2 (pregunta P2). ¿Qué pasa si nadie cerró la caja del día anterior?** **Decidido (la propuesta):** esa caja ya no
+  admite egresos ni cobros (tampoco verificar Yapes) y hay que cerrarla, contando el efectivo, antes de abrir la de hoy; el
+  cierre queda marcado como "tardío". La puede cerrar la secretaria o el administrador. Alternativas descartadas: (a) que
+  la cierre solo el administrador; (b) que el sistema la cierre solo a medianoche, sin conteo. (Criterios 14, 20 y 32.)
+- **DR-3 (pregunta P3). ¿Cómo es un egreso?** HU-26 pide concepto, monto y comprobante opcional. **Decidido (la
+  propuesta):** siempre en efectivo, sale del cajón (el diagrama 4.3 resta todos los egresos del efectivo); el concepto es
+  un texto libre de 3 a 200 caracteres; el comprobante es un texto opcional (por ejemplo "Boleta B001-123", hasta 60
+  caracteres). Alternativa descartada: el comprobante como foto. (Criterios 17 y 18.)
+- **DR-4 (pregunta P4). ¿Un egreso puede ser mayor que el efectivo de la caja?** **Decidido (la propuesta):** no; se
+  rechaza con 409 `EFECTIVO_INSUFICIENTE` si deja el efectivo esperado por debajo de cero. Sin otro tope para los egresos
+  menores. Alternativas descartadas: permitirlo y que aparezca como faltante; fijar un monto máximo que solo el
+  administrador puede superar. (Criterio 21.)
+- **DR-5 (pregunta P5). ¿Se puede anular un movimiento equivocado?** **Decidido (la propuesta):** no; los movimientos no
+  se editan ni se borran, y un error se explica en la observación del cierre. Alternativa descartada: anulación por el
+  administrador con un movimiento de reversa. (Criterio 23.)
+- **DR-6 (pregunta P6). ¿El monto inicial puede ser cero?** **Decidido (la propuesta):** sí (una caja sin sencillo al
+  empezar). Alternativa descartada: exigir más de cero. (Criterio 11.)
+- **DR-7 (pregunta P7). ¿La secretaria ve el efectivo esperado antes de contar?** **Decidido (la propuesta):** sí, como
+  dice HU-27 ("el sistema muestra el esperado por método"). Alternativa descartada por ahora: el arqueo ciego (declarar
+  primero y ver el esperado después); la API no cambiaría si se adopta más adelante (D3). (Criterios 28 y 38.)
+- **DR-8 (pregunta P8). ¿Se puede reabrir la caja de un día anterior?** **Decidido (la propuesta):** sí, solo para
+  corregir el cierre (volver a contar y cerrar), sin agregar movimientos a ese día, y solo si no hay otra caja abierta.
+  Alternativa descartada: solo se puede reabrir la caja de hoy. (Criterio 36 b y c.)
+- **DR-9 (pregunta P9). ¿Qué es "su caja" para la secretaria en el historial?** La matriz dice "Ver reportes
+  financieros: parcial (su caja)". **Decidido (la propuesta):** las cajas que ella abrió, las que cerró y la caja abierta
+  en este momento; el administrador ve todas. Alternativa descartada: todas las cajas de la academia. (Criterios 40 a 42,
+  006b.)
+- **DR-10 (pregunta P10). ¿Dividimos la historia?** **Decidido (la propuesta):** sí, en dos entregas de ruta crítica,
+  cada una con sus pruebas protegidas, su ataque y su PR, desde esta misma carpeta:
+  - **006a · Caja del día** (primero): apertura, egresos, cierre, reapertura, la interfaz para la 007 y la pantalla de la
+    caja; criterios 1 a 39, más 45 y 46 sin el historial ni el PDF.
+  - **006b · Historial y PDF del cierre** (siguiente PR, con la 006a unida): criterios 40 a 44, más la parte de 45 y 46
+    que les toca.
+
+  La 007 puede empezar con la 006a unida. Alternativa descartada: un solo PR. Reparto y dependencias: "División en 006a y
+  006b".
+- **DR-11 (pregunta P11). ¿Hay ingresos que no vienen de un cobro?** HU-26 solo nombra inscripción, mensualidad y clase
+  particular. **Decidido (la propuesta):** no; todo ingreso nace de un cobro (007 y 016) y entra con
+  `registrarIngresoEnCaja`. Alternativa descartada: un "otro ingreso" manual con concepto. ("Fuera de alcance".)
+
+### Decisiones técnicas del orquestador (22/11/2026)
+
+El orquestador aprobó las seis propuestas técnicas tal como estaban. Se conserva el texto de cada pregunta; lo decidido
+es la propuesta.
+
+- **DT-1 (pregunta T1). Permiso nuevo `REABRIR_CAJA`** (`ADMIN: 'TODO'`). **Decidido (la propuesta):** como
+  `CONFIGURAR_ACADEMIA` en la 003: el guard decide y la web usa `puede`. La prueba protegida de la matriz (criterio 26 de
+  002) crece una fila, de 24 a 25, en el commit de pruebas protegidas de la 006a, sin quitar ni cambiar nada. Alternativa
+  descartada: comprobar el rol `ADMIN` dentro del servicio con `ABRIR_CERRAR_CAJA` (la regla quedaría escondida).
+  _(006a; criterio 7.)_
+- **DT-2 (pregunta T2). PDF bajo pedido.** **Decidido (la propuesta):** se arma en cada descarga con lo ya confirmado, sin
+  guardar archivos. Alternativa descartada: generarlo al cerrar y guardarlo con `AlmacenArchivos` (confirmación incierta
+  y borrado, como en la 005b). _(006b; criterio 43.)_
+- **DT-3 (pregunta T3). `pdfkit` como dependencia del backend** (D-10, D-25), con `@types/pdfkit` en las de desarrollo,
+  en la 006b, sumadas a `DEPENDENCIAS_BACKEND_PERMITIDAS` (criterio 127 de 001). **Decidido (la propuesta):** es
+  JavaScript puro, sin binarios por sistema operativo. _(006b; criterio 42.)_
+- **DT-4 (pregunta T4). Trigger en la base** contra movimientos en una caja cerrada. **Decidido (la propuesta):** como
+  defensa en profundidad. Alternativa descartada: solo el bloqueo de la fila en la API. _(006a; criterio 6.)_
+- **DT-5 (pregunta T5). Clasificación.** **Decidido (la propuesta):** críticos 1 a 36 y 40 a 43 (del 42, el alcance y el
+  404); prueba obligatoria 37 a 39, el contenido del 42 y el 44; revisor 45 y 46. Repartidos como dice "División en 006a
+  y 006b".
+- **DT-6 (pregunta T6). `ultimoMovimientoVisto` en el cierre** (D3). **Decidido (la propuesta).** Alternativa
+  descartada: cerrar con lo que haya en ese momento, aunque la persona no lo haya visto. _(006a; criterio 31.)_
+
 ### Decisiones de diseño (técnicas)
 
-Propuestas del especificador, a aprobar con la spec.
+Propuestas del especificador, aprobadas con la spec (22/11/2026).
 
 - **D1. Los cierres en su propia tabla.** Cada cierre es una fila de `cierres_caja` que no cambia salvo para registrar su
   reapertura. Alternativa descartada: los campos de cierre en `cajas` (`monto_declarado`, `diferencia`…), como la sección
@@ -760,7 +851,8 @@ Propuestas del especificador, a aprobar con la spec.
   para saber qué vio quien cierra (D3) y para que el PDF de cada cierre liste solo sus movimientos. Alternativa
   descartada: ordenar por `registrado_en`, que puede repetirse al milisegundo.
 - **D3. El cierre manda `ultimoMovimientoVisto`.** Si entró un movimiento después de cargar la pantalla, 409
-  `CAJA_CAMBIO`. Alternativa descartada: mandar el esperado mostrado; no sirve si se elige el arqueo ciego (P7).
+  `CAJA_CAMBIO` (DT-6). Alternativa descartada: mandar el esperado mostrado; no serviría si algún día se adopta el arqueo
+  ciego (DR-7).
 - **D4. El egreso y el cierre llevan la caja en la dirección** (`/api/cajas/{id}/…`); el cobro de la 007 no, porque entra
   a "la caja que esté abierta en ese momento" (D-04). Así un egreso nunca cae en una caja distinta de la que la persona
   tiene en pantalla.
@@ -772,67 +864,34 @@ Propuestas del especificador, a aprobar con la spec.
 
 ## Preguntas abiertas
 
-### Para el responsable (negocio)
+Ninguna pendiente. Las preguntas del borrador quedaron resueltas el 22/11/2026; el texto completo de cada una, con lo
+decidido y la alternativa descartada, está en "Decisiones".
 
-- **P1. ¿Una caja por academia y por día, o turnos?** Los documentos hablan de "la caja del día" (HU-25), "la caja que
-  esté abierta" (D-04) y "la caja abierta del día" (RN-35), siempre en singular. **Propuesta:** una sola caja abierta a la
-  vez por academia, que comparten la secretaria y el administrador (cada movimiento guarda quién lo registró), y **una
-  caja por día**; si se cierra por error, el administrador la reabre. **Alternativa:** varias cajas seguidas en el mismo
-  día (turnos de mañana y tarde), cada una con su apertura y su cierre. Valor provisional de los criterios: la propuesta
-  (criterios 5, 13 y 15).
-- **P2. ¿Qué pasa si nadie cerró la caja del día anterior?** **Propuesta:** esa caja ya no admite egresos ni cobros
-  (tampoco verificar Yapes) y hay que cerrarla, contando el efectivo, antes de abrir la de hoy; el cierre queda marcado
-  como "tardío". Lo puede cerrar la secretaria o el administrador. **Alternativas:** (a) que la cierre solo el
-  administrador; (b) que el sistema la cierre solo a medianoche, sin conteo, y deje la diferencia pendiente. Valor
-  provisional: la propuesta (criterios 14, 20 y 32).
-- **P3. ¿Cómo es un egreso?** HU-26 pide concepto, monto y comprobante opcional. **Propuesta:** siempre en efectivo y
-  sale del cajón (el diagrama 4.3 resta todos los egresos del efectivo); el concepto es un texto libre de 3 a 200
-  caracteres; el comprobante es un texto opcional (por ejemplo "Boleta B001-123", hasta 60 caracteres). **Alternativa:**
-  el comprobante como foto (JPG o PNG de hasta 5 MB, como la de la 005b), que iría a la 006b. Valor provisional: la
-  propuesta (criterios 17 y 18).
-- **P4. ¿Un egreso puede ser mayor que el efectivo que hay en la caja?** **Propuesta:** no; se rechaza si deja el
-  efectivo esperado por debajo de cero (no se puede sacar del cajón lo que no hay). Sin otro tope para los "egresos
-  menores". **Alternativas:** permitirlo y que aparezca como faltante; o fijar un monto máximo que solo el administrador
-  puede superar. Valor provisional: la propuesta (criterio 21).
-- **P5. ¿Se puede anular un movimiento equivocado?** **Propuesta:** no en esta historia; los movimientos no se editan ni
-  se borran, y un error se explica en la observación del cierre. **Alternativa:** que el administrador anule un egreso
-  con motivo, con un movimiento de reversa que queda en la auditoría (más trabajo y otra regla de dinero). Valor
-  provisional: la propuesta (criterio 23).
-- **P6. ¿El monto inicial puede ser cero?** **Propuesta:** sí (una caja sin sencillo al empezar). **Alternativa:** exigir
-  más de cero. Valor provisional: la propuesta (criterio 11).
-- **P7. ¿La secretaria ve el efectivo esperado antes de contar?** HU-27 dice "el sistema muestra el esperado por método".
-  **Propuesta:** sí, como dice HU-27. **Alternativa (arqueo ciego):** que primero declare lo contado y recién después vea
-  el esperado y la diferencia; es un control más fuerte contra faltantes. Valor provisional: la propuesta (criterios 28 y
-  38). La API no cambia con la alternativa (D3).
-- **P8. ¿Se puede reabrir la caja de un día anterior?** HU-27 no pone límite. **Propuesta:** sí, para corregir el cierre
-  (volver a contar y cerrar), pero sin agregar movimientos a ese día; y solo si no hay otra caja abierta. **Alternativa:**
-  solo se puede reabrir la caja de hoy. Valor provisional: la propuesta (criterio 36 c).
-- **P9. ¿Qué es "su caja" para la secretaria en el historial (006b)?** La matriz dice "Ver reportes financieros: parcial
-  (su caja)". **Propuesta:** las cajas que ella abrió, las que cerró y la caja abierta en este momento. **Alternativa:**
-  todas las cajas de la academia, porque la caja es compartida. Valor provisional: la propuesta (criterio 40).
-- **P10. ¿Dividimos la historia?** **Propuesta:** sí, en dos entregas de ruta crítica, como la 005: **006a · caja del día**
-  (apertura, egresos, cierre, reapertura, la interfaz para la 007 y la pantalla de la caja; criterios 1 a 39) y **006b ·
-  historial y PDF del cierre** (criterios 40 a 44). La 007 puede empezar con la 006a unida. **Alternativa:** un solo PR
-  con todo.
-- **P11. ¿Hay ingresos que no vienen de un cobro?** HU-26 solo nombra inscripción, mensualidad y clase particular.
-  **Propuesta:** no; todo ingreso nace de un cobro (007 y 016). **Alternativa:** un "otro ingreso" manual con concepto,
-  que habría que sumar a esta historia.
+### Resueltas (22/11/2026)
 
-### Para el orquestador (técnicas)
+Para el responsable (negocio), respondidas por Bryan, todas con la propuesta:
 
-- **T1. Permiso nuevo `REABRIR_CAJA`** (`ADMIN: 'TODO'`), que cambia la prueba protegida del criterio 26 de 002 solo para
-  sumar la fila. **Propuesta:** sí, como `CONFIGURAR_ACADEMIA` en la 003: el guard decide y la web usa `puede`.
-  **Alternativa:** comprobar el rol `ADMIN` dentro del servicio con `ABRIR_CERRAR_CAJA` (sin tocar la matriz, pero la
-  regla queda escondida en un servicio).
-- **T2. PDF bajo pedido** (criterio 43). **Propuesta:** se arma en cada descarga con lo ya confirmado, sin guardar
-  archivos. **Alternativa:** generarlo después de confirmar el cierre y guardarlo con `AlmacenArchivos`, lo que trae la
-  confirmación incierta y el borrado de la 005b.
-- **T3. `pdfkit` como dependencia del backend** (D-10, D-25), con `@types/pdfkit`, en la 006b. **Propuesta:** sí; es
-  JavaScript puro, sin binarios por sistema operativo.
-- **T4. Trigger en la base** contra movimientos en una caja cerrada (criterio 6). **Propuesta:** sí, como defensa en
-  profundidad. **Alternativa:** solo el bloqueo de la fila en la API (si una escritura directa o un error de una historia
-  futura se lo salta, nada lo detiene).
-- **T5. Clasificación.** **Propuesta:** críticos 1 a 36 y 40 a 43 (del 42, el alcance y el 404); prueba obligatoria 37 a
-  39, el contenido del 42 y el 44; revisor 45 y 46.
-- **T6. `ultimoMovimientoVisto` en el cierre** (D3, criterio 31). **Propuesta:** sí. **Alternativa:** cerrar con lo que
-  haya en ese momento, aunque la persona no lo haya visto.
+| Pregunta | Respuesta | Decisión | Criterios |
+| --- | --- | --- | --- |
+| P1. ¿Una caja por día o turnos? | Una caja abierta a la vez por academia y una por día; si se cierra por error, el administrador la reabre | DR-1 | 5, 13, 15 |
+| P2. ¿Caja del día anterior sin cerrar? | No admite movimientos; la secretaria o el administrador la cierra contando el efectivo, con la marca «tardío», antes de abrir la de hoy | DR-2 | 14, 20, 32 |
+| P3. ¿Cómo es un egreso? | Siempre en efectivo, concepto de texto libre y comprobante opcional como texto | DR-3 | 17, 18 |
+| P4. ¿Egreso mayor que el efectivo? | No: 409 `EFECTIVO_INSUFICIENTE`, sin otro tope | DR-4 | 21 |
+| P5. ¿Se anulan los movimientos? | No; el error se explica en la observación del cierre | DR-5 | 23 |
+| P6. ¿Monto inicial en cero? | Sí | DR-6 | 11 |
+| P7. ¿Se ve el esperado antes de contar? | Sí (HU-27) | DR-7 | 28, 38 |
+| P8. ¿Reabrir la caja de un día anterior? | Sí, solo para volver a cerrarla, sin movimientos y solo si no hay otra caja abierta | DR-8 | 36 |
+| P9. ¿«Su caja» de la secretaria? | Las que abrió o cerró y la caja abierta; el administrador ve todas | DR-9 | 40 a 42 |
+| P10. ¿Dividir la historia? | Sí: 006a (criterios 1 a 39) y 006b (40 a 44) | DR-10 | todos |
+| P11. ¿Ingresos manuales? | No; todo ingreso nace de un cobro | DR-11 | 24, "Fuera de alcance" |
+
+Para el orquestador (técnicas), aprobadas tal como se propusieron:
+
+| Pregunta | Respuesta | Decisión | Criterios |
+| --- | --- | --- | --- |
+| T1. Permiso `REABRIR_CAJA` | Sí, solo `ADMIN`; la matriz de 002 crece una fila en un commit de pruebas protegidas | DT-1 | 7, 35, 36 |
+| T2. PDF | Bajo pedido, sin guardar archivos | DT-2 | 43 |
+| T3. `pdfkit` | Con `@types/pdfkit`, en la 006b | DT-3 | 42 |
+| T4. Trigger contra movimientos en caja cerrada | Sí | DT-4 | 6 |
+| T5. Clasificación | Como se propuso | DT-5 | todos |
+| T6. `ultimoMovimientoVisto` en el cierre | Sí | DT-6 | 31 |

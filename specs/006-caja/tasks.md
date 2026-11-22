@@ -1,16 +1,21 @@
 # 006 · Tareas
 
 Cada tarea indica su rol y los criterios de aceptación de [`spec.md`](spec.md) que cubre. Historia de ruta crítica,
-dividida en dos entregas (pregunta P10): las tareas de la **006b** llevan la marca **[006b, siguiente PR]** y se hacen
-con la 006a unida a `main`. En cada entrega, los criterios críticos llevan pruebas protegidas escritas y confirmadas en
-rojo antes de implementar y ataque adversarial después. No se empieza T1 sin la aprobación del responsable (T0).
+dividida en dos entregas (DR-10 de la spec), cada una con sus pruebas protegidas, su ataque y su PR:
+
+- **006a · Caja del día** (T1 a T22): criterios 1 a 39, y 45 y 46 sin el historial ni el PDF. Se construye primero.
+- **006b · Historial y PDF del cierre** (T23 a T35, marca **[006b, siguiente PR]**): criterios 40 a 44 y la parte de 45
+  y 46 que les toca. Se empieza con la 006a unida a `main`.
+
+En cada entrega, los criterios críticos (DT-5) llevan pruebas protegidas escritas y confirmadas en rojo antes de
+implementar y ataque adversarial después.
 
 ## Aprobación
 
-- [ ] T0 · responsable y orquestador · Aprobar la especificación y resolver las preguntas P1 a P11 (Bryan) y T1 a T6
-      (orquestador). Si alguna respuesta cambia un valor provisional (P1 a P9) o la división (P10), el especificador
-      ajusta los criterios afectados, el plan y estas tareas antes de T1. Al aprobar, el orquestador suma a las notas de
-      la 007 y de la 019 en `specs/backlog.md` la interfaz de la caja y el orden de bloqueos.
+- [x] T0 · responsable y orquestador · Aprobar la especificación y resolver las preguntas P1 a P11 (Bryan) y T1 a T6
+      (orquestador). Hecho el 22/11/2026: todas con la propuesta (DR-1 a DR-11 y DT-1 a DT-6 de la spec); ningún valor
+      provisional cambió y la división se mantiene. La nota de la 007 (y la de la 019) en `specs/backlog.md` ya remite a
+      `registrarIngresoEnCaja` (y a `registrarEgresoEnCaja`) y al orden de bloqueos con la caja.
 
 ## 006a · Caja del día
 
@@ -25,7 +30,8 @@ rojo antes de implementar y ataque adversarial después. No se empieza T1 sin la
 - [ ] T2 · test-writer · Pruebas protegidas de permisos por rol en las cinco rutas de la 006a (sin sesión, cambio
       obligatorio, academia suspendida, cookie del Superadmin); aislamiento por id, por cuerpo y por parámetro de
       consulta; carrera determinista del actor vigente en apertura, egreso, cierre y reapertura; actualización de la
-      prueba protegida de la matriz (criterio 26 de 002) para sumar `REABRIR_CAJA`, sin quitar nada (criterios 7 a 9)
+      prueba protegida de la matriz (criterio 26 de 002) para sumar la fila `REABRIR_CAJA` (de 24 a 25), sin quitar ni
+      cambiar nada, en el mismo commit de pruebas protegidas (DT-1) (criterios 7 a 9)
 - [ ] T3 · test-writer · Pruebas protegidas de la apertura: respuesta y auditoría, monto inicial (aceptados y
       rechazados), fecha de Lima en los bordes con `TZ=Asia/Tokyo` y `TZ=UTC`, una abierta por academia y aperturas
       simultáneas, caja pendiente de otro día, caja del día cerrada, clave repetida y simultánea (criterios 10 a 16)
@@ -115,9 +121,9 @@ rojo antes de implementar y ataque adversarial después. No se empieza T1 sin la
 ### Implementación
 
 - [ ] T26 · backend · `pdfkit` y `@types/pdfkit` en `backend/package.json` y en `DEPENDENCIAS_BACKEND_PERMITIDAS`
-      (criterio 127 de 001); contratos del historial (criterios 40, 42)
+      (criterio 127 de 001; DT-3); contratos del historial (criterios 40, 42)
 - [ ] T27 · backend · `historial.service.ts`, rutas `GET /api/cajas` y `GET /api/cajas/{id}` con el alcance `SU_CAJA`
-      (criterios 40, 41)
+      (DR-9) (criterios 40, 41)
 - [ ] T28 · backend · `pdf/cierre-pdf.ts` y la ruta del PDF; prueba no protegida del contenido extrayendo el texto
       (criterios 42, 43)
 - [ ] T29 · frontend · `/panel/cajas` y la opción "Historial de caja": lista con filtro, detalle, descarga del PDF y
