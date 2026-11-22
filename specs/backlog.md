@@ -16,8 +16,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 003 | Configuración de la academia | En parte | ✅ |
 | 004 | Planes y clases con aforo | En parte | ✅ |
 | 005a | Inscripción pública, reserva y seguimiento de la solicitud | Sí | ✅ |
-| 005b | Foto de la inscripción y panel de solicitudes | Sí | 🟨 |
-| 006 | Caja | Sí | ⬜ |
+| 005b | Foto de la inscripción y panel de solicitudes | Sí | ✅ |
+| 006 | Caja | Sí | 🟨 |
 | 007 | Pagos, verificación y paso de cliente a alumno | Sí | ⬜ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
@@ -85,7 +85,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
       DR-5 de 004, web pública).
     - **005b · foto y panel de solicitudes** (siguiente PR, con la 005a unida): criterios 34 a 40 y 46 (`AlmacenArchivos`,
       `sharp` y la foto; lista, cancelación y ocupación en el panel), más la foto en 28, 33, 43 y 44 y su parte de 48.
-  - Estado de la 005a: unida a `main` el 20/11/2026 (PR #8), tras dos rondas adversariales. La 005b sigue en curso.
+  - Estado: la 005a se unió a `main` el 20/11/2026 (PR #8), tras dos rondas adversariales; la 005b, el 22/11/2026 (PR #10), tras tres rondas. La historia 005 queda completa.
   - Antes de publicar el formulario: `trust proxy` con el hosting (DT-9 de 005; aviso en las notas de hosting de la 002).
   - Hosting (D-21), pregunta R7 de 005 (ronda 2 del ataque de la 005a, no bloquea): la agrupación de IPv6 por /64 no
     frena a quien controla un /56 o un /48 (con un /56, hasta 256 × 5 reservas sin pagar a la vez). Propuesta: un
