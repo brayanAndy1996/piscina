@@ -1,0 +1,144 @@
+# 006 · Tareas
+
+Cada tarea indica su rol y los criterios de aceptación de [`spec.md`](spec.md) que cubre. Historia de ruta crítica,
+dividida en dos entregas (pregunta P10): las tareas de la **006b** llevan la marca **[006b, siguiente PR]** y se hacen
+con la 006a unida a `main`. En cada entrega, los criterios críticos llevan pruebas protegidas escritas y confirmadas en
+rojo antes de implementar y ataque adversarial después. No se empieza T1 sin la aprobación del responsable (T0).
+
+## Aprobación
+
+- [ ] T0 · responsable y orquestador · Aprobar la especificación y resolver las preguntas P1 a P11 (Bryan) y T1 a T6
+      (orquestador). Si alguna respuesta cambia un valor provisional (P1 a P9) o la división (P10), el especificador
+      ajusta los criterios afectados, el plan y estas tareas antes de T1. Al aprobar, el orquestador suma a las notas de
+      la 007 y de la 019 en `specs/backlog.md` la interfaz de la caja y el orden de bloqueos.
+
+## 006a · Caja del día
+
+### Pruebas protegidas (en rojo)
+
+- [ ] T1 · test-writer · Utilidad `backend/test/utilidades/caja.ts` (crear cajas, movimientos y cierres como dueño de las
+      tablas, también inválidos; fijar `RELOJ`; llamar a `registrarIngresoEnCaja` dentro de `conAcademia`). Pruebas
+      protegidas de las tablas, el catálogo, las llaves compuestas, los `CHECK`, los índices únicos, el trigger (con la
+      espera en `pg_locks`), RLS y los privilegios; actualización de las pruebas protegidas de 001 que comparan la lista
+      exacta de privilegios (y de `scripts/` si las hay) y de `TABLAS_DESPUES_DE_MIGRAR`, solo para sumar (criterios 1 a
+      6)
+- [ ] T2 · test-writer · Pruebas protegidas de permisos por rol en las cinco rutas de la 006a (sin sesión, cambio
+      obligatorio, academia suspendida, cookie del Superadmin); aislamiento por id, por cuerpo y por parámetro de
+      consulta; carrera determinista del actor vigente en apertura, egreso, cierre y reapertura; actualización de la
+      prueba protegida de la matriz (criterio 26 de 002) para sumar `REABRIR_CAJA`, sin quitar nada (criterios 7 a 9)
+- [ ] T3 · test-writer · Pruebas protegidas de la apertura: respuesta y auditoría, monto inicial (aceptados y
+      rechazados), fecha de Lima en los bordes con `TZ=Asia/Tokyo` y `TZ=UTC`, una abierta por academia y aperturas
+      simultáneas, caja pendiente de otro día, caja del día cerrada, clave repetida y simultánea (criterios 10 a 16)
+- [ ] T4 · test-writer · Pruebas protegidas de los movimientos: egreso (respuesta, número, auditoría), validación,
+      caja cerrada, caja de otro día en los bordes de medianoche, efectivo insuficiente y egresos simultáneos, clave
+      repetida, rutas de edición y borrado inexistentes; `registrarIngresoEnCaja` (sin caja, de otro día, pago repetido,
+      monto fuera de rango, alumno de otra academia); resumen con los tres métodos; orden de bloqueos con una
+      transacción que imita la 007 y con la cancelación de 005b, sin `40P01` (criterios 17 a 26)
+- [ ] T5 · test-writer · Pruebas unitarias protegidas de `calcularResumen` y `calcularDiferencia` (decimales que en
+      coma flotante no cuadran, céntimos, cero) y de `montoNoNegativoSchema`, `montoConSignoSchema` y `restarMontos`
+      (criterios 11, 27 y 39 en su parte de contratos); prueba de integración protegida de `GET /api/cajas/actual`
+      (criterio 28)
+- [ ] T6 · test-writer · Pruebas protegidas del cierre: respuesta, foto del resumen y auditoría; observación
+      obligatoria con diferencia; `CAJA_CAMBIO`; cierre tardío y apertura posterior; carreras deterministas del cierre
+      con un egreso y con `registrarIngresoEnCaja` en los dos órdenes; doble clic y cierres simultáneos (criterios 29 a
+      34)
+- [ ] T7 · test-writer · Pruebas protegidas de la reapertura: respuesta, cierre marcado, auditoría con motivo, segundo
+      cierre; ya abierta, otra caja abierta, reapertura y apertura simultáneas, caja de un día anterior, otra academia
+      (criterios 35 y 36)
+- [ ] T8 · tester · Confirmar que T1 a T7 fallan por falta de la funcionalidad (tablas, rutas, esquemas o funciones
+      inexistentes) y no por sintaxis, importaciones o configuración; y que las pruebas protegidas de 001 a 005 que no se
+      tocaron siguen pasando. Antes del commit, `git diff --cached --stat` solo con archivos de prueba. Commit del
+      orquestador: "Pruebas protegidas (006a): caja del día, movimientos, cierre y reapertura (en rojo)"
+
+### Implementación
+
+- [ ] T9 · backend · Contratos: `dinero.ts` (`montoNoNegativoSchema`, `montoConSignoSchema`, `restarMontos`), `caja.ts`
+      y `permisos.ts` (`REABRIR_CAJA`), con pruebas unitarias no protegidas de sus bordes (criterios 7, 11, 18, 30, 35,
+      39)
+- [ ] T10 · backend · `schema.prisma` y migración `<marca>_caja` (tipos, tablas, `CHECK`, índices, llaves compuestas,
+      trigger, RLS, políticas y privilegios); `PRIVILEGIOS_APP`, `scripts/lib/rol-app.mjs` y `TABLAS_DESPUES_DE_MIGRAR`
+      en el mismo cambio (criterios 1 a 6)
+- [ ] T11 · backend · Dominio puro: `dominio/esperado.ts` y `dominio/dia.ts` (`esDeOtroDia`, `esCierreTardio`), con
+      pruebas unitarias no protegidas de los bordes de Lima y de otra zona del proceso (criterios 12, 20, 27, 32)
+- [ ] T12 · backend · `movimientos.ts` (`registrarIngresoEnCaja`, `registrarEgresoEnCaja`, `leerCajaAbierta`, resumen y
+      número) y `lectura.ts` (criterios 17 a 25, 28)
+- [ ] T13 · backend · `CajaModule`: controlador y servicio de apertura, caja actual, egreso, cierre y reapertura, con
+      `bloquearActorVigente`, el bloqueo consultivo, `FOR UPDATE` de la caja, el orden de errores del contrato, 409 por
+      el nombre de la restricción después del `ROLLBACK` y auditoría (criterios 7 a 36)
+- [ ] T14 · backend · Semilla: caja cerrada de ejemplo en `delfines` con fecha fija, repetible (criterio 45)
+- [ ] T15 · frontend · `/panel/caja` y la opción "Caja" del inicio: los cuatro estados, apertura, egreso, cierre con la
+      diferencia en vivo y la observación, reapertura para el `ADMIN`, claves de idempotencia por diálogo, campos
+      desactivados al guardar, mensajes de los 409 y claves de consulta con la identidad de la sesión; pruebas de
+      componentes (criterios 37 a 39)
+- [ ] T16 · frontend · Prueba E2E `e2e/pruebas/caja.spec.ts`: abrir, egreso, cerrar con faltante y observación (criterio
+      38)
+- [ ] T17 · tester · Pruebas protegidas en verde y suite completa
+
+### Ataque
+
+- [ ] T18 · adversarial · Atacar los criterios críticos de la 006a con la spec y el código (sin el razonamiento de quien
+      implementó): leer o mover la caja de otra academia (ids, campos de más, parámetros, escrituras directas que se
+      salten RLS, las llaves o el trigger); roles sin permiso, Superadmin, cambio obligatorio, academia suspendida, cuenta
+      desactivada mientras guarda; montos con coma flotante, ceros, signos, notación científica, espacios y Unicode;
+      fechas en el borde de las 19:00 y de la medianoche de Lima, fin de mes y de año, proceso en otra zona; aperturas,
+      reaperturas, egresos, cierres e ingresos simultáneos sobre la misma caja; doble clic y reintentos con la misma
+      clave y con otra; egresos en la caja de otro día; interbloqueos con la cancelación de solicitudes y con una
+      transacción que imita la 007; cobro con la caja cerrada o de otro día. Por cada falla: el especificador agrega el
+      criterio a `spec.md`, test-writer la prueba protegida en rojo, se corrige y se vuelve a atacar, hasta una ronda sin
+      fallas.
+
+### Revisión y cierre
+
+- [ ] T19 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
+- [ ] T20 · revisor · Comparar con la spec, las reglas de `docs/arquitectura.md` (DT-5 de 002, `@Permiso`, `await` en
+      cada paso, sin caché, errores con `errorParaRegistro`, montos sin `number`, fechas en Lima con `RELOJ`, orden de
+      bloqueos, 409 por el nombre de la restricción) y las convenciones; verificar la semilla y la documentación
+      (criterios 45 y 46, sin el historial ni el PDF)
+- [ ] T21 · tester · Suite completa, lint y verificación de tipos
+- [ ] T22 · documentador · Commit, tareas marcadas, `docs/arquitectura.md` (tablas, permiso, interfaz para la 007 y la
+      019, reglas para las historias siguientes), `README.md` y guía de uso de la caja del día; notas de la 007 y la 019
+      en `specs/backlog.md` (criterio 46)
+
+## 006b · Historial y PDF del cierre [006b, siguiente PR]
+
+### Pruebas protegidas (en rojo)
+
+- [ ] T23 · test-writer · Pruebas protegidas del historial y el detalle: permisos de las tres rutas, alcance de la
+      `SECRETARIA` (cajas que abrió, que cerró y la abierta; las demás, 404 en el detalle y el PDF), otra academia,
+      rango de fechas y su validación (criterios 7 y 8 en su parte de 006b, 40 y 41)
+- [ ] T24 · test-writer · Pruebas protegidas del PDF: cabeceras, alcance y 404 por caja, por número y por alcance;
+      generación fuera de la transacción (el cierre no crea archivos; una falla de `pdfkit` simulada da 500 sin cambiar
+      nada; dos descargas iguales) (criterios 42 en su parte crítica y 43)
+- [ ] T25 · tester · Confirmar que T23 y T24 fallan por la razón esperada. Commit del orquestador: "Pruebas protegidas
+      (006b): historial y PDF del cierre (en rojo)"
+
+### Implementación
+
+- [ ] T26 · backend · `pdfkit` y `@types/pdfkit` en `backend/package.json` y en `DEPENDENCIAS_BACKEND_PERMITIDAS`
+      (criterio 127 de 001); contratos del historial (criterios 40, 42)
+- [ ] T27 · backend · `historial.service.ts`, rutas `GET /api/cajas` y `GET /api/cajas/{id}` con el alcance `SU_CAJA`
+      (criterios 40, 41)
+- [ ] T28 · backend · `pdf/cierre-pdf.ts` y la ruta del PDF; prueba no protegida del contenido extrayendo el texto
+      (criterios 42, 43)
+- [ ] T29 · frontend · `/panel/cajas` y la opción "Historial de caja": lista con filtro, detalle, descarga del PDF y
+      reapertura para el `ADMIN`; pruebas de componentes (criterio 44)
+- [ ] T30 · tester · Pruebas protegidas en verde y suite completa
+
+### Ataque, revisión y cierre
+
+- [ ] T31 · adversarial · Atacar los criterios críticos de la 006b: cajas, cierres y PDF de otra academia o fuera del
+      alcance de la secretaria (ids, números de cierre, mayúsculas, parámetros repetidos), rangos de fechas extremos, y
+      textos raros en el PDF. Por cada falla, el mismo ciclo que T18.
+- [ ] T32 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
+- [ ] T33 · revisor · Comparar con la spec y las convenciones; verificar la parte de 006b de los criterios 45 y 46
+- [ ] T34 · tester · Suite completa, lint y verificación de tipos
+- [ ] T35 · documentador · Commit, tareas marcadas, documentación del historial y del PDF (criterio 46)
+
+## Solo ruta crítica
+
+- [ ] Pruebas escritas por test-writer y confirmadas en rojo (006a)
+- [ ] Pruebas en verde tras la implementación (006a)
+- [ ] Ataque adversarial sin fallas abiertas (006a)
+- [ ] Pruebas escritas por test-writer y confirmadas en rojo (006b)
+- [ ] Pruebas en verde tras la implementación (006b)
+- [ ] Ataque adversarial sin fallas abiertas (006b)
