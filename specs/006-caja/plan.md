@@ -8,8 +8,10 @@ Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-
 
 **006a**
 
-- `packages/contratos/src/dinero.ts`: `montoNoNegativoSchema`, `montoConSignoSchema` y `restarMontos` (céntimos con
-  `bigint`), con pruebas unitarias.
+- `packages/contratos/src/dinero.ts`: `montoNoNegativoSchema`, `montoConSignoSchema` (tope `9999999999.99` en valor
+  absoluto, sin `"-0.00"`) y `restarMontos` (céntimos con `bigint`; siempre dos decimales, nunca `"-0.00"`), con pruebas
+  unitarias (PP3 de la spec). Los montos sin signo de las respuestas se leen con el mismo formato, no con
+  `montoNoNegativoSchema`.
 - `packages/contratos/src/caja.ts` _(nuevo)_ y su reexportación en `index.ts`: esquemas del contrato de la spec.
 - `packages/contratos/src/permisos.ts`: `REABRIR_CAJA: { ADMIN: 'TODO' }` (DT-1).
 - `backend/prisma/schema.prisma` y la migración `<marca>_caja`.
@@ -74,7 +76,7 @@ conAcademia(A):
   pg_advisory_xact_lock('caja:' || A)
   hoy = hoyEnLima(RELOJ.ahora())
   existente = SELECT … FROM cajas WHERE academia_id = A AND clave_idempotencia = $clave
-  si existente: monto igual → 200 { caja: leerCaja(existente) }; si no → 409 CLAVE_YA_USADA
+  si existente: monto igual (como Decimal, PP6 d) → 200 { caja: leerCaja(existente) }; si no → 409 CLAVE_YA_USADA
   abierta = SELECT id, fecha FROM cajas WHERE academia_id = A AND estado = 'ABIERTA'
   si abierta: fecha = hoy → 409 CAJA_YA_ABIERTA; si no → 409 CAJA_PENDIENTE_DE_CIERRE
   si existe caja con fecha = hoy (cerrada) → 409 CAJA_DEL_DIA_CERRADA      (DR-1)
@@ -114,14 +116,18 @@ movimiento del primero (`ReadCommitted` ve lo confirmado al empezar cada sentenc
 ### 2.4 Ingreso de la 007 (`registrarIngresoEnCaja`)
 
 ```
-  RangeError si monto <= 0, > 100000.00 o con más de dos decimales (antes de tocar la base)
-  caja = SELECT … FROM cajas WHERE academia_id = A AND estado = 'ABIERTA' FOR UPDATE
-  no hay → ErrorNegocio 409 SIN_CAJA_ABIERTA
-  esDeOtroDia(caja.fecha, ahora) → 409 CAJA_DE_OTRO_DIA
-  previo = movimiento con pago_id = $pago en A → si hay: { …previo, repetido: true }
-  numero = siguiente; INSERT INGRESO; auditoría CAJA_INGRESO_REGISTRADO
-  { id, cajaId, numero, registradoEn, repetido: false }
+  a) caja = SELECT … FROM cajas WHERE academia_id = A AND estado = 'ABIERTA' FOR UPDATE
+     no hay → ErrorNegocio 409 SIN_CAJA_ABIERTA
+     esDeOtroDia(caja.fecha, ahora) → 409 CAJA_DE_OTRO_DIA { cajaId, fecha }
+  b) previo = movimiento con pago_id = $pago en A → si hay: { …previo, repetido: true }
+  c) RangeError si monto no es finito, <= 0, > 100000.00 o con más de dos decimales (sin escribir)
+     numero = siguiente; INSERT INGRESO; auditoría CAJA_INGRESO_REGISTRADO (ip nula si no hay)
+     { id, cajaId, numero, registradoEn, repetido: false }
 ```
+
+El orden es el de la spec (criterio 24, PP7): el `RangeError` va en c, después de bloquear la caja y de buscar el
+`pagoId`, y antes de insertar. Sin caja abierta, un monto inválido da `SIN_CAJA_ABIERTA`; un `pagoId` ya registrado
+devuelve su movimiento sin mirar el monto nuevo.
 
 No llama a `bloquearActorVigente` (lo hizo quien llama) ni abre su propia transacción. Lanza `ErrorNegocio`: la 007 lo
 deja subir para que `conAcademia` revierta todo.
@@ -130,7 +136,9 @@ deja subir para que `conAcademia` revierta todo.
 
 `leerResumen(tx, cajaId)`: una consulta con `sum(monto) FILTER (WHERE tipo = … AND metodo = …)` y `max(numero)`, con
 `coalesce(…, 0)` y el resultado como texto (`::text`). `calcularResumen` arma los tres esperados con `Decimal`. La misma
-función la usan la caja actual, el egreso (efectivo disponible) y el cierre.
+función la usan la caja actual, el egreso (efectivo disponible) y el cierre. Firmas de `calcularResumen` y
+`calcularDiferencia` en PP2 de la spec: `calcularResumen` recibe `{ montoInicial, movimientos: { tipo, metodo, monto }[] }`,
+así que `leerResumen` le pasa las sumas como movimientos agregados por tipo y método (o los movimientos mismos).
 
 ### 2.6 Cierre (`POST /api/cajas/{id}/cierre`)
 
@@ -153,6 +161,12 @@ conAcademia(A):
   auditoría CAJA_CERRADA
   200 { caja }
 ```
+
+"Mismo monto declarado" se compara como `Decimal` (`"120"` y `"120.00"` son el mismo, PP6 d); igual en la apertura con
+el monto inicial. Dos envíos simultáneos con la misma clave se ordenan en la fila de la caja: el segundo encuentra el
+cierre del primero y responde 200 (PP6 f). Un reintento con la clave de un cierre que llega después de una reapertura
+también encuentra el cierre previo y responde 200 con la caja abierta, sin volver a cerrarla (PP6 e). En
+`CAJA_CERRADA`, `esperado` va como `{ efectivo, yape, transferencia }` (PP5).
 
 Los `CHECK` de `cierres_caja` vuelven a exigir las cuentas: si el código se equivocara, la base rechaza el cierre.
 
@@ -190,7 +204,8 @@ DECLARE v_estado estado_caja;
 BEGIN
   SELECT c.estado INTO v_estado FROM public.cajas c
    WHERE c.academia_id = NEW.academia_id AND c.id = NEW.caja_id FOR SHARE;
-  IF v_estado IS DISTINCT FROM 'ABIERTA' THEN
+  -- Solo si ve la caja (PP1): si no la ve, deciden la llave compuesta (23503) o la RLS (42501).
+  IF v_estado IS NOT NULL AND v_estado <> 'ABIERTA' THEN
     RAISE EXCEPTION 'La caja no está abierta' USING ERRCODE = 'check_violation',
       CONSTRAINT = 'movimientos_caja_solo_caja_abierta';
   END IF;
@@ -201,7 +216,10 @@ CREATE TRIGGER movimientos_caja_solo_caja_abierta BEFORE INSERT ON movimientos_c
 ```
 
 `FOR SHARE` necesita que el rol tenga `UPDATE` sobre alguna columna de `cajas` (`estado`), que la app ya tiene. Si la caja
-no se ve por RLS (otra academia), `v_estado` queda nulo y se rechaza; la llave compuesta también lo impide. La función
+no existe o no se ve por RLS (otra academia), `v_estado` queda nulo y el trigger deja pasar la fila: el trigger `BEFORE
+INSERT` corre antes que la llave foránea y que el `WITH CHECK` de la RLS, y el criterio 3 exige que respondan ellas
+(`23503` para la `caja_id` de otra academia, `42501` para el `INSERT` con la academia de otra en el contexto propio). La
+llave compuesta sigue impidiendo un movimiento en una caja inexistente o ajena (PP1 de la spec). La función
 no figura en ninguna política, así que las reglas de volatilidad de 001 no la alcanzan; el criterio 124 de 001 la acepta
 por ser `SECURITY INVOKER` y fijar solo `search_path`.
 
@@ -212,7 +230,8 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 - Cada formulario o diálogo genera su `claveIdempotencia` con `crypto.randomUUID()` (`frontend/src/lib/uuid.ts`) al
   abrirse y la conserva en los reintentos; al cerrar el diálogo, la descarta.
 - El cierre envía `ultimoMovimientoVisto = caja.resumen.ultimoMovimiento` de la caja que se mostró. La diferencia en vivo
-  usa `restarMontos(declarado, esperado.efectivo)`.
+  usa `restarMontos(declarado, esperado.efectivo)` (entradas y salida en PP3 de la spec). Si la observación está vacía o
+  solo tiene espacios, el diálogo no envía el campo (PP6 c: la API respondería 400).
 - Fechas y horas con `frontend/src/lib/fechas.ts` (Lima); montos con `formatearSoles`.
 
 ### 2.11 [006b] Historial y PDF
@@ -239,6 +258,8 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 | Caja en la dirección del egreso y del cierre (D4) | La caja abierta implícita | El egreso nunca cae en otra caja que la de la pantalla |
 | Clave del cliente en apertura, egreso y cierre; `pago_id` en el ingreso (D5) | 409 en el segundo clic | Un reintento con respuesta perdida debe ver lo ya hecho |
 | Trigger contra movimientos en caja cerrada (D6, DT-4) | Solo el bloqueo de la API | Defensa en profundidad, como los `CHECK` de 004 |
+| El trigger rechaza solo si ve la caja y no está `ABIERTA` (PP1) | Rechazar también si no la ve (`IS DISTINCT FROM`) | El criterio 3 exige `23503` y `42501`, y el trigger corre antes que la llave foránea y la RLS |
+| `RangeError` del ingreso en el paso c, después de bloquear la caja y buscar el `pagoId` (PP7) | Validar el monto antes de tocar la base | Es el orden aprobado en la spec (criterio 24) |
 | Bloqueo consultivo de la academia en apertura y reapertura | Solo los índices únicos | Orden fijo de los 409 y sin 500 en la carrera |
 | `REABRIR_CAJA` en la matriz (DT-1) | Rol comprobado en el servicio | El guard decide y la web usa `puede` |
 | PDF bajo pedido (DT-2) | PDF guardado en `AlmacenArchivos` | Sin archivos ni confirmación incierta; el cierre no cambia |

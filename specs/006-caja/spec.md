@@ -25,7 +25,8 @@
 - **Estado:** aprobada por el responsable (22/11/2026), con la propuesta de cada pregunta de negocio (P1 a P11, que son
   DR-1 a DR-11 de esta spec) y con las técnicas aprobadas por el orquestador tal como se propusieron (T1 a T6, que son DT-1
   a DT-6), en "Decisiones". Los valores que el borrador llamaba "provisionales" quedan como definitivos; ningún criterio
-  cambió de intención.
+  cambió de intención. Al escribir las pruebas protegidas de la 006a se agregaron las precisiones PP1 a PP8 (en
+  "Decisiones"), sin cambios de negocio, y la pregunta P12, que no bloquea.
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
@@ -131,6 +132,9 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
      `movimientos_hasta` negativo; `reabierto_por`, `reabierto_en` y `motivo_reapertura` no todos nulos o todos llenos;
      `reabierto_en` anterior a `cerrado_en`.
 
+   Los `INSERT` se prueban como app y como dueño; los `UPDATE`, como dueño, porque la app casi no tiene `UPDATE`
+   (criterio 2; PP4).
+
    _(crítico)_ (RN-17, HU-27, sección 4.3, RNF-12)
 5. **Índices únicos.** Dado un `INSERT` o `UPDATE` directo, entonces falla con `23505`: una segunda caja `ABIERTA` en la
    misma academia (`cajas_una_abierta_por_academia`, índice único parcial); una segunda caja con la misma `fecha` en la
@@ -140,7 +144,9 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
    dos cierres vigentes (sin `reabierto_en`) en una caja. En B, los mismos valores se aceptan. _(crítico)_ (RN-17, D-04)
 6. **Ningún movimiento en una caja cerrada, también en la base.** Un trigger `BEFORE INSERT` en `movimientos_caja` toma la
    fila de su caja con `FOR SHARE` y rechaza el movimiento con `23514` y la restricción
-   `movimientos_caja_solo_caja_abierta` si la caja no está `ABIERTA`. Pruebas, como app y como dueño:
+   `movimientos_caja_solo_caja_abierta` si ve la caja y no está `ABIERTA`. Si no la ve (no existe, es de otra academia o
+   la RLS la oculta), deja pasar la fila y deciden la llave compuesta (`23503`) o la RLS (`42501`) del criterio 3 (PP1).
+   Pruebas, como app y como dueño:
    - a) un `INSERT` directo en una caja `CERRADA` falla;
    - b) una transacción de la prueba cierra la caja (`UPDATE … SET estado = 'CERRADA'`) sin confirmar; otra inserta un
      movimiento directo, que queda esperando (se comprueba en `pg_locks`); la prueba confirma; entonces el `INSERT` falla
@@ -216,7 +222,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     _(crítico)_ (HU-25: "la caja del día"; RN-17)
 16. **Doble clic en la apertura.** Dada una apertura que ya creó la caja C con la clave K, cuando llega otra con la misma
     clave K y el mismo monto (doble clic o reintento), entonces responde 200 con `{ caja }` de C tal como está ahora, sin
-    crear otra caja ni auditar otra vez, aunque C ya tenga movimientos o esté cerrada. Con la clave K y otro monto, 409
+    crear otra caja ni auditar otra vez, aunque C ya tenga movimientos o esté cerrada. Montos equivalentes (`"120"` y
+    `"120.00"`) cuentan como el mismo monto (PP6 d). Con la clave K y otro monto, 409
     `CLAVE_YA_USADA` sin escribir. Dos envíos simultáneos con la misma clave dejan una sola caja y un solo `CAJA_ABIERTA`;
     uno responde 201 y el otro 200. Una clave de B no choca con una de A. _(crítico)_ (regla de idempotencia de
     `CLAUDE.md`)
@@ -245,7 +252,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
       con `detalles: { cajaId, fecha }`, sin escribir ni auditar; a las `2026-12-01T04:59:59.999Z`, se acepta;
     - c) lo mismo con el proceso en `TZ=Asia/Tokyo` y en el cambio de mes y de año;
     - d) la interfaz de la 007 (criterio 24) responde igual: con la caja del 30 abierta, a las 00:00 del 1 en Lima lanza
-      `CAJA_DE_OTRO_DIA` y no inserta.
+      `CAJA_DE_OTRO_DIA`, con los mismos `detalles: { cajaId, fecha }` que la ruta (PP6 b), y no inserta.
 
     Lo único que admite una caja de otro día es su cierre (criterio 32; DR-2). _(crítico)_ (RN-17; "cobrar con la caja de
     otro día" de `CLAUDE.md`)
@@ -253,22 +260,22 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     `"50.00"` se acepta (queda en `"0.00"`) y uno de `"50.01"` responde 409 `EFECTIVO_INSUFICIENTE` con
     `detalles: { disponible: "50.00" }`, sin escribir ni auditar. Dos egresos simultáneos de `"30.00"` con S/ 50.00: uno
     responde 201 y el otro 409 `EFECTIVO_INSUFICIENTE`; nunca quedan los dos. No hay otro tope para los egresos (DR-4).
-    _(crítico)_
-    (sección 4.3)
+    La parte simultánea no tiene prueba protegida propia todavía (PP8). _(crítico)_ (sección 4.3)
 22. **Doble clic en el egreso.** Dado un egreso ya registrado en C con la clave K, cuando llega otro con la misma clave y
     los mismos `descripcion`, `monto` y `comprobante` (después de recortar y normalizar el monto: `"20"` y `"20.00"` son el
     mismo), entonces responde 200 con el mismo `{ movimiento, caja }` (la caja como está ahora), sin otra fila ni otra
     auditoría, aunque C ya esté cerrada o sea de otro día (la clave se mira antes que el estado de la caja). Con la clave K
     y otros datos, o con la clave K de un egreso de otra caja, 409 `CLAVE_YA_USADA` sin escribir. Dos envíos simultáneos
-    con la misma clave dejan una sola fila y una sola auditoría; uno responde 201 y el otro 200. _(crítico)_ (regla de
-    idempotencia de `CLAUDE.md`)
+    con la misma clave dejan una sola fila y una sola auditoría; uno responde 201 y el otro 200 (sin prueba protegida
+    propia todavía: PP8). _(crítico)_ (regla de idempotencia de `CLAUDE.md`)
 23. **Los movimientos no se editan ni se borran.** No hay ruta para cambiar o borrar un movimiento ni un cierre:
     `PATCH` y `DELETE` sobre `/api/cajas/{id}/egresos/{movimientoId}`, `/api/cajas/{id}` y `/api/movimientos-caja/{id}`
     responden 404 sin tocar nada; y la base no da a la app ni `UPDATE` ni `DELETE` de `movimientos_caja` (criterio 2). Un
     egreso equivocado se explica en la observación del cierre (DR-5: los movimientos no se anulan). _(crítico)_ (RN-22)
 24. **Interfaz para la 007: el ingreso de un cobro.** `registrarIngresoEnCaja(tx, ingreso, ahora)` (sin Nest, en
     `backend/src/modulos/caja/movimientos.ts`, reexportada en `caja/index.ts`; firma en "Contrato") corre dentro de la
-    transacción de quien llama, que ya llamó a `bloquearActorVigente`. En este orden:
+    transacción de quien llama, que ya llamó a `bloquearActorVigente`. En este orden (el `RangeError` del monto se
+    comprueba en c, después de a y b, y antes de insertar: PP7):
     - a) bloquea la caja abierta de `tx.academiaId` con `FOR UPDATE`; si no hay, lanza 409 `SIN_CAJA_ABIERTA` (mensaje:
       "Abre la caja antes de cobrar"); si es de otro día según `ahora` en Lima, 409 `CAJA_DE_OTRO_DIA` (criterio 20 d);
     - b) si ya hay un movimiento con ese `pagoId` en la academia, lo devuelve con `repetido: true`, sin insertar ni
@@ -277,7 +284,7 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
       (`EFECTIVO`, `YAPE` o `TRANSFERENCIA`), `monto` (`Decimal` mayor que 0 y como mucho `100000.00`, con hasta dos
       decimales; si no, lanza un `RangeError` sin escribir), `alumnoId`, `pagoId`, `usuarioId` y el siguiente `numero`, y
       registra `CAJA_INGRESO_REGISTRADO` (entidad `movimiento_caja`) con `datosDespues: { cajaId, numero, concepto, metodo,
-      monto, alumnoId, pagoId }`.
+      monto, alumnoId, pagoId }` y la `ip` recibida (nula si es `null`; PP6 a).
 
     Un `alumnoId` de otra academia o que no existe hace fallar la transacción (`23503`, llave compuesta) y no queda nada.
     Pruebas de integración que llaman a la función dentro de `conAcademia`, con el reloj fijo (la 007 todavía no existe).
@@ -304,7 +311,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     0, `SOBRANTE` si es mayor y `FALTANTE` si es menor. Casos: `0.10 + 0.20` da exactamente `0.30`; mil ingresos de
     `0.01` dan `10.00`; un declarado de `"126.49"` frente a `"126.50"` da `"-0.01"` y `FALTANTE`; `"0"` frente a `"0.00"`
     da `CUADRA`. Ningún paso usa `number`, `Number(…)`, `parseFloat` ni `+monto` (lo comprueba la revisión y una prueba
-    que pasa montos que en coma flotante no cuadran). _(crítico)_ (HU-27, sección 4.3, D-03)
+    que pasa montos que en coma flotante no cuadran). Firmas y forma de comparar en PP2. _(crítico)_ (HU-27, sección 4.3,
+    D-03)
 28. **La caja del día.** `GET /api/cajas/actual` responde 200 con `{ caja }`: la caja `ABIERTA` de la academia (de hoy o
     de otro día, con `deOtroDia`); si no hay, la caja de hoy ya cerrada; si tampoco, `null`. La caja trae `resumen`
     (ingresos, egresos y esperado por método, como el criterio 25, y `ultimoMovimiento`: el mayor `numero`, o 0),
@@ -321,14 +329,15 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     esperado por método, `montoDeclarado`, `diferencia` con signo, `resultado`, `observacion`, `tardio`,
     `movimientosHasta`, `cerradoPor`, `cerradoEn`), pasa C a `CERRADA` y responde 200 con `{ caja }` (con el cierre en
     `cierres`). Registra `CAJA_CERRADA` (entidad `caja`) con `datosDespues: { numeroCierre, esperado, montoDeclarado,
-    diferencia, resultado, observacion, tardio }`. Cualquier `SECRETARIA` o `ADMIN` de A puede cerrar la caja, aunque la
+    diferencia, resultado, observacion, tardio }`, con `esperado` como `{ efectivo, yape, transferencia }` (PP5). Cualquier `SECRETARIA` o `ADMIN` de A puede cerrar la caja, aunque la
     haya abierto otra persona. _(crítico)_ (HU-27, RN-17, RN-22)
 30. **Declarado y observación.** `montoDeclarado` usa `montoNoNegativoSchema` (`"0"` se acepta: la caja puede quedar sin
     efectivo); `ultimoMovimientoVisto` es un entero de 0 a 1 000 000; `observacion` es opcional, con `textoVisibleSchema`
     de 3 a 500 caracteres. Si la diferencia calculada no es 0 y no hay observación, responde 400 `SOLICITUD_INVALIDA` con
     `detalles.errores[0].campo` igual a `observacion` y el mensaje "Explica la diferencia (sobrante o faltante)", sin
-    escribir ni auditar; con diferencia 0, la observación se acepta y se guarda, o queda `null`. Los demás casos de 400
-    son los del criterio 11 en `montoDeclarado`. _(crítico)_ (HU-27, sección 4.3: "se registra la diferencia con
+    escribir ni auditar; con diferencia 0, la observación se acepta y se guarda, o queda `null`. Una observación vacía o
+    de solo espacios no cuenta como ausente: responde 400 en `observacion` por el esquema, con cualquier diferencia (PP6
+    c). Los demás casos de 400 son los del criterio 11 en `montoDeclarado`. _(crítico)_ (HU-27, sección 4.3: "se registra la diferencia con
     observación")
 31. **El cierre se hace sobre lo que se vio.** Si `ultimoMovimientoVisto` no es igual al `ultimoMovimiento` de C dentro de
     la transacción (entró un egreso o un cobro después de que la persona cargó la pantalla), responde 409 `CAJA_CAMBIO` con
@@ -359,7 +368,9 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     `montoDeclarado`, entonces responde 200 con `{ caja }` (como está ahora), sin otro cierre ni otra auditoría. Con la
     clave K y otro monto, 409 `CLAVE_YA_USADA`. Con otra clave sobre C ya cerrada, 409 `CAJA_CERRADA`. Dos cierres
     simultáneos de C con claves distintas: uno responde 200 y el otro 409 `CAJA_CERRADA`; queda un cierre vigente y un
-    `CAJA_CERRADA`. _(crítico)_ (regla de idempotencia de `CLAUDE.md`)
+    `CAJA_CERRADA`. Montos equivalentes cuentan como el mismo; dos envíos simultáneos con la misma clave responden 200 los
+    dos; y un reintento con la clave K que llega después de una reapertura responde 200 con C abierta, sin volver a
+    cerrarla (PP6 d, e y f). _(crítico)_ (regla de idempotencia de `CLAUDE.md`)
 
 ### G. Reapertura (HU-27)
 
@@ -407,7 +418,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     con observación y ver el resultado. _(prueba obligatoria, de componentes y E2E)_
 39. **Montos en la web sin coma flotante.** La diferencia en vivo y el resumen se calculan con una función pura compartida
     (`restarMontos`, en `packages/contratos/src/dinero.ts`) que trabaja en céntimos enteros (`bigint`) sobre el texto, sin
-    `Number` ni `parseFloat`; `"126.50"` menos `"126.49"` da `"0.01"` y al revés `"-0.01"`. Los montos se muestran con
+    `Number` ni `parseFloat`; `"126.50"` menos `"126.49"` da `"0.01"` y al revés `"-0.01"`; siempre con dos decimales y
+    nunca `"-0.00"` (entradas y salida en PP3). Los montos se muestran con
     `formatearSoles` (`S/ 1,200.00`), los negativos como `-S/ 4.50` o con la palabra "Faltante". _(prueba obligatoria)_
 
 ### I. Historial y PDF del cierre **[006b, siguiente PR]**
@@ -545,11 +557,16 @@ responde el mismo 404 que uno inexistente o de otra academia. `GET /api/cajas/ac
 - Cierre: 404 → `CLAVE_YA_USADA` (o el 200 de la clave repetida) → `CAJA_CERRADA` → `CAJA_CAMBIO` → 400 `observacion`.
 - Reapertura: 404 → 200 si ya está abierta → `HAY_OTRA_CAJA_ABIERTA`.
 
+El 400 del esquema va siempre antes que el 404 por el id y que cualquier 200 de una clave repetida o de una caja ya
+abierta: un cuerpo inválido sobre un id que no existe responde 400, y una reapertura con un `motivo` inválido sobre una
+caja ya abierta también (PP6 g).
+
 ### Esquemas compartidos (`packages/contratos/src/`)
 
 - `dinero.ts` suma `montoNoNegativoSchema` (como `montoSchema`, pero acepta `"0"` y `"0.00"`; rechaza `"-0"`),
-  `montoConSignoSchema` (para leer respuestas: `-?` seguido de un monto con exactamente dos decimales; la diferencia) y
-  `restarMontos(a, b)` (criterio 39). `montoSchema`, `MONTO_MAXIMO` y `montoCotizadoSchema` no cambian.
+  `montoConSignoSchema` (para leer respuestas: `-?` seguido de un monto con exactamente dos decimales; la diferencia;
+  tope y `"-0.00"` en PP3) y `restarMontos(a, b)` (criterio 39 y PP3). `montoSchema`, `MONTO_MAXIMO` y
+  `montoCotizadoSchema` no cambian.
 - `caja.ts` _(nuevo)_, todos estrictos:
   - `METODOS_PAGO` (`EFECTIVO`, `YAPE`, `TRANSFERENCIA`) y `metodoPagoSchema` (los reutiliza la 007 para los pagos);
     `CONCEPTOS_MOVIMIENTO` (`INSCRIPCION`, `MENSUALIDAD`, `CLASE_PARTICULAR`, `EGRESO_MENOR`); `estadoCajaSchema`
@@ -622,7 +639,8 @@ function leerCajaAbierta(tx: TransaccionAcademia, ahora: Date): Promise<{ id: st
 
 ### Auditoría
 
-Entidades `caja` y `movimiento_caja`, actor `USUARIO` con su id e IP, montos como texto con dos decimales:
+Entidades `caja` y `movimiento_caja`, actor `USUARIO` con su id e IP (nula si no hay IP, PP6 a), montos como texto con
+dos decimales (el `esperado` de `CAJA_CERRADA`, como objeto por método, PP5):
 
 - `CAJA_ABIERTA` (criterio 10), `CAJA_CERRADA` (criterio 29) y `CAJA_REABIERTA` (criterio 35, con `motivo`), entidad
   `caja`.
@@ -763,7 +781,7 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 **Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" dentro de ella y como "DR-n de 006"
 fuera; las del orquestador, "DT-n" y "DT-n de 006"; las de diseño del especificador, "Dn". Las de otras specs llevan
 siempre su número ("DT-5 de 002", "DR-11 de 005"). La pregunta Pn del borrador es DR-n y la Tn es DT-n (P1 es DR-1, T1
-es DT-1, y así hasta P11 y T6).
+es DT-1, y así hasta P11 y T6). Las precisiones de las pruebas protegidas de la 006a se citan como "PPn".
 
 ### Decisiones del responsable (22/11/2026)
 
@@ -862,10 +880,101 @@ Propuestas del especificador, aprobadas con la spec (22/11/2026).
   vigente) y el trigger que no deja insertar movimientos en una caja cerrada (criterio 6), como los `CHECK` de la 004.
 - **D7. Semilla con fecha fija** (`2026-11-02`) en lugar de "ayer": repetible y sin depender del día en que se ejecuta.
 
+### Precisiones de las pruebas protegidas (006a)
+
+Ambigüedades y un conflicto que encontró el test-writer de la 006a al escribir las pruebas protegidas, resueltos por el
+orquestador (22/11/2026); donde el orquestador dejó la forma a elección del especificador (PP3 y PP5), se indica. No
+cambian ninguna regla de negocio; se citan como "PPn" en los criterios, el contrato y el plan.
+
+- **PP1 (criterios 3 y 6; conflicto con el plan 2.9).** El trigger `movimientos_caja_solo_caja_abierta` rechaza con
+  `23514` solo si ve la caja y no está `ABIERTA` (`v_estado IS NOT NULL AND v_estado <> 'ABIERTA'`). Si no la ve (no
+  existe, es de otra academia o la RLS la oculta), deja pasar la fila y deciden la llave compuesta (`23503`) o la
+  política de `INSERT` (`42501`), como exige el criterio 3. Motivo: un trigger `BEFORE INSERT` corre antes que la llave
+  foránea y que el `WITH CHECK` de la RLS; con la condición `IS DISTINCT FROM 'ABIERTA'` del plan, el movimiento de A con
+  la `caja_id` de B y el `INSERT` con la academia de B en el contexto de A darían `23514` en lugar de `23503` y `42501`.
+  Se eligió el criterio 3. La defensa no se debilita: un movimiento en una caja inexistente o de otra academia lo sigue
+  impidiendo la llave compuesta, y el criterio 6 (caja `CERRADA`, también en la carrera de 6 b) no cambia. El plan 2.9
+  queda corregido.
+- **PP2 (criterio 27).** Firmas del dominio puro (`dominio/esperado.ts`), todo con `Decimal`:
+  - `calcularResumen({ montoInicial: Decimal; movimientos: readonly { tipo: 'INGRESO' | 'EGRESO'; metodo: MetodoPago;
+    monto: Decimal }[] })` devuelve `{ ingresos: { efectivo, yape, transferencia }, egresos: { efectivo }, esperado: {
+    efectivo, yape, transferencia } }`;
+  - `calcularDiferencia(declarado: Decimal, esperadoEfectivo: Decimal)` devuelve `{ diferencia: Decimal; resultado:
+    'CUADRA' | 'SOBRANTE' | 'FALTANTE' }`.
+
+  Las pruebas comparan los resultados con `Decimal.equals` (valor exacto, sin redondear a dos decimales), así que la
+  escala del `Decimal` devuelto no importa (`0.3` y `0.30` son iguales) y un error de coma flotante se nota.
+- **PP3 (criterio 39 y `dinero.ts`; el tope lo fija el especificador).**
+  - `restarMontos(a, b)` recibe textos válidos de `montoNoNegativoSchema` (así se escribe el efectivo contado: `"80"`,
+    `"80.5"`) y devuelve siempre un texto con exactamente dos decimales, con `-` delante si es negativo y nunca `"-0.00"`
+    (dos montos iguales dan `"0.00"`). Como la web le pasa también `esperado.efectivo` de la respuesta, acepta además
+    los montos sin signo con dos decimales del formato de lectura de abajo. Con un texto que no es un monto, lanza
+    `RangeError`; nunca devuelve un resultado inventado.
+  - `montoConSignoSchema`: `-?`, una parte entera sin ceros a la izquierda (`0` o de 1 a 10 dígitos) y exactamente dos
+    decimales; rechaza `"-0.00"`. **Tope: `9999999999.99` en valor absoluto**, la capacidad de `numeric(12,2)` de
+    `cierres_caja.diferencia`. Las pruebas protegidas lo prueban entre `"-99999.99"` y `"99999.99"`, que quedan dentro.
+    Motivo (el mismo de `montoCotizadoSchema` en 005, AT1-2: el tope de un esquema de lectura es el máximo que el sistema
+    puede producir): la diferencia no está acotada por un monto de entrada. El declarado llega a `99999.99`, pero el
+    esperado en efectivo es el monto inicial más todos los cobros en efectivo del día (cada uno de hasta `100000.00`),
+    así que un faltante puede pasar de `100000.00`. Un tope de `100000.00` haría fallar la lectura de un cierre legítimo.
+    Alternativa descartada: `100000.00`, por eso.
+  - Por la misma razón, los montos sin signo de las respuestas (`resumen`, y `montoInicial`, ingresos, egresos, esperado
+    y declarado de `cierreCajaSchema`) se leen con ese formato sin el signo y no con `montoNoNegativoSchema`, que es de
+    entrada y llega a `99999.99`.
+- **PP4 (criterio 4).** La app casi no tiene `UPDATE` (criterio 2). Los `INSERT` que violan un `CHECK` se prueban como
+  app y como dueño; los `UPDATE`, como dueño.
+- **PP5 (criterio 29 y "Auditoría"; la forma la fija el especificador).** En `CAJA_CERRADA`, `datosDespues.esperado` es un
+  objeto `{ efectivo, yape, transferencia }`, con los tres montos como texto con dos decimales, igual que `esperado` en
+  `cierreCajaSchema`. Es la forma más clara: la auditoría muestra el cierre completo y con la misma forma que la API.
+  Alternativa descartada: solo el texto del efectivo (se perdería lo de Yape y transferencia). La prueba protegida
+  acepta las dos formas (lee `esperado.efectivo` o el texto), así que esta precisión no la cambia.
+- **PP6 (campos que la spec no fijaba; los asumió el test-writer y se confirman):**
+  - a) **IP nula:** si no hay IP (`ip: null` en `registrarIngresoEnCaja` o `registrarEgresoEnCaja`), la auditoría
+    queda con `ip` nulo y la operación se registra igual.
+  - b) **`CAJA_DE_OTRO_DIA`** lleva `detalles: { cajaId, fecha }` (la fecha de la caja) en la ruta y en la interfaz.
+  - c) **Observación vacía:** en el cierre, una `observacion` vacía o de solo espacios responde 400 en `observacion`
+    (`textoVisibleSchema` de 3 a 500), con cualquier diferencia; no cuenta como ausente (a diferencia del
+    `comprobante` del egreso, DR-3). La web omite el campo si no se escribió nada.
+  - d) **Montos equivalentes:** `"120"` y `"120.00"` cuentan como el mismo cuerpo al comparar una clave repetida, en la
+    apertura (`montoInicial`), el egreso (`monto`) y el cierre (`montoDeclarado`). Se comparan como `Decimal`.
+  - e) **Reintento tardío del cierre:** un envío con la clave de un cierre que llega después de que el administrador
+    reabrió la caja responde 200 con la caja como está (abierta) y no la vuelve a cerrar ni audita: la clave se mira
+    antes que el estado (criterio 34).
+  - f) **Doble clic simultáneo en el cierre:** dos envíos a la vez con la misma clave responden 200 los dos (el éxito
+    del cierre ya es 200); queda un cierre y un `CAJA_CERRADA`.
+  - g) **Orden:** el 400 del esquema va antes que el 404 por el id y antes que el 200 de una clave repetida o de una
+    caja ya abierta (reapertura, criterio 36 a). El 400 de `observacion` por una diferencia sin explicar no es del
+    esquema: sigue al final, después de `CAJA_CAMBIO` ("Orden de los errores de negocio").
+- **PP7 (criterio 24 y plan 2.4).** Manda el orden de la spec: a) caja abierta (`SIN_CAJA_ABIERTA`,
+  `CAJA_DE_OTRO_DIA`), b) `pagoId` repetido (`repetido: true`), c) monto válido (si no, `RangeError`) e inserción. El
+  `RangeError` se lanza dentro de c, antes de insertar, sin escribir. Así, sin caja abierta un monto inválido da
+  `SIN_CAJA_ABIERTA`, y un `pagoId` ya registrado devuelve su movimiento sin mirar el monto nuevo. Alternativa
+  descartada: el `RangeError` primero, antes de tocar la base, como decía el plan (las pruebas aceptan los dos órdenes;
+  se elige la spec, que es la que se aprobó). El plan 2.4 queda alineado.
+- **PP8 (criterios 21 y 22, parte simultánea).** No tienen archivo de pruebas propio. Según el orquestador, los cubre
+  `backend/test/integracion/caja/cierre-carreras.test.ts` en el cruce egreso, cierre y cobro. **Revisado por el
+  especificador (22/11/2026), la cobertura es parcial:** el criterio 33 d de ese archivo envía egresos simultáneos de
+  S/ 10.00 con claves distintas sobre una caja de S/ 100.00 y solo admite 409 `CAJA_CERRADA`. No cubre:
+  - del criterio 21, dos egresos simultáneos que juntos pasan el efectivo (dos de `"30.00"` con S/ 50.00: un 201 y un
+    409 `EFECTIVO_INSUFICIENTE`, nunca los dos);
+  - del criterio 22, dos envíos simultáneos con la misma clave (un 201 y un 200, una fila y una auditoría).
+
+  Además, el encabezado de `backend/test/integracion/caja/egresos.test.ts` remite a `egresos-carreras.test.ts`, que no
+  existe. **Pendiente:** que el test-writer escriba esas dos pruebas protegidas (deterministas, con la caja retenida y la
+  espera comprobada en `pg_locks`, como el 33) antes de la implementación, o que el orquestador acepte la cobertura
+  parcial y corrija el encabezado. Mientras tanto, el adversarial debe atacar esas dos carreras.
+
 ## Preguntas abiertas
 
-Ninguna pendiente. Las preguntas del borrador quedaron resueltas el 22/11/2026; el texto completo de cada una, con lo
-decidido y la alternativa descartada, está en "Decisiones".
+Las preguntas del borrador quedaron resueltas el 22/11/2026; el texto completo de cada una, con lo decidido y la
+alternativa descartada, está en "Decisiones". Queda una, encontrada al escribir PP3, que no bloquea la 006a:
+
+- **P12 (para el responsable, no bloquea). ¿Una caja puede terminar el día con más de S/ 99,999.99 en efectivo?** El
+  monto declarado del cierre usa `montoNoNegativoSchema` (criterio 30), que llega a `99999.99`, pero el esperado en
+  efectivo puede pasar de esa cifra si entran muchos cobros en efectivo. En ese caso no se podría declarar lo contado y
+  quedaría un faltante falso. **Propuesta:** dejarlo así y anotarlo como riesgo aceptado, porque una recepción de
+  academia no junta esa cantidad en un día; si alguna vez hiciera falta, se sube el tope del declarado sin migración
+  (las columnas son `numeric(12,2)`). **Valor provisional:** el tope actual de `99999.99`.
 
 ### Resueltas (22/11/2026)
 
