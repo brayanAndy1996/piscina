@@ -47,8 +47,8 @@
 - **Repaso de la 006b antes de sus pruebas protegidas (22/11/2026, sobre `095d153`, con la 006a unida a `main`):** el
   especificador revisó los criterios 40 a 44 (y la parte de la 006b de 7, 8, 45 y 46) contra lo construido en la 006a y
   agregó las precisiones PQ1 a PQ15 (al final de la sección I), técnicas y sin cambios de negocio, y la pregunta P13
-  (la caja de hoy en el alcance de la secretaria), que el responsable debe contestar antes de las pruebas protegidas
-  (tiene valor provisional). Cambia la forma de la respuesta de la lista (`{ desde, hasta, cajas }`, PQ3) y fija que
+  (la caja de hoy en el alcance de la secretaria), que el responsable contestó el 22/11/2026 con la propuesta (DR-13).
+  Cambia la forma de la respuesta de la lista (`{ desde, hasta, cajas }`, PQ3) y fija que
   `?academiaId=` se ignora (PQ1).
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
@@ -536,8 +536,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     declarado, diferencia, resultado, `tardio`, quién y cuándo) o `null` (forma exacta en PQ4). Sin parámetros, los últimos
     31 días hasta hoy en Lima; el rango es de como mucho 366 días y `desde` no puede ser posterior a `hasta` (si no, 400 con
     el campo; reglas exactas en PQ3). **Alcance:** el `ADMIN` ve todas las cajas de A; la `SECRETARIA` ("parcial, su
-    caja", sección 2.1) ve solo las cajas que abrió, las que cerró alguna vez y la caja abierta (DR-9; con la caja de hoy,
-    según P13: PQ2). No bloquea, no escribe y no audita. _(crítico)_ (sección 2.1, HU-27, D-23)
+    caja", sección 2.1) ve solo las cajas que abrió, las que cerró alguna vez y la caja abierta (DR-9), más la caja de hoy
+    (DR-13; reglas exactas en PQ2). No bloquea, no escribe y no audita. _(crítico)_ (sección 2.1, HU-27, D-23)
 41. **Detalle de una caja.** `GET /api/cajas/{id}` responde 200 con `{ caja }` (`cajaSchema`, como el criterio 28), con
     todos sus cierres y sus reaperturas (quién, cuándo y el motivo; PQ5). Una caja de B, un id que no existe o que no es
     UUID, y una caja fuera del alcance de la `SECRETARIA` (criterio 40) responden el mismo 404 `NO_ENCONTRADO` (PQ1).
@@ -568,8 +568,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
 #### Precisiones de la 006b (PQ1 a PQ15)
 
 Repaso del especificador antes de las pruebas protegidas de la 006b (22/11/2026, sobre `095d153`), contra lo construido en
-la 006a. Son técnicas: no cambian ninguna regla de negocio aprobada. La única que depende del responsable es la caja de
-hoy en el alcance de la secretaria (PQ2 d), que sigue la pregunta P13 con un valor provisional. Se citan como "PQn".
+la 006a. Son técnicas: no cambian ninguna regla de negocio aprobada. La única que dependía del responsable es la caja
+de hoy en el alcance de la secretaria (PQ2 d), decidida en DR-13 (pregunta P13). Se citan como "PQn".
 
 - **PQ1 · Orden de comprobaciones, 403 y 404 (criterios 7, 8, 41 y 42).** Las tres rutas siguen el orden de 002: sesión
   (401 `NO_AUTENTICADO`) → academia activa (403 `ACADEMIA_SUSPENDIDA`) → cambio obligatorio (403
@@ -588,9 +588,8 @@ hoy en el alcance de la secretaria (PQ2 d), que sigue la pregunta P13 con un val
   - a) `cajas.abierta_por` es ella;
   - b) algún cierre de esa caja, vigente o ya reabierto, tiene `cerrado_por` igual a ella ("las que cerró alguna vez");
   - c) la caja está `ABIERTA` ahora (de hoy o de otro día);
-  - d) **(P13, valor provisional: sí)** la `fecha` de la caja es hoy en Lima (`hoyEnLima(RELOJ.ahora())`), aunque la
-    hayan abierto y cerrado otras personas. Motivo: la misma caja ya la ve en `/panel/caja` (criterio 28). Si el
-    responsable contesta que no, se quita d y la prueba correspondiente cambia de 200 a 404 antes del commit en rojo.
+  - d) **(DR-13)** la `fecha` de la caja es hoy en Lima (`hoyEnLima(RELOJ.ahora())`), aunque la hayan abierto y
+    cerrado otras personas. Motivo: la misma caja ya la ve en `/panel/caja` (criterio 28).
 
   Cualquier otro alcance, o ninguno, no ve nada (falla cerrada; con la matriz de hoy no ocurre, porque el guard ya
   rechazó). Dentro de una caja que puede ver, ve todo: sus movimientos (los haya registrado quien sea), todos sus
@@ -603,7 +602,7 @@ hoy en el alcance de la secretaria (PQ2 d), que sigue la pregunta P13 con un val
   - C3: la abrió el `ADMIN`, S1 hizo el cierre 1, el `ADMIN` la reabrió e hizo el cierre 2 → S1 sí (cerró alguna vez),
     también el PDF del cierre 2; S2, 404;
   - C4: la abrió S2 y sigue abierta (de otro día) → la ven S1 y S2;
-  - C5 (provisional, P13): la de hoy, cerrada, que abrió S2 y cerró el `ADMIN` → la ven S1 y S2;
+  - C5 (DR-13): la de hoy, cerrada, que abrió S2 y cerró el `ADMIN` → la ven S1 y S2;
   - el `ADMIN` ve las cinco; una caja de B no la ve nadie de A.
 - **PQ3 · Consulta y rango de la lista (criterio 40).**
   - **Lectura de la consulta:** solo `desde` y `hasta`, cada uno con `fechaSchema` (una fecha `AAAA-MM-DD` que existe).
@@ -1112,8 +1111,9 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 **Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" dentro de ella y como "DR-n de 006"
 fuera; las del orquestador, "DT-n" y "DT-n de 006"; las de diseño del especificador, "Dn". Las de otras specs llevan
 siempre su número ("DT-5 de 002", "DR-11 de 005"). La pregunta Pn del borrador es DR-n y la Tn es DT-n (P1 es DR-1, T1
-es DT-1, y así hasta P11 y T6). Las precisiones de las pruebas protegidas de la 006a se citan como "PPn"; las del repaso
-de la 006b, como "PQn" (están al final de la sección I de los criterios).
+es DT-1, y así hasta P11 y T6; P13, contestada después, es DR-13, y DR-12 queda para P12). Las precisiones de las
+pruebas protegidas de la 006a se citan como "PPn"; las del repaso de la 006b, como "PQn" (están al final de la sección I
+de los criterios).
 
 ### Decisiones del responsable (22/11/2026)
 
@@ -1165,6 +1165,14 @@ definitivos. Se conserva el texto de cada pregunta; lo decidido es la propuesta.
 - **DR-11 (pregunta P11). ¿Hay ingresos que no vienen de un cobro?** HU-26 solo nombra inscripción, mensualidad y clase
   particular. **Decidido (la propuesta):** no; todo ingreso nace de un cobro (007 y 016) y entra con
   `registrarIngresoEnCaja`. Alternativa descartada: un "otro ingreso" manual con concepto. ("Fuera de alcance".)
+- **DR-13 (pregunta P13, del repaso de la 006b; contestada el 22/11/2026). ¿La secretaria ve en el historial la caja de
+  hoy aunque la hayan abierto y cerrado otras personas?** DR-9 dice que "su caja" son las que abrió, las que cerró y la
+  caja abierta, pero la pantalla de la caja del día (criterio 28, 006a) ya le muestra a cualquier secretaria la caja de
+  hoy cerrada, con sus movimientos y su cierre. **Decidido (la propuesta):** sí; "la caja de hoy" se suma al alcance de
+  la secretaria (PQ2 d): ve esa caja en el historial y descarga el PDF de sus cierres, aunque no la haya abierto ni
+  cerrado ella. No le muestra nada que no vea ya, y el historial queda coherente con la pantalla del día. Alternativa
+  descartada: dejar DR-9 tal cual (la vería en `/panel/caja` y no en el historial ni en el PDF, hasta que cambia el día).
+  (Criterios 40 a 42; escenario C5 de PQ2.)
 
 ### Decisiones técnicas del orquestador (22/11/2026)
 
@@ -1299,8 +1307,8 @@ cambian ninguna regla de negocio; se citan como "PPn" en los criterios, el contr
 ## Preguntas abiertas
 
 Las preguntas del borrador quedaron resueltas el 22/11/2026; el texto completo de cada una, con lo decidido y la
-alternativa descartada, está en "Decisiones". Quedan dos: P12, encontrada al escribir PP3, que no bloquea; y P13,
-encontrada en el repaso de la 006b, que conviene contestar antes de sus pruebas protegidas (tiene valor provisional):
+alternativa descartada, está en "Decisiones". P13, encontrada en el repaso de la 006b, se contestó el mismo día con la
+propuesta (DR-13). Queda una: P12, encontrada al escribir PP3, que no bloquea:
 
 - **P12 (para el responsable, no bloquea). ¿Una caja puede terminar el día con más de S/ 99,999.99 en efectivo?** El
   monto declarado del cierre usa `montoNoNegativoSchema` (criterio 30), que llega a `99999.99`, pero el esperado en
@@ -1308,15 +1316,6 @@ encontrada en el repaso de la 006b, que conviene contestar antes de sus pruebas 
   quedaría un faltante falso. **Propuesta:** dejarlo así y anotarlo como riesgo aceptado, porque una recepción de
   academia no junta esa cantidad en un día; si alguna vez hiciera falta, se sube el tope del declarado sin migración
   (las columnas son `numeric(12,2)`). **Valor provisional:** el tope actual de `99999.99`.
-- **P13 (para el responsable; contestar antes de las pruebas protegidas de la 006b). ¿La secretaria ve en el historial
-  la caja de hoy aunque la hayan abierto y cerrado otras personas?** DR-9 dice que "su caja" son las que abrió, las que
-  cerró y la caja abierta. Pero la pantalla de la caja del día (criterio 28, 006a) ya le muestra a cualquier secretaria la
-  caja de hoy cerrada, con sus movimientos y su cierre, aunque no la haya abierto ni cerrado ella. Sin este agregado, esa
-  misma caja la ve en `/panel/caja` y no en el historial ni en el PDF, hasta que cambia el día y desaparece para ella.
-  **Propuesta:** sí, sumar "la caja de hoy" al alcance de la secretaria (PQ2 d): no le muestra nada que no vea ya, y el
-  historial queda coherente con la pantalla del día. Alternativa: dejar DR-9 tal cual (no la ve en el historial, aunque
-  sí en `/panel/caja`). **Valor provisional:** sí (la propuesta). Si la respuesta es no, se quita PQ2 d y cambia una
-  prueba del escenario de PQ2 (C5) antes del commit en rojo.
 
 ### Resueltas (22/11/2026)
 
@@ -1335,6 +1334,7 @@ Para el responsable (negocio), respondidas por Bryan, todas con la propuesta:
 | P9. ¿«Su caja» de la secretaria? | Las que abrió o cerró y la caja abierta; el administrador ve todas | DR-9 | 40 a 42 |
 | P10. ¿Dividir la historia? | Sí: 006a (criterios 1 a 39) y 006b (40 a 44) | DR-10 | todos |
 | P11. ¿Ingresos manuales? | No; todo ingreso nace de un cobro | DR-11 | 24, "Fuera de alcance" |
+| P13. ¿La secretaria ve en el historial la caja de hoy aunque la hayan abierto y cerrado otras personas? | Sí: la ve y descarga el PDF de sus cierres (contestada aparte, el mismo día) | DR-13 | 40 a 42 (PQ2 d, C5) |
 
 Para el orquestador (técnicas), aprobadas tal como se propusieron:
 

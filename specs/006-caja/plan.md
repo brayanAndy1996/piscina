@@ -269,10 +269,10 @@ Las reglas exactas están en las precisiones PQ1 a PQ15 de la spec (al final de 
 
 - **Lecturas sin bloqueos:** las tres rutas leen en un `conAcademia` de la academia de la sesión, sin
   `bloquearActorVigente`, sin `FOR UPDATE` y sin auditoría (PQ1). "Hoy" sale de `RELOJ` en Lima.
-- **Alcance (PQ2, DR-9 y P13):** el servicio toma el alcance de `MATRIZ_PERMISOS.VER_REPORTES_FINANCIEROS[rol]`.
+- **Alcance (PQ2, DR-9 y DR-13):** el servicio toma el alcance de `MATRIZ_PERMISOS.VER_REPORTES_FINANCIEROS[rol]`.
   Con `TODO`, sin condición; con `SU_CAJA`, `AND (c.abierta_por = $yo OR c.estado = 'ABIERTA' OR c.fecha = $hoy OR
   EXISTS (SELECT 1 FROM cierres_caja k WHERE k.academia_id = c.academia_id AND k.caja_id = c.id AND k.cerrado_por =
-  $yo))` (`c.fecha = $hoy` es PQ2 d, provisional por P13); con cualquier otro valor, `AND false`. Una sola función arma
+  $yo))` (`c.fecha = $hoy` es PQ2 d, DR-13); con cualquier otro valor, `AND false`. Una sola función arma
   la condición para la lista, el detalle y el PDF. Fuera del alcance, el detalle y el PDF responden el mismo
   `noEncontrado()` que una caja de otra academia.
 - **Lista (PQ3, PQ4):** el controlador lee `desde` y `hasta` crudos de la dirección como `estadoCrudo` de

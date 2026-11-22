@@ -160,8 +160,7 @@ egreso) y 48 (las interfaces validan sus entradas) de `spec.md`, críticos, y de
 
 ### Pruebas protegidas (en rojo)
 
-Antes de T23: el responsable contesta P13 (la caja de hoy en el alcance de la secretaria; valor provisional: sí). Las
-precisiones PQ1 a PQ15 de la spec (sección I) fijan los formatos, el orden, los 404 y las cabeceras.
+Las precisiones PQ1 a PQ15 de la spec (sección I) fijan los formatos, el orden, los 404 y las cabeceras.
 
 - [ ] T23 · test-writer · Pruebas protegidas del historial y el detalle: permisos de las tres rutas con el orden de PQ1
       (sin sesión, cambio obligatorio, academia suspendida, cookie del Superadmin; 403 aunque el id o la consulta sean
@@ -190,7 +189,7 @@ precisiones PQ1 a PQ15 de la spec (sección I) fijan los formatos, el orden, los
       `respuestaHistorialCajasSchema`, `LIMITES_HISTORIAL_CAJAS`) y `formatearSoles` movida a `dinero.ts`, con pruebas
       unitarias no protegidas (PQ3, PQ4, PQ10, PQ13) (criterios 40, 42)
 - [ ] T27 · backend · `historial.service.ts`, rutas `GET /api/cajas` y `GET /api/cajas/{id}` con el alcance de PQ2
-      (DR-9 y P13), la consulta cruda y los valores por defecto de PQ3 y una sola consulta para la lista (criterios 40,
+      (DR-9 y DR-13), la consulta cruda y los valores por defecto de PQ3 y una sola consulta para la lista (criterios 40,
       41)
 - [ ] T28 · backend · `pdf/cierre-pdf.ts` (`generarPdfCierre`, `GeneradorPdfCierre`, `GENERADOR_PDF_CIERRE`),
       `pdf/texto-pdf.ts` (`textoParaPdf`) y la ruta del PDF (lectura en su transacción, generación fuera, cabeceras de
