@@ -133,10 +133,11 @@ egreso) y 48 (las interfaces validan sus entradas) de `spec.md`, críticos, y de
 - [x] T40 · tester · Pruebas protegidas en verde (T36 y todas las anteriores) y suite completa (criterios 47, 48)
 - [x] T41 · orquestador · `git diff` desde el commit de T36: T38 y T39 no tocaron pruebas protegidas
       _(verificado: `88b8d4e` no toca ninguna prueba protegida, y ningún commit de implementación de la 006a toca una)_
-- [ ] T42 · adversarial · Ronda 2 sobre todo lo de la 006a, en especial 47 y 48 (Unicode en el comprobante y la
+- [x] T42 · adversarial · Ronda 2 sobre todo lo de la 006a, en especial 47 y 48 (Unicode en el comprobante y la
       descripción, la idempotencia con comprobantes normalizados, llamadas directas a las interfaces con entradas mal
       formadas) y las carreras pendientes de PP8; si hay fallas, se repite el ciclo hasta una ronda sin fallas
-      _(sin marcar: no hay registro de la ronda 2 en `spec.md` ni en los commits)_
+      _(ronda 2 sobre `88b8d4e`, 22/11/2026: sin fallas; observaciones aceptadas sin cambio de spec, registradas en el
+      encabezado de `spec.md`)_
 
 ### Revisión y cierre
 
@@ -194,7 +195,7 @@ egreso) y 48 (las interfaces validan sus entradas) de `spec.md`, críticos, y de
 
 - [x] Pruebas escritas por test-writer y confirmadas en rojo (006a)
 - [x] Pruebas en verde tras la implementación (006a)
-- [ ] Ataque adversarial sin fallas abiertas (006a) _(pendiente de T42)_
+- [x] Ataque adversarial sin fallas abiertas (006a) _(ronda 2 sobre `88b8d4e` sin fallas, T42)_
 - [ ] Pruebas escritas por test-writer y confirmadas en rojo (006b)
 - [ ] Pruebas en verde tras la implementación (006b)
 - [ ] Ataque adversarial sin fallas abiertas (006b)

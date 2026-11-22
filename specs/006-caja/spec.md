@@ -32,6 +32,18 @@
   descripción) y 48 (las interfaces `registrarEgresoEnCaja` y `registrarIngresoEnCaja` validan sus entradas), los dos
   críticos y de la 006a, sin cambios de negocio, y dejó una nota para la 007 en "Reglas para las historias siguientes"
   (orden de bloqueos con la fila del alumno), sin criterio propio.
+- **Ronda adversarial 2 de la 006a (22/11/2026, sobre `88b8d4e`):** sin fallas; no agrega ni cambia criterios. Atacó los
+  criterios 47 y 48 (unos 90 textos por la ruta y por las interfaces, el orden de validación y la idempotencia con
+  textos normalizados), las carreras (un cobro que imita la 007 en vuelo frente a un egreso; 40 rondas de 10
+  operaciones simultáneas de apertura, egreso, cierre, reapertura e ingresos, sin 500 ni interbloqueos y con las
+  invariantes de una sola caja abierta, nada después de `movimientos_hasta`, el esperado igual a la suma y el efectivo
+  nunca negativo), la web (permisos, montos sin coma flotante, doble clic, reintento tras `CAJA_CAMBIO`, sin
+  almacenamiento local y caché por usuario) y el aislamiento. Observaciones aceptadas sin cambio de spec: la hora de la
+  operación es la de llegada (el reloj se lee antes de esperar el bloqueo de la caja, coherente porque el bloqueo impide
+  los cruces); NFC y NFD se comparan como textos distintos; los límites de longitud se cuentan por puntos de código;
+  `ip` no se valida en las interfaces (quien llama pasa `req.ip`); los topes extremos de `smallint` en
+  `cierres_caja.numero` y del número de movimientos no son realistas; cada diálogo de egreso genera su propia clave
+  (criterio 38). **Ataque adversarial de la 006a cerrado sin fallas abiertas.**
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
