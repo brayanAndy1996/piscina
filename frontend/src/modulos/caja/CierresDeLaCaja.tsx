@@ -13,9 +13,11 @@ import { DatosDelCierre, InsigniasDelCierre } from './ResultadoDelCierre';
 export function CierresDeLaCaja({ caja }: { caja: Caja }) {
   const descarga = useDescargarPdfDelCierre();
   useAlPerderSesion(descarga.error);
-  const descargando = descarga.isPending ? descarga.variables?.numero : undefined;
-  const mensaje = descarga.isError ? mensajeDeDescargaDelPdf(descarga.error) : null;
-  const numeroConError = descarga.variables?.numero;
+  // La descarga es de su caja y de su cierre (criterio 56 b): aunque este componente se reutilice con otra caja, no se le pasa a ella.
+  const deEstaCaja = descarga.variables?.cajaId === caja.id;
+  const descargando = descarga.isPending && deEstaCaja ? descarga.variables?.numero : undefined;
+  const mensaje = descarga.isError && deEstaCaja ? mensajeDeDescargaDelPdf(descarga.error) : null;
+  const numeroConError = deEstaCaja ? descarga.variables?.numero : undefined;
 
   return (
     <section aria-label="Cierres de la caja" className="space-y-3">
@@ -46,7 +48,7 @@ export function CierresDeLaCaja({ caja }: { caja: Caja }) {
                     type="button"
                     disabled={descarga.isPending}
                     aria-label={`Descargar PDF del cierre ${cierre.numero}`}
-                    onClick={() => descarga.mutate({ cajaId: caja.id, fecha: caja.fecha, numero: cierre.numero })}
+                    onClick={() => descarga.descargar({ cajaId: caja.id, fecha: caja.fecha, numero: cierre.numero })}
                     className={ESTILO_BOTON.secundario}
                   >
                     {descargando === cierre.numero ? 'Preparando el PDF…' : 'Descargar PDF'}

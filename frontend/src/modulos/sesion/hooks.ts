@@ -178,11 +178,13 @@ export function useIniciarSesionAcademia(nombreCorto: string) {
 export function useCerrarSesionAcademia() {
   const cliente = useQueryClient();
   return useMutation({
-    mutationFn: () => {
-      // Criterio 54 de 006: una descarga en camino no debe llegar a la persona siguiente; se cancela al pulsar, aunque `DELETE` tarde o falle.
+    // Criterio 54 de 006: una descarga en camino no debe llegar a la persona siguiente; se cancela al pulsar, aunque `DELETE` tarde o falle.
+    // Criterio 57 (DT-17): va en `onMutate` y no en la `mutationFn`, porque `onMutate` corre en el mismo paso que `mutate` aunque la
+    // mutación quede en pausa por falta de conexión (con `networkMode: 'online'`, la `mutationFn` no corre hasta que vuelva).
+    onMutate: () => {
       cancelarDescargasEnCurso();
-      return api.cerrarSesion();
     },
+    mutationFn: () => api.cerrarSesion(),
     onSuccess: () => {
       cliente.clear();
     },

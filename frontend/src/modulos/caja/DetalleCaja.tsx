@@ -18,9 +18,11 @@ import { ResumenCaja } from './ResumenCaja';
 
 /** `/panel/cajas/:id`: una caja del historial, de solo lectura (HU-27, criterio 41). Quien tiene `VER_REPORTES_FINANCIEROS`. */
 export function DetalleCaja() {
+  const { id = '' } = useParams();
   return (
     <RequierePermiso permiso="VER_REPORTES_FINANCIEROS">
-      <ContenidoDelDetalle />
+      {/* La ruta no desmonta la página cuando solo cambia el id: con la `key`, cada caja empieza de cero (criterio 56, DT-16). */}
+      <ContenidoDelDetalle key={id} id={id} />
     </RequierePermiso>
   );
 }
@@ -33,8 +35,7 @@ function VolverAlHistorial() {
   );
 }
 
-function ContenidoDelDetalle() {
-  const { id = '' } = useParams();
+function ContenidoDelDetalle({ id }: { id: string }) {
   const usuario = useUsuario();
   const consulta = useDetalleCaja(id);
   useAlPerderSesion(consulta.error);

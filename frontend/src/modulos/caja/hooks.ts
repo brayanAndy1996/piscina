@@ -1,6 +1,6 @@
 import type { Caja, FiltroHistorialCajas } from '@aquagestion/contratos';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DescargaCanceladaError, iniciarDescarga } from '../../lib/descargas-en-curso';
 import { hoyEnLima } from '../../lib/fechas';
 import { useUsuario } from '../sesion/contexto';
@@ -144,21 +144,23 @@ export function useDetalleCaja(id: string) {
 export function useDescargarPdfDelCierre() {
   const confirmarSesion = useConfirmarSesion();
   const vigilarLaSesion = useVigilanteDeLaSesion();
-  const propias = useRef(new Set<AbortController>());
+  // Las descargas de esta página que todavía no terminaron, cada una con cómo soltar lo que registró.
+  const propias = useRef(new Map<AbortController, () => void>());
   useEffect(() => {
-    const controladores = propias.current;
+    const descargas = propias.current;
     return () => {
-      for (const controlador of controladores) controlador.abort();
-      controladores.clear();
+      for (const [controlador, soltar] of descargas) {
+        controlador.abort();
+        soltar();
+      }
+      descargas.clear();
     };
   }, []);
-  return useMutation({
-    mutationFn: async ({ cajaId, fecha, numero }: { cajaId: string; fecha: string; numero: number }) => {
-      const { sigue, vigilar } = vigilarLaSesion();
-      const { controlador, terminar } = iniciarDescarga();
-      propias.current.add(controlador);
-      const dejarDeVigilar = vigilar(() => controlador.abort());
+  const mutacion = useMutation({
+    mutationFn: async ({ cajaId, fecha, numero, controlador, sigue, soltar }: DescargaPedida) => {
       try {
+        // Criterio 57 b: si la mutación estuvo en pausa (sin conexión) y la descarga se canceló mientras tanto, no pide nada.
+        if (controlador.signal.aborted) throw new DescargaCanceladaError();
         await confirmarSesion();
         if (controlador.signal.aborted) throw new DescargaCanceladaError();
         const pdf = await api.obtenerPdfDelCierre({ cajaId, numero }, controlador.signal);
@@ -169,10 +171,44 @@ export function useDescargarPdfDelCierre() {
         if (controlador.signal.aborted || error instanceof DescargaCanceladaError) throw new DescargaCanceladaError();
         throw error;
       } finally {
-        dejarDeVigilar();
-        terminar();
+        soltar();
         propias.current.delete(controlador);
       }
     },
   });
+  const { mutate } = mutacion;
+  /**
+   * Criterio 57 b: la descarga cuenta como "en curso" desde que se pulsa, no desde que empieza su `mutationFn` (que sin conexión queda en
+   * pausa). La identidad de la página también se toma al pulsar.
+   */
+  const descargar = useCallback(
+    (datos: { cajaId: string; fecha: string; numero: number }) => {
+      const { sigue, vigilar } = vigilarLaSesion();
+      const { controlador, terminar } = iniciarDescarga();
+      const dejarDeVigilar = vigilar(() => controlador.abort());
+      const soltar = () => {
+        dejarDeVigilar();
+        terminar();
+      };
+      propias.current.set(controlador, soltar);
+      mutate({ ...datos, controlador, sigue, soltar });
+    },
+    [mutate, vigilarLaSesion],
+  );
+  return {
+    descargar,
+    isPending: mutacion.isPending,
+    isError: mutacion.isError,
+    error: mutacion.error,
+    variables: mutacion.variables,
+  };
+}
+
+interface DescargaPedida {
+  cajaId: string;
+  fecha: string;
+  numero: number;
+  controlador: AbortController;
+  sigue: () => boolean;
+  soltar: () => void;
 }
