@@ -36,14 +36,19 @@ Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-
 
 **[006b]**
 
-- `packages/contratos/src/caja.ts`: `filtroHistorialCajasSchema`, `cajaHistorialSchema`, `respuestaHistorialCajasSchema`.
-- `backend/src/modulos/caja/historial.service.ts` (lista y detalle con el alcance `SU_CAJA`), `pdf/cierre-pdf.ts`
-  (`generarPdfCierre(datos): Promise<Buffer>`, pura respecto de la base) y las rutas `GET` del historial en el
-  controlador.
+- `packages/contratos/src/caja.ts`: `filtroHistorialCajasSchema`, `cajaHistorialSchema`, `respuestaHistorialCajasSchema`
+  (`{ desde, hasta, cajas }`) y `LIMITES_HISTORIAL_CAJAS` (PQ3, PQ4 y PQ13 de la spec).
+- `packages/contratos/src/dinero.ts`: recibe `formatearSoles` (hoy en `frontend/src/lib/dinero.ts`, que pasa a
+  reexportarla), para la web y el PDF (PQ10).
+- `backend/src/modulos/caja/historial.service.ts` (lista, detalle y lectura de los datos del PDF, con el alcance de
+  PQ2), `pdf/cierre-pdf.ts` (`generarPdfCierre(datos): Promise<Buffer>`, pura respecto de la base; `GeneradorPdfCierre`,
+  `GENERADOR_PDF_CIERRE`; PQ8), `pdf/texto-pdf.ts` (`textoParaPdf`, PQ11) y las rutas `GET` del historial en
+  `CajasController`, después de `actual`. `CajaModule` provee `GENERADOR_PDF_CIERRE`; `caja/index.ts` lo reexporta.
 - `backend/package.json`: `pdfkit` y `@types/pdfkit`; `scripts/lib/dependencias-backend.mjs`
   (`DEPENDENCIAS_BACKEND_PERMITIDAS`, criterio 127 de 001).
-- `frontend/src/modulos/caja/`: `PaginaHistorialCajas.tsx`, `DetalleCaja.tsx`; ruta `/panel/cajas` y opción "Historial de
-  caja".
+- `frontend/src/modulos/caja/`: `PaginaHistorialCajas.tsx`, `DetalleCaja.tsx`, las llamadas nuevas en `api.ts` (lista,
+  detalle y descarga) y sus consultas en `hooks.ts`; el texto de `DialogoReapertura.tsx` para una caja de un día
+  anterior; rutas `/panel/cajas` y `/panel/cajas/:id` y opción "Historial de caja" (PQ12).
 
 ## 2. Diseño
 
@@ -260,17 +265,39 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 
 ### 2.11 [006b] Historial y PDF
 
-- **Alcance de la secretaria (DR-9):** `WHERE c.estado = 'ABIERTA' OR c.abierta_por = $yo OR EXISTS (SELECT 1 FROM
-  cierres_caja k WHERE k.academia_id = c.academia_id AND k.caja_id = c.id AND k.cerrado_por = $yo)`. Fuera del alcance,
-  el detalle y el PDF responden el mismo 404 que una caja de otra academia.
-- **PDF:** una transacción corta lee la academia (nombre), la caja, el cierre pedido y sus movimientos (`numero <=
-  movimientos_hasta`); se cierra la transacción; después `generarPdfCierre` arma el documento con `pdfkit` (A4, fuente
-  Helvetica, `info.CreationDate = cerradoEn`, `info.Title`), lo junta en un `Buffer` y se responde. Los textos pasan por
-  una función que reemplaza lo que no es Latin-1 por `?`. Horas en Lima con `@date-fns/tz`. Montos con dos decimales y
-  `S/`.
-- **Pruebas del PDF:** se extrae el texto del `Buffer` (con una utilidad de prueba que lee los flujos del PDF de
-  `pdfkit` sin comprimir en pruebas, o con una dependencia solo de desarrollo, a decidir por el test-writer) y se buscan
-  las cadenas del criterio 42.
+Las reglas exactas están en las precisiones PQ1 a PQ15 de la spec (al final de la sección I); aquí, solo el cómo.
+
+- **Lecturas sin bloqueos:** las tres rutas leen en un `conAcademia` de la academia de la sesión, sin
+  `bloquearActorVigente`, sin `FOR UPDATE` y sin auditoría (PQ1). "Hoy" sale de `RELOJ` en Lima.
+- **Alcance (PQ2, DR-9 y P13):** el servicio toma el alcance de `MATRIZ_PERMISOS.VER_REPORTES_FINANCIEROS[rol]`.
+  Con `TODO`, sin condición; con `SU_CAJA`, `AND (c.abierta_por = $yo OR c.estado = 'ABIERTA' OR c.fecha = $hoy OR
+  EXISTS (SELECT 1 FROM cierres_caja k WHERE k.academia_id = c.academia_id AND k.caja_id = c.id AND k.cerrado_por =
+  $yo))` (`c.fecha = $hoy` es PQ2 d, provisional por P13); con cualquier otro valor, `AND false`. Una sola función arma
+  la condición para la lista, el detalle y el PDF. Fuera del alcance, el detalle y el PDF responden el mismo
+  `noEncontrado()` que una caja de otra academia.
+- **Lista (PQ3, PQ4):** el controlador lee `desde` y `hasta` crudos de la dirección como `estadoCrudo` de
+  `solicitudes.controller.ts` (un arreglo si se repiten o llevan corchetes) y los valida con `filtroHistorialCajasSchema`;
+  el servicio aplica los valores por defecto con `RELOJ` y vuelve a comprobar el rango (con un solo valor, el otro sale
+  del valor por defecto), con días de calendario (`AAAA-MM-DD` a días desde una época, sin `Date` local ni `TZ`). Una
+  sola consulta con `sum(...) FILTER (...)` por caja y el último cierre con `DISTINCT ON` o una subconsulta lateral;
+  montos como `::text` y `resultado` con `calcularDiferencia`.
+- **Detalle (PQ5):** `leerCaja` dentro de la misma transacción que comprueba el alcance.
+- **PDF (PQ6 a PQ11):** el servicio, después del permiso, valida la forma del id (`PATRON_UUID`) y del `numero`
+  (`^[1-9][0-9]{0,4}$` y `<= 32767`) sin tocar la base (si no, `noEncontrado()`); una transacción corta lee la caja (con el alcance), el
+  cierre pedido y sus movimientos (`numero <= movimientos_hasta`, por `numero`), con los nombres; se sale de la
+  transacción; después `GENERADOR_PDF_CIERRE.generar(datos)` arma el documento con `pdfkit` (A4, Helvetica,
+  `info.CreationDate = cerradoEn`, `info.Title = 'Cierre de caja AAAA-MM-DD N'`), lo junta en un `Buffer` completo y
+  recién entonces se escriben las cabeceras (`res.type('application/pdf')`, `Content-Disposition`) y el cuerpo. Si
+  `generar` falla, el error sube antes de escribir nada y el filtro global responde el 500 JSON. Los textos pasan por
+  `textoParaPdf` (NFC y todo lo que no esté en U+0020–U+007E o U+00A0–U+00FF, `?`). Horas en Lima con `@date-fns/tz`;
+  montos con `formatearSoles` (de `packages/contratos`). `DatosPdfCierre` lleva el nombre de la academia
+  (`sesion.academia.nombre`), la caja (fecha, monto inicial, quién abrió y a qué hora), el cierre (la fila completa,
+  con la reapertura y los nombres) y los movimientos; nada de DNI.
+- **Determinismo (PQ9 d):** con `info.CreationDate` fijo, el `/ID` de `pdfkit` sale de la información del documento; si
+  no fuera así en la versión instalada, se fija a partir del id de la caja y el número del cierre.
+- **Pruebas del PDF:** `backend/test/utilidades/pdf.ts` (sin dependencias nuevas) descomprime los flujos con
+  `node:zlib`, extrae las cadenas de `Tj` y `TJ` y las pasa de WinAnsi a Unicode; las pruebas buscan las cadenas de PQ10.
+  El PDF de producción conserva la compresión por defecto de `pdfkit`.
 
 ## 3. Decisiones
 
@@ -289,6 +316,11 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 | Bloqueo consultivo de la academia en apertura y reapertura | Solo los índices únicos | Orden fijo de los 409 y sin 500 en la carrera |
 | `REABRIR_CAJA` en la matriz (DT-1) | Rol comprobado en el servicio | El guard decide y la web usa `puede` |
 | PDF bajo pedido (DT-2) | PDF guardado en `AlmacenArchivos` | Sin archivos ni confirmación incierta; el cierre no cambia |
+| [006b] Generador del PDF detrás del token `GENERADOR_PDF_CIERRE` (PQ8) | Simular la falla con `vi.mock('pdfkit')` | Las pruebas de integración reemplazan el proveedor como ya hacen con `RELOJ`, sin depender de cómo se importa `pdfkit` |
+| [006b] Respuesta de la lista con el rango aplicado (`{ desde, hasta, cajas }`, PQ3) | Solo `{ cajas }` | La web muestra qué fechas se usaron cuando no se mandó ninguna |
+| [006b] Sin paginación en la lista (PQ4) | Paginación o tope de filas | Una caja por día y un rango de como mucho 366 días ya acotan la lista |
+| [006b] Fuera del alcance, 404 y no 403 (PQ1) | 403 `SIN_PERMISO` | No revela que la caja existe, igual que con otra academia |
+| [006b] Extracción del texto del PDF con `node:zlib` en una utilidad de prueba (PQ10) | Una dependencia de desarrollo para leer PDF | Criterio 127 de 001: cada dependencia nueva se justifica; para buscar cadenas basta leer `Tj` y `TJ` |
 | `metodo_pago` creado aquí | Que lo cree la 007 | Los movimientos lo necesitan ya; la 007 lo reutiliza |
 | `pago_id` sin llave foránea hasta la 007 | Crear `pagos` vacía | Cada historia crea sus tablas (D-17) |
 
@@ -316,6 +348,8 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
   lo instala igual. Hay que revisar que ninguna esté en la lista negra del criterio 129 de 001.
 - **[006b] PDF grande:** una caja con cientos de movimientos genera varias páginas en memoria; para el volumen de una
   academia es poco. Aceptado.
+- **[006b] Nombres de hoy en el PDF de un cierre viejo** (riesgo aceptado de la spec): sin migración no hay dónde
+  guardar los nombres del momento del cierre.
 
 ## 6. Desviaciones aceptadas (006a)
 

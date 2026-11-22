@@ -160,36 +160,58 @@ egreso) y 48 (las interfaces validan sus entradas) de `spec.md`, críticos, y de
 
 ### Pruebas protegidas (en rojo)
 
-- [ ] T23 · test-writer · Pruebas protegidas del historial y el detalle: permisos de las tres rutas, alcance de la
-      `SECRETARIA` (cajas que abrió, que cerró y la abierta; las demás, 404 en el detalle y el PDF), otra academia,
-      rango de fechas y su validación (criterios 7 y 8 en su parte de 006b, 40 y 41)
-- [ ] T24 · test-writer · Pruebas protegidas del PDF: cabeceras, alcance y 404 por caja, por número y por alcance;
-      generación fuera de la transacción (el cierre no crea archivos; una falla de `pdfkit` simulada da 500 sin cambiar
-      nada; dos descargas iguales) (criterios 42 en su parte crítica y 43)
-- [ ] T25 · tester · Confirmar que T23 y T24 fallan por la razón esperada. Commit del orquestador: "Pruebas protegidas
-      (006b): historial y PDF del cierre (en rojo)"
+Antes de T23: el responsable contesta P13 (la caja de hoy en el alcance de la secretaria; valor provisional: sí). Las
+precisiones PQ1 a PQ15 de la spec (sección I) fijan los formatos, el orden, los 404 y las cabeceras.
+
+- [ ] T23 · test-writer · Pruebas protegidas del historial y el detalle: permisos de las tres rutas con el orden de PQ1
+      (sin sesión, cambio obligatorio, academia suspendida, cookie del Superadmin; 403 aunque el id o la consulta sean
+      inválidos); alcance con el escenario C1 a C5 de PQ2 (lista filtrada; 404 en el detalle y en el PDF, con el mismo
+      cuerpo que otra academia, un id inexistente y uno que no es UUID); `?academiaId=` ignorado; consulta, valores por
+      defecto y reglas del rango con los ejemplos de PQ3 (también con `TZ=Asia/Tokyo`); forma exacta, orden y totales de
+      cada caja (PQ4); detalle igual a `/actual` para la misma caja (PQ5); `PATCH`, `PUT`, `DELETE` y `POST` que siguen
+      en 404 (PQ15); prueba de 001 de `DEPENDENCIAS_BACKEND_PERMITIDAS` que suma `pdfkit` y `@types/pdfkit`, solo para
+      sumar (PQ13) (criterios 7 y 8 en su parte de 006b, 23, 40 y 41)
+- [ ] T24 · test-writer · Pruebas protegidas del PDF: `numero` inválidos e inexistentes (PQ6), cierres vigentes y
+      reabiertos, caja nunca cerrada; cabeceras y cuerpo exactos (PQ7); generador reemplazado con
+      `overrideProvider(GENERADOR_PDF_CIERRE)` (PQ8): el cierre y las demás escrituras no lo llaman ni crean archivos,
+      falla del generador (promesa rechazada y excepción) con 500 sin cambios, la lectura ya terminó mientras genera
+      (`pg_stat_activity`), dos descargas con los mismos bytes, también con `TZ=Asia/Tokyo` (PQ9); utilidad
+      `backend/test/utilidades/pdf.ts` para extraer el texto (PQ10) (criterios 42 en su parte crítica y 43)
+- [ ] T25 · tester · Confirmar que T23 y T24 fallan por la razón esperada (rutas, esquemas, token o dependencia
+      inexistentes) y no por sintaxis, importaciones o configuración; que las pruebas protegidas de 001 a 006a siguen
+      pasando; y `git diff --cached --stat` solo con archivos de prueba. Commit del orquestador: "Pruebas protegidas
+      (006): 006b, historial y PDF del cierre (en rojo)" (tres dígitos, sin la letra: lo exige
+      `scripts/verificar-pruebas-protegidas.mjs`)
 
 ### Implementación
 
 - [ ] T26 · backend · `pdfkit` y `@types/pdfkit` en `backend/package.json` y en `DEPENDENCIAS_BACKEND_PERMITIDAS`
-      (criterio 127 de 001; DT-3); contratos del historial (criterios 40, 42)
-- [ ] T27 · backend · `historial.service.ts`, rutas `GET /api/cajas` y `GET /api/cajas/{id}` con el alcance `SU_CAJA`
-      (DR-9) (criterios 40, 41)
-- [ ] T28 · backend · `pdf/cierre-pdf.ts` y la ruta del PDF; prueba no protegida del contenido extrayendo el texto
-      (criterios 42, 43)
-- [ ] T29 · frontend · `/panel/cajas` y la opción "Historial de caja": lista con filtro, detalle, descarga del PDF y
-      reapertura para el `ADMIN`; pruebas de componentes (criterio 44)
+      (criterio 127 de 001; DT-3); contratos del historial (`filtroHistorialCajasSchema`, `cajaHistorialSchema`,
+      `respuestaHistorialCajasSchema`, `LIMITES_HISTORIAL_CAJAS`) y `formatearSoles` movida a `dinero.ts`, con pruebas
+      unitarias no protegidas (PQ3, PQ4, PQ10, PQ13) (criterios 40, 42)
+- [ ] T27 · backend · `historial.service.ts`, rutas `GET /api/cajas` y `GET /api/cajas/{id}` con el alcance de PQ2
+      (DR-9 y P13), la consulta cruda y los valores por defecto de PQ3 y una sola consulta para la lista (criterios 40,
+      41)
+- [ ] T28 · backend · `pdf/cierre-pdf.ts` (`generarPdfCierre`, `GeneradorPdfCierre`, `GENERADOR_PDF_CIERRE`),
+      `pdf/texto-pdf.ts` (`textoParaPdf`) y la ruta del PDF (lectura en su transacción, generación fuera, cabeceras de
+      PQ7); pruebas no protegidas del contenido de PQ10 extrayendo el texto y unitarias de `textoParaPdf` con los
+      ejemplos de PQ11 (criterios 42, 43)
+- [ ] T29 · frontend · `/panel/cajas` y `/panel/cajas/:id`, y la opción "Historial de caja": lista con filtro y rango
+      aplicado, detalle de solo lectura, descarga del PDF, reapertura para el `ADMIN` con el texto de un día anterior,
+      claves de consulta con la identidad; pruebas de componentes (PQ12) (criterio 44)
 - [ ] T30 · tester · Pruebas protegidas en verde y suite completa
 
 ### Ataque, revisión y cierre
 
 - [ ] T31 · adversarial · Atacar los criterios críticos de la 006b: cajas, cierres y PDF de otra academia o fuera del
       alcance de la secretaria (ids, números de cierre, mayúsculas, parámetros repetidos), rangos de fechas extremos, y
-      textos raros en el PDF. Por cada falla, el mismo ciclo que T18.
+      textos raros en el PDF (PQ11). Por cada falla, el mismo ciclo que T18; el commit de cada ronda empieza también por
+      "Pruebas protegidas (006): 006b, …".
 - [ ] T32 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
 - [ ] T33 · revisor · Comparar con la spec y las convenciones; verificar la parte de 006b de los criterios 45 y 46
 - [ ] T34 · tester · Suite completa, lint y verificación de tipos
-- [ ] T35 · documentador · Commit, tareas marcadas, documentación del historial y del PDF (criterio 46)
+- [ ] T35 · documentador · Commit, tareas marcadas, documentación del historial y del PDF; en la guía de uso, filtrar
+      "Desde 01/11/2026" para ver la caja de ejemplo (PQ14) (criterios 45 y 46)
 
 ## Solo ruta crítica
 

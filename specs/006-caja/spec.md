@@ -44,6 +44,12 @@
   `ip` no se valida en las interfaces (quien llama pasa `req.ip`); los topes extremos de `smallint` en
   `cierres_caja.numero` y del número de movimientos no son realistas; cada diálogo de egreso genera su propia clave
   (criterio 38). **Ataque adversarial de la 006a cerrado sin fallas abiertas.**
+- **Repaso de la 006b antes de sus pruebas protegidas (22/11/2026, sobre `095d153`, con la 006a unida a `main`):** el
+  especificador revisó los criterios 40 a 44 (y la parte de la 006b de 7, 8, 45 y 46) contra lo construido en la 006a y
+  agregó las precisiones PQ1 a PQ15 (al final de la sección I), técnicas y sin cambios de negocio, y la pregunta P13
+  (la caja de hoy en el alcance de la secretaria), que el responsable debe contestar antes de las pruebas protegidas
+  (tiene valor provisional). Cambia la forma de la respuesta de la lista (`{ desde, hasta, cajas }`, PQ3) y fija que
+  `?academiaId=` se ignora (PQ1).
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
@@ -183,8 +189,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
    - `POST /api/cajas/{id}/reapertura` (permiso nuevo `REABRIR_CAJA`, solo `ADMIN: 'TODO'`, DT-1) responde al
      `ADMIN` y 403 `SIN_PERMISO` a `SECRETARIA`, `ENTRENADOR` y `ALUMNO`;
    - **[006b]** `GET /api/cajas`, `GET /api/cajas/{id}` y `GET /api/cajas/{id}/cierres/{numero}/pdf` (permiso
-     `VER_REPORTES_FINANCIEROS`) responden a `ADMIN` y `SECRETARIA` (con el alcance del criterio 40), y 403 a `ENTRENADOR` y
-     `ALUMNO`.
+     `VER_REPORTES_FINANCIEROS`) responden a `ADMIN` y `SECRETARIA` (con el alcance del criterio 40), y 403 `SIN_PERMISO` a
+     `ENTRENADOR` y `ALUMNO`, aunque el id, el número o la consulta sean inválidos (PQ1).
 
    Ningún 403 escribe ni audita. Sin sesión, 401 `NO_AUTENTICADO`; con el cambio de contraseña pendiente, 403
    `CAMBIO_DE_CLAVE_OBLIGATORIO`; con A suspendida, 403 `ACADEMIA_SUSPENDIDA`, en el orden de comprobaciones de 002. La
@@ -196,7 +202,9 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
    existe y que uno que no es UUID; un cuerpo con `academiaId`, `cajaId`, `fecha`, `abiertaPor` o cualquier campo que no
    sea del contrato responde 400 sin escribir; un parámetro `?academiaId=<id de B>` se ignora o responde 400, pero nunca
    muestra ni escribe datos de B. Abrir la caja en A no cuenta la caja abierta de B (criterio 13). Las filas y la auditoría
-   de B no cambian. **[006b]** Lo mismo en la lista, el detalle y el PDF. _(crítico)_ (D-23)
+   de B no cambian. **[006b]** Lo mismo en la lista, el detalle y el PDF: la lista ignora `?academiaId=` y cualquier
+   parámetro que no sea `desde` o `hasta` (responde la lista de A, PQ3); el detalle y el PDF de una caja de B responden el
+   404 de PQ1. _(crítico)_ (D-23)
 9. **Quien pide sigue vigente dentro de la transacción.** La apertura, el egreso, el cierre y la reapertura llaman a
    `bloquearActorVigente` como primera sentencia de su `conAcademia` (regla DT-5 de 002). Prueba de carrera determinista,
    como la del criterio 7 de 004: la prueba desactiva a la `SECRETARIA` X (`estado = 'INACTIVO'`, `version_token + 1`) en una
@@ -522,37 +530,238 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
 
 ### I. Historial y PDF del cierre **[006b, siguiente PR]**
 
-40. **Historial de cajas.** `GET /api/cajas?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` responde 200 con `{ cajas }`, de la fecha más
-    reciente a la más antigua (y por id a igual fecha), con `id`, `fecha`, `estado`, `deOtroDia`, `montoInicial`,
-    `abiertaPor`, `totalIngresos` (por método), `totalEgresos` y `ultimoCierre` (número, declarado, diferencia, resultado,
-    `tardio`, quién y cuándo) o `null`. Sin parámetros, los últimos 31 días hasta hoy en Lima; el rango es de como mucho
-    366 días y `desde` no puede ser posterior a `hasta` (si no, 400 con el campo). **Alcance:** el `ADMIN` ve todas las cajas
-    de A; la `SECRETARIA` ("parcial, su caja", sección 2.1) ve solo las cajas que abrió, las que cerró alguna vez y la caja
-    abierta (DR-9). No bloquea, no escribe y no audita. _(crítico)_ (sección 2.1, HU-27, D-23)
+40. **Historial de cajas.** `GET /api/cajas?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` responde 200 con `{ desde, hasta, cajas }`
+    (el rango aplicado y las cajas, PQ3), de la fecha más reciente a la más antigua, con `id`, `fecha`, `estado`,
+    `deOtroDia`, `montoInicial`, `abiertaPor`, `totalIngresos` (por método), `totalEgresos` y `ultimoCierre` (número,
+    declarado, diferencia, resultado, `tardio`, quién y cuándo) o `null` (forma exacta en PQ4). Sin parámetros, los últimos
+    31 días hasta hoy en Lima; el rango es de como mucho 366 días y `desde` no puede ser posterior a `hasta` (si no, 400 con
+    el campo; reglas exactas en PQ3). **Alcance:** el `ADMIN` ve todas las cajas de A; la `SECRETARIA` ("parcial, su
+    caja", sección 2.1) ve solo las cajas que abrió, las que cerró alguna vez y la caja abierta (DR-9; con la caja de hoy,
+    según P13: PQ2). No bloquea, no escribe y no audita. _(crítico)_ (sección 2.1, HU-27, D-23)
 41. **Detalle de una caja.** `GET /api/cajas/{id}` responde 200 con `{ caja }` (`cajaSchema`, como el criterio 28), con
-    todos sus cierres y sus reaperturas (quién, cuándo y el motivo). Una caja de B, un id que no existe o que no es UUID, y
-    una caja fuera del alcance de la `SECRETARIA` (criterio 40) responden el mismo 404 `NO_ENCONTRADO`. _(crítico)_ (HU-27:
-    "el administrador puede ver … un cierre"; D-23)
+    todos sus cierres y sus reaperturas (quién, cuándo y el motivo; PQ5). Una caja de B, un id que no existe o que no es
+    UUID, y una caja fuera del alcance de la `SECRETARIA` (criterio 40) responden el mismo 404 `NO_ENCONTRADO` (PQ1).
+    _(crítico)_ (HU-27: "el administrador puede ver … un cierre"; D-23)
 42. **PDF del cierre.** `GET /api/cajas/{id}/cierres/{numero}/pdf` responde 200 con `Content-Type: application/pdf`,
-    `Content-Disposition: attachment; filename="cierre-caja-AAAA-MM-DD-N.pdf"` y `Cache-Control: no-store`. El PDF
-    (`pdfkit`, A4) lleva: el nombre de la academia (D-22), la fecha de la caja, "Cierre N" y, si es un cierre tardío,
-    "Cierre tardío"; la apertura (quién, hora de Lima, monto inicial); los movimientos con `numero` hasta `movimientosHasta`
-    (hora de Lima, tipo, concepto o descripción, método, nombre del alumno o comprobante, monto; nunca el DNI); los totales
-    por método; el esperado, el declarado, la diferencia ("Sobrante", "Faltante" o "Cuadra") y la observación; quién
-    cerró y a qué hora; y, si ese cierre se reabrió, quién, cuándo y el motivo. Los caracteres que la fuente estándar no
-    puede mostrar se reemplazan por `?`. Mismo alcance y mismo 404 que el criterio 41; un `numero` que no existe o que no
-    es un entero de 1 en adelante, 404. El contenido se comprueba extrayendo el texto del PDF. _(crítico el alcance y el
-    404; prueba obligatoria el contenido)_ (HU-27: "se genera un PDF del cierre"; D-10)
+    `Content-Disposition: attachment; filename="cierre-caja-AAAA-MM-DD-N.pdf"` y `Cache-Control: no-store` (cabeceras
+    exactas en PQ7). El PDF (`pdfkit`, A4) lleva: el nombre de la academia (D-22), la fecha de la caja, "Cierre N" y, si es
+    un cierre tardío, "Cierre tardío"; la apertura (quién, hora de Lima, monto inicial); los movimientos con `numero` hasta
+    `movimientosHasta` (hora de Lima, tipo, concepto o descripción, método, nombre del alumno o comprobante, monto; nunca
+    el DNI); los totales por método; el esperado, el declarado, la diferencia ("Sobrante", "Faltante" o "Cuadra") y la
+    observación; quién cerró y a qué hora; y, si ese cierre se reabrió, quién, cuándo y el motivo (textos y formatos en
+    PQ10). Los caracteres que la fuente estándar no puede mostrar se reemplazan por `?` (regla exacta en PQ11). Mismo
+    alcance y mismo 404 que el criterio 41; un `numero` que no existe o que no es un entero de 1 en adelante, 404 (PQ6).
+    Tiene PDF cualquier cierre de la caja, vigente o reabierto (PQ6). El contenido se comprueba extrayendo el texto del
+    PDF. _(crítico el alcance y el 404; prueba obligatoria el contenido)_ (HU-27: "se genera un PDF del cierre"; D-10)
 43. **El PDF se genera fuera de la escritura.** El PDF se arma bajo pedido con lo que ya está confirmado: el cierre y sus
     movimientos no cambian (criterios 2 y 23), así que dos descargas del mismo cierre dan el mismo contenido (con la fecha
-    de creación del PDF igual a `cerradoEn`). El cierre (`POST …/cierre`) no genera ni guarda ningún PDF ni archivo, y una
-    falla al generar el PDF (por ejemplo, `pdfkit` que lanza) responde 500 `ERROR_INTERNO` en la descarga sin cambiar la
-    caja ni el cierre. La lectura de los datos usa su propia transacción corta de solo lectura, y el PDF se arma después de
-    terminarla. _(crítico)_ (regla "los efectos secundarios ocurren después de confirmar" de `CLAUDE.md`)
+    de creación del PDF igual a `cerradoEn`; mientras no se reabra ese cierre ni cambien los nombres, los mismos bytes:
+    PQ9). El cierre (`POST …/cierre`) no genera ni guarda ningún PDF ni archivo, y una falla al generar el PDF (por
+    ejemplo, `pdfkit` que lanza) responde 500 `ERROR_INTERNO` en la descarga sin cambiar la caja ni el cierre. La lectura de
+    los datos usa su propia transacción corta, que solo lee, y el PDF se arma después de terminarla (generador inyectable
+    en PQ8; pruebas en PQ9). _(crítico)_ (regla "los efectos secundarios ocurren después de confirmar" de `CLAUDE.md`)
 44. **Web del historial.** `/panel/cajas` ("Historial de caja" en el inicio, con `puede(rol, 'VER_REPORTES_FINANCIEROS')`)
     lista las cajas con el filtro de fechas, abre el detalle con sus movimientos y cierres, descarga el PDF de cada cierre
     y, para el `ADMIN`, ofrece "Reabrir" en las cajas cerradas (diálogo con el motivo; los 409 de la reapertura con su
-    mensaje). _(prueba obligatoria, de componentes)_
+    mensaje). Detalle de las pantallas en PQ12. _(prueba obligatoria, de componentes)_
+
+#### Precisiones de la 006b (PQ1 a PQ15)
+
+Repaso del especificador antes de las pruebas protegidas de la 006b (22/11/2026, sobre `095d153`), contra lo construido en
+la 006a. Son técnicas: no cambian ninguna regla de negocio aprobada. La única que depende del responsable es la caja de
+hoy en el alcance de la secretaria (PQ2 d), que sigue la pregunta P13 con un valor provisional. Se citan como "PQn".
+
+- **PQ1 · Orden de comprobaciones, 403 y 404 (criterios 7, 8, 41 y 42).** Las tres rutas siguen el orden de 002: sesión
+  (401 `NO_AUTENTICADO`) → academia activa (403 `ACADEMIA_SUSPENDIDA`) → cambio obligatorio (403
+  `CAMBIO_DE_CLAVE_OBLIGATORIO`) → permiso (403 `SIN_PERMISO`) → consulta (solo la lista, PQ3) → operación. Por eso
+  `ENTRENADOR` y `ALUMNO` reciben 403 aunque el id, el número o la consulta sean inválidos. En el detalle y en el PDF,
+  todo lo que no se puede mostrar responde **el mismo 404 `NO_ENCONTRADO`** (el mismo cuerpo JSON, comparado entero): un
+  id que no es UUID, uno que no existe, uno de otra academia y uno fuera del alcance de la `SECRETARIA` (PQ2); en el PDF,
+  además, un `numero` inválido o que no existe en esa caja (PQ6). Nunca 400 ni 403 por el id o el número: una caja fuera
+  del alcance no se distingue de una que no existe. Un UUID en mayúsculas es la misma caja (200, como en la 006a). Las
+  tres lecturas no llaman a `bloquearActorVigente` (como `GET /api/cajas/actual` y la lista de la 005b), no bloquean
+  filas, no escriben y no auditan. Los parámetros de consulta de más se ignoran en las tres; `?academiaId=<id de B>`
+  nunca cambia de academia (cierra el "se ignora o responde 400" del criterio 8: se ignora).
+- **PQ2 · Alcance (criterio 40 y DR-9).** El servicio lee el alcance de la matriz
+  (`MATRIZ_PERMISOS.VER_REPORTES_FINANCIEROS[rol]`), no compara el nombre del rol: `TODO` ve todas las cajas de la
+  academia; `SU_CAJA` ve una caja si se cumple al menos una de estas condiciones, evaluadas en cada petición:
+  - a) `cajas.abierta_por` es ella;
+  - b) algún cierre de esa caja, vigente o ya reabierto, tiene `cerrado_por` igual a ella ("las que cerró alguna vez");
+  - c) la caja está `ABIERTA` ahora (de hoy o de otro día);
+  - d) **(P13, valor provisional: sí)** la `fecha` de la caja es hoy en Lima (`hoyEnLima(RELOJ.ahora())`), aunque la
+    hayan abierto y cerrado otras personas. Motivo: la misma caja ya la ve en `/panel/caja` (criterio 28). Si el
+    responsable contesta que no, se quita d y la prueba correspondiente cambia de 200 a 404 antes del commit en rojo.
+
+  Cualquier otro alcance, o ninguno, no ve nada (falla cerrada; con la matriz de hoy no ocurre, porque el guard ya
+  rechazó). Dentro de una caja que puede ver, ve todo: sus movimientos (los haya registrado quien sea), todos sus
+  cierres y reaperturas y el PDF de cada cierre. El alcance se aplica igual en la lista (filtra), en el detalle y en el
+  PDF (404). Una caja sale del alcance cuando deja de cumplir todas las condiciones (por ejemplo, la cierra otra persona
+  y ya no es de hoy). **Escenario de las pruebas** (cajas creadas como dueño, en días anteriores a hoy, en A, con
+  `SECRETARIA` S1 y S2):
+  - C1: la abrió y la cerró S1 → la ven S1 y el `ADMIN`; S2, 404;
+  - C2: la abrió S2 y la cerró el `ADMIN` → S2 sí; S1, 404;
+  - C3: la abrió el `ADMIN`, S1 hizo el cierre 1, el `ADMIN` la reabrió e hizo el cierre 2 → S1 sí (cerró alguna vez),
+    también el PDF del cierre 2; S2, 404;
+  - C4: la abrió S2 y sigue abierta (de otro día) → la ven S1 y S2;
+  - C5 (provisional, P13): la de hoy, cerrada, que abrió S2 y cerró el `ADMIN` → la ven S1 y S2;
+  - el `ADMIN` ve las cinco; una caja de B no la ve nadie de A.
+- **PQ3 · Consulta y rango de la lista (criterio 40).**
+  - **Lectura de la consulta:** solo `desde` y `hasta`, cada uno con `fechaSchema` (una fecha `AAAA-MM-DD` que existe).
+    Como `?estado=` en la 005b (`estadoCrudo` de `solicitudes.controller.ts`), la API lee la consulta tal como llegó: un
+    parámetro repetido (`?desde=…&desde=…`) o con corchetes (`desde[]=…`, `desde[x]=…`) es un 400 en ese campo. Un valor
+    vacío (`?desde=`) es un 400 en ese campo (no cuenta como ausente). Los demás parámetros se ignoran.
+  - **Valores por defecto,** con "hoy" de `RELOJ` en Lima: sin `hasta`, `hasta` es hoy; sin `desde`, `desde` es `hasta`
+    menos 30 días (31 días contando los dos extremos), sin bajar de `0001-01-01`.
+  - **Reglas del rango,** después de aplicar los valores por defecto y solo si los dos valores tienen formato válido:
+    `desde` posterior a `hasta` → 400 en `desde` ("La fecha inicial no puede ser posterior a la final."); más de 366 días
+    contando los dos extremos (`hasta − desde > 365`) → 400 en `desde` ("El rango puede ser de como mucho 366 días.").
+    Los errores de formato van primero, uno por campo, en el orden `desde`, `hasta`. Todo 400 es `SOLICITUD_INVALIDA` con
+    `detalles.errores[0].campo`, sin escribir. Las cuentas son en días de calendario, sin zona horaria: el resultado no
+    cambia con el proceso en `TZ=Asia/Tokyo`.
+  - **Ejemplos** con hoy `2026-11-11`: sin parámetros → `2026-10-12` a `2026-11-11`; `desde=2025-11-11&hasta=2026-11-11`
+    (366 días) → 200; `desde=2025-11-10&hasta=2026-11-11` → 400 en `desde`; `desde=2024-02-29&hasta=2025-02-28` (366 días,
+    año bisiesto) → 200; solo `desde=2026-11-12` → 400 en `desde` (`hasta` es hoy); solo `desde=2025-11-10` → 400 en
+    `desde`; solo `hasta=2099-12-31` → `2099-12-01` a `2099-12-31`, 200 con `cajas: []`; solo `hasta=0001-01-15` →
+    `0001-01-01` a `0001-01-15`; `desde=2026-02-30` → 400 en `desde`; `desde=2026-11-01T00:00` → 400 en `desde`.
+  - **Respuesta:** `{ desde, hasta, cajas }`, con el rango aplicado (después de los valores por defecto), para que la web
+    lo muestre.
+- **PQ4 · Cada caja de la lista (`cajaHistorialSchema`, estricto; criterio 40).** Exactamente: `id`, `fecha`, `estado`,
+  `deOtroDia`, `montoInicial`, `abiertaPor` (`personaCajaSchema`), `totalIngresos` (`{ efectivo, yape, transferencia }`),
+  `totalEgresos` (`{ efectivo }`) y `ultimoCierre`. Reglas:
+  - las cajas con `fecha` entre `desde` y `hasta`, los dos incluidos, dentro del alcance (PQ2); una caja abierta con
+    fecha fuera del rango no aparece (se ve en `/panel/caja`);
+  - orden por `fecha` descendente; no hay empates (una caja por día y academia, DR-1, `cajas_academia_id_fecha_key`), así
+    que el "por id a igual fecha" del borrador no aplica;
+  - **sin paginación:** el rango de como mucho 366 días acota la lista a 366 cajas;
+  - los totales son las sumas de todos los movimientos de la caja en este momento (como `resumen` del criterio 28), no la
+    foto del último cierre;
+  - `ultimoCierre` es el cierre de mayor `numero` (vigente o reabierto) con exactamente `{ numero, montoDeclarado,
+    diferencia, resultado, tardio, cerradoPor, cerradoEn }`, o `null` si la caja nunca se cerró. Una caja `ABIERTA` con
+    `ultimoCierre` es una caja reabierta;
+  - `deOtroDia` es `esDeOtroDia(fecha, ahora)` sin mirar el estado, igual que en `cajaSchema` (desviación aceptada de la
+    006a, plan sección 6): toda caja de un día anterior lo tiene en `true`, también las cerradas;
+  - los montos sin signo con `montoDeLecturaSchema`, la diferencia con `montoConSignoSchema`, `resultado` con
+    `resultadoCierreSchema`, `cerradoEn` en ISO; las personas sin DNI;
+  - la lista sale de una sola consulta SQL (una sola foto de la base: los totales y el último cierre no se mezclan con un
+    movimiento que entre a mitad de la lectura).
+- **PQ5 · Detalle (criterio 41).** `GET /api/cajas/{id}` responde `{ caja }` armado con `leerCaja` de `lectura.ts`, la
+  misma función de `GET /api/cajas/actual`: para la caja que devuelve `/actual`, las dos respuestas son iguales (se
+  comparan enteras con el reloj fijo). Trae todos los movimientos de la caja por `numero` (también los posteriores al
+  último cierre, si se reabrió) y todos los cierres por `numero` ascendente, cada uno con `reapertura` o `null`; el
+  vigente es el último y solo si la caja está `CERRADA`.
+- **PQ6 · Qué cierres tienen PDF y el `numero` de la ruta (criterio 42).** Tiene PDF cualquier cierre de una caja que se
+  puede ver: el vigente y los reabiertos, aunque la caja esté abierta otra vez. Una caja que nunca se cerró no tiene
+  ninguno (404). El `numero` vale solo si cumple `^[1-9][0-9]{0,4}$` y es como mucho 32767 (`smallint`); si no, 404 sin
+  consultar la base. Responden 404: `0`, `-1`, `01`, `+1`, `1.0`, `1e0`, ` 1` (`%201`), `32768`, `99999999999999999999`,
+  `uno`, y un número válido que no es de un cierre de esa caja. Nunca 500.
+- **PQ7 · Cabeceras y cuerpo del PDF (criterio 42).** 200 con `Content-Type` exactamente `application/pdf` (sin
+  `charset`), `Content-Disposition` exactamente `attachment; filename="cierre-caja-<fecha de la caja>-<numero>.pdf"` (por
+  ejemplo `cierre-caja-2026-11-02-1.pdf`; el número sin ceros a la izquierda; el nombre no lleva ningún texto de un
+  usuario), `Cache-Control: no-store` (ya lo pone el middleware de las rutas de academia) y `Content-Length` igual al
+  tamaño del cuerpo. El cuerpo empieza con `%PDF-` y termina con `%%EOF` (con o sin salto de línea final). Las respuestas
+  de error (401, 403, 404 y 500) son el JSON de error de siempre, con `Cache-Control: no-store` y sin
+  `Content-Disposition`.
+- **PQ8 · El generador del PDF, inyectable (criterio 43).** `backend/src/modulos/caja/pdf/cierre-pdf.ts` exporta
+  `generarPdfCierre(datos: DatosPdfCierre): Promise<Buffer>` (con `pdfkit`, sin base de datos), la interfaz
+  `GeneradorPdfCierre { generar(datos: DatosPdfCierre): Promise<Buffer> }` y el token de Nest `GENERADOR_PDF_CIERRE`, que
+  `CajaModule` provee con `{ generar: generarPdfCierre }`; `caja/index.ts` los reexporta. El servicio lee los datos en un
+  `conAcademia` que solo lee, sale de él y recién entonces llama a `generar`; con el `Buffer` completo, responde. Las
+  pruebas reemplazan el generador con `overrideProvider(GENERADOR_PDF_CIERRE)`. "Solo lectura" quiere decir que la
+  transacción solo lee; no se exige `SET TRANSACTION READ ONLY`.
+- **PQ9 · Pruebas de "fuera de la escritura" (criterio 43).**
+  - a) Con un generador espía: un `POST …/cierre` (y una apertura, un egreso y una reapertura) no lo llama ni una vez,
+    y en `ALMACEN_DIRECTORIO` no aparece ningún archivo nuevo.
+  - b) Con un generador que rechaza su promesa, y con otro que lanza al llamarlo: la descarga responde 500
+    `ERROR_INTERNO` (JSON, sin `Content-Disposition`); las filas de `cajas`, `movimientos_caja`, `cierres_caja` y
+    `auditoria` de la academia quedan iguales; con el generador real de nuevo, la misma descarga responde 200.
+  - c) Con un generador que la prueba retiene (una promesa que la prueba resuelve después): mientras `generar` está en
+    curso, ninguna conexión del rol de la app a la base de pruebas está `idle in transaction`
+    (`pg_stat_activity.state LIKE 'idle in transaction%'`, filtrado por `datname = current_database()` y el `usename`
+    del rol de la app): la lectura ya terminó. Después la prueba deja seguir al generador real y la descarga responde 200.
+  - d) Dos descargas seguidas del mismo cierre devuelven los mismos bytes (`Buffer.equals`), también con el proceso en
+    `TZ=Asia/Tokyo` (como el criterio 12). `info.CreationDate` es `cerradoEn`; si `pdfkit` agrega algo que cambie entre
+    ejecuciones (como el `/ID` del final), se fija a partir de los datos del cierre. El contenido cambia solo si ese
+    cierre se reabre (aparece la reapertura) o si cambia un nombre (PQ10).
+- **PQ10 · Contenido mínimo verificable del PDF (criterio 42, prueba obligatoria, no protegida).** Formatos: fechas
+  `dd/MM/aaaa`; horas `HH:mm` (24 horas) en America/Lima; montos `S/ 1,200.00` (coma de miles, punto decimal), con la
+  función de texto `formatearSoles`, que pasa de `frontend/src/lib/dinero.ts` a `packages/contratos/src/dinero.ts` (la
+  web la reexporta; sin `Number` ni `parseFloat`). Textos que la prueba busca:
+  - el nombre de la academia (`sesion.academia.nombre`, de `academias.nombre`, D-22), "Cierre de caja", "Caja del
+    dd/MM/aaaa", "Cierre N" y, si `tardio`, "Cierre tardío";
+  - "Abierta por {nombres} {apellidos} a las HH:mm" y "Monto inicial: S/ …";
+  - cada movimiento de `numero` 1 a `movimientosHasta` del cierre (los de toda la caja, no solo los posteriores al
+    cierre anterior, como la foto del criterio 33 d), en orden: el número, la hora, "Ingreso" o "Egreso", el concepto
+    ("Inscripción", "Mensualidad", "Clase particular") o la descripción del egreso, el método ("Efectivo", "Yape",
+    "Transferencia"), el nombre del alumno (ingreso) o el comprobante ("Sin comprobante" si es `null`) y el monto;
+  - "Ingresos en efectivo", "Ingresos por Yape", "Ingresos por transferencia", "Egresos", "Esperado en efectivo",
+    "Declarado" y "Diferencia", con los montos de la fila del cierre (la foto, no una suma nueva). La diferencia se
+    escribe con signo y resultado: "-S/ 4.50 (Faltante)", "S/ 0.30 (Sobrante)", "S/ 0.00 (Cuadra)" (el `-` va delante
+    de `formatearSoles` del valor sin signo, como en la web del criterio 39);
+  - "Observación: …" si hay; "Cerrado por {nombres} {apellidos} el dd/MM/aaaa a las HH:mm";
+  - si ese cierre se reabrió: "Reabierto por {nombres} {apellidos} el dd/MM/aaaa a las HH:mm" y "Motivo: …";
+  - nunca un DNI: la prueba comprueba que no aparecen los DNI del alumno ni de los usuarios;
+  - una caja de las 19:30 en Lima (00:30 del día siguiente en UTC) muestra su fecha de Lima y "19:30".
+
+  Los nombres son los de hoy de cada persona (como la pantalla); los montos y la observación son los del cierre, que no
+  cambian. `info.Title` es `Cierre de caja AAAA-MM-DD N`, sin textos de usuarios. **Extracción del texto en las pruebas:**
+  una utilidad de prueba (`backend/test/utilidades/pdf.ts`), sin dependencias nuevas, que descomprime los flujos
+  `FlateDecode` con `node:zlib`, lee las cadenas de `Tj` y `TJ` (literales y hexadecimales) y las pasa de WinAnsi a
+  Unicode. Las pruebas usan textos cortos (que no se parten en dos líneas) y buscan cada dato como subcadena.
+- **PQ11 · Caracteres que la fuente no puede mostrar (criterio 42).** Todo texto que sale de los datos (nombre de la
+  academia, nombres, descripción, comprobante, observación y motivo) pasa por una función pura, `textoParaPdf`, antes de
+  escribirse: primero se normaliza a NFC; después, cada punto de código que no esté entre U+0020 y U+007E ni entre U+00A0
+  y U+00FF se reemplaza por un `?` (uno por punto de código: un emoji, aunque en UTF-16 sean dos unidades, es un solo
+  `?`; un sustituto suelto, también). Ejemplos: `Piña` y `Ñandú` quedan igual; `e` + U+0301 queda `é` (NFC); `😀`, `Ω`
+  y `’` (comilla curva) salen `?` cada uno; `B{U+200B}1` sale `B?1`; U+00A0 y U+00AD están en el rango y quedan; un
+  tabulador o un salto de línea escritos directo en la base salen `?`. La base no cambia: solo el PDF. Por los criterios
+  18, 47 y 30, la API ya no deja guardar controles, caracteres de dirección del texto ni separadores en los textos del
+  egreso, la observación y el motivo; esta función es la segunda capa y cubre también los nombres y las filas escritas
+  directo en la base. Con `pdfkit`, el texto se escribe codificado (nunca como operadores del PDF), así que ningún texto
+  puede cambiar la estructura del documento.
+- **PQ12 · Web del historial (criterio 44).**
+  - **Rutas:** `/panel/cajas` (lista, `PaginaHistorialCajas.tsx`) y `/panel/cajas/:id` (detalle, `DetalleCaja.tsx`), las
+    dos dentro de `RequierePermiso` con `VER_REPORTES_FINANCIEROS`; la opción "Historial de caja" del inicio usa
+    `puede(rol, 'VER_REPORTES_FINANCIEROS')`. A `ENTRENADOR` y `ALUMNO` no se les muestra y la página responde con el
+    mensaje de "sin permiso" de 002.
+  - **Lista:** dos campos de fecha ("Desde" y "Hasta"), vacíos al entrar (la API aplica sus valores por defecto); la
+    página muestra el rango aplicado que devuelve la API. Antes de pedir, valida con `filtroHistorialCajasSchema` y
+    muestra el error en su campo sin llamar a la API. Cada fila: fecha, estado ("Abierta", "Abierta de otro día" o
+    "Cerrada"), quién abrió, monto inicial, ingresos por método, egresos y, si hay último cierre, declarado, diferencia
+    ("Sobrante", "Faltante" o "Cuadra") y "Tardío"; lleva al detalle. Sin cajas: "No hay cajas en estas fechas".
+  - **Detalle:** reutiliza los componentes de `/panel/caja` (`ResumenCaja`, `ListaMovimientos`, `ResultadoDelCierre`)
+    en modo de solo lectura: muestra cada cierre (de 1 en adelante) con su reapertura (quién, cuándo y el motivo) y un
+    botón "Descargar PDF" por cierre. No ofrece egresos ni cierre; si la caja está abierta y la persona tiene
+    `ABRIR_CERRAR_CAJA`, un enlace "Ir a la caja del día" (`/panel/caja`).
+  - **Descarga:** antes confirma la sesión (`useConfirmarSesion`, como las escrituras); pide el PDF con `fetch` (misma
+    cookie) y, con 200 y `application/pdf`, lo entrega al navegador como archivo `cierre-caja-<fecha>-<numero>.pdf` con
+    una URL de objeto que se revoca al terminar. Con 404, "No se encontró el cierre"; con 500 u otro error, "No se pudo
+    generar el PDF. Inténtalo de nuevo."; con 401, el flujo de sesión perdida de 002. Nada se guarda en el
+    almacenamiento local.
+  - **Reabrir:** solo con `puede(rol, 'REABRIR_CAJA')` y en una caja `CERRADA`, con `DialogoReapertura`. Si la caja no es
+    de hoy en Lima, el diálogo no dice "volverá a admitir egresos y cobros", sino "Es la caja de un día anterior: solo
+    podrás volver a contar el efectivo y cerrarla" (DR-8, criterio 36 c). Con éxito, el detalle muestra la caja que
+    devuelve la API y se invalidan la lista y `caja-actual`; los 409 con su mensaje de `mensajes.ts`.
+  - **Consultas:** claves con la identidad de la sesión (criterio 28 de 003): `['cajas-historial', nombreCorto,
+    usuarioId, desde, hasta]` y `['caja', nombreCorto, usuarioId, id]`.
+  - `/panel/caja` no cambia: su estado "caja cerrada de un día anterior" sigue sin "Reabrir" (desviación aceptada de la
+    006a); esa reapertura se hace desde el detalle del historial.
+- **PQ13 · Nombres reales y lo que quedó desfasado.** En `packages/contratos/src/caja.ts`: `filtroHistorialCajasSchema`
+  (objeto `{ desde?, hasta? }` con `fechaSchema` y, si vienen los dos, las reglas del rango de PQ3, con los mismos
+  campos y mensajes), `cajaHistorialSchema`, `respuestaHistorialCajasSchema = { desde: fechaSchema, hasta: fechaSchema,
+  cajas }`, la constante `LIMITES_HISTORIAL_CAJAS = { diasPorDefecto: 31, diasMaximos: 366 }` y sus tipos
+  (`FiltroHistorialCajas`, `CajaHistorial`, `RespuestaHistorialCajas`); reutilizan `montoDeLecturaSchema`,
+  `montoConSignoSchema`, `personaCajaSchema`, `resultadoCierreSchema`, `estadoCajaSchema` y `fechaSchema`. En el backend:
+  `historial.service.ts` usa `leerCaja`, `noEncontrado()` de `errores.ts`, `esDeOtroDia` y `calcularDiferencia`; las tres
+  rutas van en `CajasController`, con `actual` declarada antes de `:id` (ya lo está). `pdfkit` y `@types/pdfkit` se suman
+  a `DEPENDENCIAS_BACKEND_PERMITIDAS`; la prueba protegida de 001 (`scripts/test/dependencias-backend.test.mjs`) suma un
+  caso "solo para sumar", como hizo la 005b con `sharp`, en el commit de pruebas protegidas de la 006b.
+- **PQ14 · Semilla y guía (criterios 45 y 46).** La caja de ejemplo de `delfines` (`2026-11-02`, la abrió y la cerró la
+  secretaria de ejemplo) la ven en el historial el administrador y esa secretaria. Como el rango por defecto son los
+  últimos 31 días, a partir del 3 de diciembre de 2026 queda fuera: la guía de uso indica filtrar "Desde 01/11/2026" para
+  verla y descargar su PDF. La semilla no cambia.
+- **PQ15 · Rutas que siguen sin existir (criterio 23).** Con `GET /api/cajas/{id}` y la ruta del PDF agregadas, `PATCH`,
+  `PUT`, `DELETE` y `POST` sobre `/api/cajas/{id}`, y cualquier método que no sea `GET` sobre
+  `/api/cajas/{id}/cierres/{numero}/pdf`, siguen respondiendo 404 sin tocar nada.
 
 ### J. Semilla y documentación
 
@@ -644,9 +853,9 @@ responde el mismo 404 que uno inexistente o de otra academia. `GET /api/cajas/ac
 | `POST /api/cajas/{id}/egresos` | `ABRIR_CERRAR_CAJA` | `registrarEgresoSchema` | 201 `RespuestaEgreso`; 200 si repite la clave | 400, 401, 403, 404, 409 `CLAVE_YA_USADA`, `CAJA_CERRADA`, `CAJA_DE_OTRO_DIA`, `EFECTIVO_INSUFICIENTE` |
 | `POST /api/cajas/{id}/cierre` | `ABRIR_CERRAR_CAJA` | `cerrarCajaSchema` | 200 `RespuestaCaja` | 400, 401, 403, 404, 409 `CLAVE_YA_USADA`, `CAJA_CERRADA`, `CAJA_CAMBIO` |
 | `POST /api/cajas/{id}/reapertura` | `REABRIR_CAJA` | `reabrirCajaSchema` | 200 `RespuestaCaja` | 400, 401, 403, 404, 409 `HAY_OTRA_CAJA_ABIERTA` |
-| **[006b]** `GET /api/cajas` | `VER_REPORTES_FINANCIEROS` | `desde`, `hasta` en la consulta (`filtroHistorialCajasSchema`) | 200 `RespuestaHistorialCajas` | 400, 401, 403 |
-| **[006b]** `GET /api/cajas/{id}` | `VER_REPORTES_FINANCIEROS` | — | 200 `RespuestaCaja` | 401, 403, 404 |
-| **[006b]** `GET /api/cajas/{id}/cierres/{numero}/pdf` | `VER_REPORTES_FINANCIEROS` | — | 200 `application/pdf` | 401, 403, 404, 500 |
+| **[006b]** `GET /api/cajas` | `VER_REPORTES_FINANCIEROS` | `desde`, `hasta` en la consulta (`filtroHistorialCajasSchema`, PQ3) | 200 `RespuestaHistorialCajas` (`{ desde, hasta, cajas }`) | 400 (`desde`, `hasta`), 401, 403 |
+| **[006b]** `GET /api/cajas/{id}` | `VER_REPORTES_FINANCIEROS` | — | 200 `RespuestaCaja` | 401, 403, 404 (PQ1) |
+| **[006b]** `GET /api/cajas/{id}/cierres/{numero}/pdf` | `VER_REPORTES_FINANCIEROS` | — | 200 `application/pdf` (PQ7) | 401, 403, 404 (PQ1, PQ6), 500 (PQ9) |
 
 **Orden de los errores de negocio** (después del 400 del esquema y del 401 del criterio 9):
 
@@ -690,7 +899,9 @@ caja ya abierta también (PP6 g).
   - `respuestaCajaSchema = { caja }`, `respuestaCajaActualSchema = { caja: cajaSchema | null }`,
     `respuestaEgresoSchema = { movimiento, caja }`.
   - **[006b]** `filtroHistorialCajasSchema` (`desde` y `hasta` opcionales con `fechaSchema`; un parámetro repetido es
-    400), `cajaHistorialSchema` (criterio 40) y `respuestaHistorialCajasSchema = { cajas }`.
+    400; reglas del rango en PQ3), `cajaHistorialSchema` (criterio 40, PQ4), `respuestaHistorialCajasSchema = { desde,
+    hasta, cajas }` y `LIMITES_HISTORIAL_CAJAS` (PQ13).
+- `dinero.ts` **[006b]** recibe `formatearSoles` desde `frontend/src/lib/dinero.ts` (la usan la web y el PDF, PQ10).
 - `permisos.ts`: suma `REABRIR_CAJA: { ADMIN: 'TODO' }` (DT-1).
 
 ### Interfaces del backend (para las historias siguientes)
@@ -889,7 +1100,10 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
   `ABIERTA` ninguno) la garantiza el servicio dentro de la transacción y la comprueban las pruebas; la base solo exige un
   vigente como mucho.
 - **Fuente estándar del PDF (006b):** solo los caracteres de Latin-1; lo demás sale como `?` en el PDF (en la pantalla se
-  ve bien).
+  ve bien), también las comillas curvas de los teclados de celular (PQ11).
+- **El PDF muestra los nombres de hoy (006b, PQ10):** si después del cierre cambia el nombre de quien cerró, de quien
+  abrió o de un alumno, el PDF de ese cierre sale con el nombre nuevo. Los montos, la observación y la reapertura no
+  cambian, y la auditoría guarda los ids. Guardar los nombres en el cierre exigiría una migración, y la 006b no tiene.
 - **`pago_id` sin llave foránea hasta la 007:** en la 006 nadie escribe ingresos por la API; las pruebas usan UUID
   inventados.
 
@@ -898,7 +1112,8 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 **Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" dentro de ella y como "DR-n de 006"
 fuera; las del orquestador, "DT-n" y "DT-n de 006"; las de diseño del especificador, "Dn". Las de otras specs llevan
 siempre su número ("DT-5 de 002", "DR-11 de 005"). La pregunta Pn del borrador es DR-n y la Tn es DT-n (P1 es DR-1, T1
-es DT-1, y así hasta P11 y T6). Las precisiones de las pruebas protegidas de la 006a se citan como "PPn".
+es DT-1, y así hasta P11 y T6). Las precisiones de las pruebas protegidas de la 006a se citan como "PPn"; las del repaso
+de la 006b, como "PQn" (están al final de la sección I de los criterios).
 
 ### Decisiones del responsable (22/11/2026)
 
@@ -1084,7 +1299,8 @@ cambian ninguna regla de negocio; se citan como "PPn" en los criterios, el contr
 ## Preguntas abiertas
 
 Las preguntas del borrador quedaron resueltas el 22/11/2026; el texto completo de cada una, con lo decidido y la
-alternativa descartada, está en "Decisiones". Queda una, encontrada al escribir PP3, que no bloquea la 006a:
+alternativa descartada, está en "Decisiones". Quedan dos: P12, encontrada al escribir PP3, que no bloquea; y P13,
+encontrada en el repaso de la 006b, que conviene contestar antes de sus pruebas protegidas (tiene valor provisional):
 
 - **P12 (para el responsable, no bloquea). ¿Una caja puede terminar el día con más de S/ 99,999.99 en efectivo?** El
   monto declarado del cierre usa `montoNoNegativoSchema` (criterio 30), que llega a `99999.99`, pero el esperado en
@@ -1092,6 +1308,15 @@ alternativa descartada, está en "Decisiones". Queda una, encontrada al escribir
   quedaría un faltante falso. **Propuesta:** dejarlo así y anotarlo como riesgo aceptado, porque una recepción de
   academia no junta esa cantidad en un día; si alguna vez hiciera falta, se sube el tope del declarado sin migración
   (las columnas son `numeric(12,2)`). **Valor provisional:** el tope actual de `99999.99`.
+- **P13 (para el responsable; contestar antes de las pruebas protegidas de la 006b). ¿La secretaria ve en el historial
+  la caja de hoy aunque la hayan abierto y cerrado otras personas?** DR-9 dice que "su caja" son las que abrió, las que
+  cerró y la caja abierta. Pero la pantalla de la caja del día (criterio 28, 006a) ya le muestra a cualquier secretaria la
+  caja de hoy cerrada, con sus movimientos y su cierre, aunque no la haya abierto ni cerrado ella. Sin este agregado, esa
+  misma caja la ve en `/panel/caja` y no en el historial ni en el PDF, hasta que cambia el día y desaparece para ella.
+  **Propuesta:** sí, sumar "la caja de hoy" al alcance de la secretaria (PQ2 d): no le muestra nada que no vea ya, y el
+  historial queda coherente con la pantalla del día. Alternativa: dejar DR-9 tal cual (no la ve en el historial, aunque
+  sí en `/panel/caja`). **Valor provisional:** sí (la propuesta). Si la respuesta es no, se quita PQ2 d y cambia una
+  prueba del escenario de PQ2 (C5) antes del commit en rojo.
 
 ### Resueltas (22/11/2026)
 
