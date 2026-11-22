@@ -56,6 +56,15 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     formulario de inscripción**. Sin eso, detrás del proxy todas las peticiones llegan con la misma IP, y los límites
     por IP de la inscripción pública (criterio 33 de 005: lecturas, cotización, envío, consulta y foto) y el de 5
     solicitudes sin pagar por conexión (criterio 25 de 005) bloquearían a todos a la vez.
+  - **Pendiente antes de producción, desde la 006b (DT-14 de 006): un límite general de peticiones por usuario o por
+    academia en toda la API con sesión.** Hoy las rutas con sesión no tienen un límite general de peticiones; solo el
+    PDF del cierre de caja tiene los suyos (criterios 49 y 52 de 006). Medido en la ronda adversarial 2 de la 006b, con
+    una caja de 20 000 movimientos:
+    - el detalle de la caja tarda unos 245 ms y responde de 7 a 11,8 MB, y `/api/cajas/actual` tarda unos 180 ms;
+    - con 10 detalles a la vez, un egreso de otra academia tarda unos 2 s; con 30 a la vez, unos 5,8 s.
+
+    Se decide junto con `trust proxy` y el hosting (D-21). Con varias instancias, los contadores en memoria de cada
+    proceso (PO-6) no bastan.
   - DT-4: `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON responde 400 y no cierra (criterio 74 de 001),
     mientras que `DELETE /api/sesion` cierra con cualquier cuerpo (criterio 54 de 002). Alinearlos cambia pruebas
     protegidas de la 001: va en una historia propia.
@@ -148,6 +157,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     movimientos y se cierra, contando el efectivo y con la marca «tardío», antes de abrir la de hoy (DR-2); el egreso es
     siempre en efectivo, sin superar el efectivo de la caja (DR-3, DR-4); los movimientos no se anulan (DR-5); no hay
     ingresos manuales (DR-11).
+  - Pendiente antes de producción (DT-14 de 006): el límite general de peticiones por usuario o por academia en la API,
+    anotado en las notas de hosting de la 002. Las lecturas de una caja con decenas de miles de movimientos quedan como
+    riesgo aceptado de la 006b.
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de
   operación sin duplicados, caja al verificar (D-04), paso de cliente a alumno con usuario (HU-04, HU-07 a HU-09,
   RN-01, RN-04, RN-28), ticket interno (D-09).

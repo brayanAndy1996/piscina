@@ -5,9 +5,9 @@ dividida en dos entregas (DR-10 de la spec), cada una con sus pruebas protegidas
 
 - **006a · Caja del día** (T1 a T22, y T36 a T42 de la ronda adversarial 1): criterios 1 a 39, 45 y 46 sin el
   historial ni el PDF, y 47 y 48. Se construye primero.
-- **006b · Historial y PDF del cierre** (T23 a T35, marca **[006b, siguiente PR]**, y T43 a T50 de la ronda
-  adversarial 1): criterios 40 a 44, 49 y 50, y la parte de 45 y 46 que les toca. Se empieza con la 006a unida a
-  `main`.
+- **006b · Historial y PDF del cierre** (T23 a T35, marca **[006b, siguiente PR]**, T43 a T50 de la ronda
+  adversarial 1 y T51 a T60 de la ronda adversarial 2): criterios 40 a 44, 49 a 54, y la parte de 45 y 46 que les
+  toca. Se empieza con la 006a unida a `main`.
 
 En cada entrega, los criterios críticos (DT-5) llevan pruebas protegidas escritas y confirmadas en rojo antes de
 implementar y ataque adversarial después.
@@ -288,12 +288,116 @@ en las rutas de la caja según DT-9.
       la suite completa. Correr la prueba del 49 a al menos cinco veces seguidas para descartar que sea inestable
       (criterios 49, 50).
 - [ ] T49 · orquestador · Revisar con `git diff` desde el commit de T43 que T45 a T47 no tocaron pruebas protegidas.
-- [ ] T50 · adversarial · Ronda 2 sobre todo lo de la 006b, en especial los criterios 49 y 50:
+- [x] T50 · adversarial · Ronda 2 sobre todo lo de la 006b, en especial los criterios 49 y 50:
       - cajas con muchos movimientos;
       - descargas simultáneas de varias academias y de una misma persona;
       - cola llena;
       - clientes que cortan la conexión mientras esperan o mientras se genera;
       - `HEAD` y otros métodos sobre las rutas de la caja, con variantes de la dirección.
+
+      Si hay fallas, se repite el ciclo hasta una ronda sin fallas.
+      _(ronda 2 sobre `ccbc63f`, 22/11/2026: dos fallas y tres observaciones, criterios 51 a 54 y DT-14; ver más abajo)_
+
+### Ataque adversarial de la 006b, ronda 2 (22/11/2026, sobre `ccbc63f`)
+
+Hubo dos fallas y tres observaciones. El orquestador convirtió las dos fallas y dos observaciones en los criterios 51 a
+54 de `spec.md`, todos críticos (DT-10 a DT-13):
+
+- **Criterio 51 (falla):** una descarga abandonada no liberaba su lugar en la cola.
+- **Criterio 52 (falla):** una sola academia, con varias cuentas, podía ocupar toda la cola de la instancia.
+- **Criterio 53 (observación O2):** la sesión no se volvía a comprobar después de esperar turno.
+- **Criterio 54 (observación O3):** en la web, "Cerrar sesión" no cancelaba una descarga en curso.
+
+La observación O1 (lecturas de cajas enormes) queda como riesgo aceptado, con las cifras corregidas y una nota en
+`specs/backlog.md` (DT-14), sin tarea de código. Las tres observaciones aceptadas sin criterio están en el encabezado de
+`spec.md`.
+
+- [ ] T51 · test-writer · Pruebas protegidas del servidor, en rojo, desde la spec y los contratos públicos, sin mirar la
+      implementación y con la marca de pruebas protegidas.
+      - **Utilidades:** en archivos nuevos, o sumando a los existentes sin cambiar lo que ya hay:
+        - una descarga que se puede cortar (`fetch` con `AbortController`, o `node:http` con `destroy()`);
+        - un generador retenido que anota la señal de cada llamada, con un modo que rechaza con `AbortError` al
+          activarse la señal y otro que la ignora;
+        - un espía que delega en `generarPdfCierre` con la misma señal y anota cómo terminó cada llamada;
+        - las academias C y D, con personas con `VER_REPORTES_FINANCIEROS` y una caja cerrada;
+        - las personas de más de A y de B que pide el criterio 52 e.
+      - **Criterio 51:**
+        - los casos de integración de 51 e: en espera, cola llena, generando con la señal respetada y con la señal
+          ignorada, y el generador real con 20 000 movimientos;
+        - las unitarias de `generarPdfCierre` con señal;
+        - las unitarias de `ColaPdfCierre.turno` con señal, con la firma de 51 c, incluida la carrera entre otorgar el
+          turno y activar la señal, en los dos órdenes.
+      - **Criterio 52:**
+        - los casos de 52 e: cinco cuentas de A, los rechazos no suman, el cupo vuelve y tres academias;
+        - el nuevo reparto de las pruebas del 49 b en `pdf-concurrencia.test.ts` (52 f): tres academias, como mucho 4
+          por academia, y la 11.ª de una academia con cupo. Sin debilitar ninguna comprobación.
+      - **Criterio 53:** los casos de 53 g, cada uno comparado con una petición nueva con la misma cookie, más el
+        control.
+
+      (criterios 51, 52, 53)
+- [ ] T52 · test-writer · Pruebas protegidas de componentes del criterio 54, en un archivo nuevo de
+      `frontend/src/modulos/caja/` con la marca de pruebas protegidas. Son los casos de 54 g: "Cerrar sesión", salir del
+      detalle, cambio de identidad, simulación que ignora la señal, "Cerrar sesión" durante `useConfirmarSesion` y el
+      control.
+
+      Commit de T51 y T52 juntos: "Pruebas protegidas (006): 006b, ataque ronda 2: descargas abandonadas, límite por
+      academia, sesión después de la espera y descarga en la web (en rojo)" (criterios 51 a 54)
+- [ ] T53 · tester · Confirmar que T51 y T52 fallan por la razón esperada, y no por sintaxis, importaciones,
+      configuración ni el tiempo límite de Vitest. Las razones esperadas son:
+      - **51:** la misma persona recibe 429 después de cortar; el generador recibe las descargas cortadas; el generador
+        real termina resuelto, no abortado; `generarPdfCierre` y `turno` ignoran la señal;
+      - **52:** la quinta descarga de A espera su turno en lugar de recibir 429;
+      - **53:** la descarga que esperaba responde 200 después del cambio;
+      - **54:** se llama a `URL.createObjectURL` después de "Cerrar sesión", y la señal del `fetch` no queda `aborted`.
+
+      Confirmar también:
+      - que las pruebas del 49 b con el nuevo reparto pasan ya, porque no dependen del límite nuevo;
+      - que las pruebas protegidas anteriores siguen pasando;
+      - que `git diff --cached --stat` solo muestra archivos de prueba.
+
+      El orquestador hace el commit con el título de T52 (tres dígitos y sin letra, como exige
+      `scripts/verificar-pruebas-protegidas.mjs`) (criterios 51 a 54).
+- [ ] T54 · backend · La cola, según plan 2.13 (criterios 51 a y c, y 52):
+      - `LIMITES_PDF_CIERRE` con `porPersona` y `porAcademia`;
+      - `turno({ usuarioId, academiaId }, senal?)`, con el orden persona, academia y cola;
+      - la salida de la fila al abortar, con el estado de cada elemento;
+      - la liberación que descuenta persona y academia;
+      - `cola-pdf.test.ts` (no protegida) al día;
+      - los comentarios de `ColaPdfCierre`, `HistorialService` y `CajasController` al día.
+- [ ] T55 · backend · La señal de punta a punta, según plan 2.13 (criterio 51 b, c y d):
+      - el `AbortController` del controlador con `respuesta.on('close')`;
+      - el servicio pasa la señal a `turno` y a `generar`, y comprueba la señal antes de verificar, de leer y de
+        generar;
+      - `GeneradorPdfCierre.generar(datos, senal?)` y `generarPdfCierre(datos, senal?)`, que comprueba la señal entre
+        tramos;
+      - las descargas abandonadas no escriben respuesta ni se registran como 500;
+      - los bytes sin señal no cambian (`cierre-pdf.test.ts` y PQ9 d siguen pasando).
+- [ ] T56 · backend · La sesión después de la espera, según plan 2.13 (criterio 53):
+      - el método de `SesionAcademiaService` que vuelve a verificar sin el recuerdo por petición, con las reglas del
+        cambio obligatorio y del permiso y sus mismos errores;
+      - `CajaModule` importa `AutenticacionModule`;
+      - la lectura del PDF usa la sesión vigente (alcance y nombre de la academia);
+      - sin bloqueos, sin escrituras y sin auditoría.
+- [ ] T57 · frontend · La descarga en la web, según plan 2.13 (criterio 54):
+      - `pedirArchivo` con una señal opcional;
+      - un `AbortController` por descarga, con el registro de descargas en curso;
+      - la cancelación al pulsar "Cerrar sesión", al cambiar o perder la sesión y al desmontar el detalle;
+      - la comprobación final antes de `entregarArchivo`;
+      - sin mensaje de error para una descarga cancelada;
+      - las pruebas de componentes de PQ12 siguen pasando.
+- [ ] T58 · tester · Correr en verde las pruebas protegidas (T51, T52 y todas las anteriores) y la suite completa, con
+      lint y verificación de tipos. Correr al menos cinco veces seguidas la prueba del 49 a y la del 51 con el generador
+      real, para descartar que sean inestables (criterios 49, 51 a 54).
+- [ ] T59 · orquestador · Revisar con `git diff`, desde el commit de T51 y T52, que T54 a T57 no tocaron pruebas
+      protegidas.
+- [ ] T60 · adversarial · Ronda 3 sobre todo lo de la 006b, en especial los criterios 51 a 54, sin perder de vista el
+      49 y el 50:
+      - cortes en cada paso: antes del turno, en la fila, durante la verificación de la sesión, la lectura y la
+        generación;
+      - la carrera entre otorgar el turno y cortar;
+      - varias cuentas y varias academias contra los límites de persona, academia y cola;
+      - cambios de sesión, rol y academia en cada momento de la espera;
+      - la web, con "Cerrar sesión", cambios de pestaña e identidad y navegación mientras se prepara el PDF.
 
       Si hay fallas, se repite el ciclo hasta una ronda sin fallas.
 

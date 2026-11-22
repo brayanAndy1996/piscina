@@ -64,12 +64,31 @@
   aceptada sin criterio: `pdfkit` dibuja U+00AD (guion blando, que PQ11 deja pasar) como un guion, y muchos descuadran
   la tabla. Es cosmético. Cambiarlo exigiría cambiar PQ11 y una prueba protegida (`pdf-texto.test.ts`, que espera que
   U+00AD quede).
+- **Ronda adversarial 2 de la 006b (22/11/2026, sobre `ccbc63f`):** dos fallas y tres observaciones. El orquestador
+  convirtió las dos fallas y dos observaciones en los criterios 51 a 54, críticos y de la 006b, y la tercera
+  observación en una corrección de "Riesgos aceptados". Todo es técnico, sin cambios de negocio (DT-10 a DT-14):
+  - **Criterio 51 (falla 1):** `ColaPdfCierre` no sacaba de la fila a quien cortaba la conexión. La persona seguía
+    recibiendo 429 por su propio cupo y el PDF se generaba igual, para nadie.
+  - **Criterio 52 (falla 2):** una sola academia podía ocupar toda la cola de la instancia, porque un `ADMIN` puede
+    crear varias cuentas y el límite era solo por persona (D-23).
+  - **Criterio 53 (observación O2):** el permiso no se volvía a comprobar después de la espera. Si a quien esperaba
+    turno le cambiaban el rol, lo desactivaban o le subían `version_token`, igual recibía el PDF.
+  - **Criterio 54 (observación O3):** en la web, "Cerrar sesión" mientras se preparaba el PDF no cancelaba la descarga,
+    y el archivo se entregaba después, en una PC compartida.
+  - **Observación O1 (sin criterio, DT-14):** el riesgo aceptado de las lecturas de cajas enormes estaba mal estimado.
+    Se corrigen las cifras en "Riesgos aceptados" con lo medido y se anota en `specs/backlog.md` un límite general de
+    peticiones por usuario o por academia en la API, pendiente antes de producción.
+
+  Observaciones aceptadas sin criterio:
+  - la web valida el rango del historial con el reloj de la PC (la API lo vuelve a validar con `RELOJ` en Lima, PQ3);
+  - un PDF de 20 000 movimientos con textos largos tarda unos 18 s en generarse (no detiene a nadie, criterio 49);
+  - la E2E del historial no se ejecutó en la ronda.
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
     del historial y del PDF, más 47 y 48 (ronda adversarial 1).
   - **006b · Historial y PDF del cierre** (siguiente PR, con la 006a unida a `main`): criterios 40 a 44, más esas
-    partes, más 49 y 50 (ronda adversarial 1 de la 006b).
+    partes, más 49 y 50 (ronda adversarial 1 de la 006b) y 51 a 54 (ronda adversarial 2 de la 006b).
 
 ## Objetivo
 
@@ -111,6 +130,13 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   que deja de funcionar. El 50 es crítico porque una ruta que no está en el contrato armaba el PDF entero y lo
   anunciaba con `Content-Disposition`, en contra del criterio 23 y de PQ15. Además, era una segunda puerta al costo del
   criterio 49.
+- **006b, ronda adversarial 2 (51 a 54):**
+  - el 51 y el 52 son críticos por D-23: una descarga abandonada, o una sola academia con varias cuentas, dejaban sin PDF
+    a las demás academias de la instancia;
+  - el 53, porque una cuenta desactivada, sin el permiso o con la sesión cerrada recibía los datos financieros de la
+    caja (matriz de permisos, sección 2.1, y regla del actor vigente, DT-5 de 002);
+  - el 54, porque en la PC compartida de recepción el PDF llegaba después de "Cerrar sesión", a la vista de la persona
+    siguiente (datos internos de la academia; RNF-05).
 
 No son críticos, pero llevan _(prueba obligatoria)_: 37 a 39 (web de la caja del día, con pruebas de componentes y una
 E2E) y 44 (web del historial). Los 45 y 46 (semilla y documentación) los verifica el revisor. _(DT-5.)_
@@ -123,7 +149,7 @@ lleva la marca **[006b, siguiente PR]**. La 007 solo necesita la 006a.
 | Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- |
 | **006a** · caja del día | 1 a 36, 47 y 48 | 37, 38 y 39 | 45 y 46 (sin el historial ni el PDF) |
-| **006b** · historial y PDF | 40 a 43, 49 y 50 | 44 | parte de 45 y 46 |
+| **006b** · historial y PDF | 40 a 43, 49 a 54 | 44 | parte de 45 y 46 |
 
 **Dependencias resueltas:**
 
@@ -625,6 +651,10 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
 
         Con la cola llena, un cierre con un `numero` de forma válida que no existe responde 429, no 404. Eso no revela
         nada, porque el 429 no depende de la caja.
+
+        _(Ronda adversarial 2 de la 006b: el paso 3 suma el límite por academia, después del de persona (criterio 52);
+        entre los pasos 5 y 6 se vuelve a comprobar la sesión (criterio 53); y una descarga cuyo cliente corta la
+        conexión sale en cualquier paso desde el 4 (criterio 51).)_
       - **Sin transacción en la espera:** la lectura empieza recién con el turno, así que una descarga que espera no
         tiene ninguna transacción abierta. La condición de PQ9 c vale también durante la espera.
       - **Toda descarga libera su lugar** al terminar, con 200, 404 o 500.
@@ -633,7 +663,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
 
       Pruebas:
       - Con un generador que la prueba retiene (como PQ9 c), cinco personas con permiso de A y de B lanzan diez
-        descargas válidas, dos cada una.
+        descargas válidas, dos cada una. _(Desde la ronda adversarial 2 de la 006b, las cinco personas son de tres
+        academias, como mucho 4 descargas por academia: criterio 52 f.)_
       - Cuando el generador tiene dos llamadas en curso y pasaron al menos 500 ms, el generador sigue con dos llamadas.
         Nunca tiene más de dos a la vez en toda la prueba.
       - Mientras tanto, ninguna conexión del rol de la app está `idle in transaction`.
@@ -681,6 +712,253 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     - **El `GET` de las cuatro rutas no cambia.**
 
     _(crítico)_ (D-23; criterio 23; PQ15)
+51. **Una descarga abandonada libera su lugar.** _(Ronda adversarial 2 de la 006b; amplía los criterios 49 b y c y
+    PQ8; DT-10.)_ "Cortar" es que el cliente cierra la conexión antes de que la respuesta termine de enviarse (cierra
+    la pestaña, cancela la descarga o se cae la red). El servidor lo detecta en la respuesta: evento `close` sin
+    `writableFinished`.
+    - a) **Si corta mientras espera turno:**
+      - sale de la fila y libera enseguida su lugar en la cola, su cupo de persona (49 c) y su cupo de academia
+        (criterio 52);
+      - no se llama al generador;
+      - las demás siguen en orden de llegada;
+      - si ya había cortado antes de pedir el turno, no ocupa nada.
+
+      Ejemplo: la misma persona vuelve a pedir y espera su turno (y al final recibe 200), no 429.
+    - b) **Si corta mientras se lee o se genera:**
+      - Si corta durante la verificación de la sesión (criterio 53) o durante la lectura (paso 6 de 49 b), esa
+        consulta termina y no se llama al generador.
+      - Si corta mientras se genera, la generación se aborta. El servicio pasa al generador una `AbortSignal` que se
+        activa al cortar. El lugar y los cupos se liberan cuando la promesa de `generar` termina: se rechaza por el
+        aborto o, si el generador ignora la señal, termina como sea.
+      - El generador real (`generarPdfCierre`) comprueba la señal al empezar y entre tramos (los del criterio 49 a). Si
+        está activa, deja de dibujar, no termina el documento y rechaza con un error cuyo `name` es `'AbortError'`.
+    - c) **Firmas (amplían PQ8):**
+
+      ```ts
+      // backend/src/modulos/caja/pdf/cierre-pdf.ts
+      interface GeneradorPdfCierre {
+        generar(datos: DatosPdfCierre, senal?: AbortSignal): Promise<Buffer>;
+      }
+      function generarPdfCierre(datos: DatosPdfCierre, senal?: AbortSignal): Promise<Buffer>;
+
+      // backend/src/modulos/caja/pdf/cola-pdf.ts (LiberarTurno no cambia)
+      class ColaPdfCierre {
+        turno(solicitante: { usuarioId: string; academiaId: string }, senal?: AbortSignal): Promise<LiberarTurno>;
+        get estado(): { enCurso: number; enEspera: number };
+      }
+      ```
+
+      - La señal es opcional y va como segundo parámetro. Un generador de un solo parámetro (`{ generar(datos) }`,
+        como los de las pruebas de PQ9 y del 49) sigue siendo válido: ignora la señal, y el lugar se libera cuando
+        termina.
+      - Sin señal, o con una que nunca se activa, `generarPdfCierre` da los mismos bytes que antes (PQ9 d).
+      - `turno` rechaza con un error cuyo `name` es `'AbortError'` si la señal ya está activa al llamarla (sin contar
+        nada) o si se activa mientras espera (sale de la fila y descuenta persona y academia). Si la señal se activa
+        después de otorgado el turno, `turno` no hace nada: el lugar es de quien llama y lo libera con `LiberarTurno`.
+      - Si el turno se otorga y la señal se activa en la misma vuelta del bucle, gana lo que ocurrió primero, y nunca
+        se pierde ni se duplica un lugar ni un cupo.
+    - d) **Sin efectos:**
+      - en ningún caso se escribe ni se audita;
+      - no se intenta escribir la respuesta, porque la conexión ya no existe;
+      - el registro técnico no la anota como un 500 (`ERROR_INTERNO`): a lo sumo, una línea de nivel `info`.
+    - e) **Pruebas.** Se prueba desde fuera:
+      - **Cómo se corta:** el cliente HTTP de la prueba corta con un `AbortController` (`fetch` con `signal`; undici
+        cierra la conexión al abortar) o con `destroy()` de `node:http`.
+      - **Qué se observa:** las respuestas de las demás descargas y las llamadas al generador (con sus `datos` y su
+        señal).
+      - **"Enseguida":** en las pruebas, a más tardar 1 000 ms después de cortar.
+      - **Sin efectos en todos los casos:** las filas de `cajas`, `movimientos_caja`, `cierres_caja` y `auditoria` de
+        las academias no cambian, y ninguna conexión del rol de la app queda `idle in transaction` (PQ9 c).
+
+      Casos de integración:
+      - **En espera, con el generador retenido.**
+        - Dos descargas del `ADMIN` de B ocupan los dos lugares.
+        - La `SECRETARIA` de A lanza dos descargas, que esperan, y la prueba corta las dos.
+        - Enseguida, dos descargas nuevas de la misma `SECRETARIA` no reciben 429: esperan su turno.
+        - Al soltar el generador, las dos nuevas y las dos del `ADMIN` de B responden 200, y el generador recibió
+          exactamente 4 llamadas: ninguna de las cortadas.
+      - **En espera, con la cola llena** (2 en curso y 8 en espera, de tres academias, como en el 52 f).
+        - La prueba corta tres de las que esperan.
+        - Enseguida, tres descargas nuevas de personas y academias con cupo esperan su turno, no 429, y una cuarta
+          responde 429.
+        - Al soltar, todas las que siguen en la fila responden 200, en orden de llegada: primero las que ya esperaban
+          y después las tres nuevas.
+        - El generador nunca recibió las cortadas.
+      - **Generando, con un generador retenido que respeta la señal** (rechaza con `AbortError` cuando se activa).
+        - El `ADMIN` de B genera dos y una descarga de A espera.
+        - La prueba corta una de las del `ADMIN` de B: la señal que recibió el generador queda `aborted`.
+        - Enseguida, la descarga de A entra al generador.
+        - Al soltar, la otra del `ADMIN` de B y la de A responden 200.
+      - **Generando, con un generador retenido que ignora la señal.**
+        - El mismo caso, pero la descarga de A no entra al generador mientras la cortada siga retenida: pasados
+          500 ms, el generador sigue con dos llamadas.
+        - Al soltar la cortada, la de A entra y responde 200.
+      - **Generando, con el generador real** y un cierre de una caja de A con 20 000 movimientos (creados como dueño,
+        en una sola sentencia).
+        - El generador es un espía que delega en `generarPdfCierre` con la misma señal y anota cómo terminó cada
+          llamada.
+        - El `ADMIN` de A lanza dos descargas. Cuando las dos están en el generador y pasaron 300 ms, la prueba
+          corta las dos.
+        - Enseguida, las dos llamadas terminaron rechazadas con `AbortError`, no resueltas.
+        - Después, una descarga del mismo `ADMIN` de un cierre pequeño responde 200.
+
+      Casos unitarios:
+      - **`generarPdfCierre`:**
+        - con una señal ya activa, rechaza con `AbortError`;
+        - con una que se activa durante un PDF de 5 000 movimientos, rechaza con `AbortError` a más tardar 1 000 ms
+          después;
+        - sin señal y con una que no se activa, da los mismos bytes.
+      - **`ColaPdfCierre`:**
+        - una señal ya activa no ocupa nada;
+        - una que se activa en la fila la saca y deja pasar a la siguiente en orden;
+        - una que se activa después del turno no cambia nada hasta `LiberarTurno`;
+        - la carrera entre otorgar el turno y activar la señal, en los dos órdenes.
+
+        Al terminar cada caso, `estado` es `{ enCurso: 0, enEspera: 0 }`. Una ronda nueva admite otra vez 2 en curso,
+        8 en espera, 2 por persona y 4 por academia, ni uno más ni uno menos.
+
+    _(crítico)_ (D-23; criterios 43 y 49)
+52. **Una academia no ocupa toda la cola.** _(Ronda adversarial 2 de la 006b; amplía el criterio 49 b y c; DT-11.)_ Un
+    `ADMIN` puede crear varias cuentas, así que el límite por persona (49 c) no basta para que una academia no deje sin
+    PDF a las demás (D-23).
+    - a) **Límite.** Cada academia tiene como mucho 4 descargas de PDF en curso o esperando turno, contando a todas sus
+      personas. La academia es la de la sesión (`sesion.usuario.academiaId`), nunca la de la dirección. Es por
+      proceso, como los demás límites del 49.
+    - b) **Constante.** `LIMITES_PDF_CIERRE = { simultaneos: 2, enEspera: 8, porPersona: 2, porAcademia: 4 }`, en
+      `backend/src/modulos/caja/pdf/cola-pdf.ts`. El 2 por persona del 49 c pasa a esta constante. La constante suelta
+      `LIMITE_PDF_POR_PERSONA` desaparece, o queda igual a `LIMITES_PDF_CIERRE.porPersona`.
+    - c) **Orden de comprobación,** en el paso de la cola del 49 b (después de la forma del id y del `numero`):
+      1. persona (2);
+      2. academia (4);
+      3. lugar en la cola global (2 en curso y 8 en espera).
+
+      La primera que no se cumple responde el 429 de 49 b: mismo cuerpo y mensaje, JSON, `no-store` y sin
+      `Content-Disposition`. No llama al generador, no escribe y no audita. Una descarga rechazada no suma en ningún
+      contador. Los tres 429 son iguales: la respuesta no dice qué límite se alcanzó.
+    - d) **Qué asegura.** Con 10 lugares (2 en curso y 8 en espera) y 4 por academia, dos academias juntas ocupan como
+      mucho 8. Una tercera academia siempre tiene lugar, salvo que tres o más academias saturen a la vez (riesgo
+      aceptado).
+    - e) **Pruebas,** con el generador retenido:
+      - **Cinco cuentas de A.**
+        - Cinco personas de A con `VER_REPORTES_FINANCIEROS` (por ejemplo, dos `ADMIN` y tres `SECRETARIA`; la
+          prueba crea las que falten) lanzan una descarga cada una.
+        - Las cuatro primeras se aceptan: dos en curso y dos esperando. La quinta responde 429 enseguida y no llama al
+          generador.
+        - A la vez, el `ADMIN` y la `SECRETARIA` de B lanzan dos descargas cada uno: las cuatro esperan su turno, no
+          429.
+        - Una quinta descarga de B, de una tercera persona de B, responde 429.
+        - Al soltar el generador, las cuatro de A y las cuatro de B responden 200, y el generador recibió 8 llamadas.
+      - **Los rechazos no suman.** La quinta persona de A recibe 429 tres veces seguidas. Cuando terminan dos descargas
+        de A, ella lanza dos: las dos esperan su turno (no 429) y responden 200 al soltar.
+      - **El cupo vuelve.** Cuando terminan las cuatro de A, cuatro descargas nuevas de A se aceptan.
+      - **Tres academias.**
+        - Con A y B en 4 cada una, una academia C lanza dos descargas, que esperan (no 429).
+        - Con eso la cola está llena (2 en curso y 8 en espera): una descarga de una cuarta academia D, y una de otra
+          persona de C, responden 429 por la cola llena.
+    - f) **Cambia el reparto de las pruebas del 49 b.** El 49 b no cambia de intención.
+      - **Antes:** las diez descargas eran de "cinco personas de A y de B, dos cada una".
+      - **Ahora:** son de tres academias, como mucho 4 por academia. Por ejemplo: dos personas de A, dos de B y una
+        de C, dos descargas cada una.
+      - **La 11.ª:** es de una sexta persona de una academia con cupo (por ejemplo, otra de C), así que su 429 es por
+        la cola llena.
+      - **Por qué:** con el reparto anterior, la quinta descarga de A ya respondería 429 por el límite de academia.
+      - **Quién lo cambia:** el test-writer, en `backend/test/integracion/caja/pdf-concurrencia.test.ts`, en el commit
+        de pruebas protegidas de esta ronda, sin debilitar ninguna comprobación. Las pruebas del 49 c no cambian: no
+        pasan de 4 descargas por academia.
+
+    _(crítico)_ (D-23; criterio 49; DT-11)
+53. **La sesión se vuelve a comprobar después de la espera.** _(Ronda adversarial 2 de la 006b; amplía el criterio 49
+    b, PQ1 y PQ2; DT-12.)_ Una descarga puede esperar turno decenas de segundos: hay 8 en espera, y un PDF tarda hasta
+    unos 18 s. Si mientras espera desactivan a la persona, cierra su sesión, le restablecen la contraseña, le cambian
+    el rol o suspenden la academia, no recibe el PDF.
+    - a) **Cuándo.** Al obtener el turno y antes de la lectura (entre los pasos 5 y 6 de 49 b), siempre, haya esperado o
+      no. Si el cliente ya cortó (criterio 51), no hace falta.
+    - b) **Qué.** Lo mismo que comprueba una petición nueva con la misma cookie, en el orden de PQ1:
+      1. la sesión: el token (firma y vencimiento según `RELOJ`); que el usuario exista en la academia y esté `ACTIVO`;
+         y que su `version_token` sea el del token. Si no, 401 `NO_AUTENTICADO`;
+      2. la academia activa. Si no, 403 `ACADEMIA_SUSPENDIDA`;
+      3. sin cambio de contraseña pendiente. Si no, 403 `CAMBIO_DE_CLAVE_OBLIGATORIO`;
+      4. el rol vigente tiene `VER_REPORTES_FINANCIEROS`. Si no, 403 `SIN_PERMISO`.
+
+      La respuesta es la misma que daría una petición nueva con esa cookie (el estado y el cuerpo JSON entero), con
+      `Cache-Control: no-store` y sin `Content-Disposition`.
+    - c) **Con lo vigente.** Si la comprobación pasa, la lectura usa la sesión recién leída:
+      - el alcance de PQ2 se calcula con el rol vigente;
+      - el nombre de la academia del PDF es el vigente.
+
+      Ejemplo: un `ADMIN` que pasa a `SECRETARIA` mientras espera, sobre una caja fuera del alcance de ella, recibe el
+      404 de PQ1.
+    - d) **Es una lectura.**
+      - No usa `bloquearActorVigente`, `FOR UPDATE` ni `FOR SHARE`, porque las lecturas no bloquean (PQ1).
+      - Reutiliza la verificación de cada petición en lugar de copiarla: la de `SesionAcademiaService`, sin el
+        recuerdo por petición, más la regla del cambio obligatorio del middleware de academia y la del permiso de
+        `PermisosGuard`.
+      - No escribe ni audita.
+    - e) **Si falla:** libera su lugar y sus cupos, sin leer la caja ni llamar al generador.
+    - f) **Lo que no cubre:** un cambio que llega después de esta comprobación, mientras se lee o se genera, no detiene
+      esa descarga (riesgo aceptado).
+    - g) **Pruebas,** con el generador retenido.
+      - **Preparación:** dos descargas del `ADMIN` de B ocupan los dos lugares, y la `SECRETARIA` de A que abrió la caja
+        (S1) lanza una descarga, que espera.
+      - **Cambios:** con la descarga esperando, la prueba hace uno de estos cambios y después suelta el generador:
+        - desactiva a S1 (el `ADMIN` de A, por la API) → 401 `NO_AUTENTICADO`;
+        - S1 cierra su sesión con su cookie (`DELETE /api/sesion`, que sube `version_token`) → 401;
+        - sube `version_token` de S1 como dueño de las tablas → 401;
+        - adelanta `RELOJ` más allá del vencimiento del token de S1 → 401;
+        - suspende la academia A (el Superadmin, por la API) → 403 `ACADEMIA_SUSPENDIDA`;
+        - pone `debe_cambiar_clave = true` en S1 como dueño → 403 `CAMBIO_DE_CLAVE_OBLIGATORIO`;
+        - cambia el rol de S1 a `ENTRENADOR` como dueño → 403 `SIN_PERMISO`;
+        - con un `ADMIN` de A esperando el PDF de una caja que estaría fuera del alcance de una `SECRETARIA` (una de
+          un día anterior que abrió y cerró otra persona, como C1 de PQ2), cambia su rol a `SECRETARIA` como dueño →
+          404 `NO_ENCONTRADO`.
+      - **En cada caso se comprueba:**
+        - la respuesta de la descarga es igual, en estado y cuerpo, a la de una petición nueva con la misma cookie
+          hecha justo después;
+        - el generador no recibió su llamada: solo tiene las dos del `ADMIN` de B;
+        - fuera del cambio que hizo la prueba, no cambia ninguna fila ni la auditoría;
+        - su lugar queda libre: otra descarga que esperaba entra al generador.
+      - **Control:** sin cambios, la descarga responde 200.
+
+    _(crítico)_ (sección 2.1; PQ1 y PQ2; DT-5 de 002; D-23)
+54. **La web no entrega un PDF que ya no corresponde.** _(Ronda adversarial 2 de la 006b; amplía el criterio 44 y
+    PQ12; DT-13.)_ En la PC compartida de recepción, un PDF que llega después de "Cerrar sesión" queda en las
+    descargas del navegador, a la vista de la persona siguiente.
+    - a) **Una señal por descarga.** Cada descarga del detalle (`/panel/cajas/:id`) tiene su propio `AbortController`,
+      y su señal va al `fetch` del PDF. `pedirArchivo` acepta una señal opcional; para quien no la pasa, no cambia
+      nada.
+    - b) **Cuándo se cancela.** La web cancela la descarga (`abort()`) y no la entrega si pasa algo de esto mientras se
+      prepara, desde que se pulsa "Descargar PDF" (también durante `useConfirmarSesion`) hasta que se entrega:
+      - la persona pulsa "Cerrar sesión": se cancela al pulsar, antes de esperar la respuesta de
+        `DELETE /api/sesion`, aunque esa petición falle;
+      - la sesión cambia de identidad o se pierde: `GET /api/sesion` devuelve una `claveDeIdentidad` distinta de la de
+        la página (por ejemplo, al volver el foco después de ingresar con otra cuenta en otra pestaña) o responde 401;
+      - la persona sale de la página del detalle (a la lista, a otra ruta o con "atrás" del navegador): se cancela al
+        desmontar.
+    - c) **Comprobación final.** Justo antes de entregar el archivo, la web comprueba que esa descarga no fue cancelada
+      y que la identidad de la sesión que tiene la web sigue siendo la de la página. Si no, descarta el contenido. Vale
+      aunque la respuesta ya haya llegado, o aunque el `fetch` haya ignorado la señal.
+    - d) **"No entregar"** es: no llamar a `URL.createObjectURL`, no crear el enlace de descarga y no hacer `click`.
+    - e) **Sin mensaje propio.** Una descarga cancelada no muestra "No se pudo generar el PDF…" ni otro error propio.
+      Lo demás de la pantalla no cambia: la página de ingreso o el aviso de "tu sesión cambió" de `RutaConSesion`.
+    - f) **Lo demás no cambia.** Sin nada de lo anterior, el PDF se entrega como en PQ12, y los mensajes de 404, 500 y
+      401 siguen iguales.
+    - g) **Pruebas de componentes.**
+      - **Preparación:**
+        - un `fetch` simulado retiene la respuesta del PDF hasta que la prueba la suelta (un 200 `application/pdf`);
+        - hay espías en `URL.createObjectURL` y en `HTMLAnchorElement.prototype.click`.
+      - **Casos:**
+        - "Descargar PDF" y después "Cerrar sesión", con `DELETE /api/sesion` también retenido: la señal del `fetch`
+          del PDF queda `aborted` antes de que responda `DELETE /api/sesion`, y al soltar no se entrega nada;
+        - "Descargar PDF" y salir del detalle: la señal queda `aborted`, y al soltar no se entrega nada;
+        - "Descargar PDF" y la sesión cambia de identidad (la simulación de `GET /api/sesion` devuelve otro usuario y
+          la prueba dispara `focus`): al soltar, no se entrega nada;
+        - lo mismo con una simulación del PDF que ignora la señal y responde igual: no se entrega nada (comprobación
+          final);
+        - "Cerrar sesión" mientras `useConfirmarSesion` todavía espera `GET /api/sesion`: no se pide el PDF y no se
+          entrega nada;
+        - **control:** sin nada de eso, el PDF se entrega una vez, con el nombre `cierre-caja-AAAA-MM-DD-N.pdf`.
+
+    _(crítico)_ (criterio 44 y PQ12; RNF-05; regla de identidad de la sesión, criterio 59 de 002)
 
 #### Precisiones de la 006b (PQ1 a PQ15)
 
@@ -783,7 +1061,9 @@ de hoy en el alcance de la secretaria (PQ2 d), decidida en DR-13 (pregunta P13).
   `CajaModule` provee con `{ generar: generarPdfCierre }`; `caja/index.ts` los reexporta. El servicio lee los datos en un
   `conAcademia` que solo lee, sale de él y recién entonces llama a `generar`; con el `Buffer` completo, responde. Las
   pruebas reemplazan el generador con `overrideProvider(GENERADOR_PDF_CIERRE)`. "Solo lectura" quiere decir que la
-  transacción solo lee; no se exige `SET TRANSACTION READ ONLY`.
+  transacción solo lee; no se exige `SET TRANSACTION READ ONLY`. Desde la ronda adversarial 2 de la 006b, `generar` y
+  `generarPdfCierre` reciben además una `AbortSignal` opcional como segundo parámetro (criterio 51 c). Un generador de
+  un solo parámetro sigue siendo válido.
 - **PQ9 · Pruebas de "fuera de la escritura" (criterio 43).**
   - a) Con un generador espía: un `POST …/cierre` (y una apertura, un egreso y una reapertura) no lo llama ni una vez,
     y en `ALMACEN_DIRECTORIO` no aparece ningún archivo nuevo.
@@ -925,6 +1205,14 @@ de hoy en el alcance de la secretaria (PQ2 d), decidida en DR-13 (pregunta P13).
   carácter que invierte la dirección del texto responde 400 (criterio 47, ronda adversarial 1).
 - **Caja con miles de movimientos (006b):** no hay tope. Su PDF tarda más en generarse, pero no detiene la API de nadie,
   y las descargas de más esperan turno o reciben 429 (criterio 49).
+- **Pestaña cerrada o descarga cancelada mientras se espera o se genera el PDF (006b):** la descarga sale de la fila o se
+  aborta, y su lugar queda libre enseguida (criterio 51).
+- **Varias cuentas de una misma academia descargando a la vez (006b):** como mucho 4 de esa academia; la quinta recibe
+  429, aunque sea de una persona sin descargas (criterio 52).
+- **Cuenta desactivada, sesión cerrada o academia suspendida mientras se espera el PDF (006b):** 401 o 403, sin PDF
+  (criterio 53).
+- **"Cerrar sesión" en recepción mientras se prepara un PDF (006b):** la web cancela la descarga y no entrega el archivo
+  (criterio 54).
 
 ## Reglas de negocio aplicables
 
@@ -974,9 +1262,12 @@ responde el mismo 404 que uno inexistente o de otra academia. `GET /api/cajas/ac
 | `POST /api/cajas/{id}/reapertura` | `REABRIR_CAJA` | `reabrirCajaSchema` | 200 `RespuestaCaja` | 400, 401, 403, 404, 409 `HAY_OTRA_CAJA_ABIERTA` |
 | **[006b]** `GET /api/cajas` | `VER_REPORTES_FINANCIEROS` | `desde`, `hasta` en la consulta (`filtroHistorialCajasSchema`, PQ3) | 200 `RespuestaHistorialCajas` (`{ desde, hasta, cajas }`) | 400 (`desde`, `hasta`), 401, 403 |
 | **[006b]** `GET /api/cajas/{id}` | `VER_REPORTES_FINANCIEROS` | — | 200 `RespuestaCaja` | 401, 403, 404 (PQ1) |
-| **[006b]** `GET /api/cajas/{id}/cierres/{numero}/pdf` | `VER_REPORTES_FINANCIEROS` | — | 200 `application/pdf` (PQ7) | 401, 403, 404 (PQ1, PQ6), 429 `DEMASIADAS_SOLICITUDES` (criterio 49 b y c), 500 (PQ9) |
+| **[006b]** `GET /api/cajas/{id}/cierres/{numero}/pdf` | `VER_REPORTES_FINANCIEROS` | — | 200 `application/pdf` (PQ7) | 401, 403 (también después de esperar turno, criterio 53), 404 (PQ1, PQ6), 429 `DEMASIADAS_SOLICITUDES` (criterios 49 b y c, y 52), 500 (PQ9) |
 
 **[006b]** `HEAD` sobre las cuatro rutas `GET` de la caja responde 404 (criterio 50).
+
+**[006b]** Una descarga del PDF cuyo cliente corta la conexión no recibe respuesta: sale de la fila o se aborta
+(criterio 51).
 
 **Orden de los errores de negocio** (después del 400 del esquema y del 401 del criterio 9):
 
@@ -1174,6 +1465,13 @@ su reapertura) en lugar de los campos de cierre de `CAJA`, para no perder un cie
 - **Web de 002:** el inicio del panel suma "Caja" (006a) e "Historial de caja" (006b).
 - **Rutas de academia de 002, [006b]:** `HEAD` sobre las rutas de la caja responde 404 (criterio 50). Las demás rutas
   no cambian (DT-9).
+- **Sesión de academia de 002, [006b, ronda adversarial 2]:** `SesionAcademiaService` suma una forma pública de volver
+  a verificar la sesión de una petición sin el recuerdo por petición, con las reglas del cambio obligatorio y del
+  permiso (criterio 53). El middleware, `PermisosGuard` y sus respuestas no cambian.
+- **Web de 002, [006b, ronda adversarial 2]:** `pedirArchivo` acepta una señal opcional, y "Cerrar sesión" cancela
+  las descargas de PDF en curso (criterio 54). Lo demás de "Cerrar sesión" no cambia.
+- **Esta misma spec, prueba protegida del 49 b [006b, ronda adversarial 2]:** cambia el reparto de las diez descargas
+  a tres academias (criterio 52 f), en el commit de pruebas protegidas de la ronda.
 - **`docs/arquitectura.md`:** nuevas "Reglas para las historias siguientes" (criterio 46).
 
 ## Reglas para las historias siguientes
@@ -1228,14 +1526,29 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 - **El PDF muestra los nombres de hoy (006b, PQ10):** si después del cierre cambia el nombre de quien cerró, de quien
   abrió o de un alumno, el PDF de ese cierre sale con el nombre nuevo. Los montos, la observación y la reapertura no
   cambian, y la auditoría guarda los ids. Guardar los nombres en el cierre exigiría una migración, y la 006b no tiene.
-- **Límites del PDF por proceso (006b, criterio 49):**
-  - Con varias instancias de la API, cada una tiene su cola.
+- **Límites del PDF por proceso (006b, criterios 49 y 52):**
+  - Con varias instancias de la API, cada una tiene su cola y sus límites por persona y por academia.
   - Si muchas personas descargan a la vez (por ejemplo, al cierre del día de muchas academias), alguna recibe 429 y
     tiene que volver a intentar.
-  - El PDF de una caja con miles de movimientos tarda segundos, pero no detiene a las demás peticiones.
-- **Lecturas de una caja muy grande (006b):** `GET /api/cajas/actual` y el detalle arman su JSON con todos los
-  movimientos en el hilo principal. Con 20 000 movimientos son decenas de milisegundos por petición. Se acepta porque
-  no hay tope de movimientos (DT-7) y el criterio 49 solo trata del PDF, que costaba segundos.
+  - Con 4 por academia y 10 lugares, si tres o más academias saturan a la vez, otra academia puede recibir 429
+    (criterio 52 d).
+  - El PDF de una caja con miles de movimientos tarda segundos (unos 18 s con 20 000 movimientos de textos largos,
+    medido en la ronda adversarial 2 de la 006b), pero no detiene a las demás peticiones.
+- **Un generador que ignora la señal (006b, criterio 51):** mientras no termina, su lugar sigue ocupado. El generador
+  real sí la respeta; solo los generadores de las pruebas pueden ignorarla.
+- **Un cambio de sesión durante la lectura o la generación (006b, criterio 53 f):** la sesión se vuelve a comprobar al
+  obtener el turno, no después. Si desactivan a la persona mientras se genera su PDF (hasta unos 18 s), esa descarga
+  termina igual, como cualquier lectura que ya estaba en curso. Lo mitiga la web, que cancela la descarga al cerrar
+  sesión (criterio 54).
+- **Lecturas de una caja muy grande (006b, DT-14):** `GET /api/cajas/actual` y el detalle arman su JSON con todos los
+  movimientos en el hilo principal. Medido en la ronda adversarial 2 de la 006b, con una caja de 20 000 movimientos:
+  - el detalle tarda unos 245 ms y responde de 7 a 11,8 MB;
+  - `/actual` tarda unos 180 ms;
+  - con 10 detalles a la vez, un egreso de otra academia tarda unos 2 s; con 30 a la vez, unos 5,8 s.
+
+  Se acepta en la 006b porque es el problema general de limitar las lecturas por usuario en toda la API, no solo en la
+  caja. Queda en `specs/backlog.md` como pendiente antes de producción: un límite general de peticiones por usuario o
+  por academia en la API. No hay tope de movimientos (DT-7).
 - **`pago_id` sin llave foránea hasta la 007:** en la 006 nadie escribe ingresos por la API; las pruebas usan UUID
   inventados.
 
@@ -1245,7 +1558,8 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 fuera; las del orquestador, "DT-n" y "DT-n de 006"; las de diseño del especificador, "Dn". Las de otras specs llevan
 siempre su número ("DT-5 de 002", "DR-11 de 005"). La pregunta Pn del borrador es DR-n y la Tn es DT-n (P1 es DR-1, T1
 es DT-1, y así hasta P11 y T6; P13, contestada después, es DR-13, y DR-12 queda para P12). DT-7 la tomó el
-orquestador en la ronda adversarial 1 de la 006b, sin pregunta previa; T8 y T9, de esa ronda, son DT-8 y DT-9. Las precisiones de las
+orquestador en la ronda adversarial 1 de la 006b, sin pregunta previa; T8 y T9, de esa ronda, son DT-8 y DT-9. DT-10 a
+DT-14 las tomó el orquestador en la ronda adversarial 2 de la 006b, también sin pregunta previa. Las precisiones de las
 pruebas protegidas de la 006a se citan como "PPn"; las del repaso de la 006b, como "PQn" (están al final de la sección I
 de los criterios).
 
@@ -1329,7 +1643,7 @@ es la propuesta.
 - **DT-5 (pregunta T5). Clasificación.** **Decidido (la propuesta):** críticos 1 a 36 y 40 a 43 (del 42, el alcance y el
   404); prueba obligatoria 37 a 39, el contenido del 42 y el 44; revisor 45 y 46. Repartidos como dice "División en 006a
   y 006b". La ronda adversarial 1 de la 006a suma 47 y 48, críticos, por decisión del orquestador. La ronda adversarial
-  1 de la 006b suma 49 y 50, también críticos.
+  1 de la 006b suma 49 y 50, también críticos, y la ronda adversarial 2 de la 006b suma 51 a 54, también críticos.
 - **DT-6 (pregunta T6). `ultimoMovimientoVisto` en el cierre** (D3). **Decidido (la propuesta).** Alternativa
   descartada: cerrar con lo que haya en ese momento, aunque la persona no lo haya visto. _(006a; criterio 31.)_
 - **DT-7 (sin pregunta previa; ronda adversarial 1 de la 006b, 22/11/2026). Una caja con muchos movimientos y su PDF.**
@@ -1349,6 +1663,54 @@ es la propuesta.
   límite por IP (criterio 49 de 005). El adversarial de la 007 lo revisa en las rutas que arman archivos (comprobantes y
   tickets). Alternativa descartada: generalizarlo en esta historia, porque cambiaría el comportamiento de specs ya
   unidas. _(006b; criterio 50.)_
+- **DT-10 (sin pregunta previa; ronda adversarial 2 de la 006b, 22/11/2026). Una descarga abandonada.** **Decidido por
+  el orquestador:**
+  - si el cliente corta mientras espera turno, la descarga sale de la fila y libera su lugar y sus cupos enseguida;
+  - si corta mientras se genera, la generación se aborta con una `AbortSignal`, que el generador recibe como segundo
+    parámetro opcional (criterio 51);
+  - no se escribe ni se audita.
+
+  Alternativas descartadas:
+  - dejar que termine, como hasta ahora: el PDF se genera para nadie y la persona sigue recibiendo 429 por su propio
+    cupo;
+  - sacarla solo de la fila, sin abortar la generación: con un PDF de 18 s, el lugar seguiría ocupado.
+
+  _(006b; criterio 51.)_
+- **DT-11 (sin pregunta previa; ronda adversarial 2 de la 006b, 22/11/2026). Límite por academia.** **Decidido por el
+  orquestador:**
+  - como mucho 4 descargas en curso o en espera por academia, por proceso, en `LIMITES_PDF_CIERRE.porAcademia`;
+  - se comprueba después del límite por persona y antes del lugar en la cola global (criterio 52);
+  - con 2 simultáneas y 8 en espera, otra academia siempre tiene lugar, salvo que tres o más academias saturen a la
+    vez.
+
+  Alternativa descartada: solo el límite por persona. Un `ADMIN` puede crear varias cuentas y llenar la cola de la
+  instancia (D-23). _(006b; criterio 52.)_
+- **DT-12 (sin pregunta previa; ronda adversarial 2 de la 006b, 22/11/2026). La sesión después de la espera.**
+  **Decidido por el orquestador:** al obtener el turno, antes de leer, se vuelve a comprobar la sesión (vigente, misma
+  versión de token, academia activa, sin cambio pendiente y con `VER_REPORTES_FINANCIEROS`). Se hace con una lectura
+  que reutiliza la verificación de cada petición (criterio 53). Alternativas descartadas:
+  - `bloquearActorVigente` (`FOR SHARE`) dentro de la lectura: PQ1 dice que las lecturas no bloquean, y no hay
+    escritura que proteger, así que basta ver lo ya confirmado;
+  - no volver a comprobar: una espera de decenas de segundos entregaba el PDF a una cuenta ya desactivada;
+  - copiar las comprobaciones en el servicio de la caja: se desviarían de las de 002.
+
+  _(006b; criterio 53.)_
+- **DT-13 (sin pregunta previa; ronda adversarial 2 de la 006b, 22/11/2026). La web cancela la descarga.** **Decidido
+  por el orquestador:** si la sesión termina o cambia de identidad, o si la persona sale del detalle mientras se
+  prepara el PDF, la web cancela la petición con `AbortController` y no entrega el archivo. Antes de entregar, además,
+  comprueba que la descarga no se canceló y que la identidad sigue siendo la misma (criterio 54). Alternativas
+  descartadas:
+  - solo la comprobación final: el servidor seguiría generando para nadie, mientras que al cancelar, el criterio 51
+    libera el lugar;
+  - confiar en que la página se desmonta al cerrar sesión: `DELETE /api/sesion` tarda, y el PDF podía llegar antes.
+
+  _(006b; criterio 54.)_
+- **DT-14 (sin pregunta previa; ronda adversarial 2 de la 006b, 22/11/2026). Lecturas de cajas enormes.** **Decidido
+  por el orquestador:** siguen como riesgo aceptado en la 006b, con las cifras medidas en la ronda ("Riesgos
+  aceptados"). Es el problema general de limitar las lecturas por usuario en toda la API, no solo en la caja. En
+  `specs/backlog.md` queda pendiente, antes de producción, un límite general de peticiones por usuario o por academia.
+  Alternativa descartada: limitar o paginar solo las lecturas de la caja. Cambiaría `cajaSchema`, que es de la 006a, y
+  no resolvería el problema en el resto de la API. _(006b; sin criterio.)_
 
 ### Decisiones de diseño (técnicas)
 
@@ -1460,8 +1822,9 @@ cambian ninguna regla de negocio; se citan como "PPn" en los criterios, el contr
 
 Las preguntas del borrador quedaron resueltas el 22/11/2026; el texto completo de cada una, con lo decidido y la
 alternativa descartada, está en "Decisiones". P13, encontrada en el repaso de la 006b, se contestó el mismo día con la
-propuesta (DR-13). T8 y T9, de la ronda adversarial 1 de la 006b, se contestaron con la propuesta (DT-8 y DT-9). Queda
-una: P12, encontrada al escribir PP3, que no bloquea:
+propuesta (DR-13). T8 y T9, de la ronda adversarial 1 de la 006b, se contestaron con la propuesta (DT-8 y DT-9). Lo de
+la ronda adversarial 2 de la 006b lo decidió el orquestador (DT-10 a DT-14), sin preguntas nuevas. Queda una: P12,
+encontrada al escribir PP3, que no bloquea:
 
 - **P12 (para el responsable, no bloquea). ¿Una caja puede terminar el día con más de S/ 99,999.99 en efectivo?** El
   monto declarado del cierre usa `montoNoNegativoSchema` (criterio 30), que llega a `99999.99`, pero el esperado en
