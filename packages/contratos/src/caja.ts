@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { fechaSchema } from './horario';
 import { montoConSignoSchema, montoDeLecturaSchema, montoNoNegativoSchema, montoSchema } from './dinero';
-import { sinControles, textoVisibleSchema } from './texto';
+import { contarVisibles, sinControles, textoVisibleSchema, tieneBidiOSeparadores } from './texto';
 
 /**
  * Caja del día (spec 006a; HU-25 a HU-27, RN-17, RN-22; D-03, D-04, D-23). Los montos viajan como texto con dos decimales (`"120.00"`) y
@@ -60,8 +60,11 @@ export const abrirCajaSchema = z.strictObject({
 export type AbrirCaja = z.infer<typeof abrirCajaSchema>;
 
 /**
- * El comprobante opcional de un egreso (DR-3): un texto recortado de hasta 60 caracteres, sin controles. Vacío, solo espacios, nulo o
- * ausente cuentan como "sin comprobante" y se guardan como `null`.
+ * El comprobante opcional de un egreso (DR-3, criterios 18 y 47): se recorta como la descripción (el `trim` también quita U+2028 y U+2029
+ * de los bordes) y rechaza lo mismo que ella: controles, sustitutos sueltos, caracteres de dirección del texto y separadores de línea o de
+ * párrafo (antes de normalizar, así que U+202E solo es un 400), y más de 60 caracteres. Si lo que queda no tiene ningún carácter visible
+ * (`contarVisibles`: vacío, solo espacios, solo invisibles), nulo o ausente, cuenta como "sin comprobante" y se guarda `null`. Con algo
+ * visible se guarda tal como llega, recortado, sin mínimo de visibles.
  */
 const comprobanteSchema = sinControles(
   z
@@ -73,8 +76,13 @@ const comprobanteSchema = sinControles(
     ),
   'El comprobante no puede contener caracteres de control ni caracteres no válidos.',
 )
+  .refine((valor) => !tieneBidiOSeparadores(valor), {
+    message: 'El comprobante no puede contener caracteres de dirección del texto ni separadores de línea.',
+  })
   .nullish()
-  .transform((valor): string | null => (valor === undefined || valor === null || valor === '' ? null : valor));
+  .transform((valor): string | null =>
+    valor === undefined || valor === null || contarVisibles(valor) === 0 ? null : valor,
+  );
 
 /** `POST /api/cajas/{id}/egresos` (criterios 17, 18 y 22): siempre en efectivo y con el concepto `EGRESO_MENOR` (DR-3). */
 export const registrarEgresoSchema = z.strictObject({

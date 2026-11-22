@@ -1,4 +1,10 @@
-import type { ConceptoMovimiento, MetodoPago } from '@aquagestion/contratos';
+import {
+  CONCEPTOS_MOVIMIENTO,
+  METODOS_PAGO,
+  registrarEgresoSchema,
+  type ConceptoMovimiento,
+  type MetodoPago,
+} from '@aquagestion/contratos';
 import { aTextoMonto, montosIguales } from '../../comun/dinero';
 import { fechaDeBase } from '../../comun/fechas';
 import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
@@ -78,6 +84,53 @@ function validarMonto(monto: Decimal, maximo: Decimal): void {
   }
 }
 
+/** Los conceptos que admite un ingreso: los de la lista del contrato menos el egreso menor. */
+const CONCEPTOS_DE_INGRESO: readonly string[] = CONCEPTOS_MOVIMIENTO.filter((concepto) => concepto !== 'EGRESO_MENOR');
+
+function esUuid(valor: unknown): valor is string {
+  return typeof valor === 'string' && PATRON_UUID.test(valor);
+}
+
+/**
+ * Valida la forma de un ingreso antes de tocar la base (criterio 48 c): `alumnoId`, `pagoId` y `usuarioId` con forma de UUID, `concepto` de la
+ * lista de ingresos y `metodo` de la lista del contrato. `RangeError` sin el valor en el mensaje (no lleva datos de quien llama a los registros).
+ */
+function validarFormaDelIngreso(ingreso: IngresoEnCaja): void {
+  if (!esUuid(ingreso.alumnoId)) throw new RangeError('El alumnoId del ingreso no tiene forma de UUID.');
+  if (!esUuid(ingreso.pagoId)) throw new RangeError('El pagoId del ingreso no tiene forma de UUID.');
+  if (!esUuid(ingreso.usuarioId)) throw new RangeError('El usuarioId del ingreso no tiene forma de UUID.');
+  if (typeof ingreso.concepto !== 'string' || !CONCEPTOS_DE_INGRESO.includes(ingreso.concepto)) {
+    throw new RangeError('El concepto del ingreso no es válido.');
+  }
+  if (typeof ingreso.metodo !== 'string' || !(METODOS_PAGO as readonly string[]).includes(ingreso.metodo)) {
+    throw new RangeError('El método del ingreso no es válido.');
+  }
+}
+
+/** Lo que el egreso guarda, audita y compara: los textos ya recortados y el comprobante normalizado. */
+interface EgresoNormalizado {
+  readonly descripcion: string;
+  readonly comprobante: string | null;
+}
+
+/**
+ * Valida las entradas del egreso con las mismas reglas de la ruta (`registrarEgresoSchema`, criterios 18, 47 y 48 a) y devuelve lo normalizado.
+ * `RangeError` sin el valor en el mensaje. `cajaId` no se valida aquí: uno que no es UUID responde 404 como uno que no existe.
+ */
+function validarYNormalizarEgreso(egreso: EgresoEnCaja): EgresoNormalizado {
+  const { shape } = registrarEgresoSchema;
+  const descripcion = shape.descripcion.safeParse(egreso.descripcion);
+  if (!descripcion.success) throw new RangeError('La descripción del egreso no es válida.');
+  const comprobante = shape.comprobante.safeParse(egreso.comprobante);
+  if (!comprobante.success) throw new RangeError('El comprobante del egreso no es válido.');
+  if (!shape.claveIdempotencia.safeParse(egreso.claveIdempotencia).success) {
+    throw new RangeError('La clave de idempotencia del egreso no es válida.');
+  }
+  if (!esUuid(egreso.usuarioId)) throw new RangeError('El usuarioId del egreso no tiene forma de UUID.');
+  validarMonto(egreso.monto, EGRESO_MAXIMO);
+  return { descripcion: descripcion.data, comprobante: comprobante.data };
+}
+
 /** La caja bloqueada: lo que las operaciones necesitan para decidir sin volver a leer. */
 export interface CajaBloqueada {
   id: string;
@@ -134,6 +187,7 @@ interface FilaDeMovimientoPrevio {
 /**
  * Registra el ingreso de un cobro en la caja abierta (spec 006, criterio 24; D-04, RN-17). Corre dentro de la transacción de quien llama
  * (que ya llamó a `bloquearActorVigente` y bloqueó antes sus demás filas), en este orden:
+ * 0. comprueba la forma de las entradas (criterio 48 c): `RangeError` sin tocar la base;
  * 1. bloquea la caja abierta de `tx.academiaId` con `FOR UPDATE`: si no hay, 409 `SIN_CAJA_ABIERTA`; si es de otro día según `ahora` en Lima,
  *    409 `CAJA_DE_OTRO_DIA` (la transacción de quien llama debe revertirse: no queda un cobro sin su movimiento);
  * 2. si ya hay un movimiento con ese `pagoId` en la academia, lo devuelve con `repetido: true`, sin insertar ni auditar;
@@ -146,6 +200,7 @@ export async function registrarIngresoEnCaja(
   ingreso: IngresoEnCaja,
   ahora: Date,
 ): Promise<MovimientoRegistrado> {
+  validarFormaDelIngreso(ingreso);
   const caja = await bloquearCajaAbierta(tx);
   if (!caja) throw sinCajaAbierta();
   if (esDeOtroDia(caja.fecha, ahora)) throw cajaDeOtroDia(caja.id, caja.fecha);
@@ -208,14 +263,16 @@ export async function registrarIngresoEnCaja(
  * existe en la academia) → la clave de idempotencia (los mismos datos devuelven el movimiento ya registrado con `repetido: true`; otros datos o
  * otra caja, 409 `CLAVE_YA_USADA`; la clave se mira antes que el estado de la caja) → 409 `CAJA_CERRADA` → 409 `CAJA_DE_OTRO_DIA` → 409
  * `EFECTIVO_INSUFICIENTE` (el egreso no deja el efectivo esperado por debajo de cero, DR-4). Después inserta con el siguiente `numero` y audita
- * `CAJA_EGRESO_REGISTRADO`. `RangeError` si el monto no es válido.
+ * `CAJA_EGRESO_REGISTRADO`. Antes de tocar la base valida las entradas con las reglas de la ruta (criterio 48 a): `RangeError` si la descripción,
+ * el comprobante, la clave, el `usuarioId` o el monto no son válidos. Guarda, audita y compara la descripción recortada y el comprobante
+ * normalizado (criterio 48 b), no lo que llegó.
  */
 export async function registrarEgresoEnCaja(
   tx: TransaccionAcademia,
   egreso: EgresoEnCaja,
   ahora: Date,
 ): Promise<MovimientoRegistrado> {
-  validarMonto(egreso.monto, EGRESO_MAXIMO);
+  const { descripcion, comprobante } = validarYNormalizarEgreso(egreso);
   const caja = await bloquearCaja(tx, egreso.cajaId);
   if (!caja) throw noEncontrado();
 
@@ -228,8 +285,8 @@ export async function registrarEgresoEnCaja(
     const mismosDatos =
       previo.caja_id === caja.id &&
       previo.tipo === 'EGRESO' &&
-      previo.descripcion === egreso.descripcion &&
-      (previo.comprobante ?? null) === egreso.comprobante &&
+      previo.descripcion === descripcion &&
+      (previo.comprobante ?? null) === comprobante &&
       montosIguales(previo.monto, egreso.monto);
     if (!mismosDatos) throw claveYaUsada();
     return {
@@ -254,7 +311,7 @@ export async function registrarEgresoEnCaja(
     INSERT INTO movimientos_caja (academia_id, caja_id, numero, tipo, concepto, metodo, monto, descripcion, comprobante, registrado_por,
                                   registrado_en, clave_idempotencia)
     VALUES (${tx.academiaId}::uuid, ${caja.id}::uuid, ${numero}::int, 'EGRESO'::tipo_movimiento_caja, 'EGRESO_MENOR'::concepto_movimiento_caja,
-            'EFECTIVO'::metodo_pago, ${monto}::numeric, ${egreso.descripcion}, ${egreso.comprobante}, ${egreso.usuarioId}::uuid,
+            'EFECTIVO'::metodo_pago, ${monto}::numeric, ${descripcion}, ${comprobante}, ${egreso.usuarioId}::uuid,
             ${ahora}::timestamptz, ${egreso.claveIdempotencia}::uuid)
     RETURNING id::text AS id, registrado_en`;
   const insertado = filas[0];
@@ -265,7 +322,7 @@ export async function registrarEgresoEnCaja(
     accion: 'CAJA_EGRESO_REGISTRADO',
     entidad: 'movimiento_caja',
     entidadId: insertado.id,
-    datosDespues: { cajaId: caja.id, numero, descripcion: egreso.descripcion, monto, comprobante: egreso.comprobante },
+    datosDespues: { cajaId: caja.id, numero, descripcion, monto, comprobante },
     ip: egreso.ip,
   });
   return {
