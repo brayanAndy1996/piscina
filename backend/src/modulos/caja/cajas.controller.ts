@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
+import type { Socket } from 'node:net';
+import { Body, Controller, Get, HttpCode, HttpException, Param, Post, Req, Res } from '@nestjs/common';
 import {
   type AbrirCaja,
   abrirCajaSchema,
@@ -17,6 +18,7 @@ import {
 import type { Request, Response } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 import { ValidarCon } from '../../comun/validacion';
+import { errorParaRegistro } from '../../infraestructura/prisma';
 import { Permiso } from '../autenticacion/permiso.decorator';
 import type { SesionVerificada } from '../autenticacion/tipos';
 import { SesionAcademiaService } from '../autenticacion/sesion-academia.service';
@@ -45,6 +47,15 @@ function parametroCrudo(solicitud: Request, nombre: string): string | string[] |
   if (valores.length === 0) return undefined;
   const [unico] = valores;
   return valores.length === 1 && !conCorchetes && unico !== undefined ? unico : valores;
+}
+
+/**
+ * `true` si la conexión de una descarga ya se cerró (criterio 55 a): la respuesta se cerró sin terminar de enviarse, o el socket de la petición
+ * está destruido. No se mira `solicitud.destroyed` solo: en Node 22 puede ser `true` después de leer una petición sin cuerpo (plan 2.13).
+ */
+function conexionCerrada(solicitud: Request, respuesta: Response): boolean {
+  const socket = solicitud.socket as Socket | null;
+  return respuesta.destroyed || (respuesta.closed && !respuesta.writableFinished) || socket?.destroyed === true;
 }
 
 /**
@@ -115,6 +126,9 @@ export class CajasController {
    * Si el cliente corta la conexión antes de que la respuesta termine de enviarse (criterio 51), la respuesta emite `close` sin `writableFinished`
    * y se activa la señal que el servicio pasa a la cola y al generador. Esa descarga no escribe nada, no audita y no se registra como un 500: a lo
    * sumo, una línea `info`. Se mira la respuesta y no la petición: en Node 22 la petición puede emitir `close` al terminar de leerse.
+   *
+   * Criterio 55 (DT-15): al entrar se comprueba si la conexión ya está cerrada (un corte durante el middleware o los guards ya pasó) y, en el
+   * mismo paso síncrono, se escucha también el `close` del socket, que avisa a una petición en pipelining. Los oyentes se quitan en `finally`.
    */
   @Get(':id/cierres/:numero/pdf')
   @Permiso('VER_REPORTES_FINANCIEROS')
@@ -125,10 +139,20 @@ export class CajasController {
     @Req() solicitud: Request,
     @Res() respuesta: Response,
   ): Promise<void> {
+    // Lo primero y en un solo paso síncrono (criterio 55, DT-15): mirar si la conexión ya se cerró e instalar los oyentes. Sin un `await` en
+    // medio, un corte no se pierde. El del socket avisa también a una petición en pipelining, cuya respuesta todavía no tiene socket.
     const controlador = new AbortController();
-    respuesta.on('close', () => {
+    const socket = solicitud.socket as Socket | null;
+    const contexto = { usuarioId: sesion.usuario.id, academiaId: sesion.usuario.academiaId };
+    if (conexionCerrada(solicitud, respuesta)) {
+      this.registro.info(contexto, 'Descarga del PDF del cierre abandonada antes de empezar');
+      return;
+    }
+    const cortar = (): void => {
       if (!respuesta.writableFinished) controlador.abort();
-    });
+    };
+    respuesta.once('close', cortar);
+    socket?.once('close', cortar);
     try {
       const { nombreArchivo, contenido } = await this.historial.pdf(sesion, id, numero, {
         senal: controlador.signal,
@@ -141,14 +165,20 @@ export class CajasController {
       respuesta.setHeader('Content-Length', String(contenido.length));
       respuesta.end(contenido);
     } catch (error) {
-      if (controlador.signal.aborted && esDescargaAbandonada(error)) {
-        this.registro.info(
-          { usuarioId: sesion.usuario.id, academiaId: sesion.usuario.academiaId },
-          'Descarga del PDF del cierre abandonada por el cliente',
+      // Con la señal activa nunca se escribe en la respuesta, tampoco un JSON de error (criterio 55 d): el error no llega al filtro global.
+      if (!controlador.signal.aborted) throw error;
+      if (esDescargaAbandonada(error) || (error instanceof HttpException && error.getStatus() < 500)) {
+        this.registro.info(contexto, 'Descarga del PDF del cierre abandonada por el cliente');
+      } else {
+        this.registro.error(
+          { ...contexto, err: errorParaRegistro(error) },
+          'Error al generar el PDF de una descarga abandonada',
         );
-        return;
       }
-      throw error;
+    } finally {
+      // En keep-alive el socket atiende las peticiones siguientes: el oyente no puede quedarse ni acumularse (criterio 55 c).
+      respuesta.off('close', cortar);
+      socket?.off('close', cortar);
     }
   }
 
