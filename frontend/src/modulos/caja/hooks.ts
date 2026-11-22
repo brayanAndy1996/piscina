@@ -1,10 +1,10 @@
 import type { Caja, FiltroHistorialCajas } from '@aquagestion/contratos';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DescargaCanceladaError, iniciarDescarga } from '../../lib/descargas-en-curso';
 import { hoyEnLima } from '../../lib/fechas';
 import { useUsuario } from '../sesion/contexto';
-import { useConfirmarSesion, useVigilanteDeLaSesion } from '../sesion/hooks';
+import { CLAVE_CERRAR_SESION, useConfirmarSesion, useVigilanteDeLaSesion } from '../sesion/hooks';
 import * as api from './api';
 import { entregarArchivo, nombreDelPdfDelCierre } from './descarga';
 
@@ -142,6 +142,7 @@ export function useDetalleCaja(id: string) {
  * que no lleva mensaje.
  */
 export function useDescargarPdfDelCierre() {
+  const cliente = useQueryClient();
   const confirmarSesion = useConfirmarSesion();
   const vigilarLaSesion = useVigilanteDeLaSesion();
   // Las descargas de esta página que todavía no terminaron, cada una con cómo soltar lo que registró.
@@ -156,16 +157,26 @@ export function useDescargarPdfDelCierre() {
       descargas.clear();
     };
   }, []);
+  // Criterio 57 e (DT-19): desde que se pulsa "Cerrar sesión" hasta que su mutación termina (incluida la pausa sin conexión), no se descarga.
+  const seEstaCerrandoLaSesion = useCallback(
+    () => cliente.isMutating({ mutationKey: CLAVE_CERRAR_SESION }) > 0,
+    [cliente],
+  );
   const mutacion = useMutation({
     mutationFn: async ({ cajaId, fecha, numero, controlador, sigue, soltar }: DescargaPedida) => {
+      // Si se está cerrando la sesión, esta descarga se cancela (su señal queda activa para quien la vigile) y no pide ni entrega nada.
+      const cancelada = () => {
+        if (seEstaCerrandoLaSesion()) controlador.abort();
+        return controlador.signal.aborted;
+      };
       try {
         // Criterio 57 b: si la mutación estuvo en pausa (sin conexión) y la descarga se canceló mientras tanto, no pide nada.
-        if (controlador.signal.aborted) throw new DescargaCanceladaError();
+        if (cancelada()) throw new DescargaCanceladaError();
         await confirmarSesion();
-        if (controlador.signal.aborted) throw new DescargaCanceladaError();
+        if (cancelada()) throw new DescargaCanceladaError();
         const pdf = await api.obtenerPdfDelCierre({ cajaId, numero }, controlador.signal);
-        // Comprobación final: la respuesta ya llegó, pero ya no corresponde si se canceló o si la identidad cambió.
-        if (controlador.signal.aborted || !sigue()) throw new DescargaCanceladaError();
+        // Comprobación final: la respuesta ya llegó, pero ya no corresponde si se canceló, si se está cerrando la sesión o si la identidad cambió.
+        if (cancelada() || !sigue()) throw new DescargaCanceladaError();
         entregarArchivo(pdf, nombreDelPdfDelCierre(fecha, numero));
       } catch (error) {
         if (controlador.signal.aborted || error instanceof DescargaCanceladaError) throw new DescargaCanceladaError();
@@ -183,6 +194,8 @@ export function useDescargarPdfDelCierre() {
    */
   const descargar = useCallback(
     (datos: { cajaId: string; fecha: string; numero: number }) => {
+      // Criterio 57 e: un clic que llega en el mismo paso que "Cerrar sesión", antes de que el botón se pinte desactivado, no registra nada.
+      if (seEstaCerrandoLaSesion()) return;
       const { sigue, vigilar } = vigilarLaSesion();
       const { controlador, terminar } = iniciarDescarga();
       const dejarDeVigilar = vigilar(() => controlador.abort());
@@ -193,10 +206,13 @@ export function useDescargarPdfDelCierre() {
       propias.current.set(controlador, soltar);
       mutate({ ...datos, controlador, sigue, soltar });
     },
-    [mutate, vigilarLaSesion],
+    [mutate, vigilarLaSesion, seEstaCerrandoLaSesion],
   );
+  // El botón también se desactiva mientras se cierra la sesión (criterio 57 e).
+  const cerrandoLaSesion = useIsMutating({ mutationKey: CLAVE_CERRAR_SESION }) > 0;
   return {
     descargar,
+    cerrandoLaSesion,
     isPending: mutacion.isPending,
     isError: mutacion.isError,
     error: mutacion.error,

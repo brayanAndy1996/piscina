@@ -46,7 +46,7 @@ export function CierresDeLaCaja({ caja }: { caja: Caja }) {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <button
                     type="button"
-                    disabled={descarga.isPending}
+                    disabled={descarga.isPending || descarga.cerrandoLaSesion}
                     aria-label={`Descargar PDF del cierre ${cierre.numero}`}
                     onClick={() => descarga.descargar({ cajaId: caja.id, fecha: caja.fecha, numero: cierre.numero })}
                     className={ESTILO_BOTON.secundario}

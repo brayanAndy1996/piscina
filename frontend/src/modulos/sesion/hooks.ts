@@ -10,6 +10,12 @@ import { useUsuario } from './contexto';
 export const CLAVE_SESION = ['sesion'] as const;
 const CLAVE_ACADEMIA_PUBLICA = 'academia-publica';
 
+/**
+ * Criterio 57 e de 006 (DT-19): la clave de la mutación de "Cerrar sesión". "Se está cerrando la sesión" es que haya una mutación con esta
+ * clave en `pending` (también en pausa sin conexión): lo usan `useIsMutating` (botones) y `cliente.isMutating` (antes de pedir o entregar).
+ */
+export const CLAVE_CERRAR_SESION = ['sesion', 'cerrar'] as const;
+
 export const RUTA_CAMBIAR_CLAVE = '/cambiar-clave';
 
 /** Lo que muestra la web de una academia suspendida (DR-4 de 001). */
@@ -178,6 +184,7 @@ export function useIniciarSesionAcademia(nombreCorto: string) {
 export function useCerrarSesionAcademia() {
   const cliente = useQueryClient();
   return useMutation({
+    mutationKey: CLAVE_CERRAR_SESION,
     // Criterio 54 de 006: una descarga en camino no debe llegar a la persona siguiente; se cancela al pulsar, aunque `DELETE` tarde o falle.
     // Criterio 57 (DT-17): va en `onMutate` y no en la `mutationFn`, porque `onMutate` corre en el mismo paso que `mutate` aunque la
     // mutación quede en pausa por falta de conexión (con `networkMode: 'online'`, la `mutationFn` no corre hasta que vuelva).
