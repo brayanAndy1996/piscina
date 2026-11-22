@@ -118,12 +118,13 @@ export async function enviarJson<T>(
 /**
  * Pide un archivo (`ruta` debe empezar por `/api`) y devuelve su contenido si la respuesta es 200 con el `tipo` indicado en `Content-Type`.
  * Los errores son los de `pedirJson`: un error de la API (401, 404, 500…) lanza `ErrorDeApi`; la red caída, un código inesperado o un tipo
- * distinto del esperado lanzan `ErrorDeRespuesta`.
+ * distinto del esperado lanzan `ErrorDeRespuesta`. Con `senal`, cancelarla interrumpe la petición (criterio 54 de 006); quien la pasa
+ * decide qué hacer con una descarga cancelada.
  */
-export async function pedirArchivo(ruta: string, tipo: string): Promise<Blob> {
+export async function pedirArchivo(ruta: string, tipo: string, senal?: AbortSignal): Promise<Blob> {
   let respuesta: Response;
   try {
-    respuesta = await fetch(ruta, { method: 'GET', credentials: 'same-origin' });
+    respuesta = await fetch(ruta, { method: 'GET', credentials: 'same-origin', ...(senal ? { signal: senal } : {}) });
     if (
       respuesta.status === 200 &&
       respuesta.headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase() === tipo

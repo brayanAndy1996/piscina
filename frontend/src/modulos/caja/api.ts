@@ -56,6 +56,6 @@ export async function obtenerCaja(cajaId: string) {
 }
 
 /** El PDF de un cierre (criterio 42): el contenido del archivo, tal como lo armó la API. */
-export async function obtenerPdfDelCierre({ cajaId, numero }: { cajaId: string; numero: number }) {
-  return pedirArchivo(`/api/cajas/${encodeURIComponent(cajaId)}/cierres/${numero}/pdf`, 'application/pdf');
+export async function obtenerPdfDelCierre({ cajaId, numero }: { cajaId: string; numero: number }, senal?: AbortSignal) {
+  return pedirArchivo(`/api/cajas/${encodeURIComponent(cajaId)}/cierres/${numero}/pdf`, 'application/pdf', senal);
 }

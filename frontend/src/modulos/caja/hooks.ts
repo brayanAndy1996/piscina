@@ -1,9 +1,10 @@
 import type { Caja, FiltroHistorialCajas } from '@aquagestion/contratos';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { DescargaCanceladaError, iniciarDescarga } from '../../lib/descargas-en-curso';
 import { hoyEnLima } from '../../lib/fechas';
 import { useUsuario } from '../sesion/contexto';
-import { useConfirmarSesion } from '../sesion/hooks';
+import { useConfirmarSesion, useVigilanteDeLaSesion } from '../sesion/hooks';
 import * as api from './api';
 import { entregarArchivo, nombreDelPdfDelCierre } from './descarga';
 
@@ -134,14 +135,44 @@ export function useDetalleCaja(id: string) {
 /**
  * Descarga el PDF de un cierre (criterio 42): antes confirma que la sesión sigue siendo la de la página (como las escrituras), pide el
  * archivo con la misma cookie y se lo entrega al navegador con su nombre.
+ *
+ * Cada descarga tiene su propio `AbortController` (criterio 54, DT-13) y se cancela si la persona pulsa "Cerrar sesión" (lo hace
+ * `useCerrarSesionAcademia` con el registro de descargas), si la sesión se pierde o cambia de identidad, o si la página se desmonta. Antes
+ * de entregar se comprueba otra vez, aunque el `fetch` haya ignorado la señal. Una descarga cancelada falla con `DescargaCanceladaError`,
+ * que no lleva mensaje.
  */
 export function useDescargarPdfDelCierre() {
   const confirmarSesion = useConfirmarSesion();
+  const vigilarLaSesion = useVigilanteDeLaSesion();
+  const propias = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const controladores = propias.current;
+    return () => {
+      for (const controlador of controladores) controlador.abort();
+      controladores.clear();
+    };
+  }, []);
   return useMutation({
     mutationFn: async ({ cajaId, fecha, numero }: { cajaId: string; fecha: string; numero: number }) => {
-      await confirmarSesion();
-      const pdf = await api.obtenerPdfDelCierre({ cajaId, numero });
-      entregarArchivo(pdf, nombreDelPdfDelCierre(fecha, numero));
+      const { sigue, vigilar } = vigilarLaSesion();
+      const { controlador, terminar } = iniciarDescarga();
+      propias.current.add(controlador);
+      const dejarDeVigilar = vigilar(() => controlador.abort());
+      try {
+        await confirmarSesion();
+        if (controlador.signal.aborted) throw new DescargaCanceladaError();
+        const pdf = await api.obtenerPdfDelCierre({ cajaId, numero }, controlador.signal);
+        // Comprobación final: la respuesta ya llegó, pero ya no corresponde si se canceló o si la identidad cambió.
+        if (controlador.signal.aborted || !sigue()) throw new DescargaCanceladaError();
+        entregarArchivo(pdf, nombreDelPdfDelCierre(fecha, numero));
+      } catch (error) {
+        if (controlador.signal.aborted || error instanceof DescargaCanceladaError) throw new DescargaCanceladaError();
+        throw error;
+      } finally {
+        dejarDeVigilar();
+        terminar();
+        propias.current.delete(controlador);
+      }
     },
   });
 }

@@ -1,6 +1,7 @@
 import { esErrorDeApi } from '../../api/cliente';
 import { formatearSoles } from '../../lib/dinero';
 import { formatearFechaCalendario } from '../../lib/fechas';
+import { DescargaCanceladaError } from '../../lib/descargas-en-curso';
 import { mensajeGeneral } from '../../lib/errores';
 import { esErrorDeCambioDeSesion } from '../sesion/hooks';
 import { z } from 'zod';
@@ -89,6 +90,7 @@ export const MENSAJE_PDF_FALLIDO = 'No se pudo generar el PDF. Inténtalo de nue
  */
 export function mensajeDeDescargaDelPdf(error: unknown): string | null {
   if (
+    error instanceof DescargaCanceladaError ||
     esErrorDeApi(error, 401) ||
     esErrorDeApi(error, 403, 'ACADEMIA_SUSPENDIDA') ||
     esErrorDeApi(error, 403, 'CAMBIO_DE_CLAVE_OBLIGATORIO') ||
