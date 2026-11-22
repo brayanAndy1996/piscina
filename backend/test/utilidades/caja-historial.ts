@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as contratos from '@aquagestion/contratos';
+import pg from 'pg';
 import { expect } from 'vitest';
 import * as indiceDeCaja from '../../src/modulos/caja/index';
-import { ejecutarComo, urlAppPruebas } from './base-datos';
+import { urlAppPruebas, urlPropietarioPruebas } from './base-datos';
 import {
   actualizarFilasCaja,
   type AppCaja,
@@ -454,19 +455,38 @@ export async function crearEscenarioDeAlcance(e: EscenarioCaja): Promise<Escenar
 
 /**
  * Las conexiones del rol de la app a la base de pruebas que están `idle in transaction` ahora (PQ9 c): una lectura que terminó no deja
- * ninguna. Filtra por `datname = current_database()` y por el nombre del rol de la app.
+ * ninguna.
+ *
+ * Se consulta con una conexión del propio rol de la app, no con la del dueño: PostgreSQL le muestra a cada rol el `state` y el `query` solo
+ * de las sesiones de su mismo rol (o de un superusuario o miembro de `pg_read_all_stats`), y el dueño de las tablas no es nada de eso, así
+ * que para él `state` es `NULL` y la consulta devolvía siempre `[]`. No se cambia ningún rol ni privilegio de la base. Se excluye la
+ * conexión que consulta (`pg_backend_pid()`), que está en una consulta y no inactiva en una transacción.
  */
 export async function conexionesInactivasEnTransaccion(): Promise<{ pid: number; state: string; query: string }[]> {
-  const rolDeLaApp = decodeURIComponent(new URL(urlAppPruebas()).username);
-  const { rows } = await ejecutarComo(
-    'propietario',
-    `SELECT pid, state, left(query, 200) AS query
-       FROM pg_stat_activity
-      WHERE datname = current_database() AND usename = $1 AND state LIKE 'idle in transaction%'
-      ORDER BY pid`,
-    [rolDeLaApp],
-  );
-  return rows as { pid: number; state: string; query: string }[];
+  const urlApp = urlAppPruebas();
+  const rolDeLaApp = decodeURIComponent(new URL(urlApp).username);
+  const baseDeLasPruebas = decodeURIComponent(new URL(urlPropietarioPruebas()).pathname.replace(/^\//, ''));
+  const cliente = new pg.Client({ connectionString: urlApp });
+  await cliente.connect();
+  try {
+    const { rows: base } = await cliente.query<{ base: string }>('SELECT current_database() AS base');
+    if (base[0]?.base !== baseDeLasPruebas) {
+      throw new Error(
+        `conexionesInactivasEnTransaccion: la conexión de la app es a la base "${base[0]?.base}" y no a la de las pruebas "${baseDeLasPruebas}".`,
+      );
+    }
+    const { rows } = await cliente.query<{ pid: number; state: string; query: string }>(
+      `SELECT pid, state, left(query, 200) AS query
+         FROM pg_stat_activity
+        WHERE datname = current_database() AND usename = $1 AND pid <> pg_backend_pid()
+          AND state LIKE 'idle in transaction%'
+        ORDER BY pid`,
+      [rolDeLaApp],
+    );
+    return rows;
+  } finally {
+    await cliente.end().catch(() => undefined);
+  }
 }
 
 /** Los archivos que hay ahora en `ALMACEN_DIRECTORIO` (rutas relativas, ordenadas); `[]` si la carpeta no existe. */
