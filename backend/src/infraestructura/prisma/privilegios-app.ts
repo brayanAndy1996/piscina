@@ -110,6 +110,19 @@ export const PRIVILEGIOS_APP: readonly PrivilegioApp[] = Object.freeze(
     { tabla: 'matriculas', columna: 'actualizado_en', privilegio: 'UPDATE' },
     { tabla: 'matricula_clases', columna: null, privilegio: 'SELECT' },
     { tabla: 'matricula_clases', columna: null, privilegio: 'INSERT' },
+    // Historia 006 (criterio 2): las tres tablas de la caja. Nada se borra y los movimientos no cambian (sin UPDATE). En `cajas` solo
+    // cambian el estado y `actualizado_en`; en `cierres_caja`, solo los datos de la reapertura (ningún monto de un cierre cambia).
+    { tabla: 'cajas', columna: null, privilegio: 'SELECT' },
+    { tabla: 'cajas', columna: null, privilegio: 'INSERT' },
+    { tabla: 'cajas', columna: 'estado', privilegio: 'UPDATE' },
+    { tabla: 'cajas', columna: 'actualizado_en', privilegio: 'UPDATE' },
+    { tabla: 'movimientos_caja', columna: null, privilegio: 'SELECT' },
+    { tabla: 'movimientos_caja', columna: null, privilegio: 'INSERT' },
+    { tabla: 'cierres_caja', columna: null, privilegio: 'SELECT' },
+    { tabla: 'cierres_caja', columna: null, privilegio: 'INSERT' },
+    { tabla: 'cierres_caja', columna: 'reabierto_por', privilegio: 'UPDATE' },
+    { tabla: 'cierres_caja', columna: 'reabierto_en', privilegio: 'UPDATE' },
+    { tabla: 'cierres_caja', columna: 'motivo_reapertura', privilegio: 'UPDATE' },
   ].map((privilegio) => Object.freeze(privilegio)),
 );
 
