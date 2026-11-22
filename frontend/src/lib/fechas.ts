@@ -47,6 +47,19 @@ export function formatearFechaCalendario(fecha: string): string {
   return anio && mes && dia ? `${dia}/${mes}/${anio}` : fecha;
 }
 
+const FORMATO_DIA_LIMA = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Lima',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** La fecha de calendario `AAAA-MM-DD` de hoy en America/Lima, sin depender de la zona del navegador. Se compara como texto. */
+export function hoyEnLima(instante: Date = new Date()): string {
+  const partes = Object.fromEntries(FORMATO_DIA_LIMA.formatToParts(instante).map((p) => [p.type, p.value]));
+  return `${partes['year']}-${partes['month']}-${partes['day']}`;
+}
+
 const DIA_ISO: Readonly<Record<string, DiaSemana>> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
 const DIA_EN_LIMA = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Lima', weekday: 'short' });
 

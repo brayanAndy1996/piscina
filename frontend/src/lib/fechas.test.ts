@@ -7,6 +7,7 @@ import {
   formatearFechaHora,
   formatearHora,
   formatearMes,
+  hoyEnLima,
 } from './fechas';
 
 describe('fechas en America/Lima', () => {
@@ -55,5 +56,13 @@ describe('mes en palabras', () => {
 
   it('un texto que no es un mes se muestra tal cual', () => {
     expect(formatearMes('2026-13')).toBe('2026-13');
+  });
+});
+
+describe('hoy en Lima', () => {
+  it('es la fecha de Lima, no la de UTC ni la del navegador', () => {
+    expect(hoyEnLima(new Date('2026-11-22T04:59:59.000Z'))).toBe('2026-11-21');
+    expect(hoyEnLima(new Date('2026-11-22T05:00:00.000Z'))).toBe('2026-11-22');
+    expect(hoyEnLima(new Date('2026-11-23T04:30:00.000Z'))).toBe('2026-11-22');
   });
 });

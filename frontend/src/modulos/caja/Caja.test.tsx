@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { error, llamadas, type Manejador, mostrar, sesionDe, simularApi } from '../../pruebas-api';
 import { Rutas } from '../../rutas/Rutas';
 import { describirDiferencia, diferenciaEnVivo, resultadoDeDiferencia } from './montos';
@@ -163,9 +163,18 @@ const CERRADA = caja({
 
 const DE_OTRO_DIA = caja({ id: ID_OTRA, fecha: '2026-11-20', deOtroDia: true });
 
+// 22/11/2026 10:00 en Lima: "hoy" para la página. Solo se congela `Date`; los temporizadores siguen siendo reales.
+const AHORA = new Date('2026-11-22T15:00:00.000Z');
+
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(AHORA);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 type CajaApi = Record<string, unknown> | null;
@@ -454,6 +463,55 @@ describe('/panel/caja: caja abierta de otro día (criterio 38 c)', () => {
     expect(screen.getByRole('button', { name: 'Cerrar caja' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Registrar egreso' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Abrir caja' })).not.toBeInTheDocument();
+  });
+});
+
+describe('/panel/caja: la caja de ayer nunca se llama "de hoy" (criterio 38 c y d, medianoche)', () => {
+  const CERRADA_AYER = caja({ ...CERRADA, id: ID_OTRA, fecha: '2026-11-21' });
+
+  it('una caja cerrada de ayer ofrece abrir la de hoy y no dice "de hoy ya está cerrada" ni ofrece reabrir', async () => {
+    servidor(CERRADA_AYER, 'ADMIN');
+    mostrar('/panel/caja');
+    expect(await screen.findByRole('region', { name: 'Abrir caja' })).toBeInTheDocument();
+    expect(screen.getByText(/La caja del 21\/11\/2026 ya está cerrada/)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Resultado del cierre' })).toBeInTheDocument();
+    expect(screen.queryByText(/La caja de hoy ya está cerrada/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reabrir caja' })).not.toBeInTheDocument();
+  });
+
+  it('una caja abierta con una fecha anterior a hoy no admite egresos aunque la API no la marque como de otro día', async () => {
+    servidor(caja({ id: ID_OTRA, fecha: '2026-11-21', deOtroDia: false }));
+    mostrar('/panel/caja');
+    expect(await screen.findByText(/La caja del 21\/11\/2026 sigue abierta/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cerrar caja' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar egreso' })).not.toBeInTheDocument();
+  });
+
+  it('al volver a la ventana pasada la medianoche, vuelve a pedir la caja y ofrece abrir la de hoy', async () => {
+    const { estado, api } = servidor(CERRADA, 'ADMIN');
+    mostrar('/panel/caja');
+    expect(await screen.findByRole('button', { name: 'Reabrir caja' })).toBeInTheDocument();
+    expect(llamadas(api, 'GET /api/cajas/actual')).toHaveLength(1);
+
+    // Pasa la medianoche de Lima (23/11 00:30) y la API ya no devuelve una caja de hoy.
+    vi.setSystemTime(new Date('2026-11-23T05:30:00.000Z'));
+    estado.caja = null;
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+
+    expect(await screen.findByRole('region', { name: 'Abrir caja' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reabrir caja' })).not.toBeInTheDocument();
+    await waitFor(() => expect(llamadas(api, 'GET /api/cajas/actual')).toHaveLength(2));
+  });
+
+  it('pasada la medianoche, la pantalla se corrige aunque la API siga devolviendo la misma caja', async () => {
+    servidor(CERRADA, 'ADMIN');
+    mostrar('/panel/caja');
+    expect(await screen.findByRole('button', { name: 'Reabrir caja' })).toBeInTheDocument();
+    vi.setSystemTime(new Date('2026-11-23T05:30:00.000Z'));
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+    expect(await screen.findByRole('region', { name: 'Abrir caja' })).toBeInTheDocument();
+    expect(screen.queryByText(/La caja de hoy ya está cerrada/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reabrir caja' })).not.toBeInTheDocument();
   });
 });
 
@@ -845,6 +903,50 @@ describe('/panel/caja: cerrar la caja (criterios 29 a 34 y 38)', () => {
     expect(primero?.ultimoMovimientoVisto).toBe(1);
     expect(segundo?.ultimoMovimientoVisto).toBe(2);
     expect(segundo?.claveIdempotencia).toBe(primero?.claveIdempotencia);
+  });
+
+  it('si tras un CAJA_CAMBIO no se pudo actualizar la caja, lo avisa y no reintenta con la vista vieja', async () => {
+    let recargas = 0;
+    const { api } = servidor(CON_EGRESO, 'SECRETARIA', {
+      // Entró un cobro, pero la caja que devuelve la API sigue con el mismo último movimiento (la recarga no trajo nada nuevo).
+      [`POST /api/cajas/${ID_CAJA}/cierre`]: () => error('CAJA_CAMBIO', 409, { ultimoMovimiento: 2 }),
+      'GET /api/cajas/actual': () => {
+        recargas += 1;
+        return { estado: 200, cuerpo: { caja: CON_EGRESO } };
+      },
+    });
+    mostrar('/panel/caja');
+    const { usuario, dialogo } = await abrirCierre();
+    await usuario.type(within(dialogo).getByLabelText('Efectivo contado (S/)'), '84.50');
+    await usuario.click(within(dialogo).getByRole('button', { name: 'Cerrar caja' }));
+
+    expect(await within(dialogo).findByText('No se pudo actualizar la caja. Vuelve a intentarlo.')).toBeInTheDocument();
+    expect(llamadas(api, `POST /api/cajas/${ID_CAJA}/cierre`)).toHaveLength(1);
+
+    // Reintentar solo vuelve a pedir la caja: no envía otro cierre con el movimiento viejo.
+    const antes = recargas;
+    await usuario.click(within(dialogo).getByRole('button', { name: 'Actualizar caja' }));
+    await waitFor(() => expect(recargas).toBeGreaterThan(antes));
+    expect(await within(dialogo).findByText('No se pudo actualizar la caja. Vuelve a intentarlo.')).toBeInTheDocument();
+    expect(llamadas(api, `POST /api/cajas/${ID_CAJA}/cierre`)).toHaveLength(1);
+  });
+
+  it('si la recarga falla tras un CAJA_CAMBIO, también avisa y no envía otro cierre', async () => {
+    let caida = false;
+    const { api } = servidor(CON_EGRESO, 'SECRETARIA', {
+      [`POST /api/cajas/${ID_CAJA}/cierre`]: () => {
+        caida = true;
+        return error('CAJA_CAMBIO', 409, { ultimoMovimiento: 2 });
+      },
+      'GET /api/cajas/actual': () =>
+        caida ? error('ERROR_INTERNO', 500) : { estado: 200, cuerpo: { caja: CON_EGRESO } },
+    });
+    mostrar('/panel/caja');
+    const { usuario, dialogo } = await abrirCierre();
+    await usuario.type(within(dialogo).getByLabelText('Efectivo contado (S/)'), '84.50');
+    await usuario.click(within(dialogo).getByRole('button', { name: 'Cerrar caja' }));
+    expect(await within(dialogo).findByText('No se pudo actualizar la caja. Vuelve a intentarlo.')).toBeInTheDocument();
+    expect(llamadas(api, `POST /api/cajas/${ID_CAJA}/cierre`)).toHaveLength(1);
   });
 
   it('una caja de otro día se cierra igual', async () => {

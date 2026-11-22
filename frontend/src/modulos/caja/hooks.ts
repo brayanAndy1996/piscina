@@ -1,5 +1,7 @@
 import type { Caja } from '@aquagestion/contratos';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { hoyEnLima } from '../../lib/fechas';
 import { useUsuario } from '../sesion/contexto';
 import { useConfirmarSesion } from '../sesion/hooks';
 import * as api from './api';
@@ -10,7 +12,30 @@ export function useClavesCaja() {
   return { actual: ['caja-actual', usuario.academia.nombreCorto, usuario.id] as const };
 }
 
-/** La caja del día. Siempre se vuelve a pedir al entrar; no se reintenta ni se pide al enfocar. */
+/**
+ * La fecha de hoy en Lima, al día: se recalcula cada minuto y al volver a la ventana. Una página que sigue abierta pasada la medianoche
+ * vuelve a dibujarse aunque la API devuelva lo mismo que antes.
+ */
+export function useHoyEnLima(): string {
+  const [hoy, setHoy] = useState(() => hoyEnLima());
+  useEffect(() => {
+    const actualizar = () => setHoy(hoyEnLima());
+    const intervalo = setInterval(actualizar, 60_000);
+    document.addEventListener('visibilitychange', actualizar);
+    window.addEventListener('focus', actualizar);
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', actualizar);
+      window.removeEventListener('focus', actualizar);
+    };
+  }, []);
+  return hoy;
+}
+
+/**
+ * La caja del día. Siempre se vuelve a pedir al entrar y al volver a la ventana (una página abierta pasada la medianoche no debe seguir
+ * mostrando la caja de ayer como la de hoy); no se reintenta.
+ */
 export function useCajaActual() {
   const claves = useClavesCaja();
   return useQuery({
@@ -18,7 +43,7 @@ export function useCajaActual() {
     queryFn: api.obtenerCajaActual,
     retry: false,
     refetchOnMount: 'always',
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
   });
 }
 

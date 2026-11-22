@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 /** Lo que se dice ante cada error de la caja (criterios 13 a 15, 19 a 22, 31, 34 y 36 de 006). Los textos van en español y sin códigos. */
 
-export const MENSAJE_CAJA_CAMBIO = 'Entró un movimiento nuevo: revisa el conteo.';
+const MENSAJE_CAJA_CAMBIO = 'Entró un movimiento nuevo: revisa el conteo.';
 
 const detallesSchema = z.looseObject({
   fecha: z.string().optional(),

@@ -40,6 +40,8 @@ export function DialogoCierre({ caja, recargar, alCerrar, alCerrarLaCaja, alFall
   const [clave] = useState(nuevaClaveUuid);
   const [vista, setVista] = useState(caja);
   const [recargando, setRecargando] = useState(false);
+  // La caja no se pudo actualizar tras un `CAJA_CAMBIO`: con la vista vieja, cada reintento volvería a dar `CAJA_CAMBIO`.
+  const [sinActualizar, setSinActualizar] = useState(false);
   const form = useForm<Campos>({ defaultValues: { montoDeclarado: '', observacion: '' } });
   const { register, handleSubmit, setError, clearErrors, control, formState } = form;
   const escrito = useWatch({ control });
@@ -55,7 +57,34 @@ export function DialogoCierre({ caja, recargar, alCerrar, alCerrarLaCaja, alFall
     if (!pendiente) alCerrar();
   };
 
+  /** Vuelve a pedir la caja. Solo da el diálogo por actualizado si el último movimiento cambió; si no, no deja reintentar con la vista vieja. */
+  const actualizar = async () => {
+    setRecargando(true);
+    try {
+      const nueva = await recargar();
+      if (
+        nueva &&
+        nueva.id === vista.id &&
+        nueva.estado === 'ABIERTA' &&
+        nueva.resumen.ultimoMovimiento !== vista.resumen.ultimoMovimiento
+      ) {
+        setVista(nueva);
+        setSinActualizar(false);
+        return;
+      }
+    } catch {
+      // Se trata igual que una vista que no cambió.
+    } finally {
+      setRecargando(false);
+    }
+    setSinActualizar(true);
+  };
+
   const enviar = handleSubmit(async (campos) => {
+    if (sinActualizar) {
+      await actualizar();
+      return;
+    }
     const observacion = campos.observacion.trim();
     const validado = cerrarCajaSchema.safeParse({
       claveIdempotencia: clave,
@@ -84,13 +113,7 @@ export function DialogoCierre({ caja, recargar, alCerrar, alCerrarLaCaja, alFall
     } catch (falla) {
       if (esErrorDeApi(falla, 409, 'CAJA_CAMBIO')) {
         // Entró un movimiento después de que la persona cargó la pantalla: se muestra el esperado nuevo y se vuelve a pedir el conteo.
-        setRecargando(true);
-        try {
-          const nueva = await recargar();
-          if (nueva && nueva.id === vista.id && nueva.estado === 'ABIERTA') setVista(nueva);
-        } finally {
-          setRecargando(false);
-        }
+        await actualizar();
         return;
       }
       if (esErrorQueCambiaLaCaja(falla)) {
@@ -159,13 +182,17 @@ export function DialogoCierre({ caja, recargar, alCerrar, alCerrarLaCaja, alFall
             {...register('observacion', { onChange: () => clearErrors('observacion') })}
           />
         </fieldset>
-        {errorGeneral ? <Alerta>{mensajeDeCaja(cerrarCaja.error)}</Alerta> : null}
+        {sinActualizar ? (
+          <Alerta>No se pudo actualizar la caja. Vuelve a intentarlo.</Alerta>
+        ) : errorGeneral ? (
+          <Alerta>{mensajeDeCaja(cerrarCaja.error)}</Alerta>
+        ) : null}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={cerrar} disabled={pendiente} className={ESTILO_BOTON.secundario}>
             Volver
           </button>
           <button type="submit" disabled={pendiente} className={ESTILO_BOTON.primario}>
-            {cerrarCaja.isPending ? 'Cerrando…' : 'Cerrar caja'}
+            {cerrarCaja.isPending ? 'Cerrando…' : sinActualizar ? 'Actualizar caja' : 'Cerrar caja'}
           </button>
         </div>
       </form>

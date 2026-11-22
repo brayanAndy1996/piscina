@@ -14,7 +14,7 @@ import { DialogoCierre } from './DialogoCierre';
 import { DialogoEgreso } from './DialogoEgreso';
 import { DialogoReapertura } from './DialogoReapertura';
 import { FormularioApertura } from './FormularioApertura';
-import { useCajaActual } from './hooks';
+import { useCajaActual, useHoyEnLima } from './hooks';
 import { ListaMovimientos } from './ListaMovimientos';
 import { mensajeDeCaja } from './mensajes';
 import { ResultadoDelCierre } from './ResultadoDelCierre';
@@ -41,6 +41,10 @@ function ContenidoCaja() {
   const [problema, setProblema] = useState<string | null>(null);
   const caja = consulta.data;
   const puedeReabrir = puede(usuario.rol, 'REABRIR_CAJA');
+  // "Hoy" es el de Lima: una página que sigue abierta pasada la medianoche no llama "de hoy" a la caja de ayer.
+  const hoy = useHoyEnLima();
+  const deOtroDia = caja !== undefined && caja !== null && (caja.deOtroDia || caja.fecha < hoy);
+  const cerradaDeOtroDia = caja !== undefined && caja !== null && caja.estado === 'CERRADA' && deOtroDia;
 
   const abrirDialogo = (cual: Dialogo) => {
     setHecho(null);
@@ -80,14 +84,24 @@ function ContenidoCaja() {
             <Alerta>No pudimos actualizar la caja. Lo que ves puede estar desactualizado.</Alerta>
           ) : null}
 
-          {caja === null ? (
-            <FormularioApertura
-              alAbrir={(abierta) => terminar(`Caja abierta con ${formatearSoles(abierta.montoInicial)}.`)}
-              alFallar={alFallar}
-            />
+          {caja === null || cerradaDeOtroDia ? (
+            <>
+              {caja ? (
+                <Aviso>
+                  La caja del {formatearFechaCalendario(caja.fecha)} ya está cerrada. Todavía no hay una caja de hoy:
+                  ábrela para empezar el día.
+                </Aviso>
+              ) : null}
+              <FormularioApertura
+                alAbrir={(abierta) => terminar(`Caja abierta con ${formatearSoles(abierta.montoInicial)}.`)}
+                alFallar={alFallar}
+              />
+              {caja ? <ResultadoDelCierre caja={caja} /> : null}
+              {caja ? <ResumenCaja caja={caja} /> : null}
+            </>
           ) : (
             <>
-              {caja.estado === 'ABIERTA' && caja.deOtroDia ? (
+              {caja.estado === 'ABIERTA' && deOtroDia ? (
                 <Aviso>
                   La caja del {formatearFechaCalendario(caja.fecha)} sigue abierta. Ciérrala antes de abrir la de hoy.
                   Mientras tanto no admite egresos ni cobros.
@@ -96,7 +110,7 @@ function ContenidoCaja() {
 
               {caja.estado === 'ABIERTA' ? (
                 <div className="flex flex-wrap gap-2">
-                  {!caja.deOtroDia ? (
+                  {!deOtroDia ? (
                     <button type="button" onClick={() => abrirDialogo('egreso')} className={ESTILO_BOTON.secundario}>
                       Registrar egreso
                     </button>
@@ -131,7 +145,7 @@ function ContenidoCaja() {
             </>
           )}
 
-          {caja && dialogo === 'egreso' && caja.estado === 'ABIERTA' && !caja.deOtroDia ? (
+          {caja && dialogo === 'egreso' && caja.estado === 'ABIERTA' && !deOtroDia ? (
             <DialogoEgreso
               caja={caja}
               alCerrar={() => setDialogo(null)}
@@ -148,7 +162,7 @@ function ContenidoCaja() {
               alFallar={alFallar}
             />
           ) : null}
-          {caja && dialogo === 'reapertura' && caja.estado === 'CERRADA' && puedeReabrir ? (
+          {caja && dialogo === 'reapertura' && caja.estado === 'CERRADA' && !cerradaDeOtroDia && puedeReabrir ? (
             <DialogoReapertura
               caja={caja}
               alCerrar={() => setDialogo(null)}
