@@ -3,7 +3,7 @@
 Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-11 (responsable) y DT-1 a DT-6
 (orquestador) de la spec; los valores que el borrador llamaba "provisionales" quedan como definitivos. Lo marcado
 **[006b]** va en el segundo PR (DR-10). Las rondas adversariales de la 006b suman las secciones 2.12 (ronda 1, DT-7 a
-DT-9), 2.13 (ronda 2, DT-10 a DT-14) y 2.14 (ronda 3, DT-15 a DT-17).
+DT-9), 2.13 (ronda 2, DT-10 a DT-14), 2.14 (ronda 3, DT-15 a DT-17) y 2.15 (ronda 4, DT-18 y DT-19).
 
 ## 1. Módulos afectados
 
@@ -55,7 +55,8 @@ DT-9), 2.13 (ronda 2, DT-10 a DT-14) y 2.14 (ronda 3, DT-15 a DT-17).
   - `backend/src/modulos/autenticacion/sesion-academia.service.ts`: un método para volver a verificar la sesión.
 
   Desde la ronda adversarial 3 de la 006b (2.14) cambia `cajas.controller.ts`: la conexión se mira al entrar, se
-  escucha también el socket y una descarga cortada no escribe nada.
+  escucha también el socket y una descarga cortada no escribe nada. Desde la ronda adversarial 4 de la 006b (2.15)
+  vuelve a cambiar: la conexión se mira otra vez antes de escribir y en el camino del error.
 - `backend/package.json`: `pdfkit` y `@types/pdfkit`; `scripts/lib/dependencias-backend.mjs`
   (`DEPENDENCIAS_BACKEND_PERMITIDAS`, criterio 127 de 001).
 - `frontend/src/modulos/caja/`: `PaginaHistorialCajas.tsx`, `DetalleCaja.tsx`, las llamadas nuevas en `api.ts` (lista,
@@ -71,6 +72,10 @@ DT-9), 2.13 (ronda 2, DT-10 a DT-14) y 2.14 (ronda 3, DT-15 a DT-17).
     de su caja y su cierre;
   - `frontend/src/modulos/sesion/hooks.ts`: "Cerrar sesión" cancela en `onMutate`;
   - `hooks.ts` de la caja y `frontend/src/lib/descargas-en-curso.ts`: la descarga se registra al pulsar.
+
+  Desde la ronda adversarial 4 de la 006b (2.15):
+  - `frontend/src/modulos/sesion/hooks.ts`: `useCerrarSesionAcademia` con una `mutationKey` exportada;
+  - `hooks.ts` de la caja y `CierresDeLaCaja.tsx`: sin descargas mientras se cierra la sesión.
 
 ## 2. Diseño
 
@@ -561,6 +566,68 @@ DT-17).**
   Quien implementa elige la forma, siempre que los casos del 57 d pasen.
 - **"Cerrando…" y el `DELETE` diferido no cambian:** la mutación sigue con `networkMode: 'online'`.
 
+### 2.15 [006b] Ronda adversarial 4: la conexión antes de escribir y sin descargas mientras se cierra la sesión (criterios 55 g y 57 e)
+
+**La conexión, otra vez antes de escribir (`cajas.controller.ts`; criterio 55 g, DT-18).**
+
+- **Por qué fallaba:** después de `await this.historial.pdf(…)`, el manejador decidía con `controlador.signal.aborted`.
+  Al recibir el fin de la conexión o un RST, Node marca el socket como destruido en la fase de lectura del bucle, pero
+  el `close` (del socket y de la respuesta) llega en la fase de cierre. Si la promesa de `generar` se resuelve en medio
+  (por ejemplo, en un `setImmediate`, o en el último tramo del generador real), la señal todavía no está activa:
+  - el 200 llamaba a `status`, `setHeader` y `end` sobre un socket destruido;
+  - en el `catch`, `if (!controlador.signal.aborted) throw error;` dejaba subir un `Error` común al filtro global, que
+    escribía el 500 y lo registraba como "Error no controlado".
+- **Corrección:** usar `conexionCerrada(solicitud, respuesta)` (la de 2.14) además de la señal, en los dos lugares:
+
+  ```ts
+  const abandonada = (): boolean => controlador.signal.aborted || conexionCerrada(solicitud, respuesta);
+  …
+  const { nombreArchivo, contenido } = await this.historial.pdf(…);
+  if (abandonada()) {
+    this.registro.info(contexto, 'Descarga del PDF del cierre abandonada por el cliente');
+    return;
+  }
+  respuesta.status(200); // … sin ningún `await` entre la comprobación y `end`
+  …
+  } catch (error) {
+    if (!abandonada()) throw error;
+    // info si es del corte (o un 4xx que ya no se escribe); error del manejador con `errorParaRegistro` si no lo es
+  }
+  ```
+
+  - La comprobación y la escritura van en el mismo paso síncrono. Node no destruye el socket en medio de código
+    síncrono, así que no queda ventana.
+  - Opcional: al detectar la conexión cerrada, `controlador.abort()`, para que cualquier oyente de la señal vea lo
+    mismo. No cambia lo observable, porque `historial.pdf` ya terminó.
+  - Lo que ya se respondía antes del manejador, y la definición de `conexionCerrada`, no cambian.
+- **El servicio y la cola no cambian:** el lugar se libera en el `finally` de `HistorialService.pdf`, cuando termina
+  `generar`, como en 2.13.
+- **Pruebas (55 g 4):** el generador determinista revisa `socket.destroyed` con `setImmediate`, que corre en la fase
+  "check", antes de la fase de cierre en que llega `close`. El socket del servidor se obtiene con
+  `servidor.on('request', …)` filtrando por `x-prueba-corte`. La prueba con el generador real y muchos cortes queda
+  fuera de las protegidas (falla solo a veces antes de la corrección); la repite el adversarial en la ronda 5.
+
+**Sin descargas mientras se cierra la sesión (`sesion/hooks.ts`, `caja/hooks.ts` y `CierresDeLaCaja.tsx`; criterio
+57 e, DT-19).**
+
+- **De dónde sale "se está cerrando":** de la propia mutación. `useCerrarSesionAcademia` suma
+  `mutationKey: CLAVE_CERRAR_SESION` (exportada desde `sesion/hooks.ts`, por ejemplo `['sesion', 'cerrar']`). En
+  TanStack Query 5, una mutación en pausa sigue con `status: 'pending'`, así que `useIsMutating({ mutationKey })` y
+  `cliente.isMutating({ mutationKey })` la cuentan. El estado pasa a `pending` en el mismo paso que `mutate`, antes del
+  primer `await` de `execute`.
+- **El botón:** `CierresDeLaCaja` desactiva "Descargar PDF" con `useIsMutating({ mutationKey: CLAVE_CERRAR_SESION }) > 0`
+  (además de `descarga.isPending`).
+- **`descargar` del hook:** si `cliente.isMutating({ mutationKey: CLAVE_CERRAR_SESION }) > 0`, no registra nada ni
+  llama a `mutate` (o registra un controlador ya abortado, que la `mutationFn` descarta sin pedir nada). Así cubre el
+  clic que llega en el mismo paso, antes de que el botón se pinte desactivado.
+- **La `mutationFn` de la descarga:** suma la misma comprobación antes de `useConfirmarSesion`, antes del `fetch` y en
+  la comprobación final, junto con `controlador.signal.aborted` y `sigue()`. Si se está cerrando la sesión, aborta su
+  controlador y lanza `DescargaCanceladaError` (sin mensaje).
+- **Si el `DELETE` falla,** la mutación deja de estar `pending`: el botón se habilita y la descarga vuelve a funcionar
+  (control del 57 e).
+- **Alternativa aceptable:** un indicador en `descargas-en-curso.ts` que se enciende en `onMutate` (donde ya se
+  cancela) y se apaga en `onSettled`. Quien implementa elige, siempre que los casos del 57 e pasen.
+
 ## 3. Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -600,6 +667,9 @@ DT-17).**
 | [006b] Con la señal activa, el controlador no deja llegar ningún error al filtro global (criterio 55 d) | Dejar que el filtro responda el 404, el 429 o el 500 | El filtro escribiría el JSON en una conexión cerrada |
 | [006b] `key={id}` en el contenido del detalle (criterio 56, DT-16) | Un efecto que observe el id, o cambiar `useRecienPedida` | El remontaje reinicia todo el estado de la página de una vez; `useRecienPedida` es compartida con 003 y 004 |
 | [006b] Cancelar en el `onMutate` de "Cerrar sesión" (criterio 57, DT-17) | `networkMode: 'always'`, o cancelar en el `onClick` de `LayoutPanel` | `onMutate` corre aunque la mutación quede en pausa; `always` enviaría el `DELETE` sin conexión y mostraría un error; el `onClick` obliga a cada lugar que cierre sesión a recordarlo |
+| [006b] Mirar la conexión con `conexionCerrada` antes de escribir y en el `catch`, no solo la señal (criterio 55 g, DT-18) | Activar la señal también con `end` o `error` del socket, o filtrar en el filtro global | Los eventos pueden llegar después de que la generación termine; la comprobación síncrona antes de escribir cierra la ventana sin depender del orden, y el filtro global no ve el 200 |
+| [006b] Prueba determinista del 55 g con un generador que termina al ver el socket destruido | Solo la prueba con el generador real y muchos cortes | Con el error, la del generador real falla solo a veces (4 de 150) y tarda minutos; no sirve para confirmar el rojo |
+| [006b] "Descargar PDF" desactivado y sin descargas nuevas mientras "Cerrar sesión" está pendiente, con el estado de la propia mutación (criterio 57 e, DT-19) | Solo desactivar el botón, o un indicador propio en `descargas-en-curso.ts` | Un clic en el mismo paso se colaría con solo el botón; el indicador duplica un estado que TanStack Query ya tiene (queda como alternativa aceptable) |
 | `metodo_pago` creado aquí | Que lo cree la 007 | Los movimientos lo necesitan ya; la 007 lo reutiliza |
 | `pago_id` sin llave foránea hasta la 007 | Crear `pagos` vacía | Cada historia crea sus tablas (D-17) |
 
@@ -655,6 +725,12 @@ DT-17).**
     suelta siempre en un `finally`.
 - **[006b] `onMutate` y la versión de TanStack Query (criterio 57):** si una versión futura dejara de llamar a
   `onMutate` antes de la pausa, la prueba protegida del 57 lo detecta.
+- **[006b] El generador determinista del 55 g:** depende de que `setImmediate` corra antes de la fase en que Node
+  emite `close`, como hace el bucle de eventos de libuv en Node 22, también en Windows. La ronda 4 lo reprodujo con
+  `destroy()` y con `resetAndDestroy()`. Si con alguna de las dos el `close` llegara antes (y el caso ya pasara con el
+  código de `ea02809`), el tester lo anota antes de tocar la prueba.
+- **[006b] `isMutating` y las mutaciones en pausa (criterio 57 e):** si una versión futura de TanStack Query dejara de
+  contar como `pending` una mutación en pausa, la prueba protegida del 57 e lo detecta.
 
 ## 6. Desviaciones aceptadas (006a)
 

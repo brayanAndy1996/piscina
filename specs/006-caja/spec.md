@@ -106,13 +106,33 @@
   - un cierre de sesión en otra pestaña que esta pestaña todavía no conoce: la descarga sigue hasta que la web se
     entera (al volver el foco, criterio 54 b) o hasta la comprobación final (54 c); el servidor ya respondería 401 a
     cualquier petición nueva.
+- **Ronda adversarial 4 de la 006b (22/11/2026, sobre `ea02809`):** una falla contra criterios que ya existían (55 d y
+  51 d) y una observación que el orquestador decidió corregir. No hay criterios nuevos: se suman los apartados 55 g y
+  57 e, críticos y de la 006b. Todo es técnico, sin cambios de negocio (DT-18 y DT-19):
+  - **Criterio 55 g (falla F1, media):** después de generar, `descargarPdf` decidía solo con la señal, que se activa con
+    el evento `close`. Node destruye el socket en la fase de lectura y emite `close` más tarde. Si la generación
+    terminaba en medio, la descarga cortada escribía con `writeHead` y `end` sobre un socket destruido, o, si el
+    generador rechazaba con un `Error` común, el filtro global escribía un 500 y lo registraba como `ERROR_INTERNO`.
+    Con el generador real, un cierre de 1 500 movimientos y cortes con RST, escribieron 4 de 150.
+  - **Criterio 57 e (observación O2; refuerza el 54 y el 57):** sin conexión, "Cerrar sesión" quedaba en "Cerrando…",
+    pero "Descargar PDF" seguía habilitado. Una descarga pulsada después se reanudaba junto con el `DELETE` al volver
+    la conexión, y el PDF podía entregarse.
+
+  Observaciones aceptadas sin criterio:
+  - con 10 descargas en pipelining por un mismo socket, Node emite `MaxListenersExceededWarning`, porque las diez
+    escuchan el `close` del socket a la vez. No es una fuga: al terminar, el número de oyentes vuelve a 1. El control
+    del 55 f (caso 5) sigue valiendo para descargas seguidas por una conexión keep-alive, no para pipelining;
+  - una petición con un cuerpo a medias, cortada, la responde el lector de cuerpos antes de llegar al manejador. Es lo
+    que el 55 d deja igual ("lo que se responde antes de llegar al manejador no cambia");
+  - `Connection: close` con pipelining: Node responde 400 a las peticiones que siguen a la que pidió cerrar, antes de
+    llegar a la app.
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
     del historial y del PDF, más 47 y 48 (ronda adversarial 1).
   - **006b · Historial y PDF del cierre** (siguiente PR, con la 006a unida a `main`): criterios 40 a 44, más esas
     partes, más 49 y 50 (ronda adversarial 1 de la 006b), 51 a 54 (ronda adversarial 2 de la 006b) y 55 a 57 (ronda
-    adversarial 3 de la 006b).
+    adversarial 3 de la 006b), con los apartados 55 g y 57 e (ronda adversarial 4 de la 006b).
 
 ## Objetivo
 
@@ -168,6 +188,11 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   - el 56 y el 57, por lo mismo que el 54: el PDF de una caja llegaba en la PC compartida después de que la persona ya
     había pasado a otra caja o pulsado "Cerrar sesión" (RNF-05), y el detalle mostraba datos financieros de la caché
     sin pedirlos de nuevo.
+- **006b, ronda adversarial 4 (55 g y 57 e, dentro de criterios ya críticos):**
+  - el 55 g, por lo mismo que el 55: una descarga cortada escribía en una conexión cerrada o terminaba como un 500 del
+    filtro global, y el criterio 51 d prohíbe las dos cosas;
+  - el 57 e, por lo mismo que el 54: el PDF podía entregarse en la PC compartida mientras la persona ya estaba
+    cerrando la sesión (RNF-05).
 
 No son críticos, pero llevan _(prueba obligatoria)_: 37 a 39 (web de la caja del día, con pruebas de componentes y una
 E2E) y 44 (web del historial). Los 45 y 46 (semilla y documentación) los verifica el revisor. _(DT-5.)_
@@ -747,7 +772,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     PQ8; DT-10.)_ "Cortar" es que el cliente cierra la conexión antes de que la respuesta termine de enviarse (cierra
     la pestaña, cancela la descarga o se cae la red). El servidor lo detecta en la respuesta: evento `close` sin
     `writableFinished`. _(Ronda adversarial 3 de la 006b: también se detecta un corte anterior al controlador y el
-    cierre del socket de la conexión, y nunca se escribe en una conexión cerrada; criterio 55.)_
+    cierre del socket de la conexión, y nunca se escribe en una conexión cerrada; criterio 55. Ronda adversarial 4 de
+    la 006b: antes de escribir, la conexión se vuelve a mirar, no solo la señal; criterio 55 g.)_
     - a) **Si corta mientras espera turno:**
       - sale de la fila y libera enseguida su lugar en la cola, su cupo de persona (49 c) y su cupo de academia
         (criterio 52);
@@ -968,7 +994,9 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
         desmontar.
 
       _(Ronda adversarial 3 de la 006b: pasar a otra caja sin salir del detalle también cancela (criterio 56), y
-      "Cerrar sesión" cancela al pulsar aunque la mutación quede en pausa sin conexión (criterio 57).)_
+      "Cerrar sesión" cancela al pulsar aunque la mutación quede en pausa sin conexión (criterio 57). Ronda adversarial
+      4 de la 006b: mientras se cierra la sesión, "Descargar PDF" está desactivado y ninguna descarga nueva se pide ni
+      se entrega (criterio 57 e).)_
     - c) **Comprobación final.** Justo antes de entregar el archivo, la web comprueba que esa descarga no fue cancelada
       y que la identidad de la sesión que tiene la web sigue siendo la de la página. Si no, descarta el contenido. Vale
       aunque la respuesta ya haya llegado, o aunque el `fetch` haya ignorado la señal.
@@ -1038,6 +1066,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
         pero tampoco se escribe la respuesta.
       - Lo que se responde antes de llegar al manejador (sesión, academia suspendida, cambio obligatorio y permiso)
         no cambia.
+      - _(Ronda adversarial 4 de la 006b: "detectado" no es solo la señal. Antes de escribir, la conexión se vuelve a
+        mirar con la definición de a; criterio 55 g.)_
     - e) **Lo demás no cambia:** el orden de 49 b, los límites de 49 c y 52, la verificación del 53, la señal del 51 y
       sus casos de prueba.
     - f) **Pruebas de integración,** con la API escuchando en un puerto, como las del 51 e. "Enseguida" es, como allí,
@@ -1108,9 +1138,83 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
          - Dos descargas en pipelining por la misma conexión, sin cortar, responden 200 las dos, en orden y cada una
            con el PDF de su cierre.
          - 15 descargas seguidas por la misma conexión keep-alive responden 200. Durante la prueba, `process` no emite
-           ningún `MaxListenersExceededWarning`, porque cada descarga quita su oyente del socket (c).
+           ningún `MaxListenersExceededWarning`, porque cada descarga quita su oyente del socket (c). _(Ronda
+           adversarial 4 de la 006b: vale para descargas seguidas, una después de otra. Con 10 o más en pipelining por
+           el mismo socket, la advertencia puede salir y se acepta, porque los oyentes vuelven a 1 al terminar.)_
+    - g) **La conexión se vuelve a mirar antes de escribir.** _(Ronda adversarial 4 de la 006b, falla F1, media;
+      incumplía 55 d y 51 d; DT-18.)_ La señal se activa con el evento `close`, pero Node destruye el socket en la fase
+      de lectura del bucle de eventos (al recibir el fin de la conexión o un RST) y emite `close` más tarde, en otra
+      fase. Si la verificación, la lectura o la generación terminan en medio, la señal todavía no está activa, y la
+      descarga, que ya fue cortada:
+      - escribía el PDF con `writeHead` y `end` sobre un socket destruido;
+      - o, si el generador rechazaba con un `Error` común, dejaba subir el error al filtro global, que escribía un
+        500 y lo registraba como `ERROR_INTERNO`.
 
-    _(crítico)_ (D-23; criterios 49 y 51; DT-10 y DT-15)
+      Medido en la ronda: con el generador real, un cierre de 1 500 movimientos y cortes con RST, escribieron 4 de
+      150.
+
+      Entonces:
+      1. **Se mira antes de escribir.** Justo antes de escribir la respuesta del PDF (el 200), y en el camino del error
+         (cualquier error que termine la descarga: 404, 429, 401, 403 o 500 del servicio, o un `Error` común del
+         generador), la descarga mira si la conexión está cerrada con la definición de a, además de la señal. La
+         comprobación y la escritura (o la decisión de dejar subir el error) van en el mismo paso síncrono, sin un
+         `await` en medio, como en b.
+      2. **Si está cerrada,** la descarga cuenta como abandonada, aunque la señal todavía no se haya activado:
+         - no llama a `writeHead`, `write` ni `end` sobre su respuesta (d);
+         - el error, si lo hay, no llega al filtro global: no se escribe el JSON ni se registra como un 500
+           `ERROR_INTERNO` (51 d);
+         - si no hay error (la generación terminó bien) o si el error viene del corte (el `AbortError`, la descarga
+           abandonada o un 404, 429, 401 o 403 que ya no se va a escribir), deja a lo sumo una línea de nivel `info`;
+         - si el error no viene del corte (un `Error` común, un 500), lo registra el manejador como error, sin
+           responder, igual que en d (observación aceptada de la ronda 3). No es la línea del filtro global;
+         - el lugar y los cupos se liberan como siempre, cuando termina la promesa de `generar` (51 b).
+      3. **Si no está cerrada,** todo sigue como hasta ahora: el 200 con el PDF (PQ7) o el error que responde el
+         filtro global (por ejemplo, el 500 de PQ9 b).
+      4. **Pruebas de integración,** en un archivo nuevo de `backend/test/integracion/caja/`, con la marca de pruebas
+         protegidas y la API escuchando en un puerto, como las de f. Usan las utilidades del 55 f (`espiarEscrituras`
+         con la cabecera `x-prueba-corte`, `estadoDeLaCola`, el cliente `node:http`) y suman las que falten en
+         archivos nuevos o sin cambiar lo que ya existe.
+         - **El generador determinista.** Un generador inyectado con `GENERADOR_PDF_CIERRE`, que ignora la señal. Al
+           llamarlo, revisa en cada vuelta del bucle de eventos, con `setImmediate` y no con un temporizador, si el
+           socket del servidor de esa petición ya está destruido (`socket.destroyed === true`). En la misma vuelta en
+           que lo ve, resuelve con un PDF pequeño válido o rechaza con `new Error(…)`, según el caso. `setImmediate`
+           corre antes de la fase en que Node emite `close`: así la generación termina en la ventana de la falla.
+           - La prueba obtiene ese socket escuchando el evento `request` del servidor HTTP de la app y eligiendo la
+             petición por la cabecera `x-prueba-corte`.
+           - Si en 2 000 ms no lo ve destruido, la prueba falla con un mensaje claro, no por el tiempo límite de
+             Vitest.
+           - Sin la cabecera, o en el modo "normal" que elige la prueba, el generador resuelve enseguida.
+         - **Cómo corta el cliente.** Cuando el generador ya recibió la llamada, el cliente `node:http` corta de dos
+           formas: con `destroy()` y con `resetAndDestroy()` (RST).
+         - **En todos los casos,** como en el 51 e, las filas de `cajas`, `movimientos_caja`, `cierres_caja` y
+           `auditoria` no cambian, y ninguna conexión del rol de la app queda `idle in transaction`.
+
+         Casos:
+         1. **Resuelve al ver el socket destruido,** con `destroy()` y con `resetAndDestroy()`. Entonces:
+            - el espía de escritura no anota ninguna llamada de la descarga cortada;
+            - el generador recibió exactamente esa llamada;
+            - enseguida (1 000 ms), `estado` es `{ enCurso: 0, enEspera: 0 }`.
+         2. **Rechaza con un `Error` común al ver el socket destruido,** con las dos formas de corte. Entonces:
+            - el espía de escritura no anota ninguna llamada de la descarga cortada;
+            - el error no llega al filtro global. La prueba lo comprueba con un espía sobre el método `catch` del
+              filtro global de la app, o capturando el registro técnico de la app (`crearDestinoDeRegistro`) y viendo
+              que no hay ninguna línea del filtro para un 500; el test-writer elige la forma;
+            - enseguida, `estado` es `{ enCurso: 0, enEspera: 0 }`.
+         3. **Después de cada corte,** una descarga nueva de la misma persona, sin cortar y con el generador en modo
+            normal, responde 200 con el PDF.
+         4. **Controles, sin cortar:** con el generador en modo normal, la descarga responde 200 con el PDF; con un
+            generador que rechaza enseguida con un `Error` común, responde el 500 `ERROR_INTERNO` de PQ9 b (JSON, sin
+            `Content-Disposition`).
+
+         Si con alguna de las dos formas de corte el caso ya pasa con el código de `ea02809` (porque en esa forma
+         `close` llega antes de que el generador vea el socket destruido), el tester lo anota y no es un error de la
+         prueba.
+         - **Con el generador real y muchos cortes: fuera de las pruebas protegidas.** Con el código de `ea02809`
+           falla solo a veces (4 de 150), así que no sirve para confirmar el rojo, y 150 PDF de 1 500 movimientos
+           tardan minutos. Con la corrección no debería fallar nunca, porque la comprobación y la escritura van en el
+           mismo paso. Lo repite el adversarial en la ronda 5 de la 006b.
+
+    _(crítico)_ (D-23; criterios 49 y 51; DT-10, DT-15 y DT-18)
 56. **Pasar a otra caja en el detalle cancela la descarga de la anterior.** _(Ronda adversarial 3 de la 006b, falla F2,
     media, y una observación; amplía el criterio 54 b; DT-16.)_ La ruta `/panel/cajas/:id` no desmonta el detalle
     cuando solo cambia el id, por ejemplo con "atrás" o "adelante" entre dos cajas. Si la caja de destino está en la
@@ -1205,8 +1309,41 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
          "Cerrar sesión", con el mismo resultado.
       4. **Control.** Con `onlineManager` sin conexión y sin descargas en curso, "Cerrar sesión" muestra "Cerrando…",
          y al restablecer la conexión se envía `DELETE /api/sesion`.
+    - e) **Mientras se cierra la sesión, no se descarga.** _(Ronda adversarial 4 de la 006b, observación O2; refuerza
+      el 54 b y c y el 57 a; DT-19.)_ Sin conexión, "Cerrar sesión" queda en "Cerrando…", pero "Descargar PDF" seguía
+      habilitado. Una descarga pulsada después no estaba en curso cuando se canceló (a), se reanudaba junto con el
+      `DELETE /api/sesion` al volver la conexión, y el PDF podía entregarse antes de que el `DELETE` terminara.
+      - **"Se está cerrando la sesión"** es desde que se pulsa "Cerrar sesión" hasta que su mutación termina, con éxito
+        o con error. Incluye la pausa sin conexión y la espera del `DELETE`. Es lo mismo que hoy muestra "Cerrando…".
+      - **El botón.** Mientras tanto, cada botón "Descargar PDF" del detalle está desactivado (`disabled`).
+      - **Ninguna descarga nueva.** Una descarga que se intenta igual mientras tanto (por ejemplo, un clic que llega en
+        el mismo paso que el de "Cerrar sesión", antes de que la página se vuelva a pintar) no se pide, o se pide con
+        su señal ya `aborted`, y no se entrega. No muestra mensaje propio (54 e).
+      - **La comprobación final (54 c)** también descarta el contenido si en ese momento se está cerrando la sesión.
+      - **Si "Cerrar sesión" falla** (el `DELETE` responde un error y la web sigue en la página), la sesión sigue
+        abierta: "Descargar PDF" vuelve a estar habilitado y una descarga nueva se entrega como en PQ12. _(Lo suma el
+        especificador: se sigue de la definición de "se está cerrando".)_
+      - **Lo demás no cambia:** "Cerrando…", el `DELETE` diferido sin conexión y los casos de a a d.
+      - **Pruebas de componentes,** en el archivo del 57 d o en otro nuevo, con la marca de pruebas protegidas, la
+        preparación del 54 g y `onlineManager.setOnline(true)` en `afterEach`:
+        1. **El caso de la observación.** Con `onlineManager.setOnline(false)`, en el detalle de una caja con un cierre,
+           se pulsa "Cerrar sesión" (se ve "Cerrando…"). Entonces el botón "Descargar PDF" está desactivado. La prueba
+           intenta pulsarlo igual. Después restablece la conexión con `onlineManager.setOnline(true)`, con
+           `DELETE /api/sesion` retenido (lento), y `GET /api/sesion` y el PDF responden enseguida. Entonces:
+           - no se pide el PDF o, si se pide, su señal ya está `aborted` al pedirlo;
+           - no se llama a `URL.createObjectURL` ni a `click`, y no hay mensaje de error;
+           - al soltar `DELETE /api/sesion`, sigue sin entregarse nada.
+        2. **Con conexión.** Con `DELETE /api/sesion` retenido y con conexión, se pulsa "Cerrar sesión": mientras se ve
+           "Cerrando…", "Descargar PDF" está desactivado, y al soltar el `DELETE` no se pidió ni se entregó ningún PDF.
+        3. **En el mismo paso.** Dentro de un solo `act`, sin que la página se vuelva a pintar en medio, se pulsa
+           "Cerrar sesión" y después "Descargar PDF" (por ejemplo, con dos `fireEvent.click` seguidos), con
+           `DELETE /api/sesion` retenido. Entonces no se pide el PDF o se pide con la señal ya `aborted`, y al soltar
+           todo no se entrega nada.
+        4. **Control: "Cerrar sesión" falla.** `DELETE /api/sesion` responde 500. Cuando "Cerrar sesión" vuelve a
+           verse, "Descargar PDF" está habilitado, y al pulsarlo el PDF se entrega una vez, con el nombre
+           `cierre-caja-AAAA-MM-DD-N.pdf`.
 
-    _(crítico)_ (criterio 54; RNF-05)
+    _(crítico)_ (criterio 54; RNF-05; DT-17 y DT-19)
 
 #### Precisiones de la 006b (PQ1 a PQ15)
 
@@ -1719,7 +1856,10 @@ su reapertura) en lugar de los campos de cierre de `CAJA`, para no perder un cie
 - **Web de 002, [006b, ronda adversarial 2]:** `pedirArchivo` acepta una señal opcional, y "Cerrar sesión" cancela
   las descargas de PDF en curso (criterio 54). Lo demás de "Cerrar sesión" no cambia. _(Ronda adversarial 3: la
   cancelación pasa al `onMutate` de `useCerrarSesionAcademia`, para que ocurra al pulsar aunque la mutación quede en
-  pausa sin conexión; criterio 57 y DT-17.)_
+  pausa sin conexión; criterio 57 y DT-17. Ronda adversarial 4: mientras "Cerrar sesión" está pendiente, también en
+  pausa, el detalle de la caja desactiva "Descargar PDF" y no pide ni entrega ninguna descarga nueva; para saberlo,
+  la mutación de `useCerrarSesionAcademia` puede llevar una `mutationKey` exportada. "Cerrando…" y el resto de
+  "Cerrar sesión" no cambian; criterio 57 e y DT-19.)_
 - **Web de 003 y 004, [006b, ronda adversarial 3]:** ninguno. El criterio 56 se resuelve en el detalle de la caja
   (DT-16), sin cambiar `useRecienPedida`, que comparten las páginas de configuración, planes y clases.
 - **Esta misma spec, prueba protegida del 49 b [006b, ronda adversarial 2]:** cambia el reparto de las diez descargas
@@ -1789,7 +1929,11 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 - **Un generador que ignora la señal (006b, criterio 51):** mientras no termina, su lugar sigue ocupado. El generador
   real sí la respeta; solo los generadores de las pruebas pueden ignorarla. Si además rechaza con un `Error` común
   después del corte, se registra como error (ronda adversarial 3 de la 006b), aunque no se escribe la respuesta
-  (criterio 55 d).
+  (criterio 55 d). Lo mismo si termina en la ventana en que el socket ya está destruido y la señal todavía no se
+  activó (criterio 55 g): lo registra el manejador, no el filtro global.
+- **Pipelining de muchas descargas por un socket (006b, ronda adversarial 4):** con 10 o más a la vez, Node emite
+  `MaxListenersExceededWarning`, porque todas escuchan el `close` del socket hasta terminar (criterio 55 c). No es
+  una fuga: al terminar, los oyentes vuelven a 1.
 - **Clientes que no leen la respuesta (006b, ronda adversarial 3):** el PDF ya escrito queda en la memoria del proceso
   hasta que el socket se cierra o vence. Su lugar en la cola ya está libre, porque la generación terminó.
 - **Un cierre de sesión en otra pestaña (006b, ronda adversarial 3):** si otra pestaña cierra la sesión y esta todavía
@@ -1819,8 +1963,8 @@ fuera; las del orquestador, "DT-n" y "DT-n de 006"; las de diseño del especific
 siempre su número ("DT-5 de 002", "DR-11 de 005"). La pregunta Pn del borrador es DR-n y la Tn es DT-n (P1 es DR-1, T1
 es DT-1, y así hasta P11 y T6; P13, contestada después, es DR-13, y DR-12 queda para P12). DT-7 la tomó el
 orquestador en la ronda adversarial 1 de la 006b, sin pregunta previa; T8 y T9, de esa ronda, son DT-8 y DT-9. DT-10 a
-DT-14 las tomó el orquestador en la ronda adversarial 2 de la 006b, también sin pregunta previa, y DT-15 a DT-17, en la
-ronda adversarial 3 de la 006b. Las precisiones de las
+DT-14 las tomó el orquestador en la ronda adversarial 2 de la 006b, también sin pregunta previa; DT-15 a DT-17, en la
+ronda adversarial 3 de la 006b, y DT-18 y DT-19, en la ronda adversarial 4 de la 006b. Las precisiones de las
 pruebas protegidas de la 006a se citan como "PPn"; las del repaso de la 006b, como "PQn" (están al final de la sección I
 de los criterios).
 
@@ -1905,7 +2049,8 @@ es la propuesta.
   404); prueba obligatoria 37 a 39, el contenido del 42 y el 44; revisor 45 y 46. Repartidos como dice "División en 006a
   y 006b". La ronda adversarial 1 de la 006a suma 47 y 48, críticos, por decisión del orquestador. La ronda adversarial
   1 de la 006b suma 49 y 50, también críticos; la ronda adversarial 2 de la 006b suma 51 a 54, y la ronda adversarial
-  3 de la 006b suma 55 a 57, todos críticos.
+  3 de la 006b suma 55 a 57, todos críticos. La ronda adversarial 4 de la 006b suma los apartados 55 g y 57 e, dentro
+  de esos criterios críticos.
 - **DT-6 (pregunta T6). `ultimoMovimientoVisto` en el cierre** (D3). **Decidido (la propuesta).** Alternativa
   descartada: cerrar con lo que haya en ese momento, aunque la persona no lo haya visto. _(006a; criterio 31.)_
 - **DT-7 (sin pregunta previa; ronda adversarial 1 de la 006b, 22/11/2026). Una caja con muchos movimientos y su PDF.**
@@ -2010,6 +2155,32 @@ es la propuesta.
   - cancelar en el `onClick` de `LayoutPanel`: cada lugar que cierre sesión tendría que acordarse de hacerlo.
 
   _(006b; criterio 57.)_
+- **DT-18 (sin pregunta previa; ronda adversarial 4 de la 006b, 22/11/2026). La conexión, otra vez antes de
+  escribir.** **Decidido por el orquestador:** antes de escribir la respuesta del PDF, y en el camino del error, el
+  manejador vuelve a mirar si la conexión está cerrada con la definición del 55 a, no solo la señal. Si lo está, la
+  descarga cuenta como abandonada: no escribe, el error no llega al filtro global y deja a lo sumo una línea `info`
+  si el error viene del corte (o el error del manejador, si no viene del corte, como el 55 d). Las pruebas protegidas
+  usan un generador determinista que termina en cuanto ve el socket destruido; la de muchos cortes con el generador
+  real queda fuera de las protegidas, porque con el error falla solo a veces. Alternativas descartadas:
+  - activar la señal también con `solicitud.socket.on('end')` o `'error'`: siguen siendo eventos, que pueden llegar
+    después de que la generación termine; la comprobación antes de escribir cierra la ventana sin depender del orden;
+  - comprobar solo en el filtro global: el filtro atiende todas las rutas y no sabe qué es una descarga abandonada, y
+    el 200 del PDF no pasa por él.
+
+  _(006b; criterio 55 g.)_
+- **DT-19 (sin pregunta previa; ronda adversarial 4 de la 006b, 22/11/2026). Sin descargas mientras se cierra la
+  sesión.** **Decidido por el orquestador:** mientras "Cerrar sesión" está pendiente (también en pausa sin conexión),
+  "Descargar PDF" está desactivado y cualquier descarga que se intente no se pide ni se entrega, también en la
+  comprobación final. El estado sale de la propia mutación de "Cerrar sesión" (por ejemplo, con una `mutationKey`
+  y `useIsMutating` en el botón, e `isMutating` del cliente de consultas al pulsar, antes de pedir y antes de
+  entregar). Alternativas descartadas:
+  - solo desactivar el botón: un clic en el mismo paso, antes de volver a pintar, se colaría;
+  - un indicador propio en `descargas-en-curso.ts` que se enciende en `onMutate` y se apaga en `onSettled`: duplica
+    un estado que TanStack Query ya tiene, y hay que acordarse de apagarlo en cada salida. Quien implementa puede
+    usarlo si los casos del 57 e pasan;
+  - cancelar al volver la conexión: el `DELETE` y la descarga se reanudan juntos y el orden no está garantizado.
+
+  _(006b; criterio 57 e.)_
 
 ### Decisiones de diseño (técnicas)
 
@@ -2122,8 +2293,8 @@ cambian ninguna regla de negocio; se citan como "PPn" en los criterios, el contr
 Las preguntas del borrador quedaron resueltas el 22/11/2026; el texto completo de cada una, con lo decidido y la
 alternativa descartada, está en "Decisiones". P13, encontrada en el repaso de la 006b, se contestó el mismo día con la
 propuesta (DR-13). T8 y T9, de la ronda adversarial 1 de la 006b, se contestaron con la propuesta (DT-8 y DT-9). Lo de
-la ronda adversarial 2 de la 006b lo decidió el orquestador (DT-10 a DT-14), y lo de la ronda adversarial 3, también
-(DT-15 a DT-17), sin preguntas nuevas. Queda una: P12, encontrada al escribir PP3, que no bloquea:
+la ronda adversarial 2 de la 006b lo decidió el orquestador (DT-10 a DT-14), y lo de las rondas adversariales 3 y 4,
+también (DT-15 a DT-17 y DT-18 y DT-19), sin preguntas nuevas. Queda una: P12, encontrada al escribir PP3, que no bloquea:
 
 - **P12 (para el responsable, no bloquea). ¿Una caja puede terminar el día con más de S/ 99,999.99 en efectivo?** El
   monto declarado del cierre usa `montoNoNegativoSchema` (criterio 30), que llega a `99999.99`, pero el esperado en
