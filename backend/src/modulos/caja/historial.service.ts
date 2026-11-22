@@ -22,6 +22,7 @@ import { calcularDiferencia } from './dominio/esperado';
 import { noEncontrado } from './errores';
 import { leerCaja } from './lectura';
 import { GENERADOR_PDF_CIERRE, type DatosPdfCierre, type GeneradorPdfCierre } from './pdf/cierre-pdf';
+import { ColaPdfCierre } from './pdf/cola-pdf';
 
 /** El `numero` de un cierre en la dirección del PDF (PQ6): un entero de 1 a 5 dígitos sin ceros a la izquierda ni signo, y como mucho `smallint`. */
 const PATRON_NUMERO_DE_CIERRE = /^[1-9][0-9]{0,4}$/;
@@ -92,6 +93,10 @@ function consultaInvalida(campo: string, mensaje: string): ErrorNegocio {
  *
  * El PDF se arma fuera de la transacción: la lectura termina (`COMMIT`) antes de llamar al generador (criterio 43, PQ8), así que ninguna
  * conexión queda ocupada mientras se arma el documento y una falla del generador no cambia nada.
+ *
+ * El PDF no detiene la API (criterio 49): el generador cede el bucle de eventos por tramos, y `ColaPdfCierre` acota cuántas generaciones hay a la
+ * vez (2) y cuántas descargas esperan (8) en el proceso, con un máximo de 2 por persona. El turno se pide antes de la lectura, así que una
+ * descarga que espera no tiene ninguna transacción abierta, y se libera siempre, con 200, 404 o 500.
  */
 @Injectable()
 export class HistorialService {
@@ -99,6 +104,7 @@ export class HistorialService {
     private readonly baseDatos: BaseDatos,
     @Inject(RELOJ) private readonly reloj: Reloj,
     @Inject(GENERADOR_PDF_CIERRE) private readonly generador: GeneradorPdfCierre,
+    private readonly cola: ColaPdfCierre,
   ) {}
 
   /**
@@ -165,8 +171,13 @@ export class HistorialService {
   }
 
   /**
-   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (criterio 42, PQ6 a PQ9). Después del permiso, un id o un `numero` con forma inválida son 404
-   * sin tocar la base. Una transacción corta lee la caja (con el alcance) y su cierre; al terminar, y recién entonces, se llama al generador.
+   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (criterios 42, 43 y 49; PQ6 a PQ9). Orden (criterio 49 b), después del permiso (PQ1):
+   * 1. un id o un `numero` con forma inválida son 404, sin tocar la base ni la cola;
+   * 2. el límite por persona y el lugar en la cola (`ColaPdfCierre.turno`): 429 `DEMASIADAS_SOLICITUDES` si no hay;
+   * 3. la espera del turno, sin ninguna transacción abierta;
+   * 4. una transacción corta lee la caja (con el alcance) y su cierre: 404 si no existen o quedan fuera del alcance;
+   * 5. al terminar la lectura, y recién entonces, se llama al generador.
+   * El turno se libera en el `finally`, con 200, 404 o 500.
    */
   async pdf(sesion: SesionVerificada, idPedido: string, numeroPedido: string): Promise<PdfDeCierre> {
     if (!PATRON_UUID.test(idPedido)) throw noEncontrado();
@@ -174,28 +185,33 @@ export class HistorialService {
     const numero = Number(numeroPedido);
     if (numero > NUMERO_MAXIMO_DE_CIERRE) throw noEncontrado();
 
-    const datos = await this.baseDatos.conAcademia(sesion.usuario.academiaId, async (tx) => {
-      const caja = await this.leerCajaConAlcance(tx, sesion, idPedido.toLowerCase());
-      const cierre = caja?.cierres.find((candidato) => candidato.numero === numero);
-      if (!caja || !cierre) return null;
-      return {
-        academia: sesion.academia.nombre,
-        caja: {
-          id: caja.id,
-          fecha: caja.fecha,
-          montoInicial: caja.montoInicial,
-          abiertaPor: caja.abiertaPor,
-          abiertaEn: caja.abiertaEn,
-        },
-        cierre,
-        movimientos: caja.movimientos.filter((movimiento) => movimiento.numero <= cierre.movimientosHasta),
-      } satisfies DatosPdfCierre;
-    });
-    if (datos === null) throw noEncontrado();
+    const liberarTurno = await this.cola.turno(sesion.usuario.id);
+    try {
+      const datos = await this.baseDatos.conAcademia(sesion.usuario.academiaId, async (tx) => {
+        const caja = await this.leerCajaConAlcance(tx, sesion, idPedido.toLowerCase());
+        const cierre = caja?.cierres.find((candidato) => candidato.numero === numero);
+        if (!caja || !cierre) return null;
+        return {
+          academia: sesion.academia.nombre,
+          caja: {
+            id: caja.id,
+            fecha: caja.fecha,
+            montoInicial: caja.montoInicial,
+            abiertaPor: caja.abiertaPor,
+            abiertaEn: caja.abiertaEn,
+          },
+          cierre,
+          movimientos: caja.movimientos.filter((movimiento) => movimiento.numero <= cierre.movimientosHasta),
+        } satisfies DatosPdfCierre;
+      });
+      if (datos === null) throw noEncontrado();
 
-    // La transacción ya terminó: nada de la base queda abierto mientras se arma el documento. Si el generador falla, el error sube aquí.
-    const contenido = await this.generador.generar(datos);
-    return { nombreArchivo: `cierre-caja-${datos.caja.fecha}-${datos.cierre.numero}.pdf`, contenido };
+      // La transacción ya terminó: nada de la base queda abierto mientras se arma el documento. Si el generador falla, el error sube aquí.
+      const contenido = await this.generador.generar(datos);
+      return { nombreArchivo: `cierre-caja-${datos.caja.fecha}-${datos.cierre.numero}.pdf`, contenido };
+    } finally {
+      liberarTurno();
+    }
   }
 
   /** La caja `id` con su detalle si está dentro del alcance de quien lee; `null` si no existe, es de otra academia o queda fuera del alcance. */

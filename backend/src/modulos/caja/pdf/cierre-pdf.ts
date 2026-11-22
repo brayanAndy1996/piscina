@@ -7,6 +7,7 @@ import {
   type PersonaCaja,
   type ResultadoCierre,
 } from '@aquagestion/contratos';
+import { performance } from 'node:perf_hooks';
 import PDFDocument from 'pdfkit';
 import { fechaCortaEnLima, horaEnLima } from '../../../comun/fechas';
 import { textoParaPdf } from './texto-pdf';
@@ -19,6 +20,12 @@ import { textoParaPdf } from './texto-pdf';
  * Determinista e independiente de la zona del proceso: `CreationDate` es `cerradoEn` (no la hora de la descarga); `pdfkit` calcula el `/ID`
  * del final con los datos de `info` que recibe en el constructor, así que también queda fijo; las horas se escriben en America/Lima con
  * `@date-fns/tz`. Los montos se escriben con `formatearSoles` sobre el texto, sin `Number`.
+ *
+ * No detiene la API (criterio 49 a, plan 2.12): el documento se dibuja en el hilo principal pero por tramos de unos 5 ms medidos con el reloj
+ * (`TRAMO_MS`); entre un tramo y el siguiente se cede el bucle con `setImmediate`, así las demás peticiones (de cualquier academia) avanzan
+ * mientras se arma un PDF grande. Se cede solo entre filas de la tabla, nunca entre dos llamadas que dependan una de otra, y las llamadas a
+ * `pdfkit` son las mismas y en el mismo orden que sin tramos: los bytes no cambian. No hay un `worker_thread`: no toca el build ni el cargador de
+ * las pruebas.
  *
  * Los textos que salen de los datos pasan por `textoParaPdf` (PQ11): la fuente estándar solo muestra Latin-1 y el texto se escribe codificado
  * (nunca como operadores del PDF), así que ningún texto puede cambiar la estructura del documento. Nunca lleva un DNI (RNF-05).
@@ -85,6 +92,31 @@ const COLUMNAS: readonly Columna[] = [
 ];
 
 const RELLENO_DE_CELDA = 2;
+
+/**
+ * Cuánto trabaja el generador seguido antes de ceder el bucle de eventos (criterio 49 a, plan 2.12): unos 5 ms, medidos por tiempo y no por filas.
+ * Con 2 generaciones a la vez, cada vuelta del bucle corre un tramo de cada una, y cada ida y vuelta a la base de otra petición espera esa suma.
+ * Medido con la prueba del 49 a (5 000 movimientos, 3 descargas): con tramos de 10 ms el egreso de otra academia tardaba unos 580 ms (el límite
+ * es 1 000); con 5 ms, unos 330 ms; con 4 ms, unos 250 ms. El retraso máximo del bucle es de unos 25 ms en los tres casos (el límite es 200).
+ */
+const TRAMO_MS = 5;
+
+/** Cede el bucle de eventos (deja correr lo que esté esperando: otras peticiones, la base, los temporizadores) y sigue en la siguiente vuelta. */
+const cederElBucle = (): Promise<void> => new Promise((resolver) => setImmediate(resolver));
+
+/**
+ * Mide el tramo en curso: `cederSiToca` cede el bucle cuando el tramo ya duró `TRAMO_MS` y empieza otro. Una instancia por documento, así que dos
+ * generaciones a la vez no comparten el reloj.
+ */
+class Tramos {
+  private inicio = performance.now();
+
+  async cederSiToca(): Promise<void> {
+    if (performance.now() - this.inicio < TRAMO_MS) return;
+    await cederElBucle();
+    this.inicio = performance.now();
+  }
+}
 
 const nombreCompleto = (persona: PersonaCaja): string => `${persona.nombres} ${persona.apellidos}`;
 
@@ -164,8 +196,8 @@ function encabezadoDeTabla(doc: Documento, y: number): number {
   return alto;
 }
 
-/** La tabla de los movimientos; cuando una fila no cabe en la página, sigue en la siguiente con su encabezado. */
-function tabla(doc: Documento, movimientos: readonly MovimientoCaja[]): void {
+/** La tabla de los movimientos; cuando una fila no cabe en la página, sigue en la siguiente con su encabezado. Cede el bucle entre filas. */
+async function tabla(doc: Documento, movimientos: readonly MovimientoCaja[], tramos: Tramos): Promise<void> {
   const limite = doc.page.height - doc.page.margins.bottom;
   let y = doc.y;
   y += encabezadoDeTabla(doc, y);
@@ -188,12 +220,13 @@ function tabla(doc: Documento, movimientos: readonly MovimientoCaja[]): void {
       y += encabezadoDeTabla(doc, y);
     }
     y += filaDeTabla(doc, celdas, y, FUENTE);
+    await tramos.cederSiToca();
   }
   doc.x = MARGEN;
   doc.y = y + 6;
 }
 
-function dibujar(doc: Documento, datos: DatosPdfCierre): void {
+async function dibujar(doc: Documento, datos: DatosPdfCierre, tramos: Tramos): Promise<void> {
   const { caja, cierre } = datos;
   linea(doc, datos.academia, FUENTE_NEGRITA, 16);
   linea(doc, 'Cierre de caja', FUENTE_NEGRITA, 13);
@@ -208,7 +241,7 @@ function dibujar(doc: Documento, datos: DatosPdfCierre): void {
   linea(doc, 'Movimientos', FUENTE_NEGRITA, 11);
   doc.moveDown(0.3);
   if (datos.movimientos.length === 0) linea(doc, 'Sin movimientos');
-  else tabla(doc, datos.movimientos);
+  else await tabla(doc, datos.movimientos, tramos);
   doc.moveDown(0.5);
 
   linea(doc, 'Totales', FUENTE_NEGRITA, 11);
@@ -237,7 +270,8 @@ function dibujar(doc: Documento, datos: DatosPdfCierre): void {
 }
 
 /**
- * Arma el PDF del cierre (A4, Helvetica) y lo devuelve completo en un `Buffer`; no toca la base ni el disco. Rechaza si `pdfkit` falla.
+ * Arma el PDF del cierre (A4, Helvetica) y lo devuelve completo en un `Buffer`; no toca la base ni el disco. Rechaza si `pdfkit` falla. Cede el
+ * bucle de eventos por tramos (criterio 49 a): la promesa se resuelve cuando el documento termina, no en la misma vuelta.
  * `info.Title` es `Cierre de caja AAAA-MM-DD N`, sin textos de usuarios, y `info.CreationDate` es `cerradoEn`; van en el constructor porque
  * `pdfkit` calcula el `/ID` del documento ahí (PQ9 d).
  */
@@ -260,8 +294,9 @@ export function generarPdfCierre(datos: DatosPdfCierre): Promise<Buffer> {
       doc.on('data', (parte: Buffer) => partes.push(parte));
       doc.on('end', () => resolver(Buffer.concat(partes)));
       doc.on('error', rechazar);
-      dibujar(doc, datos);
-      doc.end();
+      dibujar(doc, datos, new Tramos())
+        .then(() => doc.end())
+        .catch(rechazar);
     } catch (error) {
       rechazar(error);
     }

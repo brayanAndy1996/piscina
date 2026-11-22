@@ -51,8 +51,10 @@ function parametroCrudo(solicitud: Request, nombre: string): string | string[] |
  * reabrir un cierre, solo el administrador (`REABRIR_CAJA`, DT-1). El Superadmin no tiene ruta aquí (D-29).
  *
  * Orden de las comprobaciones (el de 002): sesión → academia activa → cambio obligatorio → permiso → cuerpo (o consulta) → operación. No hay
- * rutas para cambiar ni borrar un movimiento ni un cierre (criterio 23, PQ15): esas direcciones responden 404. Las tres lecturas del historial
- * (006b) pasan por `HistorialService`.
+ * rutas para cambiar ni borrar un movimiento ni un cierre (criterio 23, PQ15): esas direcciones responden 404, igual que cualquier método que no
+ * sea `GET` sobre las rutas de lectura. Eso incluye `HEAD` (criterio 50): Express lo atendería con el manejador del `GET`, así que un middleware
+ * (`instalarHeadSinRutasDeCaja`, instalado en `configurarApp` antes de las rutas de Nest) lo responde con el 404 de siempre, también al
+ * `ENTRENADOR` y al `ALUMNO`; no hay ningún `@Head()` aquí. Las tres lecturas del historial (006b) pasan por `HistorialService`.
  */
 @Controller('cajas')
 export class CajasController {
@@ -97,9 +99,11 @@ export class CajasController {
   }
 
   /**
-   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (006b, criterios 42 y 43): el PDF de un cierre, armado bajo pedido y fuera de la transacción de
-   * lectura. El `id` y el `numero` no pasan por pipes: todo lo que no se puede mostrar es el mismo 404 (PQ1, PQ6). Las cabeceras se escriben
-   * con el `Buffer` ya completo (PQ7): si el generador falla, el error sube antes de escribir nada y el filtro global responde el 500 JSON.
+   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (006b, criterios 42, 43 y 49): el PDF de un cierre, armado bajo pedido y fuera de la transacción de
+   * lectura. El `id` y el `numero` no pasan por pipes: todo lo que no se puede mostrar es el mismo 404 (PQ1, PQ6). Con la cola de generación
+   * llena, o con 2 descargas de la misma persona en curso o en espera, responde 429 `DEMASIADAS_SOLICITUDES` (criterio 49 b y c; lo decide
+   * `HistorialService`). Las cabeceras se escriben con el `Buffer` ya completo (PQ7): si el generador falla, el error sube antes de escribir
+   * nada y el filtro global responde el 500 JSON. Solo `GET`: `HEAD` responde 404 (criterio 50).
    */
   @Get(':id/cierres/:numero/pdf')
   @Permiso('VER_REPORTES_FINANCIEROS')

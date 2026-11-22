@@ -9,6 +9,7 @@
 // El PDF del cierre (006b): `generarPdfCierre` (pura respecto de la base) y el token `GENERADOR_PDF_CIERRE` con el que `CajaModule` la provee.
 export { CajaModule } from './caja.module';
 export { CajasService } from './cajas.service';
+export { instalarHeadSinRutasDeCaja } from './head-sin-ruta';
 export {
   type ConceptoIngreso,
   type EgresoEnCaja,
@@ -20,4 +21,5 @@ export {
   registrarIngresoEnCaja,
 } from './movimientos';
 export { type DatosPdfCierre, GENERADOR_PDF_CIERRE, type GeneradorPdfCierre, generarPdfCierre } from './pdf/cierre-pdf';
+export { ColaPdfCierre, LIMITE_PDF_POR_PERSONA, LIMITES_PDF_CIERRE } from './pdf/cola-pdf';
 export { textoParaPdf } from './pdf/texto-pdf';
