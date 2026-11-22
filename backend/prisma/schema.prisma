@@ -175,9 +175,9 @@ model Usuario {
   creadoEn         DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn    DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
-  academia Academia @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  clases   Clase[]
-  alumnos  Alumno[]
+  academia          Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  clases            Clase[]
+  alumnos           Alumno[]
   cajasAbiertas     Caja[]           @relation("CajaAbiertaPor")
   movimientosCaja   MovimientoCaja[]
   cierresCerrados   CierreCaja[]     @relation("CierreCerradoPor")

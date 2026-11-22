@@ -21,7 +21,7 @@ import {
   type TransaccionAcademia,
 } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
-import { AuditoriaService } from '../auditoria';
+import { insertarEnAuditoriaDeAcademia } from '../auditoria/insercion';
 import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
 import type { SesionVerificada } from '../autenticacion/tipos';
 import { esCierreTardio } from './dominio/dia';
@@ -47,6 +47,15 @@ const RESTRICCION_CLAVE_DE_CAJA = 'cajas_academia_id_clave_idempotencia_key';
 const RESTRICCION_CLAVE_DE_EGRESO = 'movimientos_caja_academia_id_clave_idempotencia_key';
 const RESTRICCION_CLAVE_DE_CIERRE = 'cierres_caja_academia_id_clave_idempotencia_key';
 const RESTRICCION_UN_CIERRE_VIGENTE = 'cierres_caja_un_vigente_por_caja';
+
+/**
+ * El bloqueo consultivo `'caja:' || academia_id`, el segundo en el orden de bloqueos (después del actor, antes de la fila de la caja): ordena
+ * la apertura y la reapertura, las dos operaciones que pueden dejar una caja abierta. Un solo sitio para que el orden no se desvíe.
+ */
+async function bloquearCajasDeLaAcademia(tx: TransaccionAcademia): Promise<void> {
+  await tx.cliente.$executeRaw`
+    SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`caja:${tx.academiaId}`}::text, 0))`;
+}
 
 interface FilaDeCaja {
   id: string;
@@ -83,7 +92,6 @@ export interface ResultadoDeEgreso {
 export class CajasService {
   constructor(
     private readonly baseDatos: BaseDatos,
-    private readonly auditoria: AuditoriaService,
     @Inject(RELOJ) private readonly reloj: Reloj,
     private readonly registro: PinoLogger,
   ) {
@@ -142,8 +150,7 @@ export class CajasService {
         { id: actor.id, versionToken: actor.versionToken },
         { registro: this.registro, ip },
       );
-      await tx.cliente.$executeRaw`
-        SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`caja:${tx.academiaId}`}::text, 0))`;
+      await bloquearCajasDeLaAcademia(tx);
       const ahora = this.reloj.ahora();
       const hoy = hoyEnLima(ahora);
 
@@ -182,7 +189,7 @@ export class CajasService {
         RETURNING id::text AS id`;
       const creada = creadas[0];
       if (!creada) throw new Error('La apertura de la caja no devolvió fila.');
-      await this.auditoria.registrarEnAcademia(tx, {
+      await insertarEnAuditoriaDeAcademia(tx.cliente, tx.academiaId, ahora, {
         actorTipo: 'USUARIO',
         actorId: actor.id,
         accion: 'CAJA_ABIERTA',
@@ -305,7 +312,7 @@ export class CajasService {
         await tx.cliente.$executeRaw`
           UPDATE cajas SET estado = 'CERRADA'::estado_caja, actualizado_en = ${ahora}::timestamptz
            WHERE academia_id = ${tx.academiaId}::uuid AND id = ${caja.id}::uuid`;
-        await this.auditoria.registrarEnAcademia(tx, {
+        await insertarEnAuditoriaDeAcademia(tx.cliente, tx.academiaId, ahora, {
           actorTipo: 'USUARIO',
           actorId: actor.id,
           accion: 'CAJA_CERRADA',
@@ -349,8 +356,7 @@ export class CajasService {
           { registro: this.registro, ip },
         );
         if (!PATRON_UUID.test(idPedido)) throw noEncontrado();
-        await tx.cliente.$executeRaw`
-          SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`caja:${tx.academiaId}`}::text, 0))`;
+        await bloquearCajasDeLaAcademia(tx);
         const ahora = this.reloj.ahora();
         const caja = await bloquearCaja(tx, idPedido);
         if (!caja) throw noEncontrado();
@@ -365,20 +371,23 @@ export class CajasService {
         // `reabierto_en` nunca precede a `cerrado_en` (CHECK `cierres_caja_reapertura_posterior`): con el reloj de otra instancia unos
         // milisegundos atrás, o tras un ajuste de la hora del servidor, se toma el instante del cierre en lugar de fallar con un 500.
         const reabiertos = await tx.cliente.$queryRaw<
-          { numero: number; monto_declarado: string; diferencia: string }[]
+          { numero: number; monto_declarado: string; diferencia: string; reabierto_en: Date }[]
         >`
           UPDATE cierres_caja
              SET reabierto_por = ${actor.id}::uuid, reabierto_en = GREATEST(${ahora}::timestamptz, cerrado_en),
                  motivo_reapertura = ${datos.motivo}
            WHERE academia_id = ${tx.academiaId}::uuid AND caja_id = ${caja.id}::uuid AND reabierto_en IS NULL
-          RETURNING numero::int AS numero, monto_declarado::text AS monto_declarado, diferencia::text AS diferencia`;
+          RETURNING numero::int AS numero, monto_declarado::text AS monto_declarado, diferencia::text AS diferencia,
+                    reabierto_en`;
         const cierre = reabiertos[0];
         // Una caja `CERRADA` tiene siempre un cierre vigente (lo garantizan el cierre y las pruebas): si no lo tiene, algo escribió fuera del servicio.
         if (!cierre) throw new Error('La caja cerrada no tiene un cierre vigente que reabrir.');
+        // La misma hora que quedó en `reabierto_en` (la de `ahora`, o la del cierre si el `GREATEST` la subió) para la caja y la auditoría.
+        const reabiertoEn = cierre.reabierto_en;
         await tx.cliente.$executeRaw`
-          UPDATE cajas SET estado = 'ABIERTA'::estado_caja, actualizado_en = ${ahora}::timestamptz
+          UPDATE cajas SET estado = 'ABIERTA'::estado_caja, actualizado_en = ${reabiertoEn}::timestamptz
            WHERE academia_id = ${tx.academiaId}::uuid AND id = ${caja.id}::uuid`;
-        await this.auditoria.registrarEnAcademia(tx, {
+        await insertarEnAuditoriaDeAcademia(tx.cliente, tx.academiaId, reabiertoEn, {
           actorTipo: 'USUARIO',
           actorId: actor.id,
           accion: 'CAJA_REABIERTA',
