@@ -360,9 +360,10 @@ describe('criterio 5: permisos de planes y clases', () => {
   });
 
   describe('la matriz de permisos', () => {
-    it('criterio 5: CONFIGURAR_PLANES_HORARIOS_AFORO sigue solo con ADMIN: TODO y la matriz sigue con 24 filas (DT-2)', () => {
+    it('criterio 5: CONFIGURAR_PLANES_HORARIOS_AFORO sigue solo con ADMIN: TODO y la matriz sigue con 24 filas más REABRIR_CAJA de la 006 (DT-2)', () => {
       expect(MATRIZ_PERMISOS['CONFIGURAR_PLANES_HORARIOS_AFORO']).toEqual({ ADMIN: 'TODO' });
-      expect(Object.keys(MATRIZ_PERMISOS)).toHaveLength(24);
+      // Historia 006 (DT-1): la matriz suma la fila REABRIR_CAJA (de 24 a 25); esta prueba no cambia más.
+      expect(Object.keys(MATRIZ_PERMISOS)).toHaveLength(25);
       expect(puede('ADMIN', 'CONFIGURAR_PLANES_HORARIOS_AFORO')).toBe(true);
       for (const rol of ['SECRETARIA', 'ENTRENADOR', 'ALUMNO']) {
         expect(puede(rol, 'CONFIGURAR_PLANES_HORARIOS_AFORO'), rol).toBe(false);

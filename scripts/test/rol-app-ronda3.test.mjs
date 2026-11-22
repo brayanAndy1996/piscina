@@ -214,6 +214,19 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       'matriculas|actualizado_en|UPDATE',
       'matricula_clases|*|SELECT',
       'matricula_clases|*|INSERT',
+      // Historia 006, criterio 2: se suman los privilegios de las tres tablas de la caja (no se quita nada de lo anterior).
+      // `movimientos_caja` no tiene UPDATE (los movimientos no cambian) y ninguna de las tres tiene DELETE.
+      'cajas|*|SELECT',
+      'cajas|*|INSERT',
+      'cajas|estado|UPDATE',
+      'cajas|actualizado_en|UPDATE',
+      'movimientos_caja|*|SELECT',
+      'movimientos_caja|*|INSERT',
+      'cierres_caja|*|SELECT',
+      'cierres_caja|*|INSERT',
+      'cierres_caja|reabierto_por|UPDATE',
+      'cierres_caja|reabierto_en|UPDATE',
+      'cierres_caja|motivo_reapertura|UPDATE',
     ];
     expect([...PRIVILEGIOS_APP].map(clave).sort()).toEqual([...esperada].sort());
   });

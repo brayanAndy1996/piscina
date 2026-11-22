@@ -121,6 +121,16 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
   ...['estado', 'reserva_vence_en', 'actualizado_en'].map((c) => efectivo('matriculas', c, 'UPDATE')),
   efectivo('matricula_clases', null, 'SELECT'),
   efectivo('matricula_clases', null, 'INSERT'),
+  // Historia 006, criterio 2: la lista exacta suma los privilegios de las tres tablas de la caja (no se quita nada de lo anterior).
+  // `movimientos_caja` no tiene UPDATE (los movimientos no cambian) y ninguna de las tres tiene DELETE.
+  efectivo('cajas', null, 'SELECT'),
+  efectivo('cajas', null, 'INSERT'),
+  ...['estado', 'actualizado_en'].map((c) => efectivo('cajas', c, 'UPDATE')),
+  efectivo('movimientos_caja', null, 'SELECT'),
+  efectivo('movimientos_caja', null, 'INSERT'),
+  efectivo('cierres_caja', null, 'SELECT'),
+  efectivo('cierres_caja', null, 'INSERT'),
+  ...['reabierto_por', 'reabierto_en', 'motivo_reapertura'].map((c) => efectivo('cierres_caja', c, 'UPDATE')),
 ];
 
 async function cargarDeLaApi(): Promise<Modulo> {
