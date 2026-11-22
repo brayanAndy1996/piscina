@@ -15,12 +15,14 @@ import {
   type RespuestaHistorialCajas,
 } from '@aquagestion/contratos';
 import type { Request, Response } from 'express';
+import { PinoLogger } from 'nestjs-pino';
 import { ValidarCon } from '../../comun/validacion';
 import { Permiso } from '../autenticacion/permiso.decorator';
 import type { SesionVerificada } from '../autenticacion/tipos';
+import { SesionAcademiaService } from '../autenticacion/sesion-academia.service';
 import { SesionActual } from '../autenticacion/usuario-actual.decorator';
 import { CajasService } from './cajas.service';
-import { HistorialService } from './historial.service';
+import { esDescargaAbandonada, HistorialService } from './historial.service';
 
 /**
  * El valor crudo de un parámetro de la consulta (spec 006b, PQ3), como `estadoCrudo` de la 005b: `undefined` si no viene, el texto si viene una
@@ -63,7 +65,11 @@ export class CajasController {
   constructor(
     private readonly servicio: CajasService,
     private readonly historial: HistorialService,
-  ) {}
+    private readonly sesiones: SesionAcademiaService,
+    private readonly registro: PinoLogger,
+  ) {
+    this.registro.setContext(CajasController.name);
+  }
 
   /**
    * `GET /api/cajas?desde=&hasta=` (006b, criterio 40): el historial de cajas con el alcance del rol (`VER_REPORTES_FINANCIEROS`: el
@@ -99,11 +105,16 @@ export class CajasController {
   }
 
   /**
-   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (006b, criterios 42, 43 y 49): el PDF de un cierre, armado bajo pedido y fuera de la transacción de
-   * lectura. El `id` y el `numero` no pasan por pipes: todo lo que no se puede mostrar es el mismo 404 (PQ1, PQ6). Con la cola de generación
-   * llena, o con 2 descargas de la misma persona en curso o en espera, responde 429 `DEMASIADAS_SOLICITUDES` (criterio 49 b y c; lo decide
-   * `HistorialService`). Las cabeceras se escriben con el `Buffer` ya completo (PQ7): si el generador falla, el error sube antes de escribir
-   * nada y el filtro global responde el 500 JSON. Solo `GET`: `HEAD` responde 404 (criterio 50).
+   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (006b, criterios 42, 43 y 49 a 53): el PDF de un cierre, armado bajo pedido y fuera de la transacción
+   * de lectura. El `id` y el `numero` no pasan por pipes: todo lo que no se puede mostrar es el mismo 404 (PQ1, PQ6). Con la cola de generación
+   * llena, o con 2 descargas de la misma persona o 4 de la misma academia en curso o en espera, responde 429 `DEMASIADAS_SOLICITUDES` (criterios
+   * 49 b y c, y 52; lo decide `HistorialService`). Cuando le toca el turno, la sesión se vuelve a comprobar con `volverAVerificar` (criterio 53).
+   * Las cabeceras se escriben con el `Buffer` ya completo (PQ7): si el generador falla, el error sube antes de escribir nada y el filtro global
+   * responde el 500 JSON. Solo `GET`: `HEAD` responde 404 (criterio 50).
+   *
+   * Si el cliente corta la conexión antes de que la respuesta termine de enviarse (criterio 51), la respuesta emite `close` sin `writableFinished`
+   * y se activa la señal que el servicio pasa a la cola y al generador. Esa descarga no escribe nada, no audita y no se registra como un 500: a lo
+   * sumo, una línea `info`. Se mira la respuesta y no la petición: en Node 22 la petición puede emitir `close` al terminar de leerse.
    */
   @Get(':id/cierres/:numero/pdf')
   @Permiso('VER_REPORTES_FINANCIEROS')
@@ -111,14 +122,34 @@ export class CajasController {
     @SesionActual() sesion: SesionVerificada,
     @Param('id') id: string,
     @Param('numero') numero: string,
+    @Req() solicitud: Request,
     @Res() respuesta: Response,
   ): Promise<void> {
-    const { nombreArchivo, contenido } = await this.historial.pdf(sesion, id, numero);
-    respuesta.status(200);
-    respuesta.setHeader('Content-Type', 'application/pdf');
-    respuesta.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
-    respuesta.setHeader('Content-Length', String(contenido.length));
-    respuesta.end(contenido);
+    const controlador = new AbortController();
+    respuesta.on('close', () => {
+      if (!respuesta.writableFinished) controlador.abort();
+    });
+    try {
+      const { nombreArchivo, contenido } = await this.historial.pdf(sesion, id, numero, {
+        senal: controlador.signal,
+        volverAVerificar: () => this.sesiones.volverAVerificar(solicitud, 'VER_REPORTES_FINANCIEROS'),
+      });
+      if (controlador.signal.aborted) return;
+      respuesta.status(200);
+      respuesta.setHeader('Content-Type', 'application/pdf');
+      respuesta.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+      respuesta.setHeader('Content-Length', String(contenido.length));
+      respuesta.end(contenido);
+    } catch (error) {
+      if (controlador.signal.aborted && esDescargaAbandonada(error)) {
+        this.registro.info(
+          { usuarioId: sesion.usuario.id, academiaId: sesion.usuario.academiaId },
+          'Descarga del PDF del cierre abandonada por el cliente',
+        );
+        return;
+      }
+      throw error;
+    }
   }
 
   /** 201 con la caja nueva; 200 con la caja ya creada si repite la clave (doble clic o reintento, criterio 16). */

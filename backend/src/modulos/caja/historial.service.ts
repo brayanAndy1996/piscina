@@ -22,11 +22,44 @@ import { calcularDiferencia } from './dominio/esperado';
 import { noEncontrado } from './errores';
 import { leerCaja } from './lectura';
 import { GENERADOR_PDF_CIERRE, type DatosPdfCierre, type GeneradorPdfCierre } from './pdf/cierre-pdf';
+import { esErrorDeAborto } from './pdf/aborto';
 import { ColaPdfCierre } from './pdf/cola-pdf';
+
+/**
+ * El error de una descarga cuyo cliente cortó la conexión (spec 006b, criterio 51). Es un `AbortError`, como el que lanzan la cola y el generador
+ * cuando abortan: el controlador los trata igual, no escribe respuesta y no lo registra como un 500.
+ */
+export class DescargaAbandonada extends Error {
+  constructor() {
+    super('La descarga del PDF fue abandonada por el cliente.');
+    this.name = 'AbortError';
+  }
+}
+
+/** `true` si `error` es el de una descarga abandonada: el propio, o el `AbortError` de la cola o del generador. */
+export function esDescargaAbandonada(error: unknown): boolean {
+  return error instanceof DescargaAbandonada || esErrorDeAborto(error);
+}
+
+/** Lanza `DescargaAbandonada` si el cliente ya cortó la conexión. */
+function exigirQueSigaViva(senal: AbortSignal): void {
+  if (senal.aborted) throw new DescargaAbandonada();
+}
 
 /** El `numero` de un cierre en la dirección del PDF (PQ6): un entero de 1 a 5 dígitos sin ceros a la izquierda ni signo, y como mucho `smallint`. */
 const PATRON_NUMERO_DE_CIERRE = /^[1-9][0-9]{0,4}$/;
 const NUMERO_MAXIMO_DE_CIERRE = 32_767;
+
+/**
+ * Lo que el servicio necesita del controlador para armar un PDF (spec 006b, criterios 51 y 53):
+ * - `senal`: se activa cuando el cliente corta la conexión antes de que termine la respuesta;
+ * - `volverAVerificar`: vuelve a comprobar la sesión de la petición (token, usuario activo, `version_token`, academia, cambio obligatorio y permiso
+ *   `VER_REPORTES_FINANCIEROS`) y devuelve la sesión vigente; lanza los mismos errores que una petición nueva.
+ */
+export interface OpcionesDelPdf {
+  readonly senal: AbortSignal;
+  readonly volverAVerificar: () => Promise<SesionVerificada>;
+}
 
 /** El PDF ya armado: el nombre del archivo y los bytes completos. */
 export interface PdfDeCierre {
@@ -95,8 +128,11 @@ function consultaInvalida(campo: string, mensaje: string): ErrorNegocio {
  * conexión queda ocupada mientras se arma el documento y una falla del generador no cambia nada.
  *
  * El PDF no detiene la API (criterio 49): el generador cede el bucle de eventos por tramos, y `ColaPdfCierre` acota cuántas generaciones hay a la
- * vez (2) y cuántas descargas esperan (8) en el proceso, con un máximo de 2 por persona. El turno se pide antes de la lectura, así que una
- * descarga que espera no tiene ninguna transacción abierta, y se libera siempre, con 200, 404 o 500.
+ * vez (2) y cuántas descargas esperan (8) en el proceso, con un máximo de 2 por persona y 4 por academia (criterio 52). El turno se pide antes de
+ * la lectura, así que una descarga que espera no tiene ninguna transacción abierta, y se libera siempre, con 200, 404, 500 o abandonada.
+ *
+ * Una descarga abandonada (el cliente cortó la conexión, criterio 51) sale de la fila o aborta la generación y libera su lugar; no escribe ni audita.
+ * Con el turno, la sesión se vuelve a comprobar (criterio 53) y la lectura usa la sesión vigente.
  */
 @Injectable()
 export class HistorialService {
@@ -171,28 +207,43 @@ export class HistorialService {
   }
 
   /**
-   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (criterios 42, 43 y 49; PQ6 a PQ9). Orden (criterio 49 b), después del permiso (PQ1):
+   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (criterios 42, 43, 49, 51, 52 y 53; PQ6 a PQ9). Orden (criterio 49 b), después del permiso (PQ1):
    * 1. un id o un `numero` con forma inválida son 404, sin tocar la base ni la cola;
-   * 2. el límite por persona y el lugar en la cola (`ColaPdfCierre.turno`): 429 `DEMASIADAS_SOLICITUDES` si no hay;
+   * 2. el límite por persona, el de la academia y el lugar en la cola (`ColaPdfCierre.turno`): 429 `DEMASIADAS_SOLICITUDES` si no hay;
    * 3. la espera del turno, sin ninguna transacción abierta;
-   * 4. una transacción corta lee la caja (con el alcance) y su cierre: 404 si no existen o quedan fuera del alcance;
-   * 5. al terminar la lectura, y recién entonces, se llama al generador.
-   * El turno se libera en el `finally`, con 200, 404 o 500.
+   * 4. la sesión se vuelve a comprobar (criterio 53): 401, 403 con los mismos errores que una petición nueva, y sigue con la sesión vigente;
+   * 5. una transacción corta lee la caja (con el alcance del rol vigente) y su cierre: 404 si no existen o quedan fuera del alcance;
+   * 6. al terminar la lectura, y recién entonces, se llama al generador (con la señal).
+   * El turno se libera en el `finally`, con 200, 404, 500 o abandonada. Si el cliente corta (`opciones.senal`) en cualquier paso desde el 2, la
+   * descarga termina con `DescargaAbandonada` (o con el `AbortError` de la cola o del generador) sin llamar al generador si todavía no lo hizo.
    */
-  async pdf(sesion: SesionVerificada, idPedido: string, numeroPedido: string): Promise<PdfDeCierre> {
+  async pdf(
+    sesion: SesionVerificada,
+    idPedido: string,
+    numeroPedido: string,
+    opciones: OpcionesDelPdf,
+  ): Promise<PdfDeCierre> {
     if (!PATRON_UUID.test(idPedido)) throw noEncontrado();
     if (!PATRON_NUMERO_DE_CIERRE.test(numeroPedido)) throw noEncontrado();
     const numero = Number(numeroPedido);
     if (numero > NUMERO_MAXIMO_DE_CIERRE) throw noEncontrado();
 
-    const liberarTurno = await this.cola.turno(sesion.usuario.id);
+    const { senal } = opciones;
+    const liberarTurno = await this.cola.turno(
+      { usuarioId: sesion.usuario.id, academiaId: sesion.usuario.academiaId },
+      senal,
+    );
     try {
-      const datos = await this.baseDatos.conAcademia(sesion.usuario.academiaId, async (tx) => {
-        const caja = await this.leerCajaConAlcance(tx, sesion, idPedido.toLowerCase());
+      exigirQueSigaViva(senal);
+      // Con el turno, la sesión se vuelve a comprobar: una descarga puede haber esperado decenas de segundos (criterio 53).
+      const vigente = await opciones.volverAVerificar();
+      exigirQueSigaViva(senal);
+      const datos = await this.baseDatos.conAcademia(vigente.usuario.academiaId, async (tx) => {
+        const caja = await this.leerCajaConAlcance(tx, vigente, idPedido.toLowerCase());
         const cierre = caja?.cierres.find((candidato) => candidato.numero === numero);
         if (!caja || !cierre) return null;
         return {
-          academia: sesion.academia.nombre,
+          academia: vigente.academia.nombre,
           caja: {
             id: caja.id,
             fecha: caja.fecha,
@@ -204,10 +255,13 @@ export class HistorialService {
           movimientos: caja.movimientos.filter((movimiento) => movimiento.numero <= cierre.movimientosHasta),
         } satisfies DatosPdfCierre;
       });
+      exigirQueSigaViva(senal);
       if (datos === null) throw noEncontrado();
 
       // La transacción ya terminó: nada de la base queda abierto mientras se arma el documento. Si el generador falla, el error sube aquí.
-      const contenido = await this.generador.generar(datos);
+      const contenido = await this.generador.generar(datos, senal);
+      // Un generador que ignora la señal termina como sea: si el cliente ya cortó, el resultado no se entrega.
+      exigirQueSigaViva(senal);
       return { nombreArchivo: `cierre-caja-${datos.caja.fecha}-${datos.cierre.numero}.pdf`, contenido };
     } finally {
       liberarTurno();

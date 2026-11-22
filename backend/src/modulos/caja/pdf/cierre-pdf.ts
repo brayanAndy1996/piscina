@@ -10,6 +10,7 @@ import {
 import { performance } from 'node:perf_hooks';
 import PDFDocument from 'pdfkit';
 import { fechaCortaEnLima, horaEnLima } from '../../../comun/fechas';
+import { errorDeAborto, esErrorDeAborto } from './aborto';
 import { textoParaPdf } from './texto-pdf';
 
 /**
@@ -26,6 +27,10 @@ import { textoParaPdf } from './texto-pdf';
  * mientras se arma un PDF grande. Se cede solo entre filas de la tabla, nunca entre dos llamadas que dependan una de otra, y las llamadas a
  * `pdfkit` son las mismas y en el mismo orden que sin tramos: los bytes no cambian. No hay un `worker_thread`: no toca el build ni el cargador de
  * las pruebas.
+ *
+ * Se puede abandonar (criterio 51 b y c): `generarPdfCierre(datos, senal?)` comprueba la señal al empezar y entre tramos; con la señal activa deja de
+ * dibujar, no termina el documento (nada se escribe ni se guarda) y rechaza con un `AbortError`. La comprobación no llama a `pdfkit`, así que sin
+ * señal, o con una que nunca se activa, los bytes son los mismos.
  *
  * Los textos que salen de los datos pasan por `textoParaPdf` (PQ11): la fuente estándar solo muestra Latin-1 y el texto se escribe codificado
  * (nunca como operadores del PDF), así que ningún texto puede cambiar la estructura del documento. Nunca lleva un DNI (RNF-05).
@@ -45,7 +50,8 @@ export interface DatosPdfCierre {
 
 /** Lo que el servicio necesita del generador; el módulo provee `GENERADOR_PDF_CIERRE` con `generarPdfCierre` y las pruebas lo reemplazan. */
 export interface GeneradorPdfCierre {
-  generar(datos: DatosPdfCierre): Promise<Buffer>;
+  /** `senal` (criterio 51 c) es opcional: un generador que la ignora sigue siendo válido, y su lugar en la cola se libera cuando termina. */
+  generar(datos: DatosPdfCierre, senal?: AbortSignal): Promise<Buffer>;
 }
 
 /** El token de Nest del generador (PQ8): `overrideProvider(GENERADOR_PDF_CIERRE)` en las pruebas de integración. */
@@ -106,15 +112,24 @@ const cederElBucle = (): Promise<void> => new Promise((resolver) => setImmediate
 
 /**
  * Mide el tramo en curso: `cederSiToca` cede el bucle cuando el tramo ya duró `TRAMO_MS` y empieza otro. Una instancia por documento, así que dos
- * generaciones a la vez no comparten el reloj.
+ * generaciones a la vez no comparten el reloj. Después de ceder (que es cuando la señal puede haberse activado), comprueba la señal y lanza el
+ * `AbortError` (criterio 51 b).
  */
 class Tramos {
   private inicio = performance.now();
 
+  constructor(private readonly senal?: AbortSignal) {}
+
   async cederSiToca(): Promise<void> {
     if (performance.now() - this.inicio < TRAMO_MS) return;
     await cederElBucle();
+    this.comprobarSenal();
     this.inicio = performance.now();
+  }
+
+  /** Lanza un `AbortError` si la señal ya está activa. */
+  comprobarSenal(): void {
+    if (this.senal?.aborted) throw errorDeAborto();
   }
 }
 
@@ -242,6 +257,7 @@ async function dibujar(doc: Documento, datos: DatosPdfCierre, tramos: Tramos): P
   doc.moveDown(0.3);
   if (datos.movimientos.length === 0) linea(doc, 'Sin movimientos');
   else await tabla(doc, datos.movimientos, tramos);
+  tramos.comprobarSenal();
   doc.moveDown(0.5);
 
   linea(doc, 'Totales', FUENTE_NEGRITA, 11);
@@ -274,14 +290,19 @@ async function dibujar(doc: Documento, datos: DatosPdfCierre, tramos: Tramos): P
  * bucle de eventos por tramos (criterio 49 a): la promesa se resuelve cuando el documento termina, no en la misma vuelta.
  * `info.Title` es `Cierre de caja AAAA-MM-DD N`, sin textos de usuarios, y `info.CreationDate` es `cerradoEn`; van en el constructor porque
  * `pdfkit` calcula el `/ID` del documento ahí (PQ9 d).
+ *
+ * Con `senal` (criterio 51 b y c): si ya está activa al empezar, o se activa mientras se arma, rechaza con un `AbortError` sin terminar el documento
+ * (no llama a `doc.end()`: el documento queda sin terminar y se descarta). Nunca lanza de forma síncrona.
  */
-export function generarPdfCierre(datos: DatosPdfCierre): Promise<Buffer> {
+export function generarPdfCierre(datos: DatosPdfCierre, senal?: AbortSignal): Promise<Buffer> {
   return new Promise<Buffer>((resolver, rechazarConCualquierCosa) => {
-    const rechazar = (error: unknown) =>
-      rechazarConCualquierCosa(
-        error instanceof Error ? error : new Error('No se pudo armar el PDF del cierre.', { cause: error }),
-      );
+    const rechazar = (error: unknown) => {
+      if (error instanceof Error) rechazarConCualquierCosa(error);
+      else if (esErrorDeAborto(error)) rechazarConCualquierCosa(errorDeAborto());
+      else rechazarConCualquierCosa(new Error('No se pudo armar el PDF del cierre.', { cause: error }));
+    };
     try {
+      if (senal?.aborted) throw errorDeAborto();
       const doc = new PDFDocument({
         size: 'A4',
         margin: MARGEN,
@@ -294,8 +315,12 @@ export function generarPdfCierre(datos: DatosPdfCierre): Promise<Buffer> {
       doc.on('data', (parte: Buffer) => partes.push(parte));
       doc.on('end', () => resolver(Buffer.concat(partes)));
       doc.on('error', rechazar);
-      dibujar(doc, datos, new Tramos())
-        .then(() => doc.end())
+      const tramos = new Tramos(senal);
+      dibujar(doc, datos, tramos)
+        .then(() => {
+          tramos.comprobarSenal();
+          doc.end();
+        })
         .catch(rechazar);
     } catch (error) {
       rechazar(error);

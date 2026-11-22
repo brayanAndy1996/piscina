@@ -21,5 +21,5 @@ export {
   registrarIngresoEnCaja,
 } from './movimientos';
 export { type DatosPdfCierre, GENERADOR_PDF_CIERRE, type GeneradorPdfCierre, generarPdfCierre } from './pdf/cierre-pdf';
-export { ColaPdfCierre, LIMITE_PDF_POR_PERSONA, LIMITES_PDF_CIERRE } from './pdf/cola-pdf';
+export { ColaPdfCierre, LIMITES_PDF_CIERRE } from './pdf/cola-pdf';
 export { textoParaPdf } from './pdf/texto-pdf';

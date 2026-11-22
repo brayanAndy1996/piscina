@@ -1,17 +1,19 @@
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
-import { ColaPdfCierre, LIMITE_PDF_POR_PERSONA, LIMITES_PDF_CIERRE } from './cola-pdf';
+import { ColaPdfCierre, LIMITES_PDF_CIERRE } from './cola-pdf';
 
 // Spec 006b, criterio 49 b y c (prueba no protegida): la cola de generación del PDF, sola y sin base de datos. Las pruebas protegidas de integración
 // (`pdf-concurrencia.test.ts`) la prueban de punta a punta con la API; aquí se fijan sus reglas internas: orden de llegada, límites y liberación.
+// La señal de aborto (criterio 51) y el límite por academia (criterio 52) están en `cola-pdf-senal-protegido.test.ts`. Estas pruebas usan una
+// academia distinta por persona, así que el límite por academia (4) no interviene.
 
 /** Deja correr las promesas ya resueltas para ver si un `turno` esperando ya recibió el suyo. */
 const asentar = () => new Promise<void>((resolver) => setImmediate(resolver));
 
-/** Pide un turno y dice si ya lo tiene, sin esperar a que lo tenga. */
+/** Pide un turno (cada persona, de su propia academia) y dice si ya lo tiene, sin esperar a que lo tenga. */
 function pedir(cola: ColaPdfCierre, usuarioId: string) {
   const resultado: { liberar?: () => void; error?: unknown } = {};
-  const promesa = cola.turno(usuarioId).then(
+  const promesa = cola.turno({ usuarioId, academiaId: `academia-de-${usuarioId}` }).then(
     (liberar) => {
       resultado.liberar = liberar;
     },
@@ -25,9 +27,8 @@ function pedir(cola: ColaPdfCierre, usuarioId: string) {
 const usuario = (n: number) => `usuario-${n}`;
 
 describe('ColaPdfCierre (criterio 49 b y c)', () => {
-  it('los límites son 2 a la vez y 8 en espera, y 2 por persona', () => {
-    expect(LIMITES_PDF_CIERRE).toEqual({ simultaneos: 2, enEspera: 8 });
-    expect(LIMITE_PDF_POR_PERSONA).toBe(2);
+  it('los límites son 2 a la vez y 8 en espera, 2 por persona y 4 por academia', () => {
+    expect(LIMITES_PDF_CIERRE).toEqual({ simultaneos: 2, enEspera: 8, porPersona: 2, porAcademia: 4 });
   });
 
   it('da el turno enseguida mientras haya menos de 2 en curso y los demás esperan en orden de llegada', async () => {

@@ -1,15 +1,11 @@
 import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { puede, type Permiso as PermisoMatriz } from '@aquagestion/contratos';
-import { ErrorNegocio } from '../../comun/errores';
 import { lanzarErrorDeCuerpoGuardado } from '../../comun/http/error-de-cuerpo-diferido';
 import { noAutenticado } from './actor-vigente';
+import { sinPermiso } from './errores-de-acceso';
 import { CLAVE_PERMISO, CLAVE_SOLO_SESION } from './permiso.decorator';
 import type { SolicitudDeAcademia } from './tipos';
-
-function sinPermiso(): ErrorNegocio {
-  return new ErrorNegocio(403, 'SIN_PERMISO', 'No tienes permiso para realizar esta acción.');
-}
 
 /**
  * Guard global de permisos (RNF-03, criterios 27 y 28). El middleware de las rutas de academia ya comprobó la sesión, la academia

@@ -1,9 +1,9 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { NextFunction, Request, Response } from 'express';
-import { ErrorNegocio } from '../../comun/errores';
 import { FiltroErrores } from '../../comun/filtros/filtro-errores';
 import { responderError } from '../../comun/filtros/responder-error';
 import { permitirErrorDeCuerpoDiferido } from '../../comun/http/error-de-cuerpo-diferido';
+import { cambioDeClaveObligatorio } from './errores-de-acceso';
 import { esCierreDeSesion, esRutaDeAcademia, esRutaPermitidaConCambioPendiente } from './dominio/rutas-de-academia';
 import { SesionAcademiaService } from './sesion-academia.service';
 import type { SolicitudDeAcademia } from './tipos';
@@ -38,11 +38,7 @@ export function instalarProteccionDeAcademia(app: NestExpressApplication, prefij
     sesiones.autenticar(solicitud).then(
       (sesion) => {
         if (sesion.usuario.debeCambiarClave && !esRutaPermitidaConCambioPendiente(solicitud.method, solicitud.path)) {
-          const error = new ErrorNegocio(
-            403,
-            'CAMBIO_DE_CLAVE_OBLIGATORIO',
-            'Debes cambiar tu contraseña antes de continuar.',
-          );
+          const error = cambioDeClaveObligatorio();
           sesiones.registrarRechazo(solicitud, error, sesion);
           responderError(filtro, error, solicitud, respuesta, siguiente);
           return;
