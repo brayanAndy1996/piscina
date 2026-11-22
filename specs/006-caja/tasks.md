@@ -5,8 +5,9 @@ dividida en dos entregas (DR-10 de la spec), cada una con sus pruebas protegidas
 
 - **006a · Caja del día** (T1 a T22, y T36 a T42 de la ronda adversarial 1): criterios 1 a 39, 45 y 46 sin el
   historial ni el PDF, y 47 y 48. Se construye primero.
-- **006b · Historial y PDF del cierre** (T23 a T35, marca **[006b, siguiente PR]**): criterios 40 a 44 y la parte de 45
-  y 46 que les toca. Se empieza con la 006a unida a `main`.
+- **006b · Historial y PDF del cierre** (T23 a T35, marca **[006b, siguiente PR]**, y T43 a T50 de la ronda
+  adversarial 1): criterios 40 a 44, 49 y 50, y la parte de 45 y 46 que les toca. Se empieza con la 006a unida a
+  `main`.
 
 En cada entrega, los criterios críticos (DT-5) llevan pruebas protegidas escritas y confirmadas en rojo antes de
 implementar y ataque adversarial después.
@@ -200,12 +201,104 @@ Las precisiones PQ1 a PQ15 de la spec (sección I) fijan los formatos, el orden,
       claves de consulta con la identidad; pruebas de componentes (PQ12) (criterio 44)
 - [ ] T30 · tester · Pruebas protegidas en verde y suite completa
 
-### Ataque, revisión y cierre
+### Ataque
 
 - [ ] T31 · adversarial · Atacar los criterios críticos de la 006b: cajas, cierres y PDF de otra academia o fuera del
       alcance de la secretaria (ids, números de cierre, mayúsculas, parámetros repetidos), rangos de fechas extremos, y
       textos raros en el PDF (PQ11). Por cada falla, el mismo ciclo que T18; el commit de cada ronda empieza también por
       "Pruebas protegidas (006): 006b, …".
+      _(ronda 1 sobre `838e88c`: dos fallas, criterios 49 y 50; ver más abajo)_
+
+### Ataque adversarial de la 006b, ronda 1 (22/11/2026, sobre `838e88c`)
+
+Hubo dos fallas, que se convirtieron en los criterios 49 y 50 de `spec.md`, los dos críticos:
+
+- **Criterio 49:** el PDF de una caja con muchos movimientos bloqueaba el bucle de eventos, y un egreso de otra academia
+  respondía 500.
+- **Criterio 50:** `HEAD` sobre la ruta del PDF respondía 200 y llamaba al generador.
+
+Según DT-7, no hay tope de movimientos por caja. El límite por persona del criterio 49 c es DT-8, y `HEAD` da 404 solo
+en las rutas de la caja según DT-9.
+
+- [ ] T43 · test-writer · Escribir las pruebas protegidas en rojo, desde la spec y los contratos públicos, sin mirar la
+      implementación y con la marca de pruebas protegidas.
+      - **Criterio 49 a.** Integración con el generador real:
+        - una caja de A con 5 000 movimientos creados como dueño, en una sola sentencia para que la preparación no
+          tarde;
+        - una descarga de calentamiento de un cierre pequeño;
+        - `monitorEventLoopDelay` con resolución de 10 ms;
+        - tres descargas simultáneas, dos del `ADMIN` de A y una de la `SECRETARIA` que abrió la caja;
+        - el egreso de la `SECRETARIA` de B, enviado 300 ms después.
+
+        Se comprueba:
+        - el egreso responde 201 en menos de 1 000 ms, con su fila y su auditoría;
+        - las descargas y el egreso se cruzaron;
+        - las tres descargas responden 200 con los mismos bytes, y el texto contiene los movimientos 1 y 5000;
+        - el `max` del bucle es de 200 ms o menos.
+
+        La prueba lleva un tiempo límite amplio, por ejemplo 120 s.
+      - **Criterio 49 b.** Con el generador retenido:
+        - diez descargas de cinco personas de A y de B, dos cada una;
+        - el generador nunca tiene más de dos llamadas en curso;
+        - mientras esperan, no hay conexiones `idle in transaction`;
+        - la 11.ª descarga, de una sexta persona, responde 429 `DEMASIADAS_SOLICITUDES` (JSON, `no-store`, sin
+          `Content-Disposition`), sin llamar al generador ni escribir;
+        - con la cola llena, `numero` `0` responde 404, no 429;
+        - al soltar el generador, hay diez 200 y diez llamadas;
+        - el lugar se libera después de 12 descargas en 500 y 12 en 404.
+      - **Criterio 49 c.**
+        - La tercera descarga simultánea de la misma persona responde 429.
+        - Las descargas de otras personas siguen.
+        - Cuando terminan sus dos descargas, la misma persona vuelve a descargar con 200.
+      - **Criterio 50.** `HEAD` sobre las cuatro rutas:
+        - con las sesiones de los cuatro roles;
+        - con ids y números que existen, que no existen y que no son válidos;
+        - con parámetros de consulta, barra final y mayúsculas.
+
+        Se comprueba:
+        - responde 404 con `application/json` y `no-store`, sin `Content-Disposition` y sin cuerpo;
+        - el generador espía no recibe llamadas;
+        - las filas y la auditoría no cambian;
+        - sin sesión, responde lo mismo que `PATCH`;
+        - control: el `GET` de las cuatro rutas sigue respondiendo.
+
+      Commit: "Pruebas protegidas (006): 006b, ataque ronda 1: PDF sin detener la API y HEAD en las rutas de la caja (en
+      rojo)" (criterios 49, 50)
+- [ ] T44 · tester · Confirmar que T43 falla por la razón esperada y no por sintaxis, importaciones, configuración ni el
+      tiempo límite de Vitest. Las razones esperadas son:
+      - **49 a:** el egreso de B tarda más de 1 000 ms o responde 500, y el retraso del bucle pasa de 200 ms;
+      - **49 b y c:** el generador recibe más de dos llamadas a la vez y no hay 429;
+      - **50:** `HEAD` responde 200, lleva `Content-Disposition` o llama al generador.
+
+      Confirmar también que las pruebas protegidas anteriores siguen pasando y que `git diff --cached --stat` solo
+      muestra archivos de prueba. El orquestador hace el commit con el título de T43: tres dígitos y sin letra, como
+      exige `scripts/verificar-pruebas-protegidas.mjs` (criterios 49, 50).
+- [ ] T45 · backend · El PDF sin bloquear el bucle de eventos (criterio 49 a y d), con la técnica que se elija (plan
+      2.12):
+      - `generarPdfCierre`, `GeneradorPdfCierre` y `GENERADOR_PDF_CIERRE` quedan como en PQ8;
+      - los bytes no cambian;
+      - si se usa un worker, funciona bajo Vitest y en el build CommonJS, también en Windows;
+      - las pruebas de `cierre-pdf.test.ts` siguen pasando.
+- [ ] T46 · backend · La cola de generación y el límite por persona (criterio 49 b y c): `ColaPdfCierre` y
+      `LIMITES_PDF_CIERRE`, el turno antes de la lectura, la liberación en `finally` y el 429 por el filtro de errores.
+      Poner al día los comentarios de `HistorialService` y de `CajasController`.
+- [ ] T47 · backend · `HEAD` responde 404 en las rutas de la caja (criterio 50), con un middleware antes de las rutas
+      de Nest (plan 2.12). Poner al día el comentario de PQ15 en `CajasController`.
+- [ ] T48 · tester · Correr en verde las pruebas protegidas (T43 y todas las anteriores, incluidas las de PQ9 y PQ15) y
+      la suite completa. Correr la prueba del 49 a al menos cinco veces seguidas para descartar que sea inestable
+      (criterios 49, 50).
+- [ ] T49 · orquestador · Revisar con `git diff` desde el commit de T43 que T45 a T47 no tocaron pruebas protegidas.
+- [ ] T50 · adversarial · Ronda 2 sobre todo lo de la 006b, en especial los criterios 49 y 50:
+      - cajas con muchos movimientos;
+      - descargas simultáneas de varias academias y de una misma persona;
+      - cola llena;
+      - clientes que cortan la conexión mientras esperan o mientras se genera;
+      - `HEAD` y otros métodos sobre las rutas de la caja, con variantes de la dirección.
+
+      Si hay fallas, se repite el ciclo hasta una ronda sin fallas.
+
+### Revisión y cierre
+
 - [ ] T32 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
 - [ ] T33 · revisor · Comparar con la spec y las convenciones; verificar la parte de 006b de los criterios 45 y 46
 - [ ] T34 · tester · Suite completa, lint y verificación de tipos

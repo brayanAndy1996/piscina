@@ -50,12 +50,26 @@
   (la caja de hoy en el alcance de la secretaria), que el responsable contestó el 22/11/2026 con la propuesta (DR-13).
   Cambia la forma de la respuesta de la lista (`{ desde, hasta, cajas }`, PQ3) y fija que
   `?academiaId=` se ignora (PQ1).
+- **Ronda adversarial 1 de la 006b (22/11/2026, sobre `838e88c`):** dos fallas, que el orquestador convirtió en los
+  criterios 49 y 50, críticos y de la 006b:
+  - **Criterio 49:** el PDF de una caja con muchos movimientos bloqueaba el bucle de eventos de la API.
+    `generarPdfCierre` dibujaba el documento de una vez en el hilo principal, a unos 0,65 ms por movimiento. Una caja de
+    20 000 egresos de S/ 0.01 se arma por la API en unos 5 minutos, y su PDF congelaba el proceso unos 13 s. Con tres
+    descargas a la vez, un egreso de otra academia respondía 500 `ERROR_INTERNO`.
+  - **Criterio 50:** `HEAD` sobre la ruta del PDF respondía 200 con `Content-Disposition` y llamaba al generador, en
+    contra de PQ15.
+
+  El orquestador decidió que la falla 1 es técnica (DT-7): no hay tope de movimientos por caja, porque eso sería una
+  regla de negocio. Lo que se acota es cuánto bloquea cada PDF y cuántos se generan a la vez. Hay una observación
+  aceptada sin criterio: `pdfkit` dibuja U+00AD (guion blando, que PQ11 deja pasar) como un guion, y muchos descuadran
+  la tabla. Es cosmético. Cambiarlo exigiría cambiar PQ11 y una prueba protegida (`pdf-texto.test.ts`, que espera que
+  U+00AD quede).
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
     del historial y del PDF, más 47 y 48 (ronda adversarial 1).
   - **006b · Historial y PDF del cierre** (siguiente PR, con la 006a unida a `main`): criterios 40 a 44, más esas
-    partes.
+    partes, más 49 y 50 (ronda adversarial 1 de la 006b).
 
 ## Objetivo
 
@@ -92,6 +106,11 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
 - **Reapertura (35, 36):** solo el administrador, con motivo y auditoría, sin dejar nunca dos cajas abiertas.
 - **006b, historial y PDF (40 a 43):** quién ve qué caja (la secretaria, "su caja"; sección 2.1) y el PDF, que se
   genera con datos ya confirmados y fuera de toda transacción de escritura.
+- **006b, ronda adversarial 1 (49 y 50):** el 49 es crítico porque la instalación atiende a varias academias (D-23). Un
+  PDF que congela el proceso deja sin atender, o con un 500, los egresos y cobros de todas: es la caja de las demás la
+  que deja de funcionar. El 50 es crítico porque una ruta que no está en el contrato armaba el PDF entero y lo
+  anunciaba con `Content-Disposition`, en contra del criterio 23 y de PQ15. Además, era una segunda puerta al costo del
+  criterio 49.
 
 No son críticos, pero llevan _(prueba obligatoria)_: 37 a 39 (web de la caja del día, con pruebas de componentes y una
 E2E) y 44 (web del historial). Los 45 y 46 (semilla y documentación) los verifica el revisor. _(DT-5.)_
@@ -104,7 +123,7 @@ lleva la marca **[006b, siguiente PR]**. La 007 solo necesita la 006a.
 | Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- |
 | **006a** · caja del día | 1 a 36, 47 y 48 | 37, 38 y 39 | 45 y 46 (sin el historial ni el PDF) |
-| **006b** · historial y PDF | 40 a 43 | 44 | parte de 45 y 46 |
+| **006b** · historial y PDF | 40 a 43, 49 y 50 | 44 | parte de 45 y 46 |
 
 **Dependencias resueltas:**
 
@@ -564,6 +583,104 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
     lista las cajas con el filtro de fechas, abre el detalle con sus movimientos y cierres, descarga el PDF de cada cierre
     y, para el `ADMIN`, ofrece "Reabrir" en las cajas cerradas (diálogo con el motivo; los 409 de la reapertura con su
     mensaje). Detalle de las pantallas en PQ12. _(prueba obligatoria, de componentes)_
+49. **El PDF no detiene la API de las demás academias.** _(Ronda adversarial 1 de la 006b; amplía el criterio 43.)_
+    La instalación atiende a varias academias (D-23), así que generar un PDF no puede dejar la API sin atender a nadie.
+    No hay tope de movimientos por caja ni por PDF, porque sería una regla de negocio (DT-7). Se acota cuánto bloquea
+    cada PDF y cuántos se generan a la vez.
+    - a) **Sin bloquear el bucle de eventos.** Dado un cierre de una caja de A con 5 000 movimientos
+      (`movimientosHasta: 5000`, creados como dueño de las tablas), con el generador real:
+      - **Preparación:** la prueba descarga una vez el PDF de un cierre pequeño, para que la primera carga de `pdfkit` y
+        de la fuente no cuente.
+      - **Medición:** activa `monitorEventLoopDelay` de `node:perf_hooks` (resolución de 10 ms) y lanza a la vez tres
+        descargas del PDF de ese cierre: dos del `ADMIN` de A y una de la `SECRETARIA` de A que abrió la caja.
+      - **Escritura de otra academia:** 300 ms después, envía un egreso válido a la caja abierta de hoy de B, con la
+        sesión de una `SECRETARIA` de B.
+
+      Entonces:
+      - el egreso de B responde 201 en menos de 1 000 ms desde que se envió, con su fila y su auditoría;
+      - al menos una de las tres descargas responde después que el egreso. Esto prueba que se cruzaron: si no se
+        cruzan, la prueba falla en lugar de pasar sin medir;
+      - las tres descargas responden 200 con el mismo cuerpo (`Buffer.equals`; criterio 43 y PQ9 d). Es un PDF válido
+        (PQ7) y su texto (utilidad de PQ10) contiene los movimientos 1 y 5000;
+      - desde que se lanzan las descargas hasta la última respuesta, el retraso máximo del bucle (`max` del
+        histograma) es como mucho 200 ms.
+    - b) **Pocas generaciones a la vez y una espera acotada.** En cada proceso de la API, contando todas las
+      academias:
+      - **Límites:** como mucho 2 PDF se generan a la vez. Se cuentan las llamadas en curso a
+        `GENERADOR_PDF_CIERRE.generar`, también con el generador de las pruebas. Como mucho 8 descargas más esperan su
+        turno, en orden de llegada. Los valores son la constante `LIMITES_PDF_CIERRE = { simultaneos: 2, enEspera: 8 }`
+        del backend.
+      - **Cola llena:** una descarga que llega con 2 en curso y 8 esperando responde enseguida 429
+        `DEMASIADAS_SOLICITUDES`. Lleva el cuerpo y el mensaje que ya tiene el filtro de errores ("Hiciste demasiadas
+        solicitudes. Espera un momento e intenta de nuevo."), en JSON, con `Cache-Control: no-store` y sin
+        `Content-Disposition`. No llama al generador, no escribe y no audita.
+      - **Orden de comprobaciones de la ruta:**
+        1. sesión, academia activa, cambio obligatorio y permiso (PQ1);
+        2. forma del id y del `numero` (el 404 de PQ1 y PQ6, sin tocar la base ni la cola);
+        3. límite por persona (c);
+        4. lugar en la cola: 429 si está llena;
+        5. espera del turno;
+        6. lectura en su transacción corta: 404 si la caja o el cierre no existen o están fuera del alcance;
+        7. generación y respuesta.
+
+        Con la cola llena, un cierre con un `numero` de forma válida que no existe responde 429, no 404. Eso no revela
+        nada, porque el 429 no depende de la caja.
+      - **Sin transacción en la espera:** la lectura empieza recién con el turno, así que una descarga que espera no
+        tiene ninguna transacción abierta. La condición de PQ9 c vale también durante la espera.
+      - **Toda descarga libera su lugar** al terminar, con 200, 404 o 500.
+      - **Ámbito:** los límites son por proceso, como los contadores de `@nestjs/throttler` (PO-6). Con varias
+        instancias de la API, cada una tiene los suyos.
+
+      Pruebas:
+      - Con un generador que la prueba retiene (como PQ9 c), cinco personas con permiso de A y de B lanzan diez
+        descargas válidas, dos cada una.
+      - Cuando el generador tiene dos llamadas en curso y pasaron al menos 500 ms, el generador sigue con dos llamadas.
+        Nunca tiene más de dos a la vez en toda la prueba.
+      - Mientras tanto, ninguna conexión del rol de la app está `idle in transaction`.
+      - Una 11.ª descarga, de una sexta persona, responde 429.
+      - Una descarga de la sexta persona con `numero` `0` responde el 404 de PQ6, no 429.
+      - Al soltar el generador, las diez responden 200 y el generador recibió diez llamadas.
+      - Aparte, después de 12 descargas seguidas que terminan en 500 (generador que rechaza) y 12 que terminan en 404
+        (`numero` válido que no existe), una descarga válida responde 200.
+    - c) **Como mucho dos por persona.** Una persona (`sesion.usuario.id`, no la academia ni la IP) tiene como mucho 2
+      descargas de PDF en curso o esperando turno. La tercera simultánea responde el 429 de b, aunque la cola tenga
+      lugar, y no llama al generador. Así una sola persona no llena la cola de todas las academias, y un doble clic
+      (dos descargas) sigue funcionando. Prueba, con el generador retenido:
+      - el `ADMIN` de A lanza dos descargas y una tercera, que responde 429;
+      - a la vez, la `SECRETARIA` de A y el `ADMIN` de B descargan, y responden 200 al soltar el generador;
+      - cuando terminan las dos del `ADMIN` de A, una nueva descarga suya responde 200.
+    - d) **Lo demás no cambia.**
+      - El PDF sigue siendo determinista: los mismos bytes, también con el proceso en `TZ=Asia/Tokyo` (criterio 43 y
+        PQ9 d).
+      - `generarPdfCierre(datos): Promise<Buffer>`, `GeneradorPdfCierre` y `GENERADOR_PDF_CIERRE` siguen como en PQ8:
+        el generador es inyectable y se reemplaza con `overrideProvider`.
+      - La lectura termina antes de generar (PQ9 c).
+      - Una falla al generar sigue respondiendo 500 `ERROR_INTERNO` sin cambios en la base (PQ9 b).
+      - El contenido sigue siendo el de PQ10 y PQ11.
+
+      Quien implementa elige la técnica: un `worker_thread` o generar por tramos cediendo el bucle (plan 2.12).
+
+    _(crítico)_ (D-23; criterio 43; regla "los efectos secundarios ocurren después de confirmar" de `CLAUDE.md`)
+50. **`HEAD` no existe en las rutas de la caja.** _(Ronda adversarial 1 de la 006b; amplía el criterio 23 y PQ15.)_
+    Express atiende un `HEAD` con el manejador del `GET` de la misma dirección. En la caja no:
+    - **Rutas:** `HEAD` sobre `/api/cajas/{id}/cierres/{numero}/pdf`, `/api/cajas`, `/api/cajas/actual` y
+      `/api/cajas/{id}`.
+    - **Respuesta:** 404 `NO_ENCONTRADO`, igual que `PATCH` sobre esas direcciones (PQ15).
+    - **Casos:**
+      - con la sesión válida de cualquier rol. También el `ENTRENADOR` y el `ALUMNO`, que en el `GET` reciben 403: para
+        `HEAD` la ruta no existe, como para `PATCH`;
+      - con un id o un `numero` que existen, que no existen o que no son válidos;
+      - con parámetros de consulta, con barra final y con mayúsculas en la dirección (`/api/Cajas/…`), porque el
+        enrutador no distingue mayúsculas.
+    - **Cabeceras:** las del JSON de error de siempre (`Content-Type: application/json`, `Cache-Control: no-store`) y
+      ninguna del PDF (`Content-Disposition`). No hay cuerpo, porque un `HEAD` nunca lo tiene.
+    - **Sin efectos:** no llama al generador del PDF (se comprueba con el generador espía de PQ9 a), no escribe y no
+      audita.
+    - **Sin sesión, con el cambio de contraseña pendiente o con la academia suspendida:** responde lo mismo que `PATCH`
+      en esa dirección.
+    - **El `GET` de las cuatro rutas no cambia.**
+
+    _(crítico)_ (D-23; criterio 23; PQ15)
 
 #### Precisiones de la 006b (PQ1 a PQ15)
 
@@ -760,7 +877,8 @@ de hoy en el alcance de la secretaria (PQ2 d), decidida en DR-13 (pregunta P13).
   verla y descargar su PDF. La semilla no cambia.
 - **PQ15 · Rutas que siguen sin existir (criterio 23).** Con `GET /api/cajas/{id}` y la ruta del PDF agregadas, `PATCH`,
   `PUT`, `DELETE` y `POST` sobre `/api/cajas/{id}`, y cualquier método que no sea `GET` sobre
-  `/api/cajas/{id}/cierres/{numero}/pdf`, siguen respondiendo 404 sin tocar nada.
+  `/api/cajas/{id}/cierres/{numero}/pdf`, siguen respondiendo 404 sin tocar nada. Desde la ronda adversarial 1 de la
+  006b, eso incluye `HEAD` sobre las cuatro rutas de lectura de la caja (criterio 50).
 
 ### J. Semilla y documentación
 
@@ -805,6 +923,8 @@ de hoy en el alcance de la secretaria (PQ2 d), decidida en DR-13 (pregunta P13).
   fuente estándar no puede mostrar sale como `?` (criterio 42).
 - **Comprobante que parece vacío** (`{U+3164}`, que se ve en blanco, o `{U+200B}`, un espacio de ancho cero): se guarda `null`, como el vacío; uno con un
   carácter que invierte la dirección del texto responde 400 (criterio 47, ronda adversarial 1).
+- **Caja con miles de movimientos (006b):** no hay tope. Su PDF tarda más en generarse, pero no detiene la API de nadie,
+  y las descargas de más esperan turno o reciben 429 (criterio 49).
 
 ## Reglas de negocio aplicables
 
@@ -854,7 +974,9 @@ responde el mismo 404 que uno inexistente o de otra academia. `GET /api/cajas/ac
 | `POST /api/cajas/{id}/reapertura` | `REABRIR_CAJA` | `reabrirCajaSchema` | 200 `RespuestaCaja` | 400, 401, 403, 404, 409 `HAY_OTRA_CAJA_ABIERTA` |
 | **[006b]** `GET /api/cajas` | `VER_REPORTES_FINANCIEROS` | `desde`, `hasta` en la consulta (`filtroHistorialCajasSchema`, PQ3) | 200 `RespuestaHistorialCajas` (`{ desde, hasta, cajas }`) | 400 (`desde`, `hasta`), 401, 403 |
 | **[006b]** `GET /api/cajas/{id}` | `VER_REPORTES_FINANCIEROS` | — | 200 `RespuestaCaja` | 401, 403, 404 (PQ1) |
-| **[006b]** `GET /api/cajas/{id}/cierres/{numero}/pdf` | `VER_REPORTES_FINANCIEROS` | — | 200 `application/pdf` (PQ7) | 401, 403, 404 (PQ1, PQ6), 500 (PQ9) |
+| **[006b]** `GET /api/cajas/{id}/cierres/{numero}/pdf` | `VER_REPORTES_FINANCIEROS` | — | 200 `application/pdf` (PQ7) | 401, 403, 404 (PQ1, PQ6), 429 `DEMASIADAS_SOLICITUDES` (criterio 49 b y c), 500 (PQ9) |
+
+**[006b]** `HEAD` sobre las cuatro rutas `GET` de la caja responde 404 (criterio 50).
 
 **Orden de los errores de negocio** (después del 400 del esquema y del 401 del criterio 9):
 
@@ -968,7 +1090,8 @@ dos decimales (el `esperado` de `CAJA_CERRADA`, como objeto por método, PP5):
 `CAJA_YA_ABIERTA`, `CAJA_PENDIENTE_DE_CIERRE`, `CAJA_DEL_DIA_CERRADA`, `CAJA_CERRADA`, `CAJA_DE_OTRO_DIA`,
 `SIN_CAJA_ABIERTA` (solo de la interfaz), `EFECTIVO_INSUFICIENTE`, `CAJA_CAMBIO`, `CLAVE_YA_USADA` y
 `HAY_OTRA_CAJA_ABIERTA` (409). Se reutilizan `SOLICITUD_INVALIDA`, `NO_ENCONTRADO`, `ERROR_INTERNO` y los de sesión,
-academia y permisos.
+academia y permisos. **[006b]** También se reutiliza `DEMASIADAS_SOLICITUDES`, el 429 del filtro de errores, en el PDF
+(criterio 49).
 
 ### Eventos
 
@@ -1049,6 +1172,8 @@ su reapertura) en lugar de los campos de cierre de `CAJA`, para no perder un cie
 - **003 y 004:** ninguno.
 - **005:** ninguno. La caja no bloquea filas del cliente ni clases (criterio 26).
 - **Web de 002:** el inicio del panel suma "Caja" (006a) e "Historial de caja" (006b).
+- **Rutas de academia de 002, [006b]:** `HEAD` sobre las rutas de la caja responde 404 (criterio 50). Las demás rutas
+  no cambian (DT-9).
 - **`docs/arquitectura.md`:** nuevas "Reglas para las historias siguientes" (criterio 46).
 
 ## Reglas para las historias siguientes
@@ -1103,6 +1228,14 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 - **El PDF muestra los nombres de hoy (006b, PQ10):** si después del cierre cambia el nombre de quien cerró, de quien
   abrió o de un alumno, el PDF de ese cierre sale con el nombre nuevo. Los montos, la observación y la reapertura no
   cambian, y la auditoría guarda los ids. Guardar los nombres en el cierre exigiría una migración, y la 006b no tiene.
+- **Límites del PDF por proceso (006b, criterio 49):**
+  - Con varias instancias de la API, cada una tiene su cola.
+  - Si muchas personas descargan a la vez (por ejemplo, al cierre del día de muchas academias), alguna recibe 429 y
+    tiene que volver a intentar.
+  - El PDF de una caja con miles de movimientos tarda segundos, pero no detiene a las demás peticiones.
+- **Lecturas de una caja muy grande (006b):** `GET /api/cajas/actual` y el detalle arman su JSON con todos los
+  movimientos en el hilo principal. Con 20 000 movimientos son decenas de milisegundos por petición. Se acepta porque
+  no hay tope de movimientos (DT-7) y el criterio 49 solo trata del PDF, que costaba segundos.
 - **`pago_id` sin llave foránea hasta la 007:** en la 006 nadie escribe ingresos por la API; las pruebas usan UUID
   inventados.
 
@@ -1111,7 +1244,8 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 **Cómo se citan.** Las decisiones del responsable de esta spec se citan como "DR-n" dentro de ella y como "DR-n de 006"
 fuera; las del orquestador, "DT-n" y "DT-n de 006"; las de diseño del especificador, "Dn". Las de otras specs llevan
 siempre su número ("DT-5 de 002", "DR-11 de 005"). La pregunta Pn del borrador es DR-n y la Tn es DT-n (P1 es DR-1, T1
-es DT-1, y así hasta P11 y T6; P13, contestada después, es DR-13, y DR-12 queda para P12). Las precisiones de las
+es DT-1, y así hasta P11 y T6; P13, contestada después, es DR-13, y DR-12 queda para P12). DT-7 la tomó el
+orquestador en la ronda adversarial 1 de la 006b, sin pregunta previa; T8 y T9, de esa ronda, son DT-8 y DT-9. Las precisiones de las
 pruebas protegidas de la 006a se citan como "PPn"; las del repaso de la 006b, como "PQn" (están al final de la sección I
 de los criterios).
 
@@ -1194,9 +1328,27 @@ es la propuesta.
   defensa en profundidad. Alternativa descartada: solo el bloqueo de la fila en la API. _(006a; criterio 6.)_
 - **DT-5 (pregunta T5). Clasificación.** **Decidido (la propuesta):** críticos 1 a 36 y 40 a 43 (del 42, el alcance y el
   404); prueba obligatoria 37 a 39, el contenido del 42 y el 44; revisor 45 y 46. Repartidos como dice "División en 006a
-  y 006b". La ronda adversarial 1 de la 006a suma 47 y 48, críticos, por decisión del orquestador.
+  y 006b". La ronda adversarial 1 de la 006a suma 47 y 48, críticos, por decisión del orquestador. La ronda adversarial
+  1 de la 006b suma 49 y 50, también críticos.
 - **DT-6 (pregunta T6). `ultimoMovimientoVisto` en el cierre** (D3). **Decidido (la propuesta).** Alternativa
   descartada: cerrar con lo que haya en ese momento, aunque la persona no lo haya visto. _(006a; criterio 31.)_
+- **DT-7 (sin pregunta previa; ronda adversarial 1 de la 006b, 22/11/2026). Una caja con muchos movimientos y su PDF.**
+  **Decidido por el orquestador:** es un problema técnico, no de negocio. No se pone tope de movimientos por caja, porque
+  sería una regla de negocio que los documentos no tienen. Se acota cuánto bloquea cada PDF y cuántos se generan a la vez
+  (criterio 49). Alternativa descartada: un tope de movimientos por caja o por PDF. _(006b; criterio 49.)_
+- **DT-8 (pregunta T8, ronda adversarial 1 de la 006b, contestada el 22/11/2026). ¿Limitamos las descargas de PDF por
+  persona?** **Decidido (la propuesta):** sí. Cada persona tiene como mucho 2 descargas en curso o esperando turno,
+  contadas en la misma cola del criterio 49 b. Sin ese límite, una persona con diez descargas simultáneas llenaría la
+  cola de todas las academias; con él, un doble clic sigue funcionando. Alternativa descartada: un límite por ventana
+  con `ThrottlerStorage` (por ejemplo, 10 por minuto), porque no impide lanzar diez a la vez y las pruebas protegidas
+  de PQ6, que hacen más de diez descargas seguidas de la misma persona en una app, fallarían con 429. _(006b; criterio
+  49 c.)_
+- **DT-9 (pregunta T9, ronda adversarial 1 de la 006b, contestada el 22/11/2026). ¿`HEAD` responde 404 en toda la API
+  de academia, o solo en la caja?** **Decidido (la propuesta):** solo en las rutas de la caja. En las demás rutas `GET`
+  (002 a 005), `HEAD` sigue llamando al manejador del `GET`; en las rutas públicas, la 005 lo cuenta como `GET` en el
+  límite por IP (criterio 49 de 005). El adversarial de la 007 lo revisa en las rutas que arman archivos (comprobantes y
+  tickets). Alternativa descartada: generalizarlo en esta historia, porque cambiaría el comportamiento de specs ya
+  unidas. _(006b; criterio 50.)_
 
 ### Decisiones de diseño (técnicas)
 
@@ -1308,7 +1460,8 @@ cambian ninguna regla de negocio; se citan como "PPn" en los criterios, el contr
 
 Las preguntas del borrador quedaron resueltas el 22/11/2026; el texto completo de cada una, con lo decidido y la
 alternativa descartada, está en "Decisiones". P13, encontrada en el repaso de la 006b, se contestó el mismo día con la
-propuesta (DR-13). Queda una: P12, encontrada al escribir PP3, que no bloquea:
+propuesta (DR-13). T8 y T9, de la ronda adversarial 1 de la 006b, se contestaron con la propuesta (DT-8 y DT-9). Queda
+una: P12, encontrada al escribir PP3, que no bloquea:
 
 - **P12 (para el responsable, no bloquea). ¿Una caja puede terminar el día con más de S/ 99,999.99 en efectivo?** El
   monto declarado del cierre usa `montoNoNegativoSchema` (criterio 30), que llega a `99999.99`, pero el esperado en

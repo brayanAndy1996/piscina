@@ -44,6 +44,9 @@ Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-
   PQ2), `pdf/cierre-pdf.ts` (`generarPdfCierre(datos): Promise<Buffer>`, pura respecto de la base; `GeneradorPdfCierre`,
   `GENERADOR_PDF_CIERRE`; PQ8), `pdf/texto-pdf.ts` (`textoParaPdf`, PQ11) y las rutas `GET` del historial en
   `CajasController`, después de `actual`. `CajaModule` provee `GENERADOR_PDF_CIERRE`; `caja/index.ts` lo reexporta.
+  Desde la ronda adversarial 1 de la 006b (2.12) se suman: `pdf/cola-pdf.ts` (`ColaPdfCierre`, `LIMITES_PDF_CIERRE`),
+  el generador sin bloquear el bucle (por tramos o con un worker) y el middleware que responde 404 a `HEAD` en
+  `/api/cajas`.
 - `backend/package.json`: `pdfkit` y `@types/pdfkit`; `scripts/lib/dependencias-backend.mjs`
   (`DEPENDENCIAS_BACKEND_PERMITIDAS`, criterio 127 de 001).
 - `frontend/src/modulos/caja/`: `PaginaHistorialCajas.tsx`, `DetalleCaja.tsx`, las llamadas nuevas en `api.ts` (lista,
@@ -299,6 +302,73 @@ Las reglas exactas están en las precisiones PQ1 a PQ15 de la spec (al final de 
   `node:zlib`, extrae las cadenas de `Tj` y `TJ` y las pasa de WinAnsi a Unicode; las pruebas buscan las cadenas de PQ10.
   El PDF de producción conserva la compresión por defecto de `pdfkit`.
 
+### 2.12 [006b] Ronda adversarial 1: el PDF sin detener la API y `HEAD` (criterios 49 y 50)
+
+**El PDF sin bloquear el bucle de eventos (criterio 49 a y d).** Hoy `generarPdfCierre` dibuja todo el documento de una
+vez en el hilo principal, a unos 0,65 ms por movimiento. La técnica la elige quien implementa, con dos condiciones:
+`generarPdfCierre(datos): Promise<Buffer>`, `GeneradorPdfCierre` y `GENERADOR_PDF_CIERRE` quedan como en PQ8, y salen
+los mismos bytes (PQ9 d). Hay dos técnicas válidas.
+
+- **Por tramos en el hilo principal.**
+  - **Cómo:** `dibujar` pasa a ser asíncrona. Dentro de la tabla, cede el bucle con
+    `await new Promise((r) => setImmediate(r))` cada vez que pasaron unos 10 ms, medidos con `performance.now()`.
+  - **Por qué tramos de 10 ms:** en cada vuelta del bucle corre un tramo de cada generación en curso, que son hasta 2
+    (criterio 49 b). Cada ida y vuelta a la base de otra petición espera, en el peor caso, la suma de esos tramos. Un
+    egreso hace unas 10 a 15 idas y vueltas (sesión, transacción, actor, caja, inserción, auditoría, lectura). Con
+    tramos de 10 ms son unos 300 ms y cumple el segundo del 49 a. Con tramos de 50 ms, o con un número fijo de filas
+    grande, no cumpliría. Por eso conviene medir por tiempo y no por filas.
+  - **Bytes:** las llamadas a `pdfkit` son las mismas y en el mismo orden, así que los bytes no cambian.
+  - **Ventaja:** no toca el build ni las pruebas.
+  - **Límite:** toda la CPU sigue en el hilo principal. Con 2 PDF en curso, las demás peticiones van más lentas, pero
+    no se detienen.
+- **En un `worker_thread`.**
+  - **Reparto del trabajo:** el hilo principal arma todos los textos (`textoParaPdf`, `formatearSoles`, fechas y horas
+    de Lima con `@date-fns/tz`) y le pasa al worker solo cadenas y números. El worker solo llama a `pdfkit` y devuelve
+    el `Buffer`, transferido sin copiar. Con eso, la `TZ` del worker no importa.
+  - **Cuidado con Vitest:** ejecuta las fuentes TypeScript con su propio cargador, y un worker no lo hereda. El archivo
+    del worker tiene que ser JavaScript que Node cargue sin transformar, por ejemplo un `cierre-pdf.worker.cjs` que solo
+    hace `require('pdfkit')`. Si no, el worker no arranca en las pruebas, incluidas las unitarias de `cierre-pdf.test.ts`.
+  - **Cuidado con el build CommonJS:** no hay `import.meta.url`. La ruta del worker se arma con
+    `path.join(__dirname, …)`, y el `.cjs` se copia a `dist/` (con `assets` de `nest-cli.json` o con un paso del build
+    escrito en Node, sin `cp`). Hay que comprobarlo con `npm run build` y arrancando `dist/`, también en la integración
+    continua de Windows.
+  - **Cuántos workers:** como mucho 2, uno por cada turno del criterio 49 b. Si el worker lanza, sale o termina con
+    error, la promesa se rechaza y la descarga responde 500 (PQ9 b).
+  - **Ventaja:** paralelismo real.
+  - **Costo:** un archivo fuera de TypeScript y un paso más en el build.
+
+**Recomendación del especificador:** por tramos medidos por tiempo, porque es el cambio más chico. Si la prueba del 49 a
+no tiene margen en la integración continua de Windows, el worker. La lectura de 5 000 filas y el armado de
+`DatosPdfCierre` también corren en el hilo principal, y cuentan en la medición, pero son milisegundos. Si se notan,
+conviene leer solo las columnas que usa el PDF.
+
+**La cola de generación (criterio 49 b y c).**
+
+- **Dónde vive:** un proveedor de Nest con una sola instancia por proceso, por ejemplo `ColaPdfCierre` en
+  `pdf/cola-pdf.ts`, sin dependencias nuevas. Lleva tres cosas: el número de generaciones en curso, una fila de espera
+  en orden de llegada (promesas con su `resolve`) de como mucho `enEspera` lugares, y un `Map<usuarioId, número>` con lo
+  que cada persona tiene en curso o en espera. La constante `LIMITES_PDF_CIERRE = { simultaneos: 2, enEspera: 8 }` va
+  en el mismo archivo.
+- **Cómo la usa `HistorialService.pdf`:**
+  1. valida la forma del id y del `numero` (404);
+  2. pide el turno con `await cola.turno(usuarioId)`, que lanza `HttpException(429)` y el filtro lo convierte en
+     `DEMASIADAS_SOLICITUDES`;
+  3. dentro de un `try … finally`, lee en su `conAcademia`, sale y llama a `this.generador.generar`;
+  4. en el `finally` libera el turno, también con un 404 o un 500.
+- **El límite envuelve la llamada del servicio,** no el generador real, para que valga también con el generador de las
+  pruebas.
+- **Opcional, no exigido:** si el cliente cierra la conexión mientras espera (`solicitud.on('close')`), sacarlo de la
+  fila.
+
+**`HEAD` en las rutas de la caja (criterio 50).**
+
+- **Cómo:** un middleware de Express, instalado después de la protección de las rutas de academia (así, sin sesión
+  responde lo mismo que `PATCH`) y antes de que Nest registre sus rutas.
+- **Qué intercepta:** los `HEAD` cuya ruta coincide, sin distinguir mayúsculas, con `^/api/cajas(?:/.*)?$` (barra
+  final incluida). Responde con `responderError(filtro, noEncontrado(), …)`, el mismo JSON y las mismas cabeceras del
+  404 de siempre.
+- **Comentarios:** el de `CajasController` (PQ15) se actualiza.
+
 ## 3. Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -321,6 +391,12 @@ Las reglas exactas están en las precisiones PQ1 a PQ15 de la spec (al final de 
 | [006b] Sin paginación en la lista (PQ4) | Paginación o tope de filas | Una caja por día y un rango de como mucho 366 días ya acotan la lista |
 | [006b] Fuera del alcance, 404 y no 403 (PQ1) | 403 `SIN_PERMISO` | No revela que la caja existe, igual que con otra academia |
 | [006b] Extracción del texto del PDF con `node:zlib` en una utilidad de prueba (PQ10) | Una dependencia de desarrollo para leer PDF | Criterio 127 de 001: cada dependencia nueva se justifica; para buscar cadenas basta leer `Tj` y `TJ` |
+| [006b] Acotar el bloqueo y la concurrencia del PDF (criterio 49, DT-7) | Tope de movimientos por caja | Sería una regla de negocio que los documentos no tienen; el límite técnico protege a todas las academias sin cambiar qué se puede registrar |
+| [006b] Por tramos o en un worker, a elección (2.12) | Fijar una técnica en la spec | El criterio 49 se mide desde fuera; las dos cumplen y cada una tiene su costo (build o CPU en el hilo principal) |
+| [006b] 429 `DEMASIADAS_SOLICITUDES` con la cola llena (criterio 49 b) | 503 con un código nuevo | El 429 ya está en el filtro de errores con su mensaje; un 5xx el filtro lo convierte en `ERROR_INTERNO` y lo registra como error del servidor |
+| [006b] Turno antes de la lectura (criterio 49 b) | Leer primero y esperar turno después | La espera no deja una transacción abierta y una cola llena no fuerza a leer miles de filas para responder 429 |
+| [006b] Límite por persona en curso o en espera (criterio 49 c, DT-8) | Ventana de tiempo con `ThrottlerStorage` | Una ventana no impide diez descargas a la vez y rompería las pruebas protegidas de PQ6 (más de diez descargas seguidas de una persona) |
+| [006b] `HEAD` → 404 con un middleware antes de las rutas (criterio 50) | `@Head()` en el controlador | Con `@Head()` pasaría por el guard: el `ENTRENADOR` recibiría 403 en vez del 404 de `PATCH`, y habría que repetirlo en cada ruta |
 | `metodo_pago` creado aquí | Que lo cree la 007 | Los movimientos lo necesitan ya; la 007 lo reutiliza |
 | `pago_id` sin llave foránea hasta la 007 | Crear `pagos` vacía | Cada historia crea sus tablas (D-17) |
 
@@ -346,8 +422,14 @@ Las reglas exactas están en las precisiones PQ1 a PQ15 de la spec (al final de 
 - **Montos en la web.** `restarMontos` en céntimos con `bigint`; prohibido `Number` sobre montos (lo revisa el revisor).
 - **[006b] `pdfkit` y sus dependencias** (`fontkit`, `linebreak`…): JavaScript puro; la integración continua en Windows
   lo instala igual. Hay que revisar que ninguna esté en la lista negra del criterio 129 de 001.
-- **[006b] PDF grande:** una caja con cientos de movimientos genera varias páginas en memoria; para el volumen de una
-  academia es poco. Aceptado.
+- **[006b] PDF grande:** al principio se aceptaba, pero la ronda adversarial 1 de la 006b mostró que una caja de 20 000
+  movimientos es alcanzable por la API y que su PDF congelaba el proceso. Queda resuelto con el criterio 49: un PDF así
+  tarda segundos y espera su turno, pero no detiene a nadie. El documento sigue armándose en memoria; con 2
+  generaciones a la vez, son unos pocos MB.
+- **[006b] Prueba con tiempos (criterio 49 a):** mide milisegundos contra una base real y puede salir inestable en la
+  integración continua de Windows. Los umbrales (200 ms del bucle y 1 000 ms del egreso) son de la spec: no se suben sin
+  cambiarla. Si fallan por poco, se cambia la técnica (2.12), no la prueba. El tester la ejecuta varias veces seguidas
+  antes de darla por buena.
 - **[006b] Nombres de hoy en el PDF de un cierre viejo** (riesgo aceptado de la spec): sin migración no hay dónde
   guardar los nombres del momento del cierre.
 
