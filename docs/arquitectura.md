@@ -396,6 +396,65 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
   - **Registro técnico (criterios 28 y 53).** `x-token-solicitud` y `referer` se redactan en todo el registro de la API
     (`RUTAS_REDACTADAS`, en `infraestructura/registro/opciones-registro.ts`), con un texto fijo. La línea de la petición de la
     foto no lleva cuerpo ni token, y los fallos de la foto se registran solo con el tipo del error.
+- **Lo que construye la historia 006a** (caja del día, D-23; la especificación está en `specs/006-caja/`). Migración
+  `20261122120000_caja`, módulo `backend/src/modulos/caja/` y página `/panel/caja`. El historial y el PDF del cierre son de
+  la 006b, que no tiene migraciones:
+  - **Tablas con RLS.** `cajas`, `movimientos_caja` y `cierres_caja`. Cada fila lleva `academia_id`, la RLS está activada y
+    forzada, y las políticas de `SELECT` e `INSERT` (y de `UPDATE`, en `cajas` y `cierres_caja`) son de la forma de 001:
+    solo se ve y se escribe la academia del contexto. Ninguna tiene política de `DELETE`, y `movimientos_caja` no tiene `UPDATE`: nada se borra y un
+    movimiento no cambia (DR-5).
+  - **Tipos.** `estado_caja` (`ABIERTA`, `CERRADA`), `tipo_movimiento_caja` (`INGRESO`, `EGRESO`),
+    `concepto_movimiento_caja` (`INSCRIPCION`, `MENSUALIDAD`, `CLASE_PARTICULAR`, `EGRESO_MENOR`; la 019 suma el suyo) y
+    `metodo_pago` (`EFECTIVO`, `YAPE`, `TRANSFERENCIA`), que la 007 reutiliza en `pagos`.
+  - **Una caja por día y una abierta a la vez.** `UNIQUE (academia_id, fecha)` (`cajas_academia_id_fecha_key`, DR-1) y el
+    índice único parcial `cajas_una_abierta_por_academia` (`WHERE estado = 'ABIERTA'`). El `CHECK` `cajas_fecha_de_lima`
+    exige que la `fecha` sea la de Lima de `abierta_en`.
+  - **Invariantes con `CHECK`** (criterio 4), para cualquiera que escriba en la base: `monto_inicial` no negativo y sin
+    `NaN`, y montos de movimiento mayores que 0. Un ingreso tiene concepto de cobro, alumno y pago, y no tiene descripción,
+    comprobante ni clave. Un egreso es `EGRESO_MENOR` en `EFECTIVO`, con descripción y clave, y sin alumno ni pago. En
+    `cierres_caja`: `esperado = inicial + ingresos en efectivo − egresos` (sección 4.3; Yape y transferencia no suman, D-04),
+    `diferencia = declarado − esperado`, observación obligatoria si la diferencia no es 0, y la reapertura completa (quién,
+    cuándo y motivo) o nula, con `reabierto_en >= cerrado_en`.
+  - **Un cierre vigente por caja.** Cada cierre es una fila (D1). El índice único parcial `cierres_caja_un_vigente_por_caja`
+    (`WHERE reabierto_en IS NULL`) deja como mucho un cierre sin reabrir por caja. La reapertura solo completa las tres
+    columnas de reapertura.
+  - **Trigger `movimientos_caja_solo_caja_abierta`** (criterio 6, DT-4). Antes de insertar un movimiento toma la fila de la
+    caja con `FOR SHARE` y rechaza con `23514` si la caja que ve no está `ABIERTA`. Si no la ve (no existe, es de otra
+    academia o la RLS la oculta), deja pasar la fila, y responden la llave compuesta (`23503`) o la política (`42501`)
+    (PP1). Es `SECURITY INVOKER`, con `search_path` fijo, y tiene `REVOKE ALL … FROM PUBLIC`, porque nadie la llama a mano.
+  - **Privilegios de `aquagestion_app`** (criterio 2). `cajas`: `SELECT` e `INSERT`, y `UPDATE` solo de `estado` y
+    `actualizado_en`. `movimientos_caja`: `SELECT` e `INSERT`. `cierres_caja`: `SELECT` e `INSERT`, y `UPDATE` solo de
+    `reabierto_por`, `reabierto_en` y `motivo_reapertura`. Ninguna fecha, ningún monto y quién abrió no cambian.
+  - **Permiso `REABRIR_CAJA`** (DT-1): `ADMIN: 'TODO'`. La matriz pasa de 24 a 25 filas (criterio 26 de 002).
+    `ABRIR_CERRAR_CAJA` (`ADMIN` y `SECRETARIA`) cubre la consulta de la caja, la apertura, los egresos y el cierre;
+    `REABRIR_CAJA`, solo la reapertura.
+  - **Módulo `backend/src/modulos/caja/`.** `caja.module.ts`, `cajas.controller.ts` y `cajas.service.ts` (apertura, caja
+    actual, egreso, cierre y reapertura). `movimientos.ts`, sin Nest, tiene las tres funciones de la interfaz de los cobros
+    (sección «Caja del día (006a)», más abajo) y sus bloqueos internos. `lectura.ts` arma la caja (resumen, movimientos y cierres). En `dominio/`,
+    `esperado.ts` (`calcularResumen` y `calcularDiferencia`, con `Decimal`) y `dia.ts` (`esDeOtroDia` y `esCierreTardio`)
+    son funciones puras. `index.ts` reexporta las interfaces y `CajaModule`.
+  - **Rutas.** `GET /api/cajas/actual` (la caja abierta, o la de hoy, o `null`; sin bloqueos ni auditoría), `POST
+    /api/cajas` (apertura), `POST /api/cajas/{id}/egresos`, `POST /api/cajas/{id}/cierre` y `POST
+    /api/cajas/{id}/reapertura`, con `REABRIR_CAJA`. Un `{id}` que no es UUID responde 404, como uno que no existe o es de
+    otra academia. Los errores de negocio siguen el orden de «Orden de los errores de negocio» de la spec.
+  - **Auditoría.** `CAJA_ABIERTA`, `CAJA_EGRESO_REGISTRADO`, `CAJA_CERRADA` y `CAJA_REABIERTA` (con su motivo), y
+    `CAJA_INGRESO_REGISTRADO` desde la interfaz. Los montos van como texto con dos decimales, y la IP es nula si no hay. Una
+    respuesta 200 de una clave repetida no audita.
+  - **Contratos** (`packages/contratos/src/caja.ts` y `dinero.ts`). `montoNoNegativoSchema`, `montoConSignoSchema` (tope
+    `9999999999.99` en valor absoluto) y `restarMontos`, que trabaja en céntimos con `bigint`; los esquemas de apertura,
+    egreso, cierre y reapertura, y `METODOS_PAGO`. El comprobante del egreso rechaza los caracteres de dirección del texto y
+    los separadores, y se guarda `null` si no tiene nada visible (criterio 47).
+  - **Web** (`/panel/caja`, en `frontend/src/modulos/caja/`). Cuatro estados: sin caja de hoy (formulario de apertura), caja
+    de hoy abierta (egresos y cierre), caja abierta de otro día (solo cierre) y caja de hoy cerrada (resultado del cierre y,
+    para el administrador, «Reabrir caja»). El cierre muestra el esperado por método antes de contar, y la diferencia
+    mientras se escribe. Cada diálogo guarda su clave de idempotencia, y las consultas llevan la identidad de la sesión.
+    Una caja cerrada de un día anterior se muestra como «sin caja de hoy», sin ofrecer reabrirla (desviación del plan).
+  - **Semilla.** En `delfines`, una caja cerrada del 2026-11-02, abierta y cerrada por la secretaria de ejemplo (DNI
+    `10000002`), con un egreso de S/ 15.50 y un cierre con un sobrante de S/ 0.50 y su observación. Las claves de
+    idempotencia son fijas: repetir la semilla no duplica nada. `tiburones` queda sin cajas. `/panel/caja` solo muestra la
+    caja de hoy o la abierta, así que esta no se ve hasta el historial (006b).
+  - **Lo que todavía no trae.** Los cobros y las verificaciones que registran su ingreso (007 y 016), el egreso desde caja
+    de la 019, el historial y el PDF del cierre (006b, con `pdfkit`), y la reapertura de un día anterior desde la web (006b).
 
 ## Fechas y horas de negocio (America/Lima)
 
@@ -653,6 +712,58 @@ reglas que agregó la 005b («Archivos», «Para la 008» y «Fotos de solicitud
   hasta que exista la política de retención (Ley 29733), que se define antes de producción. Cuando exista, la foto se trata
   como los demás datos de esas personas.
 
+### Caja del día (006a)
+
+Salen de la sección «Reglas para las historias siguientes» de `specs/006-caja/spec.md` (criterio 46), con la nota de la
+ronda adversarial 1 sobre la fila del alumno. Valen también las reglas generales de este documento: `bloquearActorVigente`
+como primera sentencia, `@Permiso` en cada manejador, `await` en cada paso, sin caché, `errorParaRegistro` y el 409 por el
+nombre de la restricción. Las interfaces están en `backend/src/modulos/caja/movimientos.ts`, reexportadas en `caja/index.ts`.
+
+- **Ningún cobro sin caja abierta (007, 016 y 019).** Todo cobro en efectivo y toda verificación de Yape o transferencia
+  llama a `registrarIngresoEnCaja(tx, ingreso, ahora)` dentro de su propia transacción, antes de confirmar. Si lanza
+  `SIN_CAJA_ABIERTA` o `CAJA_DE_OTRO_DIA` (un `ErrorNegocio` 409), quien llama lo deja subir y `conAcademia` revierte la
+  transacción completa: no queda un pago confirmado sin su movimiento. Una caja de otro día, aunque siga abierta, tampoco
+  admite cobros (DR-2). Un pago entra una sola vez: `pagoId` es único en la academia, y una segunda llamada con el mismo
+  devuelve el movimiento anterior con `repetido: true`, sin insertar ni auditar. La 007 crea `pagos` y le pone la llave
+  foránea a `movimientos_caja.pago_id`, que hoy no tiene. El egreso desde caja de la 019 llama a
+  `registrarEgresoEnCaja`. `leerCajaAbierta` sirve para avisar «abre la caja antes de cobrar» sin decidir con él.
+- **Orden de bloqueos con la caja.** En toda transacción que registre un ingreso o un egreso, en este orden, y la caja
+  siempre al final:
+  1. `usuarios`: `bloquearActorVigente` como primera sentencia (DT-5 de 002).
+  2. Los bloqueos consultivos que necesite la operación.
+  3. La fila del alumno o cliente del cobro, con `FOR UPDATE` (o el modo que use la operación). Va aunque el cobro no
+     cambie esa fila, y también en la verificación de un Yape o una transferencia.
+  4. Las filas de `pagos`, `solicitudes_inscripcion` y `matriculas` que toque la operación.
+  5. Las clases, con `bloquearClasesParaCupo` en una sola llamada.
+  6. La caja: `registrarIngresoEnCaja` y `registrarEgresoEnCaja` la bloquean con `FOR UPDATE`. Después solo se insertan
+     filas y auditoría.
+
+  Ninguna transacción bloquea la caja y luego otra fila del negocio. La apertura y la reapertura toman antes el bloqueo
+  consultivo `'caja:' || academia_id`, después del actor y antes de la fila de la caja; los cobros y los egresos no lo
+  toman. Motivo de la fila del alumno: el `INSERT` de un ingreso toma un `FOR KEY SHARE` implícito sobre la fila del alumno
+  (llave compuesta) y sobre `usuarios` (`registrado_por`), con la caja ya bloqueada. Si otra transacción tiene la fila del
+  alumno con `FOR UPDATE` y espera la caja, las dos se esperan entre sí, y PostgreSQL aborta una con `40P01`. Por eso la
+  fila del alumno se bloquea antes, de forma explícita (nota de la ronda adversarial 1).
+- **`usuarioId` es el actor ya bloqueado.** `registrarIngresoEnCaja` y `registrarEgresoEnCaja` reciben `usuarioId` y lo
+  guardan en `registrado_por`. Ese `INSERT` toma un `FOR KEY SHARE` sobre la fila de `usuarios`, que no espera a nadie,
+  porque `usuarioId` es el actor que `bloquearActorVigente` ya bloqueó en la misma transacción. Quien llama pasa el actor de
+  la sesión y nunca a otra persona (criterio 48 e).
+- **Las interfaces validan sus entradas y lanzan `RangeError` antes de tocar la base** (criterio 48). Son la puerta por la
+  que la 007, la 016 y la 019 escriben dinero.
+  - `registrarIngresoEnCaja` lanza `RangeError` si `alumnoId`, `pagoId` o `usuarioId` no tienen forma de UUID, o si
+    `concepto` o `metodo` no están en su lista (`CONCEPTOS_MOVIMIENTO` sin `EGRESO_MENOR`, y `METODOS_PAGO`). El monto se
+    comprueba después de bloquear la caja y de buscar el `pagoId` (criterio 24): sin caja abierta, un monto inválido da
+    `SIN_CAJA_ABIERTA`. Si el monto no es válido, lanza `RangeError` sin escribir.
+  - `registrarEgresoEnCaja` valida la descripción, el comprobante, la clave de idempotencia, el `usuarioId` y el monto con
+    las reglas de la ruta, y trabaja con los valores normalizados: la descripción recortada y el comprobante, o `null`.
+  - `leerCajaAbierta` no recibe datos de quien llama. No valida nada y no lanza `RangeError`.
+  - El mensaje del `RangeError` no lleva el valor, para que no llegue a los registros. No es un `ErrorNegocio`: quien llama
+    no lo convierte en un 409.
+- **El día es el de Lima.** La caja de hoy se decide con `hoyEnLima(RELOJ.ahora())`, nunca con `CURRENT_DATE`. Una caja de
+  otro día, o con fecha futura, no admite movimientos (`esDeOtroDia`).
+- **El ingreso guarda el método real y el monto total.** Un Yape entra como `YAPE` y no suma al efectivo esperado (D-04).
+  La caja no redondea ni suma IGV: entra el total ya calculado (D-03).
+
 ## Estructura de carpetas
 
 ```
@@ -668,7 +779,7 @@ piscina/
 │   ├── prisma/
 │   │   ├── schema.prisma
 │   │   ├── migrations/           Incluyen las políticas RLS por academia
-│   │   └── seed.ts               Datos inventados: 2 academias de ejemplo y sus usuarios
+│   │   └── seed.ts               Datos inventados: 2 academias de ejemplo, sus usuarios, planes, clases, solicitudes y la caja cerrada de `delfines`
 │   ├── src/
 │   │   ├── main.ts · app.module.ts
 │   │   ├── comun/                Guards de rol, decorador de academia, filtros de error, dinero y fechas en Lima
@@ -680,7 +791,7 @@ piscina/
 │   │   └── modulos/
 │   │       ├── academias/        Alta de academias, Superadmin
 │   │       ├── autenticacion/ · usuarios/ · auditoria/ · configuracion/
-│       ├── planes/ · clases/ · matriculas/ · inscripciones/   (004, 005a y 005b; matriculas/ no tiene controlador)
+│   │       ├── planes/ · clases/ · matriculas/ · inscripciones/ · caja/   (004, 005a, 005b y 006a; matriculas/ no tiene controlador; la 006b agrega el historial y el PDF a caja/)
 │   │       └── <modulo>/         Un módulo por área (planes, clases, caja, pagos, asistencia…)
 │   │           ├── <modulo>.module.ts · .controller.ts · .service.ts
 │   │           └── dominio/      Cálculos puros + sus pruebas unitarias (*.test.ts)

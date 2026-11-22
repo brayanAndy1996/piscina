@@ -22,7 +22,8 @@ Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-
   - `movimientos.ts` (sin Nest): `registrarIngresoEnCaja`, `registrarEgresoEnCaja`, `leerCajaAbierta` y las funciones
     internas `bloquearCajaAbierta`, `bloquearCaja`, `siguienteNumero`, `leerResumen`;
   - `lectura.ts` (sin Nest): arma `Caja` (resumen, movimientos y cierres) con una consulta por parte;
-  - `dominio/esperado.ts` (`calcularResumen`, `calcularDiferencia`, `resultadoDe`) y `dominio/dia.ts`
+  - `dominio/esperado.ts` (`calcularResumen`, y `calcularDiferencia`, que devuelve la diferencia y el resultado `CUADRA`,
+    `SOBRANTE` o `FALTANTE`; PP2 de la spec) y `dominio/dia.ts`
     (`esDeOtroDia(fechaCaja, ahora)`, `esCierreTardio(fechaCaja, cerradoEn)`), puras, con sus pruebas unitarias;
   - `errores.ts` (los `ErrorNegocio` de los códigos nuevos);
   - `index.ts` (exporta `movimientos.ts` y los tipos).
@@ -315,3 +316,35 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
   lo instala igual. Hay que revisar que ninguna esté en la lista negra del criterio 129 de 001.
 - **[006b] PDF grande:** una caja con cientos de movimientos genera varias páginas en memoria; para el volumen de una
   academia es poco. Aceptado.
+
+## 6. Desviaciones aceptadas (006a)
+
+Lo que se implementó y se aparta de lo escrito en este plan o en la spec. Ninguna cambia una regla de negocio ni un
+criterio.
+
+- **Reapertura: `reabierto_en = GREATEST(ahora, cerrado_en)`**, en lugar de `reabierto_en = ahora` (sección 2.7). El
+  `CHECK` `cierres_caja_reapertura_posterior` exige `reabierto_en >= cerrado_en`. Si el reloj de quien reabre va unos
+  milisegundos atrás respecto del que cerró, o si el servidor corrige su hora, la reapertura tomaría el instante del
+  cierre en lugar de fallar con un 500 (comentario en `cajas.service.ts`). La auditoría `CAJA_REABIERTA` y
+  `cajas.actualizado_en` usan el mismo valor (`reabiertoEn`), así que coinciden con `cierres_caja.reabierto_en`. Efecto: si
+  el cierre es posterior a la hora de la reapertura, `reabierto_en` registra la del cierre. Normalmente la diferencia
+  es de milisegundos; con un ajuste grande de la hora del servidor, puede ser más.
+- **`esDeOtroDia(fechaCaja, ahora)` es `fechaCaja !== hoyEnLima(ahora)`** (secciones 2.3 y 2.4). La spec define «caja de
+  otro día» como la de fecha anterior a hoy (encabezado de «Criterios de aceptación»). Aquí, una caja con fecha futura
+  también es «de otro día» y no admite movimientos. Motivo: una fecha futura no puede ser la caja de hoy, y no admitir
+  movimientos es lo seguro. Ningún criterio cambia.
+- **`REVOKE ALL ON FUNCTION public.movimientos_caja_solo_caja_abierta() FROM PUBLIC`** en la migración (no estaba en la
+  sección 2.9). Motivo: sin él, `PUBLIC` tendría `EXECUTE` sobre la función, y el criterio 130 de 001 (privilegios en
+  todos los esquemas) lo contaría como privilegio de más. El trigger no lo necesita: la base lo dispara sin comprobar
+  `EXECUTE`, y nadie llama la función a mano.
+- **Web: caja cerrada de un día anterior.** La API no devuelve una caja cerrada de otro día (`GET /api/cajas/actual`
+  devuelve la abierta o la de hoy), así que este estado aparece solo si `/panel/caja` sigue abierta después de la
+  medianoche. Entonces `PaginaCaja.tsx` (`cerradaDeOtroDia`) muestra «La caja del {fecha} ya está cerrada. Todavía no hay
+  una caja de hoy: ábrela para empezar el día», el formulario de apertura y el resultado de esa caja, y no ofrece
+  «Reabrir caja». La reapertura desde la web de un día anterior llega con el historial (006b); la API ya la admite
+  (criterio 36). La spec (sección H, criterio 38) no lista este estado. Motivo: no presentar como «de hoy» una caja de
+  ayer ni ofrecer una reapertura que la 006a no puede explicar.
+- **Archivos de la web que la sección 1 no listaba:** `ResultadoDelCierre.tsx` (el resultado de la caja cerrada),
+  `montos.ts` (la diferencia en vivo sobre `restarMontos` y las etiquetas), `api.ts` (las llamadas a la API),
+  `mensajes.ts` (el texto de cada 409) y `campos.ts` (el primer mensaje de cada campo de un error de esquema). Son
+  presentación y llamadas; no cambian ninguna regla.
