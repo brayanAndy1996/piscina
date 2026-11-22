@@ -147,6 +147,27 @@ describe('criterio 127 (P-30): la lista de dependencias permitidas', () => {
     expect(esClienteDeBaseProhibido('sharp')).toBe(false);
   });
 
+  // 006b (D-10, D-25, DT-3; spec 006, "Impacto en especificaciones anteriores"): `pdfkit` y `@types/pdfkit` se suman a la lista, solo para sumar. El PDF del cierre de
+  // caja se arma con `pdfkit` en el backend (criterio 42 de 006); sus tipos van en las dependencias de desarrollo.
+  it('criterio 127 (006b): la lista permitida incluye pdfkit y @types/pdfkit, y el backend/package.json real puede declararlos sin que el paso protegido falle', async () => {
+    const {
+      DEPENDENCIAS_BACKEND_PERMITIDAS: lista,
+      dependenciasNoPermitidas,
+      esClienteDeBaseProhibido,
+    } = await cargarLib();
+
+    expect(lista).toContain('pdfkit');
+    expect(lista).toContain('@types/pdfkit');
+    expect(
+      dependenciasNoPermitidas({
+        dependencies: { pdfkit: '^0.17.0' },
+        devDependencies: { '@types/pdfkit': '^0.17.0' },
+      }),
+    ).toEqual([]);
+    expect(esClienteDeBaseProhibido('pdfkit')).toBe(false);
+    expect(esClienteDeBaseProhibido('@types/pdfkit')).toBe(false);
+  });
+
   it('criterio 127: es una lista de textos no vacios, sin repetidos', async () => {
     const { DEPENDENCIAS_BACKEND_PERMITIDAS: lista } = await cargarLib();
 
