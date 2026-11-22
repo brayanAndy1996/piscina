@@ -1,4 +1,5 @@
 import {
+  type ActualizarClase,
   AFORO_MAXIMO,
   AFORO_MINIMO,
   BLOQUES,
@@ -11,7 +12,8 @@ import {
 } from '@aquagestion/contratos';
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { esErrorDeApi } from '../../api/cliente';
+import { z } from 'zod';
+import { ErrorDeApi, esErrorDeApi } from '../../api/cliente';
 import { Alerta, CampoCasilla, CampoSelect, CampoTexto, ESTILO_BOTON, Modal } from '../../componentes/ui';
 import { campoRaiz, useBaseDeLlenado } from '../../lib/base-de-llenado';
 import { erroresPorCampo, mensajeGeneral } from '../../lib/errores';
@@ -34,6 +36,31 @@ import { useActualizarClase, useCrearClase, useEntrenadores } from './hooks';
 export const MENSAJE_ENTRENADOR_NO_VALIDO = 'Elige un entrenador activo de tu academia.';
 export const MENSAJE_ENTRENADOR_OCUPADO = 'Ese entrenador ya tiene otra clase activa a esa hora.';
 export const MENSAJE_CLASE_DUPLICADA = 'Ya hay una clase activa de ese nivel el mismo día y a la misma hora.';
+
+const detallesConInscritos = z.object({ inscritos: z.number().int().min(0) });
+
+/** Cuántos inscritos trae un 409 de DR-5 (`detalles.inscritos`), o `null` si la respuesta no lo dice. */
+function inscritosDe(error: unknown): number | null {
+  if (!(error instanceof ErrorDeApi)) return null;
+  const detalles = detallesConInscritos.safeParse(error.detalles);
+  return detalles.success ? detalles.data.inscritos : null;
+}
+
+function frasePorInscritos(inscritos: number | null): string {
+  if (inscritos === null) return 'La clase tiene inscritos';
+  return `La clase tiene ${inscritos} ${inscritos === 1 ? 'inscrito' : 'inscritos'}`;
+}
+
+/** Lo que se explica ante `CLASE_CON_INSCRITOS`: primero hay que mover a los inscritos o cancelar sus solicitudes (DR-5 de 004). */
+export function mensajeClaseConInscritos(inscritos: number | null): string {
+  return `${frasePorInscritos(inscritos)}, así que no se puede desactivar. Primero hay que moverlos a otra clase o cancelar sus solicitudes.`;
+}
+
+/** El aforo que se quiere guardar y cuántos inscritos tiene la clase, a la espera de que la persona lo confirme. */
+interface AforoPorConfirmar {
+  cambios: ActualizarClase;
+  inscritos: number | null;
+}
 
 const AVISO_BASE_NUEVA =
   'Otro administrador cambió esta clase mientras editabas. Actualizamos los campos que no tocaste; revisa los tuyos antes de guardar.';
@@ -59,6 +86,8 @@ export function FormularioClase({ clase, alCerrar, alCrear }: Propiedades) {
   const { register, handleSubmit, setError, clearErrors, reset, control, formState } = form;
   const valores = useWatch({ control });
   const [guardado, setGuardado] = useState(false);
+  // DR-5: bajar el aforo por debajo de los inscritos pide una confirmación aparte, que reenvía el mismo cuerpo con `confirmarAforoMenor`.
+  const [porConfirmar, setPorConfirmar] = useState<AforoPorConfirmar | null>(null);
   const entrenadores = useEntrenadores();
 
   const { baseDeLlenado, fijarBase, avisoBaseNueva } = useBaseDeLlenado<CamposClase, Clase | null>({
@@ -74,6 +103,7 @@ export function FormularioClase({ clase, alCerrar, alCrear }: Propiedades) {
   const actualizar = useActualizarClase((guardadaAhora) => {
     fijarBase(guardadaAhora);
     reset(aCamposClase(guardadaAhora));
+    setPorConfirmar(null);
     setGuardado(true);
   });
   const escritura = editando ? actualizar : crear;
@@ -95,7 +125,17 @@ export function FormularioClase({ clase, alCerrar, alCrear }: Propiedades) {
     }
   };
 
-  const alFallar = (error: unknown) => {
+  const alFallar = (error: unknown, cambios?: ActualizarClase) => {
+    if (esErrorDeApi(error, 409, 'AFORO_MENOR_QUE_INSCRITOS') && cambios) {
+      setPorConfirmar({ cambios, inscritos: inscritosDe(error) });
+      return;
+    }
+    // Cualquier otra respuesta que marca campos cierra la confirmación: los mensajes se ven en el formulario.
+    if (esErrorDeApi(error, 409) || esErrorDeApi(error, 400)) setPorConfirmar(null);
+    if (esErrorDeApi(error, 409, 'CLASE_CON_INSCRITOS')) {
+      setError('activo', { message: mensajeClaseConInscritos(inscritosDe(error)) });
+      return;
+    }
     if (esErrorDeApi(error, 409, 'ENTRENADOR_NO_VALIDO')) {
       setError('entrenadorId', { message: MENSAJE_ENTRENADOR_NO_VALIDO });
       return;
@@ -126,8 +166,20 @@ export function FormularioClase({ clase, alCerrar, alCrear }: Propiedades) {
     }
     const validado = validarCambiosDeClase(campos, baseDeLlenado);
     if (!validado.correcto) return ponerErrores(validado.errores);
-    actualizar.mutate({ id: baseDeLlenado.id, cambios: validado.datos }, { onError: alFallar });
+    actualizar.mutate(
+      { id: baseDeLlenado.id, cambios: validado.datos },
+      { onError: (falla) => alFallar(falla, validado.datos) },
+    );
   });
+
+  const confirmarAforoMenor = () => {
+    if (!porConfirmar || !baseDeLlenado || actualizar.isPending) return;
+    // El mismo cuerpo, con la confirmación.
+    actualizar.mutate(
+      { id: baseDeLlenado.id, cambios: { ...porConfirmar.cambios, confirmarAforoMenor: true } },
+      { onError: (falla) => alFallar(falla, porConfirmar.cambios) },
+    );
+  };
 
   const errorGeneral =
     escritura.isError &&
@@ -149,6 +201,46 @@ export function FormularioClase({ clase, alCerrar, alCrear }: Propiedades) {
     elegibles.push(baseDeLlenado.entrenador);
   }
   elegibles.sort((a, b) => nombreDeEntrenador(a).localeCompare(nombreDeEntrenador(b), 'es'));
+
+  if (porConfirmar && baseDeLlenado) {
+    const { inscritos, cambios } = porConfirmar;
+    const falloDeLaConfirmacion =
+      actualizar.isError &&
+      !esErrorDeApi(actualizar.error, 401) &&
+      !esErrorDeCambioDeSesion(actualizar.error) &&
+      !esErrorDeApi(actualizar.error, 409, 'AFORO_MENOR_QUE_INSCRITOS');
+    return (
+      <Modal titulo="El aforo es menor que los inscritos" alCerrar={() => !pendiente && setPorConfirmar(null)}>
+        <div className="mt-2 space-y-2 text-slate-700">
+          <p>
+            {frasePorInscritos(inscritos)} y quieres bajar su aforo a {cambios.aforo}.
+          </p>
+          <p>
+            Nadie pierde su lugar, pero la clase no recibirá inscripciones nuevas hasta que sus inscritos bajen del
+            aforo.
+          </p>
+        </div>
+        {falloDeLaConfirmacion ? (
+          <div className="mt-4">
+            <Alerta>{mensajeGeneral(actualizar.error)}</Alerta>
+          </div>
+        ) : null}
+        <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() => setPorConfirmar(null)}
+            disabled={pendiente}
+            className={ESTILO_BOTON.secundario}
+          >
+            Volver
+          </button>
+          <button type="button" onClick={confirmarAforoMenor} disabled={pendiente} className={ESTILO_BOTON.primario}>
+            {pendiente ? 'Guardando…' : 'Confirmar'}
+          </button>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal titulo={editando ? 'Editar clase' : 'Nueva clase'} alCerrar={cerrar}>

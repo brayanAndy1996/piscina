@@ -133,6 +133,20 @@ describe('criterio 127 (P-30): scripts/lib/dependencias-backend.mjs es un modulo
 });
 
 describe('criterio 127 (P-30): la lista de dependencias permitidas', () => {
+  // 005b (D-25, DT-6, T6; spec 005, "Impacto en especificaciones anteriores"): `sharp` se suma a la lista, solo para sumar. La foto de la inscripcion
+  // la recodifica con `sharp` en el backend (criterio 35 de 005).
+  it('criterio 127 (005b): la lista permitida incluye sharp, y el backend/package.json real puede declararlo sin que el paso protegido falle', async () => {
+    const {
+      DEPENDENCIAS_BACKEND_PERMITIDAS: lista,
+      dependenciasNoPermitidas,
+      esClienteDeBaseProhibido,
+    } = await cargarLib();
+
+    expect(lista).toContain('sharp');
+    expect(dependenciasNoPermitidas({ dependencies: { sharp: '^0.34.0' } })).toEqual([]);
+    expect(esClienteDeBaseProhibido('sharp')).toBe(false);
+  });
+
   it('criterio 127: es una lista de textos no vacios, sin repetidos', async () => {
     const { DEPENDENCIAS_BACKEND_PERMITIDAS: lista } = await cargarLib();
 

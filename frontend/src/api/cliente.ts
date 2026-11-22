@@ -119,3 +119,33 @@ export async function enviarJson<T>(
 export async function enviarSinRespuesta(metodo: MetodoConCuerpo, ruta: string, cuerpo?: unknown): Promise<void> {
   await solicitar(metodo, ruta, cuerpo, [200, 204]);
 }
+
+/**
+ * Sube un archivo como cuerpo binario (`PUT` de la foto de la solicitud, criterio 34 de 005): `tipo` va en `Content-Type`, sin pasar por
+ * JSON, y `encabezados` suma los propios de la ruta (el token de la solicitud). La respuesta correcta no tiene cuerpo (204). Los errores
+ * son los de `pedirJson`.
+ */
+export async function subirArchivo(
+  ruta: string,
+  archivo: Blob,
+  tipo: string,
+  encabezados: Readonly<Record<string, string>> = {},
+): Promise<void> {
+  let respuesta: Response;
+  let texto: string;
+  try {
+    respuesta = await fetch(ruta, {
+      method: 'PUT',
+      headers: { Accept: 'application/json', 'Content-Type': tipo, ...encabezados },
+      body: archivo,
+      credentials: 'same-origin',
+    });
+    texto = await respuesta.text();
+  } catch {
+    throw new ErrorDeRespuesta('No se pudo contactar al servidor.');
+  }
+  if (respuesta.status === 204) return;
+  const error = leerErrorApi(texto);
+  if (error) throw new ErrorDeApi(respuesta.status, error);
+  throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${respuesta.status}).`);
+}

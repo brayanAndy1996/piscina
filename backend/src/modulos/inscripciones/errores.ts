@@ -3,6 +3,8 @@ import { ErrorNegocio } from '../../comun/errores';
 import type { Cotizacion, TextosConsentimiento } from '@aquagestion/contratos';
 import type { ErrorDeSeleccion } from './dominio/seleccion';
 
+export { imagenNoValida } from '../../comun/http/cuerpo-imagen';
+
 /**
  * Los errores de negocio de la inscripción pública (spec 005, "Códigos de error nuevos"). Cada uno lleva siempre el mismo mensaje: nada
  * en la respuesta distingue casos que deben ser indistinguibles (un plan que no existe, uno de otra academia y uno inactivo; un DNI de un
@@ -94,4 +96,19 @@ export function limiteDeReservasPendientes(): ErrorNegocio {
 /** El único 404 del seguimiento: el mismo para un token o un código que no existen, de otra academia o con formato inválido (criterio 31). */
 export function solicitudNoEncontrada(): ErrorNegocio {
   return new ErrorNegocio(404, 'SOLICITUD_NO_ENCONTRADA', 'No se encontró la solicitud.');
+}
+
+/** 409 de la foto (criterio 34 f): la solicitud está vencida o cancelada, o ya no espera el pago. Sin `detalles`. */
+export function solicitudNoEditable(): ErrorNegocio {
+  return new ErrorNegocio(409, 'SOLICITUD_NO_EDITABLE', 'La solicitud ya no admite cambios. Acércate a recepción.');
+}
+
+/** 409 de la cancelación (criterio 39): la solicitud no está esperando el pago ni cancelada. Sin `detalles`. */
+export function solicitudNoCancelable(): ErrorNegocio {
+  return new ErrorNegocio(409, 'SOLICITUD_NO_CANCELABLE', 'La solicitud no se puede cancelar en su estado actual.');
+}
+
+/** El 404 del panel: el mismo para un id que no existe, que es de otra academia o que no es un UUID (criterio 39). */
+export function noEncontrado(): ErrorNegocio {
+  return new ErrorNegocio(404, 'NO_ENCONTRADO', 'No se encontró el recurso solicitado.');
 }

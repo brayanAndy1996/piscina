@@ -22,6 +22,26 @@ export default defineConfig(({ mode }) => {
       // Si el puerto está ocupado, falla en lugar de cambiarlo.
       strictPort: true,
       proxy: { '/api': `http://127.0.0.1:${puertoApi}` },
+      // Lista cerrada (spec 005, criterio 62 a): por defecto Vite deja leer por `/@fs/` toda la raíz del workspace, incluido el almacén de
+      // archivos (`backend/almacenamiento`). Si una dependencia futura se resuelve fuera de estas carpetas, se suma aquí y en
+      // `validarEntorno` (CARPETAS_DE_LA_WEB).
+      fs: {
+        allow: [path.join(raiz, 'frontend'), path.join(raiz, 'packages', 'contratos'), path.join(raiz, 'node_modules')],
+        // Criterio 65: npm enlaza cada workspace en `node_modules/@aquagestion/` (una unión en Windows). Vite compara la ruta pedida sin
+        // resolver enlaces, así que `node_modules/` permitido dejaba leer `backend/`, `e2e/` y `scripts/` por esos enlaces. La web no usa esa
+        // ruta (Vite resuelve `@aquagestion/contratos` a `packages/contratos`). `deny` reemplaza la lista de Vite, por eso se copian sus
+        // valores por defecto (vite 8.3.8, `server.fs.deny`); si se actualiza Vite, se revisan.
+        deny: [
+          '.env',
+          '.env.*',
+          '*.{crt,pem,key,p12,pfx,cer,der}',
+          '.npmrc',
+          '.yarnrc.yml',
+          '**/.git/**',
+          '**/node_modules/@aquagestion',
+          '**/node_modules/@aquagestion/**',
+        ],
+      },
     },
     preview: {
       host: '127.0.0.1',

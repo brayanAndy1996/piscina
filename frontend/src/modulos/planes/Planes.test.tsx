@@ -172,12 +172,14 @@ describe('menú y permiso (criterio 26)', () => {
     expect(rutaActual()).toBe('/panel/planes');
   });
 
-  it('las dos opciones del menú tienen su propia clave: ninguna desaparece ni se duplica', async () => {
+  it('las opciones del menú tienen su propia clave: ninguna desaparece ni se duplica', async () => {
     servidor();
     mostrar('/panel');
     await screen.findByRole('link', { name: /Planes/ });
     const enlaces = within(screen.getByRole('navigation', { name: 'Opciones' })).getAllByRole('link');
     expect(enlaces.map((enlace) => enlace.getAttribute('href'))).toEqual([
+      '/panel/solicitudes',
+      '/a/delfines/inscripcion',
       '/panel/usuarios',
       '/panel/restablecer',
       '/panel/configuracion',

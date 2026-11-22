@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
@@ -32,6 +34,16 @@ function urlAppSobrePruebas(): string {
 
 const JWT_SECRETO_E2E = process.env['JWT_SECRETO'] ?? 'secreto-solo-para-pruebas-e2e-de-aquagestion-0123456789';
 
+// El almacén de archivos de la API de las E2E es un directorio temporal fuera del repositorio (spec 005, criterio 63): una prueba o una sesión
+// del navegador nunca escribe en `backend/almacenamiento`, el almacén de quien desarrolla. El proceso principal fija el nombre en el entorno
+// antes de crear los procesos de prueba (que vuelven a cargar este archivo y heredan el mismo valor); `global-teardown.ts` lo borra al terminar.
+const PREFIJO_ALMACEN_E2E = 'aqua-e2e-almacen-';
+const almacenE2eActual = process.env['AQUA_ALMACEN_E2E'];
+if (!almacenE2eActual || !path.basename(almacenE2eActual).startsWith(PREFIJO_ALMACEN_E2E)) {
+  process.env['AQUA_ALMACEN_E2E'] = path.join(os.tmpdir(), `${PREFIJO_ALMACEN_E2E}${randomUUID()}`);
+}
+const ALMACEN_E2E = process.env['AQUA_ALMACEN_E2E'] as string;
+
 const entornoComun = {
   ...process.env,
   PUERTO_API: String(PUERTO_API_E2E),
@@ -46,6 +58,8 @@ export default defineConfig({
   testDir: './pruebas',
   // Crea el superadmin de las pruebas en la base de pruebas.
   globalSetup: './global-setup.ts',
+  // Borra el almacén temporal de la API.
+  globalTeardown: './global-teardown.ts',
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env['CI']),
@@ -78,6 +92,7 @@ export default defineConfig({
         DATABASE_URL: baseDatosPruebas,
         DATABASE_URL_APP: urlAppSobrePruebas(),
         JWT_SECRETO: JWT_SECRETO_E2E,
+        ALMACEN_DIRECTORIO: ALMACEN_E2E,
       },
       reuseExistingServer: false,
       timeout: 120_000,

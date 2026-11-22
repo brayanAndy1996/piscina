@@ -3,6 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import type { DestinationStream } from 'pino';
 import { FiltroErrores } from './comun/filtros/filtro-errores';
+import { AlmacenArchivosModule } from './infraestructura/almacen-archivos';
 import { type Entorno, EntornoModule } from './infraestructura/entorno';
 import { CorreoModule } from './infraestructura/correo';
 import { PrismaModule } from './infraestructura/prisma';
@@ -42,6 +43,7 @@ export class AppModule {
         ),
         RelojModule,
         CorreoModule,
+        AlmacenArchivosModule,
         PrismaModule,
         AuditoriaModule,
         AcademiasModule,

@@ -32,6 +32,23 @@ nueva 15 (pruebas con IP fijada).
 aceptados en la spec (y su eco en "Riesgos"), la pregunta R7 y, en "Migraciones", la nota operativa para la guía de
 Windows y el PR (tarea T45 del documentador).
 
+**Repaso de la 005b (21/11/2026, con la 005a unida a `main`, PR #8):** precisiones técnicas PB1 a PB14 de la spec, sin
+cambios de negocio. Cambian, solo en lo marcado **[005b]**: "Módulos afectados" (nombres reales de la 005a y archivos
+que toca la 005b), las secciones 8 (regla `foto`), 9 (orden de comprobaciones, bloqueos y fallos), 11 (lista,
+cancelación y ocupación), 12 (foto y panel en la web) y 14 (cabecera del token), y "Decisiones" y "Riesgos". Las
+preguntas B1 a B5 quedaron respondidas el 21/11/2026 con la propuesta de cada una (DR-17 a DR-21 de la spec), que es lo
+que el plan ya seguía: el diseño no cambia. La cancelación no envía correo ni toca la foto (criterio 39, prueba h).
+
+**Ronda 1 del ataque de la 005b (21/11/2026):** criterios 61 a 63 y ajustes de 36 y 37 (sección N de la spec,
+AB1-1 a AB1-4). Cambian "Módulos afectados", la sección 9 (confirmación incierta de la foto y entorno), la 12
+(`frontend/vite.config.ts`), la nueva 16 (proxy de PostgreSQL y servidor de Vite en las pruebas, almacén temporal),
+"Decisiones" y "Riesgos".
+
+**Ronda 2 del ataque de la 005b (21/11/2026):** criterios 64 a 66 y ajustes de 37, 61 y 62 (sección O de la spec,
+AB2-1 a AB2-3). Cambian "Módulos afectados", la sección 9 (relectura con bloqueo y `resolverAlmacenDirectorio`), la 12
+(`server.fs.deny`), la 16 (modo `retenerCommit` del proxy, pruebas de los enlaces de Vite y del entorno con
+`path.win32`), "Decisiones" y "Riesgos".
+
 ## Módulos afectados
 
 ```
@@ -40,6 +57,7 @@ piscina/
 │   ├── inscripcion.ts (+ .test.ts)       nuevo: formulario, cotización, listas, celular, esMenorDeEdad
 │   ├── consentimientos.ts (+ .test.ts)   nuevo: versión, tipos y textos provisionales con el nombre de la academia
 │   ├── solicitudes.ts (+ .test.ts)       nuevo: código, token, consulta, vista mínima; [005b] panel, cancelación
+│   ├── fotos.ts (+ .test.ts)             [005b] nuevo: FOTO_TIPOS, FOTO_TAMANO_MAXIMO y demás límites, CABECERA_TOKEN_SOLICITUD (PB4)
 │   ├── academias.ts                      AcademiaPublica + telefono
 │   ├── clases.ts                         actualizarClaseSchema + confirmarAforoMenor; [005b] respuestaOcupacionSchema
 │   └── index.ts                          + exportaciones
@@ -51,12 +69,17 @@ piscina/
 │   ├── src/comun/http/conexion.ts (+ .test.ts)         claveDeConexion (criterio 59)
 │   ├── prisma/seed.ts                    + solicitudes de ejemplo en delfines (criterio 47)
 │   ├── src/infraestructura/prisma/privilegios-app.ts   + privilegios de las siete tablas
+│   ├── src/infraestructura/prisma/tipos.ts, base-datos.ts   [005b, ronda 2] OpcionesTransaccion + esperaMaximaDeBloqueoMs (lock_timeout local; criterio 64)
 │   ├── src/infraestructura/almacen-archivos/          [005b] nuevo: interfaz, disco local, módulo, claves
 │   ├── src/infraestructura/correo/                    nuevo: interfaz, envío simulado, módulo
-│   ├── src/infraestructura/entorno/entorno.ts         [005b] + ALMACEN_DIRECTORIO
-│   ├── src/comun/http/cuerpos.ts                      [005b] la ruta de la foto queda fuera del lector JSON
-│   ├── src/comun/http/cuerpo-imagen.ts                [005b] nuevo: lector binario de la foto (5 MB, sin inflar)
-│   ├── src/modulos/academias/proteccion-de-prefijos.ts   + límites por IP de las rutas públicas (criterio 33; [005b] foto)
+│   ├── src/infraestructura/entorno/entorno.ts         [005b] + ALMACEN_DIRECTORIO; ronda 1: rechazo dentro de lo que sirve la web (criterio 62 b);
+│   │                                                  ronda 2: función pura resolverAlmacenDirectorio con las formas de Windows (criterio 66)
+│   ├── src/crear-app.ts                               [005b] noLeerCuerpoEn suma PUT …/solicitudes/foto (además de DELETE /api/sesion)
+│   ├── src/comun/http/cuerpos.ts                      sin cambios: ya recibe noLeerCuerpoEn
+│   ├── src/comun/http/cuerpo-imagen.ts                [005b] nuevo: lector binario de la foto (5 242 880 bytes, sin inflar)
+│   ├── src/infraestructura/registro/opciones-registro.ts   [005b] RUTAS_REDACTADAS + x-token-solicitud (y su prueba, largo 5)
+│   ├── src/modulos/academias/limite-inicio-sesion.ts  LIMITES_PUBLICOS (005a); [005b] metodo + 'PUT' y regla foto
+│   ├── src/modulos/academias/proteccion-de-prefijos.ts   límites por conexión de las rutas públicas (005a; la foto no necesita cambios)
 │   ├── src/modulos/academias/academia-publica.controller.ts   + telefono
 │   ├── src/modulos/auditoria/insercion.ts             actorTipo + 'PUBLICO'
 │   ├── src/modulos/matriculas/                        nuevo (sin controlador)
@@ -64,24 +87,32 @@ piscina/
 │   │   ├── dominio/reserva.ts (+ .test.ts)            finDelMesEnLima, vencimientoDeReserva (criterio 54)
 │   │   ├── ocupacion.ts                               contarOcupacion, contarInscritos (sin Nest)
 │   │   └── index.ts
-│   ├── src/modulos/inscripciones/                     nuevo
-│   │   ├── dominio/edad.ts · seleccion.ts · codigos.ts (+ .test.ts)
-│   │   ├── inscripcion-publica.controller.ts          GET formulario, POST cotización, POST envío
+│   ├── src/modulos/inscripciones/                     005a: dominio/ (seleccion, codigos con hashDeToken, cotizacion, destinatarios),
+│   │                                                  lectura.ts, errores.ts, inscripcion-publica.controller.ts, inscripciones.service.ts,
+│   │                                                  seguimiento.controller.ts y seguimiento.service.ts (con estadoVisible)
 │   │   ├── seguimiento.controller.ts                  POST consulta; [005b] PUT foto
 │   │   ├── solicitudes.controller.ts                  [005b] GET lista, POST cancelar (panel)
-│   │   ├── inscripciones.service.ts · seguimiento.service.ts · [005b] solicitudes.service.ts · foto.service.ts
+│   │   ├── [005b] solicitudes.service.ts · foto.service.ts · errores.ts (+ solicitudNoEditable, solicitudNoCancelable, imagenNoValida)
+│   │   ├── [005b] estado visible compartido por seguimiento, foto, lista y cancelación (PB2), sacado de seguimiento.service.ts
 │   │   └── inscripciones.module.ts · index.ts
 │   ├── src/modulos/clases/clases.service.ts           DR-5 (criterios 41 y 42); [005b] GET /api/clases/ocupacion
 │   └── test/
 │       ├── utilidades/inscripciones.ts                crear clientes, solicitudes y matrículas; llenar clases (test-writer)
+│       ├── utilidades/proxy-postgres.ts               [005b, ronda 1] proxy TCP que corta en el COMMIT (criterio 61; test-writer);
+│       │                                              ronda 2: modo retenerCommit, pidRetenido, liberar() y descartar() (criterio 64)
 │       └── integracion/inscripciones/                 pruebas protegidas y no protegidas
 ├── scripts/
 │   ├── lib/rol-app.mjs                    + privilegios de las siete tablas
 │   ├── lib/dependencias-backend.mjs       [005b] + sharp
 │   └── test/integracion/migraciones.test.mjs   + las siete tablas en TABLAS_DESPUES_DE_MIGRAR
+├── frontend/vite.config.ts                [005b, ronda 1] server.fs.allow con lista cerrada (criterio 62 a); ronda 2: server.fs.deny con
+│                                          los valores por defecto y los enlaces de node_modules/@aquagestion (criterio 65)
+├── vitest.config.mts (o el globalSetup compartido)   [005b, ronda 1] ALMACEN_DIRECTORIO temporal en las pruebas del backend (criterio 63)
+├── e2e/playwright.config.ts               [005b, ronda 1] ALMACEN_DIRECTORIO temporal para la API de las E2E (criterio 63)
 ├── frontend/src/
-│   ├── modulos/inscripcion/               nuevo: api.ts · hooks.ts · PaginaInscripcion.tsx · pasos/*.tsx · Inscripcion.test.tsx
-│   ├── modulos/seguimiento/               nuevo: PaginaSeguimiento.tsx · PaginaConsultaCodigo.tsx · Seguimiento.test.tsx
+│   ├── modulos/inscripcion/               nuevo: api.ts · hooks.ts · PaginaInscripcion.tsx · pasos/*.tsx · Inscripcion.test.tsx;
+│   │                                      [005b] paso de la foto (por ejemplo pasos/PasoFoto.tsx) y subida tras el 201 (ConfirmacionInscripcion.tsx)
+│   ├── modulos/seguimiento/               PaginaSeguimiento.tsx · PaginaConsultaSolicitud.tsx · VistaSeguimiento.tsx · Seguimiento.test.tsx; [005b] subir foto
 │   ├── modulos/solicitudes/               [005b] nuevo: PaginaSolicitudes.tsx · DialogoCancelar.tsx · Solicitudes.test.tsx
 │   ├── modulos/clases/                    [005b] ocupación en la grilla y diálogo de aforo menor (criterio 46)
 │   ├── modulos/sesion/PaginaIngresarAcademia.tsx   + teléfono (criterio 45)
@@ -329,33 +360,113 @@ aparte). La 005b, al sumar la foto (`PUT`), no necesita nada más.
 El límite del ingreso (`LIMITE_INICIO_SESION`) no cambia (pregunta R6). La regla de la foto de la 005b usa la misma
 clave sin cambios.
 
+**[005b] Regla de la foto (PB10).** En `limite-inicio-sesion.ts`, `LimitePublico.metodo` pasa a `'GET' | 'POST' | 'PUT'`
+y `LIMITES_PUBLICOS` suma `{ nombre: 'foto', metodo: 'PUT', patron: /^\/[^/]+\/solicitudes\/foto\/?$/i, ttl: HORA,
+limite: 10 }`. `proteccion-de-prefijos.ts` no cambia: la clave queda `publico-foto:${claveDeConexion(ip)}` y el 429 sale
+antes del lector binario.
+
 ### 9. [005b] Foto (`FotoService`, `AlmacenArchivos`)
 
-Toda esta sección es de la 005b.
+Toda esta sección es de la 005b. _(Ajustada en el repaso del 21/11/2026: PB3 a PB8.)_
 
+- **Orden (PB3, criterio 34 a a g):** límite (sección 8) → tipo y codificación → tamaño → academia → token → estado →
+  imagen. Las tres primeras son middlewares de Express, antes de Nest; las demás, el controlador y `FotoService`.
+- **Lector:** `crear-app.ts` pasa a `instalarLectorDeCuerpos` un `noLeerCuerpoEn` que deja fuera `DELETE /api/sesion` y
+  `PUT /a/{nombreCorto}/solicitudes/foto` (sin distinguir mayúsculas, con o sin barra final), así los tres middlewares
+  de JSON no la tocan. Un middleware propio en esa ruta (`cuerpo-imagen.ts`), instalado después de los de los prefijos,
+  rechaza con 400 `IMAGEN_NO_VALIDA` un tipo de medio que no esté en `FOTO_TIPOS` o un `Content-Encoding` que no falte
+  ni sea `identity`, y lee el cuerpo con `express.raw({ type: () => true, limit: FOTO_TAMANO_MAXIMO, inflate: false })`
+  (el tipo ya se comprobó); más de `FOTO_TAMANO_MAXIMO` → 413 `CARGA_EXCESIVA` sin seguir leyendo (con un
+  `Content-Length` mayor, sin leer nada).
+- **Controlador:** `@Put('foto')` en `SeguimientoController` (`a/:nombreCorto/solicitudes`), con `@HttpCode(204)`; la
+  academia con `ResolverAcademiaPipe`; el token de `req.headers['x-token-solicitud']` (si no es un texto, o no cumple
+  `PATRON_TOKEN`, el 404 de `solicitudNoEncontrada()`); el cuerpo como `Buffer` (vacío si no llegó nada).
+- **Comprobación previa (PB5),** en un `conAcademia` corto de lectura, sin bloqueos y sin tocar archivos: la misma
+  búsqueda por `token_hash` (`hashDeToken`) que la consulta, con la fila de la solicitud, su matrícula y el alumno; 404 si
+  no está; 409 `SOLICITUD_NO_EDITABLE` si el estado visible (PB2, la misma función que el seguimiento, sacada a un
+  archivo común) no es `PENDIENTE_PAGO`, la fila no es `PENDIENTE_PAGO` o el alumno no está en `CLIENTE`.
+- **Imagen, fuera de transacción:** firma de los primeros bytes (`FF D8 FF` o `89 50 4E 47 0D 0A 1A 0A`) coherente con el
+  tipo declarado; `sharp(buffer, { limitInputPixels: FOTO_PIXELES_MAXIMOS, failOn: 'error' })`; `metadata()` para las
+  dimensiones (de `FOTO_LADO_MINIMO` a `FOTO_LADO_MAXIMO` por lado, incluidos); `.rotate().resize({ width:
+  FOTO_LADO_GUARDADO, height: FOTO_LADO_GUARDADO, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85,
+  mozjpeg: true })` sin `withMetadata()` ni `keepIccProfile()` (`sharp` no copia metadatos si no se pide). Cualquier
+  error de `sharp` → 400 `IMAGEN_NO_VALIDA`, con un solo mensaje.
+- **Guardar y confirmar (PB8):** `clave = academias/{academiaId}/alumnos/{alumnoId}/foto-${randomUUID()}.jpg`;
+  `almacen.guardar` (si falla, 500 sin tocar la base). Después, `conAcademia`: `SELECT … FROM alumnos … FOR UPDATE` →
+  `SELECT … FROM solicitudes_inscripcion … FOR UPDATE` (alumno antes que solicitud: es el orden del envío; al revés, una
+  subida y un envío del mismo DNI se interbloquean) → leer la matrícula → repetir la comprobación (409 si cambió) →
+  leer la clave anterior → `UPDATE alumnos SET foto_clave = …, actualizado_en = ahora`. Confirmar. Después, si había una
+  anterior distinta, `almacen.borrar(anterior)`; si la transacción falló, `almacen.borrar(nueva)`. Un borrado que falla
+  se registra con `registro.warn({ academiaId, error: { tipo: tipoDeError(error) } }, 'No se pudo borrar un archivo')`
+  (sin el mensaje, que lleva la ruta) y no cambia la respuesta. Una subida correcta registra
+  `registro.info({ academiaId }, 'Foto de la solicitud guardada')`. Sin auditoría.
+- **Confirmación incierta (ronda 1 de la 005b, criterio 61, AB1-1).** El `catch` de la transacción de confirmación ya no
+  borra el archivo nuevo sin más:
+  - la clave anterior se guarda en una variable de fuera de `trabajo` en cuanto se lee (dentro de la transacción), para
+    tenerla aunque `conAcademia` rechace después;
+  - si el error es una de las respuestas que decide la transacción (`solicitudNoEditable()`, `solicitudNoEncontrada()`,
+    `ErrorAcademiaNoEncontrada`, `ErrorAcademiaSuspendida`), se borra el nuevo y se relanza, como hoy;
+  - con cualquier otro error: `registro.warn({ academiaId, error: { tipo: tipoDeError(error) } }, 'Confirmación de la
+    foto incierta')` y una relectura en otro `conAcademia` _(ronda 2, criterio 64, AB2-1; antes decía "sin `FOR
+    UPDATE`", y eso es justo lo que dejaba pasar un `COMMIT` tardío)_:
+    `conAcademia(academiaId, trabajo, { esperaMaximaDeBloqueoMs: FOTO_ESPERA_RELECTURA_MS })` (constante del servicio,
+    5000) y `SELECT foto_clave FROM alumnos WHERE academia_id = … AND id = … FOR SHARE`. _(Precisado en la ronda 3:)_ el
+    servicio no ejecuta `SET LOCAL lock_timeout`, porque las reglas de lint `aquagestion-sql/sesion-en-modulos` y
+    `set-config-app` lo prohíben en los módulos; la opción `esperaMaximaDeBloqueoMs` de `BaseDatos` (de la 001, ampliada
+    aquí: `OpcionesTransaccion` en `infraestructura/prisma/tipos.ts`) ejecuta `set_config('lock_timeout', '<n>ms',
+    true)` después de fijar el contexto y antes del trabajo, con el mismo efecto que `SET LOCAL` (local a la
+    transacción). Acepta un entero de 1 a 60000; con otro valor lanza `RangeError` sin ejecutar el trabajo. La
+    transacción no se abre como `READ ONLY` (PostgreSQL rechaza `FOR SHARE` en una de solo lectura) y no escribe nada.
+    Si la transacción de
+    confirmación sigue abierta en el servidor (su `COMMIT` está en camino o aplicándose), tiene la fila con `FOR
+    UPDATE` y el `UPDATE`, así que la relectura espera a que confirme o revierta; la API solo envía el `COMMIT` después
+    de que el `UPDATE` respondió, así que no hay un `COMMIT` posible sin la fila ya bloqueada. Un `55P03`
+    (`lock_not_available`) o cualquier otro error de la relectura cae en "si la relectura rechaza";
+  - si la relectura devuelve la clave nueva: `info` de subida correcta, borrar la anterior (si había y es distinta) con
+    `borrarSinFallar` y terminar sin error (204);
+  - si devuelve otra cosa: `borrarSinFallar(nueva)` y relanzar el error original (500 `ERROR_INTERNO` por el filtro
+    global);
+  - si la relectura rechaza: no borrar nada y relanzar el error original (500).
 
-- **Lector:** `instalarLectorDeCuerpos` recibe en `noLeerCuerpoEn` también `PUT /a/{nombreCorto}/solicitudes/foto`; un
-  middleware propio en esa ruta, después del límite por IP, rechaza (400 `IMAGEN_NO_VALIDA`) un `Content-Type` que no
-  sea `image/jpeg` o `image/png` o un `Content-Encoding` distinto de `identity`, y lee el cuerpo con
-  `express.raw({ type: ['image/jpeg', 'image/png'], limit: '5mb', inflate: false })`; más de 5 MB → 413
-  `CARGA_EXCESIVA` sin seguir leyendo.
-- **Validación y proceso, antes de la transacción:** firma de los primeros bytes (`FF D8 FF` o `89 50 4E 47 0D 0A 1A
-  0A`) coherente con el `Content-Type`; `sharp(buffer, { limitInputPixels: 40_000_000, failOn: 'error' })`;
-  `metadata()` para las dimensiones (100 a 8000 por lado); `.rotate().resize({ width: 800, height: 800, fit: 'inside',
-  withoutEnlargement: true }).jpeg({ quality: 85, mozjpeg: true })` sin `withMetadata()` (sharp no copia los metadatos
-  si no se pide). Cualquier error de `sharp` → 400 `IMAGEN_NO_VALIDA`.
-- **Flujo:** buscar la solicitud por el hash del token en una transacción corta de lectura (404 o 409 sin tocar
-  archivos); `clave = academias/{academiaId}/alumnos/{alumnoId}/foto-{uuid}.jpg`; `almacen.guardar`; después
-  `conAcademia`: `SELECT … FOR UPDATE` de la solicitud y del alumno, volver a comprobar estado y vencimiento (si cambió,
-  409), leer la clave anterior y `UPDATE alumnos SET foto_clave = …`; confirmar; borrar la anterior. Si la transacción
-  falla, `almacen.borrar(clave nueva)`.
-- **`AlmacenArchivosDisco`:** `ALMACEN_DIRECTORIO` (por defecto `backend/almacenamiento`, ya en `.gitignore`); la clave
-  debe cumplir `^academias/[0-9a-f-]{36}/[a-z0-9/._-]+$`, su segundo segmento debe ser la academia recibida, y
-  `path.resolve(raiz, clave)` debe quedar dentro de `path.resolve(raiz, 'academias', academiaId)` (con
-  `fs.realpath` del directorio para no seguir enlaces simbólicos). Escribe con un nombre temporal y `rename` (sin
-  archivos a medias). Crea carpetas con `fs.mkdir({ recursive: true })` (funciona en Windows).
-- Se registra como proveedor de Nest con un token (`ALMACEN_ARCHIVOS`) para cambiar la implementación sin tocar los
-  servicios (D-21). Las pruebas usan un directorio temporal por prueba.
+  La relectura no repite la comprobación de la solicitud: solo responde "¿quedó guardada esta clave?". La clave tiene un
+  UUID nuevo y, con el bloqueo obtenido, la transacción que podía guardarla ya terminó: si no está ahora no lo estará
+  nunca y borrarla es seguro. La relectura confirma su propia transacción en seguida (sin otra consulta), así que no
+  deja el bloqueo `FOR SHARE` puesto más allá de la lectura.
+- **Entorno (ronda 1 de la 005b, criterio 62 b, AB1-3).** `validarEntorno`, después de resolver `ALMACEN_DIRECTORIO`
+  como hoy, rechaza la ruta si `path.relative(carpeta, almacen)` no empieza con `..` ni es absoluta para alguna de
+  `{raíz}/frontend`, `{raíz}/packages` y `{raíz}/node_modules` (es decir, si es esa carpeta o queda debajo). En Windows
+  se compara con las dos rutas pasadas a minúsculas. El problema nombra la variable y no muestra la ruta, como el del
+  byte nulo. La lista de carpetas es la misma de `server.fs.allow` (sección 12; `packages/` entera, que incluye
+  `packages/contratos/`).
+- **Entorno (ronda 2 de la 005b, criterio 66, AB2-3).** `estaDentroDe` y el bloque de `ALMACEN_DIRECTORIO` de
+  `validarEntorno` pasan a la función pura exportada `resolverAlmacenDirectorio(valor, { raiz, ruta })`, que recibe
+  `path.win32` o `path.posix` y no usa `path` ni `process.platform` por su cuenta. `validarEntorno` la llama con
+  `{ raiz: RAIZ_DEL_REPOSITORIO, ruta: path }` y suma el `problema`. Pasos:
+  1. `valor?.trim()`; vacío → `backend/almacenamiento`. Con `/[\u0000-\u001f]/` → "no es una ruta válida".
+  2. Si `ruta.sep === '\\'`: "no es una ruta válida" con `/^[\\/]{2}/`, con `/[<>"|?*]/`, con un `:` fuera de
+     `/^[A-Za-z]:[\\/]/` (por ejemplo, quitar ese prefijo si está y buscar `:` en el resto), o si algún segmento de
+     `valor.split(/[\\/]/)`, distinto de `''`, `.` y `..`, cumple `/[. ]$/`.
+  3. `resuelta = ruta.resolve(raiz, valor)`. Para cada carpeta de `CARPETAS_DE_LA_WEB`, `carpeta = ruta.join(raiz,
+     nombre)`; las dos se parten por `ruta.sep` sin segmentos vacíos. Está dentro si `resuelta` tiene al menos tantos
+     segmentos como `carpeta` y cada segmento de `carpeta` es igual al de `resuelta` en esa posición, comparados con
+     `toLowerCase()`, o (solo si `ruta.sep === '\\'`) el de `resuelta` cumple
+     `/^[^~.]{1,6}~\d+(?:\.[^~.]{0,3})?$/`.
+  4. Sin problema → `{ directorio: resuelta }`.
+
+  Un solo problema por valor (el primero que aparece). El mensaje del byte nulo sigue siendo el mismo, ahora también
+  para las formas de Windows.
+- **`AlmacenArchivosDisco` (PB7):** `constructor(raiz)`; la API lo crea con `ALMACEN_DIRECTORIO` (entorno, por defecto
+  `backend/almacenamiento`, ya en `.gitignore`). Valida la clave con el formato del criterio 36 (hasta 255 caracteres,
+  `academias/{uuid}/` y segmentos `^[a-z0-9][a-z0-9_-]*(\.[a-z0-9]+)?$`) y que el UUID sea el `academiaId` recibido;
+  `path.resolve(raiz, ...clave.split('/'))` debe quedar dentro de `path.resolve(raiz, 'academias', academiaId)`. Antes
+  de leer, escribir o borrar, comprueba con `fs.lstat` que ni la carpeta de la academia ni las carpetas de debajo ni el
+  archivo son enlaces simbólicos (en Windows, las uniones también dan `isSymbolicLink()`). `guardar` crea las carpetas
+  con `fs.mkdir({ recursive: true })`, escribe `{archivo}.{uuid}.tmp` y hace `rename`; `borrar` ignora `ENOENT`. Todo
+  rechazo es una promesa rechazada con un `Error` propio, sin la ruta en el mensaje.
+- Se registra como proveedor de Nest con el token `ALMACEN_ARCHIVOS` (exportado en `almacen-archivos/index.ts`, junto con
+  la interfaz y la clase), para cambiar la implementación sin tocar los servicios (D-21). Las pruebas lo reemplazan con
+  `overrideProvider(ALMACEN_ARCHIVOS)` por un `AlmacenArchivosDisco` sobre un directorio temporal (o por uno que falla, para
+  el criterio 37); la utilidad `crearAppInscripciones` puede sumar esa opción, como `correo`.
 
 ### 10. Correo (`EnviadorCorreo`)
 
@@ -385,19 +496,40 @@ Toda esta sección es de la 005b.
 
 De esta sección, solo "`ClasesService` (DR-5)" es de la 005a; la lista, la cancelación y la ocupación son de la 005b.
 
-- **[005b] `SolicitudesService.listar`:** `conAcademia(sesion.academiaId)`; una consulta con `JOIN` a alumnos, matrículas,
-  planes y `matricula_clases`/`clases` (con `array_agg` ordenado), filtro por estado calculado con `ahora`, `ORDER BY
-  creado_en DESC, id DESC LIMIT 200`. Sin `bloquearActorVigente` (es lectura, como en 002 a 004).
-- **[005b] `SolicitudesService.cancelar`:** `bloquearActorVigente` → validar el id (404 como AT-2 de 004) → `SELECT … FOR
-  UPDATE` de la solicitud y de su matrícula → `bloquearClasesParaCupo(tx, clasesDeLaMatricula)` → si `CANCELADA`, 200
-  sin escribir; si no es `PENDIENTE_PAGO`, 409 `SOLICITUD_NO_CANCELABLE`; si no, dos `UPDATE` y la auditoría.
+- **[005b] `SolicitudesService.listar` (PB11):** `conAcademia(sesion.academiaId)`; una consulta con `JOIN` a alumnos,
+  matrículas (`m.solicitud_id = s.id`), planes y una subconsulta `jsonb_agg` de `matricula_clases`/`clases` ordenada por
+  día y hora (como `SeguimientoService`), con `to_char(hora, 'HH24:MI')`. El filtro va en SQL con la misma regla del
+  estado visible (PB2) y `ahora` de `RELOJ` como parámetro: `ACTIVAS` = fila `PENDIENTE_PAGO` y matrícula `RESERVADA`
+  con `reserva_vence_en IS NULL OR reserva_vence_en > ahora`; `VENCIDAS` = fila `VENCIDA` o fila `PENDIENTE_PAGO` con la
+  matrícula `RESERVADA` vencida; `CANCELADAS` = fila `CANCELADA` o fila `PENDIENTE_PAGO` con la matrícula `CANCELADA`.
+  `ORDER BY s.creado_en DESC, s.id DESC LIMIT 200`. El `estado` y `reservaVenceEn` de cada elemento se arman con la
+  función común; `menorDeEdad` con `esMenorDeEdad(fecha_nacimiento, hoyEnLima(ahora))`; `monto` con
+  `coalesce(monto_ajustado, monto_calculado)::text`. El controlador valida solo `req.query.estado` con
+  `filtroEstadoSolicitudesSchema` (un arreglo o un valor desconocido → 400 en `estado`). Sin `bloquearActorVigente` (es
+  lectura, como en 002 a 004) y sin auditoría.
+- **[005b] `SolicitudesService.cancelar` (PB12):** el controlador valida el cuerpo con `cancelarSolicitudSchema` y pasa el
+  `id` crudo. En un `conAcademia`: `bloquearActorVigente(tx, actorDeSesion(sesion), { registro, ip })` → id que no es
+  UUID: 404 `NO_ENCONTRADO` (como AT-2 de 004) → `SELECT … FROM solicitudes_inscripcion WHERE academia_id = … AND id = …
+  FOR UPDATE` (404 si no hay fila) → `SELECT … FROM matriculas WHERE … solicitud_id = … FOR UPDATE` →
+  `bloquearClasesParaCupo(tx, clasesDeLaMatricula)` → estado visible `CANCELADA`: 200 con la solicitud, sin escribir;
+  fila que no es `PENDIENTE_PAGO`: 409 `SOLICITUD_NO_CANCELABLE`; si no, `UPDATE solicitudes_inscripcion SET estado = 'CANCELADA',
+  actualizado_en = ahora` y, si la matrícula está `RESERVADA`, `UPDATE matriculas SET estado = 'CANCELADA',
+  reserva_vence_en = NULL, actualizado_en = ahora` (el `CHECK matriculas_reserva_coherente` lo exige), y la auditoría
+  `SOLICITUD_INSCRIPCION_CANCELADA` con `registrarEnAcademia` (actor `USUARIO`, `motivo`, `datosAntes: { estado }` con el
+  estado visible anterior, `datosDespues: { estado: 'CANCELADA' }`, `ip: ipParaAuditoria(ip)`). La respuesta se arma con
+  la misma consulta de la lista, por id, dentro de la transacción. No toma `alumnos` ni los bloqueos consultivos del
+  envío, así que no entra en ciclo con el envío (que toma alumno → solicitudes → matrículas → clases) ni con la foto
+  (alumno → solicitud).
 - **`ClasesService` (DR-5, 005a):** en el `PATCH`, después de `bloquearClasesParaCupo` (que ya está, criterio 22 de 004) y de
   `cambiosPedidosClase`: si cambia `aforo` a un valor menor que `contarInscritos` y no viene `confirmarAforoMenor`,
   409 `AFORO_MENOR_QUE_INSCRITOS`; si viene, se guarda y la auditoría suma `inscritos` y `confirmacion`. Si pide
   `activo: false` y hay inscritos, 409 `CLASE_CON_INSCRITOS`. El orden de los 409 de 004 no cambia; estos dos van
   después de `ENTRENADOR_NO_VALIDO` y antes de escribir.
-- **[005b] `GET /api/clases/ocupacion`:** `contarOcupacion` del mes en curso para todas las clases de la academia (sin
-  bloqueo), con 0 para las que no tienen.
+- **[005b] `GET /api/clases/ocupacion` (PB13):** en `ClasesController` (`@Get('ocupacion')`, que no choca con
+  `PATCH :id`), con `@Permiso('CONFIGURAR_PLANES_HORARIOS_AFORO')`. Un `conAcademia` de lectura: los ids y el aforo de
+  todas las clases de la academia (activas o no), `contarInscritos(tx, ids, ahora)` para `inscritos` y
+  `contarOcupacion(tx, ids, mesEnCurso, ahora)` para `cuposRestantes = max(0, aforo − ocupación)`. Sin bloqueo (es
+  informativo: el cupo se decide al enviar) y sin auditoría.
 
 ### 12. Web
 
@@ -410,7 +542,11 @@ De esta sección, solo "`ClasesService` (DR-5)" es de la 005a; la lista, la canc
   La cotización se pide al cambiar la selección (`useMutation`), y su `mes` y `monto` viajan en el envío. La
   `claveIdempotencia` se crea con `crypto.randomUUID()` al montar el formulario y se conserva en el estado.
   **[005b]** El paso de la foto: se sube con `fetch` (`PUT` con el cuerpo binario y la cabecera) después del 201, y el
-  seguimiento ofrece reintentarla.
+  seguimiento ofrece reintentarla. _(Precisado el 21/11/2026, PB14:)_ el paso valida tipo y tamaño con `FOTO_TIPOS` y
+  `FOTO_TAMANO_MAXIMO` de `fotos.ts` antes de subir; la vista previa usa `URL.createObjectURL` y `revokeObjectURL` al
+  cambiar o desmontar; la subida usa el `token` del 201 en `CABECERA_TOKEN_SOLICITUD` y `file.type` en `Content-Type`, sin
+  pasar por el cliente JSON de la web; un fallo de la foto no oculta el código ni el enlace. En el seguimiento, el mismo
+  componente de subida aparece solo con la vista completa y, tras el 204, invalida la consulta del seguimiento.
 - **Seguimiento:** el token se lee del parámetro de la ruta, se manda en el cuerpo y se mantiene solo en memoria; la
   consulta no usa persistencia de TanStack Query. `<meta name="referrer" content="no-referrer">` en `index.html` (vale
   para toda la web; no afecta a la API, que está en el mismo dominio). **Respuesta R3 (criterio 58):** con la vista
@@ -419,8 +555,29 @@ De esta sección, solo "`ClasesService` (DR-5)" es de la 005a; la lista, la canc
 - **[005b] Panel:** `PaginaSolicitudes` con filtro y diálogo de cancelación; `GrillaSemanal` muestra "inscritos / aforo" con
   `GET /api/clases/ocupacion`; `FormularioClase` maneja `AFORO_MENOR_QUE_INSCRITOS` con un diálogo que reenvía con
   `confirmarAforoMenor: true`, y `CLASE_CON_INSCRITOS` con un mensaje. Claves con la identidad de la sesión. En la
-  005a, `FormularioClase` no cambia: muestra esos dos 409 como cualquier error de la 004.
+  005a, `FormularioClase` no cambia: muestra esos dos 409 como cualquier error de la 004. _(Precisado el 21/11/2026,
+  PB14:)_ `PaginaPanel` suma dos opciones con `REGISTRAR_INSCRIPCION_Y_COBRO`: "Solicitudes de inscripción"
+  (`/panel/solicitudes`) y "Nueva inscripción", con la dirección pública armada con `usuario.academia.nombreCorto`. La
+  ruta `/panel/solicitudes` va en `Rutas.tsx` dentro de `RutaConSesion`, como las demás del panel. "Cancelar" se ofrece
+  en `PENDIENTE_PAGO` y `VENCIDA`; un 409 `SOLICITUD_NO_CANCELABLE` (la fila `VENCIDA` del criterio 21 b, que la web no
+  distingue) se muestra con un mensaje y se vuelve a pedir la lista. Claves: `['solicitudes', nombreCorto, usuarioId,
+  estado]` y `['ocupacion', nombreCorto, usuarioId]`; un cambio de clase invalida las dos de clases y ocupación.
 - Montos: `lib/dinero.ts` de la 004 (texto, sin `number`).
+- **[005b, ronda 1] Servidor de desarrollo (criterio 62 a, AB1-3).** En `frontend/vite.config.ts`, dentro de `server`,
+  `fs: { allow: [path.join(raiz, 'frontend'), path.join(raiz, 'packages', 'contratos'), path.join(raiz,
+  'node_modules')] }` (con `raiz` ya calculada en el archivo). Vite deja de usar la raíz del workspace como permitida y
+  agrega solo su propio cliente; el `cacheDir` por defecto (`frontend/node_modules/.vite`) queda dentro de `frontend/`.
+  `strict` y `deny` no se tocan (se quedan los valores por defecto de Vite). `preview` no cambia. Si una dependencia
+  futura se resuelve fuera de esas carpetas (por ejemplo, otro paquete del workspace), se suma a la lista de las dos
+  partes (Vite y `validarEntorno`) en la historia que lo traiga; las E2E, que usan este servidor, lo detectan.
+- **[005b, ronda 2] Enlaces de los workspaces (criterio 65, AB2-2).** En el mismo `fs`, `deny: [...DENY_POR_DEFECTO_DE_VITE,
+  '**/node_modules/@aquagestion', '**/node_modules/@aquagestion/**']`, con `DENY_POR_DEFECTO_DE_VITE` copiado de la
+  versión de Vite del repositorio (hoy `.env`, `.env.*`, `*.{crt,pem,key,p12,pfx,cer,der}`, `.npmrc`, `.yarnrc.yml` y
+  `**/.git/**`): Vite reemplaza la lista entera si la configuración trae una (no la fusiona), y la prueba del 62 a
+  avisa si una actualización de Vite suma valores que la copia no tiene. Vite convierte los patrones sin `/` en
+  `**/{patrón}` y los compara con `nocase` y `dot`. `allow`, `strict`, `resolve.preserveSymlinks` y `preview` no
+  cambian. Comprobar a mano con `npm run dev` que la web carga y que los contratos se piden por
+  `/@fs/{raíz}/packages/contratos/…`.
 
 ### 13. Semilla
 
@@ -455,7 +612,9 @@ cualquier otra cosa.
   `TEXTO_REDACTADO`. Vale para toda la API y todos los niveles, porque la redacción de `pino` se aplica al serializar.
 - La prueba no protegida `opciones-registro.test.ts` cambia el largo esperado de 3 a 4 y comprueba la nueva ruta.
 - **[005b]** Al sumar `PUT …/solicitudes/foto`, se suma `'req.headers["x-token-solicitud"]'` a la misma lista (criterio
-  28, parte de la 005b).
+  28, parte de la 005b). _(Precisado el 21/11/2026, PB9:)_ vale para toda la API; la prueba no protegida
+  `opciones-registro.test.ts` cambia el largo esperado de 4 a 5 y comprueba la nueva ruta, en el mismo cambio. Express
+  entrega las cabeceras en minúsculas, así que basta esa forma.
 - No se usa un serializador propio de `req` (alternativa descartada): cambiaría la forma de la línea de petición que ya
   revisan las pruebas de 002 y dejaría fuera los registros que no pasan por ese serializador.
 
@@ -469,6 +628,66 @@ cualquier otra cosa.
 - El código de producción debe tomar la IP solo de `req.ip` (nunca de `req.socket.remoteAddress` ni de cabeceras), para
   que esa opción la controle. Hoy ya es así en `proteccion-de-prefijos.ts` y en los controladores.
 - Las pruebas unitarias de `claveDeConexion` y `vencimientoDeReserva` no necesitan la app.
+
+### 16. [005b] Pruebas de la ronda 1 del ataque (criterios 61 a 63)
+
+- **Proxy de PostgreSQL (criterio 61, AB1-2).** Utilidad protegida nueva del test-writer, partiendo de la del
+  adversarial (`ProxyPg`): un `net.Server` en `127.0.0.1:0` que, por cada conexión, abre otra al host y puerto de
+  `DATABASE_URL_APP` y reenvía en los dos sentidos. Lee los mensajes del cliente con su largo: primero los mensajes sin
+  tipo (si el primero es `SSLRequest` o `GSSENCRequest`, el servidor contesta un byte y llega otro mensaje sin tipo, el
+  `StartupMessage`); después, mensajes con tipo. En los `Q` y `P` busca, ya armado, un `UPDATE` de `alumnos` que
+  mencione `foto_clave` (por ejemplo `/\bUPDATE\s+(?:"?public"?\.)?"?alumnos"?\b[\s\S]*\bfoto_clave\b/i`) y marca esa
+  conexión; el siguiente `COMMIT` de esa conexión aplica el modo (`cortarTrasCommit` espera el `CommandComplete`
+  `COMMIT` del servidor, `cortarAntesDelCommit` no lo reenvía, `caer` corta y además cierra todo y rechaza conexiones
+  hasta `restablecer()`). Un `ROLLBACK` quita la marca. Cuenta los cortes. La aplicación se crea con la URL del proxy
+  (como lo hizo el adversarial con `crearAppConAlmacen`) y la variable se restaura en seguida; las utilidades que
+  escriben como dueño siguen yendo directo. `cerrar()` destruye las conexiones abiertas antes de cerrar el servidor.
+- **Servidor de Vite (criterio 62).** Como el `vite-fs.mjs` del adversarial, pero con `createServer` importado desde el
+  `vite` del repositorio, `configFile` el `frontend/vite.config.ts` real, `server: { port: 0, strictPort: false, hmr:
+  false, watch: null }`, `cacheDir` temporal y `optimizeDeps: { noDiscovery: true, include: [] }`, `logLevel:
+  'silent'`. Las rutas `/@fs/` se arman con la ruta absoluta pasada a `/` (en Windows, `/@fs/C:/…`). El archivo del
+  almacén se crea con carpetas de UUID nuevos dentro de `backend/almacenamiento/academias/` y se borra en un `finally`.
+  El proyecto `scripts` de Vitest corre en Node y en la integración continua de Windows.
+- **Almacén temporal en las pruebas (criterio 63, AB1-4).** En `vitest.config.mts`, el `env` de los proyectos de
+  `backend/` suma `ALMACEN_DIRECTORIO` con un directorio de `fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-almacen-'))`
+  creado al cargar la configuración, y el `globalSetup` compartido lo borra al terminar (o se crea y se borra en ese
+  `globalSetup`, si se prefiere; lo que importa es que la variable llegue a los procesos de prueba). En
+  `e2e/playwright.config.ts`, el `env` del servidor `API` suma `ALMACEN_DIRECTORIO` con un directorio temporal, que el
+  `globalTeardown` (nuevo o el existente) borra. Las utilidades que ya usan un directorio temporal propio
+  (`crearAppConAlmacen`) no cambian.
+
+### 17. [005b] Pruebas de la ronda 2 del ataque (criterios 64 a 66)
+
+- **Proxy con `retenerCommit` (criterio 64, AB2-1).** En `proxy-postgres.ts`, en el mismo commit de pruebas protegidas:
+  - `Puente` lee, en `alRecibirDelServidor`, el mensaje `K` (`BackendKeyData`: `Int32` pid e `Int32` clave) y guarda
+    el `pid`.
+  - En `alMensajeDelCliente`, si `tomarModo()` da `'retenerCommit'`, el puente pasa a "reteniendo": guarda el mensaje
+    del `COMMIT` (y, si es un `P`, también los que siguen en `bufferCliente` y en los `data` siguientes hasta un `S`
+    incluido), cuenta un corte, destruye solo el socket del cliente y avisa al proxy (`proxy.retener(this)`). Mientras
+    retiene, `cliente.on('close')` no llama a `cerrar()` y lo que llega del servidor no se reenvía.
+  - `ProxyPostgres` guarda el puente retenido y expone `pidRetenido`, `liberar()` (escribe lo guardado en el socket del
+    servidor, espera el `C` con `COMMIT`, cierra y resuelve) y `descartar()` (destruye el socket del servidor y resuelve
+    en su `close`). `cerrar()` incluye el retenido.
+  - Los modos del criterio 61 no cambian; la prueba de la ronda 1 sigue igual.
+- **Espera comprobada:** como `conFilaRetenida` de `carreras.ts`, un cliente propio de `pg` (dueño) consulta cada pocos
+  milisegundos `SELECT pid FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))` con `pidRetenido`, con un
+  límite de seguridad, mientras la promesa de la subida sigue sin terminar (`observar`).
+- **Caso 3 (espera agotada):** la prueba no fija tiempos; solo espera la respuesta con un plazo de Vitest amplio
+  (60 s), porque la API responde a los 5 s de `lock_timeout`.
+- **Cómo se fija `lock_timeout` (precisado en la ronda 3):** no con `SET LOCAL` en `foto.service.ts` (lo prohíben las
+  reglas de lint `aquagestion-sql/sesion-en-modulos` y `set-config-app` en los módulos), sino con la opción
+  `esperaMaximaDeBloqueoMs` de `BaseDatos.conAcademia` (sección 9). Las pruebas protegidas del criterio 64 no dependen
+  de cómo se fija: comprueban la espera en `pg_blocking_pids` y la respuesta del caso 3. El adversarial de la ronda 3
+  comprobó además que el valor no sobrevive a la transacción: la siguiente en la misma conexión vuelve a 0.
+- **Enlaces de Vite (criterio 65).** Archivo nuevo junto a `scripts/test/vite-no-sirve-almacen-ronda1-005b.test.mjs`,
+  con el mismo arranque del servidor y del archivo del almacén (puede copiar sus funciones de apoyo; no lo modifica).
+  La precondición usa `fs.lstatSync` y `fs.realpathSync` sobre `{raíz}/node_modules/@aquagestion/{backend,e2e,scripts}`.
+  Para la base64, se compara con `Buffer.from(imagen).toString('base64')` (también un trozo del medio, por si la
+  respuesta la parte). El módulo que importa los contratos se pide transformado y se busca en su código la primera
+  dirección que contenga `contratos`.
+- **Entorno (criterio 66).** Archivo nuevo junto a `entorno-almacen-web-ronda1-005b.test.ts`, que importa
+  `resolverAlmacenDirectorio` de `./entorno` y usa `path.win32` y `path.posix` de `node:path`; la parte de
+  `validarEntorno` en Windows va con `it.runIf(process.platform === 'win32')`.
 
 ## Decisiones
 
@@ -498,6 +717,20 @@ cualquier otra cosa.
 | Vista reducida sin `nombres` ni `fotoCargada`, unión por estado (DR-14, AT1-8) | `nombres: null`; dejar `fotoCargada` | P3 quita claves; `fotoCargada` describe al alumno actual, no a esa solicitud |
 | `claveDeConexion` en el almacén, el bloqueo y el conteo; `ip_origen` exacta (DR-15, AT1-9) | Columna nueva con la clave; guardar solo el /64 | Sin migración de columnas ni cambios en pruebas de catálogo; se conserva la dirección exacta |
 | Reserva de la semilla hasta el fin del mes (AT1-10) | 24 horas, como el formulario | El ejemplo dura lo más posible sin cruzar el mes |
+| [005b] Foto: token y estado antes de decodificar; tipo, codificación y tamaño antes de la academia (PB3) | Decodificar primero; buscar la academia antes del lector | No se gasta CPU en tokens que no sirven; el lector de cuerpos corre antes de Nest, como el JSON |
+| [005b] Transacción de la foto: alumno y después solicitud (PB8) | Solicitud y después alumno (lo que decía el plan) | Mismo orden que el envío: sin `40P01` entre una subida y un envío del mismo DNI |
+| [005b] Cancelar: la fila `VENCIDA` da 409 (PB12) | Cancelar también la fila `VENCIDA` | Es lo que dice el contrato ("ya no está `PENDIENTE_PAGO` ni `CANCELADA`"); esa solicitud ya no ocupa nada |
+| [005b] Ocupación: `inscritos` con `contarInscritos` y cupos con `contarOcupacion` (PB13) | Solo `contarOcupacion` | La grilla y el diálogo de DR-5 muestran la misma cifra que los 409; desde la 010 hay meses siguientes |
+| [005b] Constantes de la foto en `packages/contratos` (PB4) | Repetirlas en la web y en la API | La web avisa antes de subir con los mismos límites que aplica la API |
+| [005b, ronda 1] Confirmación incierta: releer `foto_clave` antes de borrar (AB1-1, criterio 61) | Borrar siempre el nuevo; no borrar nada sin releer; referencia "pendiente" en dos pasos | Nunca una referencia a un archivo borrado, 204 si la foto quedó, sin migración |
+| [005b, ronda 1] Proxy TCP de prueba que corta en el `COMMIT` (AB1-2) | Envolver `BaseDatos` con `overrideProvider` | Caja negra (solo `DATABASE_URL_APP` y el protocolo), reproduce la falla real, determinista |
+| [005b, ronda 1] `server.fs.allow` con lista cerrada y rechazo en `validarEntorno` (AB1-3, criterio 62) | `server.fs.deny` con el directorio del almacén; almacén por defecto fuera del repositorio | Sin globs con rutas de Windows; protege todo `backend/`; Bryan conserva su carpeta de desarrollo |
+| [005b, ronda 1] `ALMACEN_DIRECTORIO` temporal en la configuración de las pruebas (AB1-4, criterio 63) | Que cada prueba reemplace el almacén | Una prueba que lo olvide no escribe en el almacén de quien desarrolla |
+| [005b, ronda 2] Relectura con `FOR SHARE` y `lock_timeout` de 5 s (AB2-1, criterio 64) | Lectura sin bloqueo (ronda 1); `FOR UPDATE`; `NOWAIT`; esperar sin límite; mirar `pg_locks` desde la API | Espera justo lo necesario para que la transacción original termine; si no termina, b3 conserva el invariante |
+| [005b, ronda 3] `lock_timeout` con la opción `esperaMaximaDeBloqueoMs` de `BaseDatos.conAcademia` (precisa AB2-1) | `SET LOCAL lock_timeout` en `foto.service.ts`; excepción de lint para ese archivo | Las reglas de lint de la 001 prohíben cambiar parámetros de la transacción en los módulos; mismo efecto, local a la transacción |
+| [005b, ronda 2] Modo `retenerCommit` en el proxy protegido, con el `pid` del `BackendKeyData` (AB2-1) | Un segundo proxy como el del adversarial; un retraso por tiempo | Una sola utilidad que entiende el protocolo; la espera se comprueba en `pg_blocking_pids` |
+| [005b, ronda 2] `server.fs.deny` con `**/node_modules/@aquagestion(/**)` (AB2-2, criterio 65) | Lista de carpetas de `node_modules/` en `allow`; plugin con `realpath`; `preserveSymlinks` | Sin la ruta del usuario en el patrón; Vite lo aplica sin mayúsculas y en todos los caminos de lectura |
+| [005b, ronda 2] `resolverAlmacenDirectorio` pura con `path.win32` o `path.posix`, rechazo de las formas de Windows y nombres cortos como comodín (AB2-3, criterio 66) | Normalizar `\\?\` y `\\.\`; `realpathSync.native`; riesgo aceptado; rechazar todo nombre corto | Determinista y probada en la nube; no rompe el directorio temporal de la integración continua en Windows |
 
 ## Migraciones
 
@@ -525,9 +758,10 @@ cualquier otra cosa.
 ## Riesgos
 
 - **Interbloqueos:** el envío toma bloqueos consultivos (IP, DNI), filas del cliente y clases; la cancelación toma
-  actor, solicitud y clases; el `PATCH` de clases toma actor (y entrenador) y clases. Ninguna toma una clase y después
-  otra cosa. El adversarial debe probar a la vez: envío y cancelación del mismo cliente, envío y `PATCH` de aforo o de
-  `activo` sobre la misma clase, dos envíos cruzados de clases y de DNI.
+  actor, solicitud, matrícula y clases; la foto toma alumno y solicitud (PB8); el `PATCH` de clases toma actor (y
+  entrenador) y clases. Ninguna toma una clase y después otra cosa, y ninguna toma la solicitud antes que el alumno. El
+  adversarial debe probar a la vez: envío y cancelación del mismo cliente, envío y foto del mismo cliente, foto y
+  cancelación, envío y `PATCH` de aforo o de `activo` sobre la misma clase, dos envíos cruzados de clases y de DNI.
 - **Llaves foráneas y `FOR KEY SHARE`:** el `INSERT` de la matrícula toma `FOR KEY SHARE` sobre el plan y sobre las
   clases (estas ya están bloqueadas con `FOR UPDATE` por la misma transacción); el `PATCH` de un plan toma `FOR UPDATE`
   sobre el plan y no toca clases ni matrículas, así que no hay ciclo. Revisarlo si una historia hace que el `PATCH` de un
@@ -537,6 +771,38 @@ cualquier otra cosa.
   Windows lo detecta. Si `npm ci` falla en alguna plataforma, se fija la versión.
 - **[005b] Imágenes maliciosas:** `limitInputPixels`, el límite de 5 MB antes de decodificar y `failOn: 'error'`; `sharp` corre
   en el hilo de libuv, así que una imagen grande ocupa CPU: el límite de 10 por hora y por IP lo acota.
+- **[005b] Recepción y límites por conexión:** desde "Nueva inscripción", recepción comparte conexión para los límites
+  de los criterios 25 y 33 (respuesta B4, DR-20). No cambia el diseño de la 005b; la exclusión de la sesión de
+  recepción va en la 007, antes de publicar el formulario.
+- **[005b] Enlaces simbólicos en Windows:** crear un enlace pide permisos; la prueba del criterio 36 se omite si da
+  `EPERM`, y la comprobación con `lstat` vale igual para las uniones de Windows.
+- **[005b, ronda 1] Clasificar el error de la confirmación (criterio 61):** si un error de negocio de la transacción no
+  se reconoce como tal, se relee de más (inofensivo); si un error de la base o de la conexión se tomara por uno de
+  negocio, se volvería a borrar sin saber. Por eso la lista de "decididos por la transacción" es cerrada (los cuatro de
+  la sección 9) y todo lo demás relee.
+- **[005b, ronda 1] El proxy de prueba y Prisma (criterio 61):** el proxy depende de que Prisma hable el protocolo de
+  PostgreSQL sin cifrar en la conexión local (hoy es así; si la URL pidiera `sslmode=require`, el proxy no vería los
+  mensajes). Si Prisma reintenta una conexión cortada, la relectura del caso `caer` tarda hasta `ESPERA_CONEXION_MS`
+  (10 s); la prueba usa un plazo amplio.
+- **[005b, ronda 1] Lista cerrada de Vite (criterio 62):** una dependencia de la web que se resuelva fuera de
+  `frontend/`, `packages/contratos/` o `node_modules/` de la raíz dejaría de servirse en desarrollo (403 en la consola
+  del navegador). Las E2E usan el servidor de desarrollo, así que lo detectan; la prueba del criterio 62 comprueba lo
+  mínimo (`/`, `/src/main.tsx`, contratos y una dependencia).
+- **[005b, ronda 2] Bloqueo de la relectura (criterio 64):** con una conexión medio abierta, la fila del alumno queda
+  bloqueada hasta que PostgreSQL la detecte; la relectura responde 500 a los 5 s sin borrar nada, y otras operaciones
+  sobre ese alumno esperan (riesgo aceptado de la spec, "Conexión medio abierta"). Si un cambio futuro hiciera que la
+  transacción de confirmación enviara el `COMMIT` sin haber bloqueado la fila (por ejemplo, un `UPDATE` sin `FOR
+  UPDATE` previo que no encuentre la fila), el razonamiento de AB2-1 deja de valer: el revisor comprueba que el orden de
+  PB8 se mantiene.
+- **[005b, ronda 2] El modo `retenerCommit` y el protocolo extendido (criterio 64):** si Prisma envía el `COMMIT` como
+  `Parse`, `Bind`, `Execute` y `Sync` en varios paquetes, el proxy debe esperar al `Sync` antes de cerrar el lado de la
+  API; si lo cerrara antes, `liberar()` mandaría un `COMMIT` incompleto y el servidor no lo ejecutaría (el caso 1
+  fallaría por la prueba, no por la API).
+- **[005b, ronda 2] Valores por defecto de `deny` copiados (criterio 65):** una actualización de Vite que sume un valor
+  por defecto no llega sola a la configuración; la prueba del 62 a, que compara con los valores de una configuración
+  sin archivo, falla y avisa.
+- **[005b, ronda 2] Comparación sin mayúsculas en Linux (criterio 66):** rechaza también `FRONTEND/` o `Packages/` en
+  Linux, aunque sean carpetas distintas de las de la web. Es rechazar de más una configuración rara.
 - **Coma flotante:** cualquier `Number(`, `parseFloat` o `+monto` en `matriculas/dominio` o en la web rompe el criterio 9;
   el revisor los busca.
 - **Fechas:** `clasesRestantes` y `esMenorDeEdad` no pueden usar `new Date().getDay()`, `getFullYear()` ni la zona del
