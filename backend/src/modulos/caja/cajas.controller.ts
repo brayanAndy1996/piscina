@@ -50,12 +50,21 @@ function parametroCrudo(solicitud: Request, nombre: string): string | string[] |
 }
 
 /**
- * `true` si la conexión de una descarga ya se cerró (criterio 55 a): la respuesta se cerró sin terminar de enviarse, o el socket de la petición
- * está destruido. No se mira `solicitud.destroyed` solo: en Node 22 puede ser `true` después de leer una petición sin cuerpo (plan 2.13).
+ * `true` si la conexión de una descarga ya se cerró (criterios 55 a y 55 h, DT-20): la respuesta se cerró sin terminar de enviarse, o el socket de
+ * la petición está destruido, ya terminó su lectura (leyó el FIN del cliente) o ya no admite escritura. Con `httpAllowHalfOpen = false`, Node
+ * responde a un FIN con `socket.end()`, así que una descarga viva nunca está en ese estado. No se mira la lectura de la petición
+ * (`solicitud.readableEnded`, `solicitud.complete`: son `true` en cualquier `GET` ya leído) ni `solicitud.destroyed` solo: en Node 22 puede ser
+ * `true` después de leer una petición sin cuerpo (plan 2.13). La condición es sobre el socket.
  */
 function conexionCerrada(solicitud: Request, respuesta: Response): boolean {
   const socket = solicitud.socket as Socket | null;
-  return respuesta.destroyed || (respuesta.closed && !respuesta.writableFinished) || socket?.destroyed === true;
+  return (
+    respuesta.destroyed ||
+    (respuesta.closed && !respuesta.writableFinished) ||
+    socket?.destroyed === true ||
+    socket?.readableEnded === true ||
+    socket?.writable === false
+  );
 }
 
 /**
@@ -129,6 +138,14 @@ export class CajasController {
    *
    * Criterio 55 (DT-15): al entrar se comprueba si la conexión ya está cerrada (un corte durante el middleware o los guards ya pasó) y, en el
    * mismo paso síncrono, se escucha también el `close` del socket, que avisa a una petición en pipelining. Los oyentes se quitan en `finally`.
+   *
+   * Criterio 55 g (DT-18): `close` llega después de que Node destruye el socket, así que antes de escribir (el 200) y en el camino del error se
+   * vuelve a mirar la conexión, además de la señal, sin un `await` entre la comprobación y la escritura. Si está cerrada, no se escribe nada,
+   * el error no llega al filtro global y se activa la señal.
+   *
+   * Criterio 55 h (DT-20): un FIN del cliente cuenta como corte desde que Node lo lee. `conexionCerrada` también da `true` si el socket ya
+   * terminó su lectura o ya no admite escritura (`readableEnded` o `!writable`), aunque todavía no esté destruido. Esa definición vale al
+   * entrar, antes del 200 y en el `catch`.
    */
   @Get(':id/cierres/:numero/pdf')
   @Permiso('VER_REPORTES_FINANCIEROS')
