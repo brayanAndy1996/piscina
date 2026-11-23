@@ -63,7 +63,9 @@ function ContenidoDelHistorial() {
       if (mensajes['hasta']) setError('hasta', { message: mensajes['hasta'] });
       return;
     }
-    setFiltro(pedido);
+    // Con el mismo filtro la clave de la consulta no cambia y no se volvería a pedir: "Filtrar" pide de nuevo.
+    if (filtro.desde === pedido.desde && filtro.hasta === pedido.hasta) void consulta.refetch();
+    else setFiltro(pedido);
   });
 
   const respuesta = consulta.data;

@@ -82,6 +82,8 @@ export function mensajeDeCaja(error: unknown): string {
 }
 
 export const MENSAJE_PDF_NO_ENCONTRADO = 'No se encontró el cierre';
+export const MENSAJE_PDF_MUCHAS_DESCARGAS =
+  'Hay muchas descargas de PDF en curso. Espera un momento e inténtalo de nuevo.';
 export const MENSAJE_PDF_FALLIDO = 'No se pudo generar el PDF. Inténtalo de nuevo.';
 
 /**
@@ -99,5 +101,6 @@ export function mensajeDeDescargaDelPdf(error: unknown): string | null {
     return null;
   }
   if (esErrorDeApi(error, 404)) return MENSAJE_PDF_NO_ENCONTRADO;
+  if (esErrorDeApi(error, 429, 'DEMASIADAS_SOLICITUDES')) return MENSAJE_PDF_MUCHAS_DESCARGAS;
   return MENSAJE_PDF_FALLIDO;
 }

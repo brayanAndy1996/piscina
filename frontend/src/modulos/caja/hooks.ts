@@ -184,10 +184,13 @@ export function useDescargarPdfDelCierre() {
       } finally {
         soltar();
         propias.current.delete(controlador);
+        enCurso.current = false;
       }
     },
   });
   const { mutate } = mutacion;
+  // Una descarga a la vez desde este hook: se marca en el mismo paso del clic, antes de que el botón se pinte desactivado.
+  const enCurso = useRef(false);
   /**
    * Criterio 57 b: la descarga cuenta como "en curso" desde que se pulsa, no desde que empieza su `mutationFn` (que sin conexión queda en
    * pausa). La identidad de la página también se toma al pulsar.
@@ -196,6 +199,9 @@ export function useDescargarPdfDelCierre() {
     (datos: { cajaId: string; fecha: string; numero: number }) => {
       // Criterio 57 e: un clic que llega en el mismo paso que "Cerrar sesión", antes de que el botón se pinte desactivado, no registra nada.
       if (seEstaCerrandoLaSesion()) return;
+      // Dos clics en el mismo paso: el segundo se ignora.
+      if (enCurso.current) return;
+      enCurso.current = true;
       const { sigue, vigilar } = vigilarLaSesion();
       const { controlador, terminar } = iniciarDescarga();
       const dejarDeVigilar = vigilar(() => controlador.abort());

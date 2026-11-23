@@ -56,12 +56,15 @@ async function solicitar(
   } catch {
     throw new ErrorDeRespuesta('No se pudo contactar al servidor.');
   }
-  if (!estadosAceptados.includes(respuesta.status)) {
-    const error = leerErrorApi(texto);
-    if (error) throw new ErrorDeApi(respuesta.status, error);
-    throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${respuesta.status}).`);
-  }
+  if (!estadosAceptados.includes(respuesta.status)) lanzarErrorDeRespuesta(respuesta.status, texto);
   return { respuesta, texto };
+}
+
+/** El error de una respuesta que no es la esperada: `ErrorDeApi` si el cuerpo cumple `errorApiSchema`, `ErrorDeRespuesta` si no. */
+function lanzarErrorDeRespuesta(estado: number, texto: string): never {
+  const error = leerErrorApi(texto);
+  if (error) throw new ErrorDeApi(estado, error);
+  throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${estado}).`);
 }
 
 function leerErrorApi(texto: string): ErrorApi | null {
@@ -141,9 +144,7 @@ export async function pedirArchivo(ruta: string, tipo: string, senal?: AbortSign
   } catch {
     // Sin cuerpo legible: se informa solo el código.
   }
-  const error = leerErrorApi(texto);
-  if (error) throw new ErrorDeApi(respuesta.status, error);
-  throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${respuesta.status}).`);
+  lanzarErrorDeRespuesta(respuesta.status, texto);
 }
 
 /** Envía una petición cuya respuesta correcta no tiene cuerpo (204), por ejemplo `DELETE`. */
@@ -176,7 +177,5 @@ export async function subirArchivo(
     throw new ErrorDeRespuesta('No se pudo contactar al servidor.');
   }
   if (respuesta.status === 204) return;
-  const error = leerErrorApi(texto);
-  if (error) throw new ErrorDeApi(respuesta.status, error);
-  throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${respuesta.status}).`);
+  lanzarErrorDeRespuesta(respuesta.status, texto);
 }

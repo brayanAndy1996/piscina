@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -372,6 +372,26 @@ describe('/panel/cajas: la lista', () => {
     expect(llamadas(api, 'GET /api/cajas')).toHaveLength(1);
   });
 
+  it('"Filtrar" con el mismo filtro vuelve a pedir el historial', async () => {
+    const api = servidor('ADMIN', {
+      'GET /api/cajas?desde=2026-11-01': () => ({ estado: 200, cuerpo: { ...HISTORIAL, desde: '2026-11-01' } }),
+    });
+    mostrar('/panel/cajas');
+    const usuario = userEvent.setup();
+    await screen.findByText(/Mostrando las cajas/);
+    expect(llamadas(api, 'GET /api/cajas')).toHaveLength(1);
+    // Sin fechas, el filtro es el mismo que el de la entrada.
+    await usuario.click(screen.getByRole('button', { name: 'Filtrar' }));
+    await waitFor(() => expect(llamadas(api, 'GET /api/cajas')).toHaveLength(2));
+    // Con una fecha nueva se pide una vez; repetirla vuelve a pedir.
+    await usuario.type(screen.getByLabelText('Desde'), '2026-11-01');
+    await usuario.click(screen.getByRole('button', { name: 'Filtrar' }));
+    await waitFor(() => expect(llamadas(api, 'GET /api/cajas?desde=2026-11-01')).toHaveLength(1));
+    await usuario.click(screen.getByRole('button', { name: 'Filtrar' }));
+    await waitFor(() => expect(llamadas(api, 'GET /api/cajas?desde=2026-11-01')).toHaveLength(2));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('366 días exactos se aceptan', async () => {
     const api = servidor();
     mostrar('/panel/cajas');
@@ -699,6 +719,35 @@ describe('/panel/cajas/:id: descargar el PDF de cada cierre (criterio 42 y 44)',
     await userEvent.setup().click((await screen.findAllByRole('button', { name: /Descargar PDF/ }))[0] as HTMLElement);
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo generar el PDF. Inténtalo de nuevo.');
     expect(crear).not.toHaveBeenCalled();
+  });
+
+  it('429: pide esperar un momento', async () => {
+    const { crear } = simularUrlLocal();
+    conPdf(() => new Response(JSON.stringify({ codigo: 'DEMASIADAS_SOLICITUDES', mensaje: 'x' }), { status: 429 }));
+    mostrar(`/panel/cajas/${ID_VIEJA}`);
+    await userEvent.setup().click((await screen.findAllByRole('button', { name: /Descargar PDF/ }))[0] as HTMLElement);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Hay muchas descargas de PDF en curso. Espera un momento e inténtalo de nuevo.',
+    );
+    expect(crear).not.toHaveBeenCalled();
+  });
+
+  it('dos clics en el mismo paso piden un solo PDF', async () => {
+    simularUrlLocal();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const { pedidos } = conPdf(respuestaPdf);
+    mostrar(`/panel/cajas/${ID_VIEJA}`);
+    const botones = await screen.findAllByRole('button', { name: /Descargar PDF/ });
+    act(() => {
+      (botones[0] as HTMLElement).click();
+      (botones[0] as HTMLElement).click();
+      (botones[1] as HTMLElement).click();
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Descargar PDF del cierre 1' })).toBeEnabled());
+    expect(pedidos).toEqual([`/api/cajas/${ID_VIEJA}/cierres/1/pdf`]);
+    // Terminada la primera, otra descarga vuelve a ser posible.
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Descargar PDF del cierre 2' }));
+    await waitFor(() => expect(pedidos).toHaveLength(2));
   });
 
   it('si no hay red, también dice que no se pudo generar el PDF', async () => {
