@@ -148,6 +148,7 @@ export class CajasController {
       this.registro.info(contexto, 'Descarga del PDF del cierre abandonada antes de empezar');
       return;
     }
+    const abandonada = (): boolean => controlador.signal.aborted || conexionCerrada(solicitud, respuesta);
     const cortar = (): void => {
       if (!respuesta.writableFinished) controlador.abort();
     };
@@ -158,15 +159,23 @@ export class CajasController {
         senal: controlador.signal,
         volverAVerificar: () => this.sesiones.volverAVerificar(solicitud, 'VER_REPORTES_FINANCIEROS'),
       });
-      if (controlador.signal.aborted) return;
+      // Criterio 55 g (DT-18): la señal se activa con `close`, que llega después de que Node destruye el socket. Se vuelve a mirar la conexión y,
+      // sin ningún `await` entre la comprobación y `end`, se escribe: Node no destruye el socket en medio de código síncrono.
+      if (abandonada()) {
+        controlador.abort();
+        this.registro.info(contexto, 'Descarga del PDF del cierre abandonada por el cliente');
+        return;
+      }
       respuesta.status(200);
       respuesta.setHeader('Content-Type', 'application/pdf');
       respuesta.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
       respuesta.setHeader('Content-Length', String(contenido.length));
       respuesta.end(contenido);
     } catch (error) {
-      // Con la señal activa nunca se escribe en la respuesta, tampoco un JSON de error (criterio 55 d): el error no llega al filtro global.
-      if (!controlador.signal.aborted) throw error;
+      // Con la conexión cerrada nunca se escribe en la respuesta, tampoco un JSON de error (criterios 55 d y 55 g): el error no llega al filtro
+      // global. Se mira la conexión además de la señal, que puede activarse más tarde.
+      if (!abandonada()) throw error;
+      controlador.abort();
       if (esDescargaAbandonada(error) || (error instanceof HttpException && error.getStatus() < 500)) {
         this.registro.info(contexto, 'Descarga del PDF del cierre abandonada por el cliente');
       } else {
