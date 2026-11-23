@@ -174,16 +174,20 @@ function linea(doc: Documento, texto: string, fuente: string = FUENTE, tamano = 
     .text(textoParaPdf(texto), MARGEN, doc.y, { width: doc.page.width - 2 * MARGEN });
 }
 
-function filaDeTabla(doc: Documento, celdas: readonly string[], y: number, fuente: string): number {
+/** El alto de una fila: el de su celda más alta con la fuente dada (tamaño 8) más el relleno de arriba y de abajo. Deja esa fuente activa. */
+function altoDeFila(doc: Documento, celdas: readonly string[], fuente: string): number {
   doc.font(fuente).fontSize(8);
-  let alto = 0;
-  COLUMNAS.forEach((columna, indice) => {
-    alto = Math.max(
-      alto,
+  const celdaMasAlta = Math.max(
+    ...COLUMNAS.map((columna, indice) =>
       doc.heightOfString(celdas[indice] ?? '', { width: columna.ancho - 2 * RELLENO_DE_CELDA, align: columna.alinear }),
-    );
-  });
-  alto += 2 * RELLENO_DE_CELDA;
+    ),
+  );
+  return celdaMasAlta + 2 * RELLENO_DE_CELDA;
+}
+
+/** Escribe una fila en `y`; `alto` es el que dio `altoDeFila` con las mismas celdas y la misma fuente. */
+function filaDeTabla(doc: Documento, celdas: readonly string[], y: number, fuente: string, alto: number): number {
+  doc.font(fuente).fontSize(8);
   let x = MARGEN;
   COLUMNAS.forEach((columna, indice) => {
     doc.text(celdas[indice] ?? '', x + RELLENO_DE_CELDA, y + RELLENO_DE_CELDA, {
@@ -196,12 +200,8 @@ function filaDeTabla(doc: Documento, celdas: readonly string[], y: number, fuent
 }
 
 function encabezadoDeTabla(doc: Documento, y: number): number {
-  const alto = filaDeTabla(
-    doc,
-    COLUMNAS.map((columna) => textoParaPdf(columna.titulo)),
-    y,
-    FUENTE_NEGRITA,
-  );
+  const titulos = COLUMNAS.map((columna) => textoParaPdf(columna.titulo));
+  const alto = filaDeTabla(doc, titulos, y, FUENTE_NEGRITA, altoDeFila(doc, titulos, FUENTE_NEGRITA));
   const base = y + alto;
   doc
     .moveTo(MARGEN, base)
@@ -218,23 +218,13 @@ async function tabla(doc: Documento, movimientos: readonly MovimientoCaja[], tra
   y += encabezadoDeTabla(doc, y);
   for (const movimiento of movimientos) {
     const celdas = celdasDeMovimiento(movimiento);
-    doc.font(FUENTE).fontSize(8);
-    const alto =
-      Math.max(
-        ...COLUMNAS.map((columna, indice) =>
-          doc.heightOfString(celdas[indice] ?? '', {
-            width: columna.ancho - 2 * RELLENO_DE_CELDA,
-            align: columna.alinear,
-          }),
-        ),
-      ) +
-      2 * RELLENO_DE_CELDA;
+    const alto = altoDeFila(doc, celdas, FUENTE);
     if (y + alto > limite) {
       doc.addPage();
       y = doc.page.margins.top;
       y += encabezadoDeTabla(doc, y);
     }
-    y += filaDeTabla(doc, celdas, y, FUENTE);
+    y += filaDeTabla(doc, celdas, y, FUENTE, alto);
     await tramos.cederSiToca();
   }
   doc.x = MARGEN;

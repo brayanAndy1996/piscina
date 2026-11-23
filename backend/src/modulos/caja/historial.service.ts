@@ -22,28 +22,12 @@ import { calcularDiferencia } from './dominio/esperado';
 import { noEncontrado } from './errores';
 import { leerCaja } from './lectura';
 import { GENERADOR_PDF_CIERRE, type DatosPdfCierre, type GeneradorPdfCierre } from './pdf/cierre-pdf';
-import { esErrorDeAborto } from './pdf/aborto';
+import { errorDeAborto } from './pdf/aborto';
 import { ColaPdfCierre } from './pdf/cola-pdf';
 
-/**
- * El error de una descarga cuyo cliente cortó la conexión (spec 006b, criterio 51). Es un `AbortError`, como el que lanzan la cola y el generador
- * cuando abortan: el controlador los trata igual, no escribe respuesta y no lo registra como un 500.
- */
-export class DescargaAbandonada extends Error {
-  constructor() {
-    super('La descarga del PDF fue abandonada por el cliente.');
-    this.name = 'AbortError';
-  }
-}
-
-/** `true` si `error` es el de una descarga abandonada: el propio, o el `AbortError` de la cola o del generador. */
-export function esDescargaAbandonada(error: unknown): boolean {
-  return error instanceof DescargaAbandonada || esErrorDeAborto(error);
-}
-
-/** Lanza `DescargaAbandonada` si el cliente ya cortó la conexión. */
+/** Lanza el `AbortError` de la descarga abandonada (el mismo de la cola y del generador) si el cliente ya cortó la conexión. */
 function exigirQueSigaViva(senal: AbortSignal): void {
-  if (senal.aborted) throw new DescargaAbandonada();
+  if (senal.aborted) throw errorDeAborto();
 }
 
 /** El `numero` de un cierre en la dirección del PDF (PQ6): un entero de 1 a 5 dígitos sin ceros a la izquierda ni signo, y como mucho `smallint`. */
@@ -215,7 +199,7 @@ export class HistorialService {
    * 5. una transacción corta lee la caja (con el alcance del rol vigente) y su cierre: 404 si no existen o quedan fuera del alcance;
    * 6. al terminar la lectura, y recién entonces, se llama al generador (con la señal).
    * El turno se libera en el `finally`, con 200, 404, 500 o abandonada. Si el cliente corta (`opciones.senal`) en cualquier paso desde el 2, la
-   * descarga termina con `DescargaAbandonada` (o con el `AbortError` de la cola o del generador) sin llamar al generador si todavía no lo hizo.
+   * descarga termina con un `AbortError` (el propio, el de la cola o el del generador) sin llamar al generador si todavía no lo hizo.
    */
   async pdf(
     sesion: SesionVerificada,

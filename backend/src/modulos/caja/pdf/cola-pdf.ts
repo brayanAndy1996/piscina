@@ -80,7 +80,7 @@ export class ColaPdfCierre {
     return this.crearLiberacion(solicitante);
   }
 
-  /** Cuántas generaciones hay en curso y cuántas descargas esperan (para las pruebas y los registros). */
+  /** Cuántas generaciones hay en curso y cuántas descargas esperan. Hoy lo leen solo las pruebas. */
   get estado(): { enCurso: number; enEspera: number } {
     return { enCurso: this.enCurso, enEspera: this.espera.length };
   }
@@ -117,13 +117,11 @@ export class ColaPdfCierre {
       liberado = true;
       restar(this.porPersona, usuarioId);
       restar(this.porAcademia, academiaId);
-      // El lugar pasa al primer pedido que siga esperando (`enCurso` no cambia); si nadie espera, queda libre.
-      for (let siguiente = this.espera.shift(); siguiente; siguiente = this.espera.shift()) {
-        if (siguiente.estado !== 'esperando') continue;
-        siguiente.otorgar();
-        return;
-      }
-      this.enCurso -= 1;
+      // El lugar pasa al primero de la fila (`enCurso` no cambia); si nadie espera, queda libre. Todo pedido de la fila sigue `esperando`: el que
+      // se retira sale de ella en el mismo momento.
+      const siguiente = this.espera.shift();
+      if (siguiente) siguiente.otorgar();
+      else this.enCurso -= 1;
     };
   }
 }

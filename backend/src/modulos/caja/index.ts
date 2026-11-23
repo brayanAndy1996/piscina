@@ -6,7 +6,11 @@
 //     sola vez a la caja (`pagoId` único).
 //   registrarEgresoEnCaja(tx, egreso, ahora)    la ruta de egresos y la 019 (pago a un entrenador desde caja, RN-35).
 //   leerCajaAbierta(tx, ahora)                  lectura sin bloqueo, para avisar "abre la caja" sin decidir con ella.
-// El PDF del cierre (006b): `generarPdfCierre` (pura respecto de la base) y el token `GENERADOR_PDF_CIERRE` con el que `CajaModule` la provee.
+// El PDF del cierre (006b):
+//   generarPdfCierre(datos, senal?)  pura respecto de la base; arma el PDF por tramos y se puede abandonar con una señal (`AbortError`).
+//   GENERADOR_PDF_CIERRE             el token con el que `CajaModule` provee el generador (las pruebas lo reemplazan).
+//   ColaPdfCierre, LIMITES_PDF_CIERRE  la cola por proceso que limita las generaciones a la vez y las descargas por persona y por academia (429).
+//   textoParaPdf(texto)              deja un texto de usuario seguro para la fuente estándar (solo Latin-1, sin cambiar la estructura del PDF).
 export { CajaModule } from './caja.module';
 export { CajasService } from './cajas.service';
 export { instalarHeadSinRutasDeCaja } from './head-sin-ruta';

@@ -17,6 +17,7 @@ import {
 } from '@aquagestion/contratos';
 import type { Request, Response } from 'express';
 import { PinoLogger } from 'nestjs-pino';
+import { parametroCrudo } from '../../comun/http/parametro-crudo';
 import { ValidarCon } from '../../comun/validacion';
 import { errorParaRegistro } from '../../infraestructura/prisma';
 import { Permiso } from '../autenticacion/permiso.decorator';
@@ -24,30 +25,8 @@ import type { SesionVerificada } from '../autenticacion/tipos';
 import { SesionAcademiaService } from '../autenticacion/sesion-academia.service';
 import { SesionActual } from '../autenticacion/usuario-actual.decorator';
 import { CajasService } from './cajas.service';
-import { esDescargaAbandonada, HistorialService } from './historial.service';
-
-/**
- * El valor crudo de un parámetro de la consulta (spec 006b, PQ3), como `estadoCrudo` de la 005b: `undefined` si no viene, el texto si viene una
- * vez (también vacío) y un arreglo si se repite o se escribe con corchetes (`desde[]=…`, `desde[x]=…`; Express 5 no los arma, así que se mira
- * la consulta tal como llegó). Un arreglo no pasa `fechaSchema`: 400 en ese campo.
- */
-function parametroCrudo(solicitud: Request, nombre: string): string | string[] | undefined {
-  const posicion = solicitud.originalUrl.indexOf('?');
-  const parametros = new URLSearchParams(posicion === -1 ? '' : solicitud.originalUrl.slice(posicion + 1));
-  const valores: string[] = [];
-  let conCorchetes = false;
-  for (const [clave, valor] of parametros) {
-    if (clave === nombre) {
-      valores.push(valor);
-    } else if (clave.startsWith(`${nombre}[`)) {
-      valores.push(valor);
-      conCorchetes = true;
-    }
-  }
-  if (valores.length === 0) return undefined;
-  const [unico] = valores;
-  return valores.length === 1 && !conCorchetes && unico !== undefined ? unico : valores;
-}
+import { HistorialService } from './historial.service';
+import { esErrorDeAborto } from './pdf/aborto';
 
 /**
  * `true` si la conexión de una descarga ya se cerró (criterios 55 a y 55 h, DT-20): la respuesta se cerró sin terminar de enviarse, o el socket de
@@ -193,7 +172,7 @@ export class CajasController {
       // global. Se mira la conexión además de la señal, que puede activarse más tarde.
       if (!abandonada()) throw error;
       controlador.abort();
-      if (esDescargaAbandonada(error) || (error instanceof HttpException && error.getStatus() < 500)) {
+      if (esErrorDeAborto(error) || (error instanceof HttpException && error.getStatus() < 500)) {
         this.registro.info(contexto, 'Descarga del PDF del cierre abandonada por el cliente');
       } else {
         this.registro.error(
