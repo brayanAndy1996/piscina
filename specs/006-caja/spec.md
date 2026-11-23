@@ -26,7 +26,9 @@
   DR-1 a DR-11 de esta spec) y con las técnicas aprobadas por el orquestador tal como se propusieron (T1 a T6, que son DT-1
   a DT-6), en "Decisiones". Los valores que el borrador llamaba "provisionales" quedan como definitivos; ningún criterio
   cambió de intención. Al escribir las pruebas protegidas de la 006a se agregaron las precisiones PP1 a PP8 (en
-  "Decisiones"), sin cambios de negocio, y la pregunta P12, que no bloquea.
+  "Decisiones"), sin cambios de negocio, y la pregunta P12, que no bloquea. La 006a está unida a `main`. **La 006b
+  queda lista para el cierre (23/11/2026):** ataque adversarial cerrado sin fallas abiertas (ronda 6); siguen la
+  revisión, la verificación completa (suite, lint y tipos) y la documentación.
 - **Ronda adversarial 1 de la 006a (22/11/2026, sobre `deb9ee4`):** sin fallas de los criterios escritos. El orquestador
   convirtió dos observaciones técnicas en los criterios 47 (el comprobante del egreso, con las reglas de texto de la
   descripción) y 48 (las interfaces `registrarEgresoEnCaja` y `registrarIngresoEnCaja` validan sus entradas), los dos
@@ -140,6 +142,25 @@
   - un FIN que llega en la misma vuelta del bucle que el `COMMIT` de la verificación de la sesión del middleware: la
     descarga puede entrar al manejador sin verlo y ocupar un turno un instante, hasta que el `close` la aborta. No
     genera ni escribe.
+- **Ronda adversarial 6 de la 006b (23/11/2026, sobre `3995fc3`):** sin fallas; no agrega ni cambia criterios. Repitió
+  el ataque de la ronda 5:
+  - un proxy de PostgreSQL que retiene el `COMMIT` 1, 2 y 3;
+  - 7 000 cortes naturales con FIN y con RST en los caminos de 404, 500 y 200: ninguna descarga cortada escribió;
+  - sin falsos positivos de la condición del 55 h: pipelining, keep-alive con 120 descargas, clientes lentos,
+    backpressure (que no pone `writable` en falso), `Expect: 100-continue`, HTTP/1.0 y un proxy con retardo;
+  - sin regresiones.
+
+  Observaciones aceptadas sin criterio:
+  - un half-close con el socket ya pausado por backpressure no se detecta hasta vaciar el búfer: es un cliente vivo, que
+    todavía puede recibir el PDF;
+  - un corte que todavía no llegó a Node no se puede detectar;
+  - después de un FIN, la lectura o el generador pueden seguir un instante, sin escribir (55 h 3).
+
+  **Ataque adversarial de la 006b cerrado sin fallas abiertas.**
+- **Revisión de la 006b (23/11/2026):** sin cambios de negocio ni criterios nuevos. Precisa la web del historial en
+  PQ12 (el detalle muestra los cierres con `CierresDeLaCaja`; mensaje propio para el 429 del PDF; "Filtrar" con el
+  mismo filtro vuelve a pedir; un doble clic pide un solo PDF) y anota una repetición aceptada en "Riesgos aceptados"
+  (el patrón de montos de `formatearSoles` y `normalizarMonto`).
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
@@ -1603,18 +1624,23 @@ de hoy en el alcance de la secretaria (PQ2 d), decidida en DR-13 (pregunta P13).
     mensaje de "sin permiso" de 002.
   - **Lista:** dos campos de fecha ("Desde" y "Hasta"), vacíos al entrar (la API aplica sus valores por defecto); la
     página muestra el rango aplicado que devuelve la API. Antes de pedir, valida con `filtroHistorialCajasSchema` y
-    muestra el error en su campo sin llamar a la API. Cada fila: fecha, estado ("Abierta", "Abierta de otro día" o
+    muestra el error en su campo sin llamar a la API. Pulsar "Filtrar" con el mismo filtro vuelve a pedir el historial
+    _(revisión de la 006b)_. Cada fila: fecha, estado ("Abierta", "Abierta de otro día" o
     "Cerrada"), quién abrió, monto inicial, ingresos por método, egresos y, si hay último cierre, declarado, diferencia
     ("Sobrante", "Faltante" o "Cuadra") y "Tardío"; lleva al detalle. Sin cajas: "No hay cajas en estas fechas".
-  - **Detalle:** reutiliza los componentes de `/panel/caja` (`ResumenCaja`, `ListaMovimientos`, `ResultadoDelCierre`)
-    en modo de solo lectura: muestra cada cierre (de 1 en adelante) con su reapertura (quién, cuándo y el motivo) y un
+  - **Detalle:** reutiliza los componentes de `/panel/caja` (`ResumenCaja`, `ListaMovimientos`) en modo de solo
+    lectura. Los cierres no usan `ResultadoDelCierre` tal cual, que muestra un solo cierre: los muestra
+    `CierresDeLaCaja`, que reutiliza `DatosDelCierre` e `InsigniasDelCierre`, extraídos de `ResultadoDelCierre.tsx`
+    _(revisión de la 006b)_. Muestra cada cierre (de 1 en adelante) con su reapertura (quién, cuándo y el motivo) y un
     botón "Descargar PDF" por cierre. No ofrece egresos ni cierre; si la caja está abierta y la persona tiene
     `ABRIR_CERRAR_CAJA`, un enlace "Ir a la caja del día" (`/panel/caja`).
   - **Descarga:** antes confirma la sesión (`useConfirmarSesion`, como las escrituras); pide el PDF con `fetch` (misma
     cookie) y, con 200 y `application/pdf`, lo entrega al navegador como archivo `cierre-caja-<fecha>-<numero>.pdf` con
-    una URL de objeto que se revoca al terminar. Con 404, "No se encontró el cierre"; con 500 u otro error, "No se pudo
-    generar el PDF. Inténtalo de nuevo."; con 401, el flujo de sesión perdida de 002. Nada se guarda en el
-    almacenamiento local.
+    una URL de objeto que se revoca al terminar. Con 404, "No se encontró el cierre"; con 429 (`DEMASIADAS_SOLICITUDES`,
+    criterios 49 y 52), "Hay muchas descargas de PDF en curso. Espera un momento e inténtalo de nuevo." _(revisión de la
+    006b)_; con 500 u otro error, "No se pudo generar el PDF. Inténtalo de nuevo."; con 401, el flujo de sesión perdida
+    de 002. Nada se guarda en el almacenamiento local. Un doble clic en el mismo "Descargar PDF" pide un solo PDF
+    _(revisión de la 006b)_.
   - **Reabrir:** solo con `puede(rol, 'REABRIR_CAJA')` y en una caja `CERRADA`, con `DialogoReapertura`. Si la caja no es
     de hoy en Lima, el diálogo no dice "volverá a admitir egresos y cobros", sino "Es la caja de un día anterior: solo
     podrás volver a contar el efectivo y cerrarla" (DR-8, criterio 36 c). Con éxito, el detalle muestra la caja que
@@ -2051,6 +2077,10 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
   Se acepta en la 006b porque es el problema general de limitar las lecturas por usuario en toda la API, no solo en la
   caja. Queda en `specs/backlog.md` como pendiente antes de producción: un límite general de peticiones por usuario o
   por academia en la API. No hay tope de movimientos (DT-7).
+- **El patrón de montos repetido (006b, revisión; deuda menor):** `formatearSoles` (`packages/contratos/src/dinero.ts`)
+  y `normalizarMonto` (`frontend/src/lib/dinero.ts`) usan el mismo patrón de montos, cada una con su copia. Si un día
+  cambia el formato de los montos, hay que cambiar las dos. Se acepta en la 006b como repetición menor; unificarlas
+  queda como mejora.
 - **`pago_id` sin llave foránea hasta la 007:** en la 006 nadie escribe ingresos por la API; las pruebas usan UUID
   inventados.
 
