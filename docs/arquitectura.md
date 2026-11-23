@@ -397,8 +397,8 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
     (`RUTAS_REDACTADAS`, en `infraestructura/registro/opciones-registro.ts`), con un texto fijo. La línea de la petición de la
     foto no lleva cuerpo ni token, y los fallos de la foto se registran solo con el tipo del error.
 - **Lo que construye la historia 006a** (caja del día, D-23; la especificación está en `specs/006-caja/`). Migración
-  `20261122120000_caja`, módulo `backend/src/modulos/caja/` y página `/panel/caja`. El historial y el PDF del cierre son de
-  la 006b, que no tiene migraciones:
+  `20261122120000_caja`, módulo `backend/src/modulos/caja/` y página `/panel/caja`. El historial, el detalle y el PDF del
+  cierre son de la 006b (sección «Historial y PDF del cierre (006b)», más abajo), que no tiene migraciones:
   - **Tablas con RLS.** `cajas`, `movimientos_caja` y `cierres_caja`. Cada fila lleva `academia_id`, la RLS está activada y
     forzada, y las políticas de `SELECT` e `INSERT` (y de `UPDATE`, en `cajas` y `cierres_caja`) son de la forma de 001:
     solo se ve y se escribe la academia del contexto. Ninguna tiene política de `DELETE`, y `movimientos_caja` no tiene `UPDATE`: nada se borra y un
@@ -452,9 +452,13 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
   - **Semilla.** En `delfines`, una caja cerrada del 2026-11-02, abierta y cerrada por la secretaria de ejemplo (DNI
     `10000002`), con un egreso de S/ 15.50 y un cierre con un sobrante de S/ 0.50 y su observación. Las claves de
     idempotencia son fijas: repetir la semilla no duplica nada. `tiburones` queda sin cajas. `/panel/caja` solo muestra la
-    caja de hoy o la abierta, así que esta no se ve hasta el historial (006b).
-  - **Lo que todavía no trae.** Los cobros y las verificaciones que registran su ingreso (007 y 016), el egreso desde caja
-    de la 019, el historial y el PDF del cierre (006b, con `pdfkit`), y la reapertura de un día anterior desde la web (006b).
+    caja de hoy o la abierta, así que esta se ve en el historial (006b).
+  - **Lo que todavía no trae.** Los cobros y las verificaciones que registran su ingreso (007 y 016), y el egreso desde caja
+    de la 019. El historial, el detalle y el PDF del cierre llegaron con la 006b, y la reapertura de un día anterior desde
+    la web también.
+- **Lo que construye la historia 006b** (historial y PDF del cierre; sin migraciones, con `pdfkit`). Las tres lecturas de
+  la caja, con el alcance por rol, los 404 iguales, el PDF por tramos, la cola de generación y la web del historial. Su
+  detalle está en «Historial y PDF del cierre (006b)», más abajo.
 
 ## Fechas y horas de negocio (America/Lima)
 
@@ -764,6 +768,147 @@ nombre de la restricción. Las interfaces están en `backend/src/modulos/caja/mo
 - **El ingreso guarda el método real y el monto total.** Un Yape entra como `YAPE` y no suma al efectivo esperado (D-04).
   La caja no redondea ni suma IGV: entra el total ya calculado (D-03).
 
+### Historial y PDF del cierre (006b)
+
+Salen de `specs/006-caja/spec.md`: los criterios 40 a 57, las precisiones PQ1 a PQ15 y las decisiones DR-9, DR-13 y DT-7 a
+DT-20. Los números de criterio de esta sección son los de esa spec. La 006b no tiene migraciones: lee lo que la 006a ya
+guarda. Vale lo de la 006a (`bloquearActorVigente` como primera sentencia en las escrituras, `await` en cada paso, sin caché,
+`errorParaRegistro` y las fechas de Lima con `RELOJ`).
+
+- **Rutas y alcance (criterios 7 y 40; PQ1 y PQ2).** `GET /api/cajas?desde=&hasta=` (la lista), `GET /api/cajas/{id}` (el
+  detalle) y `GET /api/cajas/{id}/cierres/{numero}/pdf` (el PDF) exigen `VER_REPORTES_FINANCIEROS`. El orden de las
+  comprobaciones es el de 002: sesión, academia activa, cambio obligatorio y permiso; después, la consulta o la operación.
+  El alcance sale de `MATRIZ_PERMISOS.VER_REPORTES_FINANCIEROS[rol]` y no del nombre del rol (`HistorialService`):
+  - `TODO` (el administrador) ve todas las cajas de la academia.
+  - `SU_CAJA` (la secretaria) ve una caja si la abrió ella, si alguna vez la cerró (vigente o reabierta), si está abierta
+    ahora o si es la de hoy en America/Lima (DR-9 y DR-13).
+  - Cualquier otro valor no ve nada.
+  - `ENTRENADOR` y `ALUMNO` reciben 403 `SIN_PERMISO`, también con un id o un número inválidos. El Superadmin no tiene estas
+    rutas (D-29).
+- **Los 404 son iguales (criterios 8 y 41; PQ1 y PQ6).** Un id que no es UUID, uno que no existe, uno de otra academia y uno
+  fuera del alcance de la secretaria responden el mismo `NO_ENCONTRADO`, con el mismo cuerpo. En el PDF, también un
+  `numero` que no es un entero de 1 a 32767 o que no es de esa caja. Nunca hay 400 ni 403 por el id o el número. La lista
+  ignora `?academiaId=` y cualquier parámetro que no sea `desde` o `hasta`. Las tres lecturas no llaman a
+  `bloquearActorVigente`, no bloquean filas, no escriben y no auditan.
+- **La lista (criterio 40; PQ3 y PQ4).** `desde` y `hasta` se leen tal como llegaron (helper `comun/http/parametro-crudo.ts`,
+  más abajo): un valor repetido, con corchetes o vacío responde 400 en ese campo. Sin parámetros son los últimos 31 días
+  hasta hoy en Lima. El rango es de como mucho 366 días, y `desde` no puede ser posterior a `hasta`. La respuesta es
+  `{ desde, hasta, cajas }`, de la fecha más reciente a la más antigua, en una sola consulta SQL (una sola foto de la base).
+  Los totales son las sumas actuales de los movimientos, y `ultimoCierre` es el cierre de mayor número, o `null`. No hay
+  paginación: el rango acota la lista a 366 cajas.
+- **El PDF (criterios 42 y 43; PQ6 a PQ11).** `pdfkit`, en A4 y con Helvetica. Las cabeceras son las de PQ7:
+  `Content-Type: application/pdf`, `Content-Disposition: attachment; filename="cierre-caja-AAAA-MM-DD-N.pdf"` y
+  `Cache-Control: no-store`. El documento trae la academia, la fecha de la caja, «Cierre N» (y «Cierre tardío», si lo es), la
+  apertura, los movimientos hasta `movimientosHasta`, los totales, el esperado, lo declarado, la diferencia con su resultado,
+  la observación, quién cerró y, si hubo, la reapertura. Nunca muestra un DNI.
+  - **Fuera de la escritura (criterio 43).** Nada se guarda en el disco ni en la base (DT-2). El servicio lee en una transacción
+    corta que solo lee y la termina; el PDF se arma después, así que ninguna conexión queda ocupada mientras se dibuja. Si el
+    generador falla, responde 500 `ERROR_INTERNO` y no cambia nada.
+  - **Determinista (PQ9 d).** `info.CreationDate` es `cerradoEn`, no la hora de la descarga, y `pdfkit` calcula el `/ID` con
+    los datos que recibe en el constructor. Las horas salen en America/Lima. Dos descargas del mismo cierre dan los mismos
+    bytes, también con el proceso en `TZ=Asia/Tokyo`. Los bytes cambian solo si el cierre se reabre o si cambia un nombre
+    (PQ10 muestra los nombres de hoy).
+  - **Por tramos (criterio 49 a).** `generarPdfCierre` (`backend/src/modulos/caja/pdf/cierre-pdf.ts`) dibuja en el hilo
+    principal, pero en tramos de unos 5 ms medidos con `performance.now()`. Entre tramos cede el bucle con
+    `setImmediate`, así que las demás peticiones avanzan mientras se arma un PDF grande. Las llamadas a `pdfkit` son las
+    mismas y en el mismo orden, así que los bytes no cambian. No hay `worker_thread`: no toca el build ni el cargador de
+    las pruebas.
+  - **Texto (PQ11).** Todo texto que sale de los datos pasa por `textoParaPdf` (`pdf/texto-pdf.ts`): se normaliza a NFC y lo
+    que no esté entre U+0020 y U+007E, ni entre U+00A0 y U+00FF, se escribe como `?`. El texto va codificado, nunca como
+    operadores del PDF.
+  - **Generador inyectable (PQ8).** `GENERADOR_PDF_CIERRE` es el token de Nest que `CajaModule` provee con
+    `{ generar: generarPdfCierre }`. Las pruebas lo reemplazan con `overrideProvider(GENERADOR_PDF_CIERRE)`. El generador
+    recibe `(datos, senal?)`, y uno de un solo parámetro sigue siendo válido. `caja/index.ts` lo reexporta.
+  - **Dependencia (DT-3).** `pdfkit` está en `backend/package.json` (y `@types/pdfkit` en las de desarrollo) y en
+    `DEPENDENCIAS_BACKEND_PERMITIDAS`. Es JavaScript puro, sin binarios por sistema operativo, así que la instalación en
+    Windows no cambia.
+- **Cola de generación (criterios 49 b y c, 52; DT-8 y DT-11).** `ColaPdfCierre` (`pdf/cola-pdf.ts`) es una sola instancia
+  por proceso de la API, con `LIMITES_PDF_CIERRE = { simultaneos: 2, enEspera: 8, porPersona: 2, porAcademia: 4 }`:
+  - como mucho 2 PDF se generan a la vez en todo el proceso, contando todas las academias, y como mucho 8 descargas esperan
+    su turno, en orden de llegada;
+  - como mucho 2 por persona (`sesion.usuario.id`, no la academia ni la IP) y 4 por academia (`sesion.usuario.academiaId`),
+    en curso o en espera;
+  - si algún límite se alcanza, responde 429 `DEMASIADAS_SOLICITUDES` con el mensaje de siempre, en JSON, con `no-store` y sin
+    `Content-Disposition`. No llama al generador, no escribe y no audita. Los tres 429 son iguales: no dicen qué límite se
+    alcanzó;
+  - el orden es persona, academia y lugar en la cola. Antes, la forma del id y la del `numero` responden 404 sin tocar la
+    cola;
+  - cada descarga libera su lugar al terminar, con 200, 404, 500 o abandonada.
+  - Los límites son por proceso: con varias instancias de la API, cada una tiene los suyos. Riesgo aceptado: con 4 por
+    academia y 10 lugares, si tres o más academias saturan la cola a la vez, otra puede recibir 429.
+- **Descargas abandonadas (criterios 51 y 55; DT-10, DT-15, DT-18 y DT-20).** Cortar es que el cliente cierre la conexión
+  antes de que la respuesta termine. La conexión de una descarga se da por cerrada si la respuesta se cerró sin terminar
+  (`destroyed`, o `closed` sin `writableFinished`), si el socket de la petición está destruido, o si el socket ya leyó el FIN
+  del cliente o ya no admite escritura (`readableEnded` o `!writable`). La última condición existe porque Node llama a
+  `socket.end()` al leer el FIN, antes de destruir el socket. Con `httpAllowHalfOpen = false`, una descarga viva nunca está en
+  ese estado (`conexionCerrada` en `cajas.controller.ts`).
+  - **Señal.** El controlador crea un `AbortController` y lo activa con el `close` de la respuesta o con el del socket. El del
+    socket avisa también a una petición en pipelining, cuya respuesta todavía no tiene socket. Los oyentes se quitan en un
+    `finally`, porque en una conexión keep-alive el socket atiende otras peticiones. La señal llega al turno y al generador.
+    Si el cliente corta mientras espera, la descarga sale de la fila y libera su lugar y sus cupos. Si corta mientras se
+    genera, el generador deja de dibujar y rechaza con `AbortError`.
+  - **Antes del controlador (criterio 55 b).** Lo primero del manejador, antes de la forma del id y de pedir turno, es mirar si
+    la conexión ya se cerró. Si es así, la descarga termina sin ocupar nada. Los oyentes se instalan en el mismo paso
+    síncrono, sin `await` en medio, para que un corte no se pierda.
+  - **Antes de escribir (criterios 55 g y 55 h).** Justo antes del 200, y en el camino del error, se vuelve a mirar la
+    conexión además de la señal, sin `await` entre la comprobación y la escritura. Si está cerrada, no se escribe nada, ni
+    siquiera un JSON de error, y el error no llega al filtro global. Se registra una línea `info` si el error viene del corte,
+    o el error del manejador si no viene de él.
+  - **Sin efectos.** Una descarga abandonada no escribe, no audita y no se registra como un 500. Lo que se responde antes de
+    llegar al manejador (sesión, academia suspendida, cambio obligatorio y permiso) no cambia.
+- **La sesión después de la espera (criterio 53; DT-12).** Al obtener el turno y antes de leer, `HistorialService.pdf` llama
+  a `volverAVerificar`. El controlador la enlaza con `SesionAcademiaService.volverAVerificar`, con el permiso
+  `VER_REPORTES_FINANCIEROS`. Hace lo mismo que una petición nueva con
+  la misma cookie y con los mismos errores: sesión (token, usuario activo y `version_token`), academia activa, cambio
+  obligatorio y permiso del rol vigente. Es una lectura: no usa `bloquearActorVigente` ni `FOR SHARE`, no escribe y no audita.
+  La descarga usa la sesión recién leída, así que el alcance y el nombre de la academia son los vigentes. Si la comprobación
+  falla, la descarga libera su lugar sin leer ni generar. Un cambio posterior a esa comprobación, mientras se lee o se genera,
+  no detiene la descarga (riesgo aceptado).
+- **`HEAD` no existe en las rutas de la caja (criterio 50; PQ15; DT-9).** Express atiende un `HEAD` con el manejador del
+  `GET`. `instalarHeadSinRutasDeCaja` (`caja/head-sin-ruta.ts`) lo intercepta con un middleware de Express, instalado en
+  `configurarApp` (`crear-app.ts`) después de la protección de las rutas de academia y antes de las rutas de Nest. Un `HEAD`
+  sobre `/api/cajas` y lo que cuelga de ella (con o sin barra final, sin distinguir mayúsculas) responde 404
+  `NO_ENCONTRADO` para cualquier rol, sin llamar al servicio, a la base, al generador ni a la auditoría. Sin sesión, con el
+  cambio de contraseña pendiente o con la academia suspendida, responde lo mismo que `PATCH`. No es `@Head()` en el
+  controlador porque pasaría por el guard de permisos, y el `ENTRENADOR` recibiría 403.
+  - **Para la 007 (DT-9).** `HEAD` responde 404 solo en las rutas de la caja. En las demás rutas `GET` (002 a 005) sigue
+    llamando al manejador del `GET`. Si la 007 arma archivos (comprobantes o tickets), su revisión adversarial debe mirar
+    `HEAD` en esas rutas.
+- **Helper `comun/http/parametro-crudo.ts`.** `parametroCrudo(solicitud, nombre)` devuelve el parámetro de la consulta tal como
+  llegó: `undefined` si no vino, el texto si vino una vez (también vacío), y un arreglo si se repite o se escribe con
+  corchetes. Así un valor repetido no pasa un esquema de texto y responde 400 en ese campo. Lo usan la lista de cajas (006b)
+  y el filtro de estado de las solicitudes (005b).
+- **Web (criterios 44 y 54 a 57; PQ12; DT-13, DT-16, DT-17 y DT-19).** `/panel/cajas` (la lista, con los campos «Desde» y
+  «Hasta») y `/panel/cajas/:id` (el detalle) van dentro de `RequierePermiso` con `VER_REPORTES_FINANCIEROS`. La opción
+  «Historial de caja» del inicio usa `puede(rol, 'VER_REPORTES_FINANCIEROS')`. El detalle reutiliza `ResumenCaja`,
+  `ListaMovimientos` y `ResultadoDelCierre` en solo lectura. «Reabrir caja» aparece solo en las cajas cerradas y solo para
+  quien tiene `REABRIR_CAJA`.
+  - **Registro de descargas en curso** (`frontend/src/lib/descargas-en-curso.ts`). Cada descarga tiene su propio
+    `AbortController`, que se registra al pulsar «Descargar PDF» (no al empezar su mutación, que sin conexión queda en pausa).
+    `pedirArchivo` acepta una señal opcional. Al terminar, con éxito o sin él, la descarga se quita del registro.
+  - **Cuándo se cancela.** `cancelarDescargasEnCurso()` corre en `onMutate` de `useCerrarSesionAcademia`: se cancela al pulsar
+    «Cerrar sesión», también sin conexión. Además se cancela cuando la sesión cambia de identidad o se pierde
+    (`useVigilanteDeLaSesion` observa `GET /api/sesion`), cuando la página del detalle se desmonta (a la lista, a otra ruta o
+    con «atrás») y cuando cambia la caja: `DetalleCaja` monta el contenido con `key={id}`, así que el cambio de id desmonta la
+    descarga anterior.
+  - **Comprobación final.** Antes de entregar el archivo, la web comprueba que la descarga no se canceló, que no se está
+    cerrando la sesión y que la identidad sigue siendo la de la página. Si algo no cuadra, no crea la URL de objeto, no hace
+    `click` y no muestra ningún mensaje.
+  - **Sin descargas mientras se cierra la sesión (criterio 57 e).** «Se está cerrando la sesión» dura desde que se pulsa
+    «Cerrar sesión» hasta que su mutación termina, con éxito o con error (`CLAVE_CERRAR_SESION`, con `useIsMutating` y
+    `cliente.isMutating`). Mientras tanto, «Descargar PDF» está desactivado, y ninguna descarga nueva se pide ni se entrega.
+    Si el cierre de sesión falla, la sesión sigue abierta y el botón vuelve a estar habilitado.
+  - **Errores.** Con 404, «No se encontró el cierre»; con 429, «Hay muchas descargas de PDF en curso. Espera un momento e
+    inténtalo de nuevo.»; con 500 u otro error, «No se pudo generar el PDF. Inténtalo de nuevo.»; con 401, el flujo de
+    sesión perdida de 002. Una descarga cancelada no muestra ningún mensaje propio.
+  - **Consultas y almacenamiento.** Las claves de consulta llevan la identidad de la sesión: la del historial es
+    `['cajas-historial', nombreCorto, usuarioId, desde, hasta]` y la del detalle, `['caja', nombreCorto, usuarioId, id]`.
+    Nada se guarda en el almacenamiento local.
+- **Riesgos aceptados.** Están en la sección «Riesgos aceptados» de la spec: las lecturas de cajas enormes (DT-14; el límite
+  general de peticiones por usuario o por academia queda pendiente antes de producción, anotado en `specs/backlog.md`), los
+  límites del PDF por proceso, la fuente estándar (solo Latin-1), los nombres de hoy en el PDF y el cierre de sesión en
+  otra pestaña.
+
 ## Estructura de carpetas
 
 ```
@@ -791,7 +936,7 @@ piscina/
 │   │   └── modulos/
 │   │       ├── academias/        Alta de academias, Superadmin
 │   │       ├── autenticacion/ · usuarios/ · auditoria/ · configuracion/
-│   │       ├── planes/ · clases/ · matriculas/ · inscripciones/ · caja/   (004, 005a, 005b y 006a; matriculas/ no tiene controlador; la 006b agrega el historial y el PDF a caja/)
+│   │       ├── planes/ · clases/ · matriculas/ · inscripciones/ · caja/   (004, 005a, 005b, 006a y 006b; matriculas/ no tiene controlador; caja/ tiene el historial, el detalle y el PDF de la 006b, en `pdf/`)
 │   │       └── <modulo>/         Un módulo por área (planes, clases, caja, pagos, asistencia…)
 │   │           ├── <modulo>.module.ts · .controller.ts · .service.ts
 │   │           └── dominio/      Cálculos puros + sus pruebas unitarias (*.test.ts)

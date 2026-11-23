@@ -164,7 +164,7 @@ egreso) y 48 (las interfaces validan sus entradas) de `spec.md`, críticos, y de
 
 Las precisiones PQ1 a PQ15 de la spec (sección I) fijan los formatos, el orden, los 404 y las cabeceras.
 
-- [ ] T23 · test-writer · Pruebas protegidas del historial y el detalle: permisos de las tres rutas con el orden de PQ1
+- [x] T23 · test-writer · Pruebas protegidas del historial y el detalle: permisos de las tres rutas con el orden de PQ1
       (sin sesión, cambio obligatorio, academia suspendida, cookie del Superadmin; 403 aunque el id o la consulta sean
       inválidos); alcance con el escenario C1 a C5 de PQ2 (lista filtrada; 404 en el detalle y en el PDF, con el mismo
       cuerpo que otra academia, un id inexistente y uno que no es UUID); `?academiaId=` ignorado; consulta, valores por
@@ -172,39 +172,47 @@ Las precisiones PQ1 a PQ15 de la spec (sección I) fijan los formatos, el orden,
       cada caja (PQ4); detalle igual a `/actual` para la misma caja (PQ5); `PATCH`, `PUT`, `DELETE` y `POST` que siguen
       en 404 (PQ15); prueba de 001 de `DEPENDENCIAS_BACKEND_PERMITIDAS` que suma `pdfkit` y `@types/pdfkit`, solo para
       sumar (PQ13) (criterios 7 y 8 en su parte de 006b, 23, 40 y 41)
-- [ ] T24 · test-writer · Pruebas protegidas del PDF: `numero` inválidos e inexistentes (PQ6), cierres vigentes y
+      _(commit `24c0821`)_
+- [x] T24 · test-writer · Pruebas protegidas del PDF: `numero` inválidos e inexistentes (PQ6), cierres vigentes y
       reabiertos, caja nunca cerrada; cabeceras y cuerpo exactos (PQ7); generador reemplazado con
       `overrideProvider(GENERADOR_PDF_CIERRE)` (PQ8): el cierre y las demás escrituras no lo llaman ni crean archivos,
       falla del generador (promesa rechazada y excepción) con 500 sin cambios, la lectura ya terminó mientras genera
       (`pg_stat_activity`), dos descargas con los mismos bytes, también con `TZ=Asia/Tokyo` (PQ9); utilidad
       `backend/test/utilidades/pdf.ts` para extraer el texto (PQ10) (criterios 42 en su parte crítica y 43)
-- [ ] T25 · tester · Confirmar que T23 y T24 fallan por la razón esperada (rutas, esquemas, token o dependencia
+      _(commit `24c0821`)_
+- [x] T25 · tester · Confirmar que T23 y T24 fallan por la razón esperada (rutas, esquemas, token o dependencia
       inexistentes) y no por sintaxis, importaciones o configuración; que las pruebas protegidas de 001 a 006a siguen
       pasando; y `git diff --cached --stat` solo con archivos de prueba. Commit del orquestador: "Pruebas protegidas
       (006): 006b, historial y PDF del cierre (en rojo)" (tres dígitos, sin la letra: lo exige
       `scripts/verificar-pruebas-protegidas.mjs`)
+      _(commit `24c0821`)_
 
 ### Implementación
 
-- [ ] T26 · backend · `pdfkit` y `@types/pdfkit` en `backend/package.json` y en `DEPENDENCIAS_BACKEND_PERMITIDAS`
+- [x] T26 · backend · `pdfkit` y `@types/pdfkit` en `backend/package.json` y en `DEPENDENCIAS_BACKEND_PERMITIDAS`
       (criterio 127 de 001; DT-3); contratos del historial (`filtroHistorialCajasSchema`, `cajaHistorialSchema`,
       `respuestaHistorialCajasSchema`, `LIMITES_HISTORIAL_CAJAS`) y `formatearSoles` movida a `dinero.ts`, con pruebas
       unitarias no protegidas (PQ3, PQ4, PQ10, PQ13) (criterios 40, 42)
-- [ ] T27 · backend · `historial.service.ts`, rutas `GET /api/cajas` y `GET /api/cajas/{id}` con el alcance de PQ2
+      _(commit `838e88c`: `pdfkit` y `@types/pdfkit` en `backend/package.json` y en `scripts/lib/dependencias-backend.mjs`)_
+- [x] T27 · backend · `historial.service.ts`, rutas `GET /api/cajas` y `GET /api/cajas/{id}` con el alcance de PQ2
       (DR-9 y DR-13), la consulta cruda y los valores por defecto de PQ3 y una sola consulta para la lista (criterios 40,
       41)
-- [ ] T28 · backend · `pdf/cierre-pdf.ts` (`generarPdfCierre`, `GeneradorPdfCierre`, `GENERADOR_PDF_CIERRE`),
+      _(commit `838e88c`: `historial.service.ts` y `cajas.controller.ts`)_
+- [x] T28 · backend · `pdf/cierre-pdf.ts` (`generarPdfCierre`, `GeneradorPdfCierre`, `GENERADOR_PDF_CIERRE`),
       `pdf/texto-pdf.ts` (`textoParaPdf`) y la ruta del PDF (lectura en su transacción, generación fuera, cabeceras de
       PQ7); pruebas no protegidas del contenido de PQ10 extrayendo el texto y unitarias de `textoParaPdf` con los
       ejemplos de PQ11 (criterios 42, 43)
-- [ ] T29 · frontend · `/panel/cajas` y `/panel/cajas/:id`, y la opción "Historial de caja": lista con filtro y rango
+      _(commit `838e88c`: `pdf/cierre-pdf.ts` y `pdf/texto-pdf.ts`)_
+- [x] T29 · frontend · `/panel/cajas` y `/panel/cajas/:id`, y la opción "Historial de caja": lista con filtro y rango
       aplicado, detalle de solo lectura, descarga del PDF, reapertura para el `ADMIN` con el texto de un día anterior,
       claves de consulta con la identidad; pruebas de componentes (PQ12) (criterio 44)
-- [ ] T30 · tester · Pruebas protegidas en verde y suite completa
+      _(commit `bd502e8`; la E2E está en `e2e/pruebas/caja-historial.spec.ts`)_
+- [x] T30 · tester · Pruebas protegidas en verde y suite completa
+      _(hecha tras `bd502e8`)_
 
 ### Ataque
 
-- [ ] T31 · adversarial · Atacar los criterios críticos de la 006b: cajas, cierres y PDF de otra academia o fuera del
+- [x] T31 · adversarial · Atacar los criterios críticos de la 006b: cajas, cierres y PDF de otra academia o fuera del
       alcance de la secretaria (ids, números de cierre, mayúsculas, parámetros repetidos), rangos de fechas extremos, y
       textos raros en el PDF (PQ11). Por cada falla, el mismo ciclo que T18; el commit de cada ronda empieza también por
       "Pruebas protegidas (006): 006b, …".
@@ -221,7 +229,7 @@ Hubo dos fallas, que se convirtieron en los criterios 49 y 50 de `spec.md`, los 
 Según DT-7, no hay tope de movimientos por caja. El límite por persona del criterio 49 c es DT-8, y `HEAD` da 404 solo
 en las rutas de la caja según DT-9.
 
-- [ ] T43 · test-writer · Escribir las pruebas protegidas en rojo, desde la spec y los contratos públicos, sin mirar la
+- [x] T43 · test-writer · Escribir las pruebas protegidas en rojo, desde la spec y los contratos públicos, sin mirar la
       implementación y con la marca de pruebas protegidas.
       - **Criterio 49 a.** Integración con el generador real:
         - una caja de A con 5 000 movimientos creados como dueño, en una sola sentencia para que la preparación no
@@ -265,7 +273,8 @@ en las rutas de la caja según DT-9.
 
       Commit: "Pruebas protegidas (006): 006b, ataque ronda 1: PDF sin detener la API y HEAD en las rutas de la caja (en
       rojo)" (criterios 49, 50)
-- [ ] T44 · tester · Confirmar que T43 falla por la razón esperada y no por sintaxis, importaciones, configuración ni el
+      _(commit `27575e8`)_
+- [x] T44 · tester · Confirmar que T43 falla por la razón esperada y no por sintaxis, importaciones, configuración ni el
       tiempo límite de Vitest. Las razones esperadas son:
       - **49 a:** el egreso de B tarda más de 1 000 ms o responde 500, y el retraso del bucle pasa de 200 ms;
       - **49 b y c:** el generador recibe más de dos llamadas a la vez y no hay 429;
@@ -274,21 +283,27 @@ en las rutas de la caja según DT-9.
       Confirmar también que las pruebas protegidas anteriores siguen pasando y que `git diff --cached --stat` solo
       muestra archivos de prueba. El orquestador hace el commit con el título de T43: tres dígitos y sin letra, como
       exige `scripts/verificar-pruebas-protegidas.mjs` (criterios 49, 50).
-- [ ] T45 · backend · El PDF sin bloquear el bucle de eventos (criterio 49 a y d), con la técnica que se elija (plan
+      _(hecha sobre `27575e8`)_
+- [x] T45 · backend · El PDF sin bloquear el bucle de eventos (criterio 49 a y d), con la técnica que se elija (plan
       2.12):
       - `generarPdfCierre`, `GeneradorPdfCierre` y `GENERADOR_PDF_CIERRE` quedan como en PQ8;
       - los bytes no cambian;
       - si se usa un worker, funciona bajo Vitest y en el build CommonJS, también en Windows;
       - las pruebas de `cierre-pdf.test.ts` siguen pasando.
-- [ ] T46 · backend · La cola de generación y el límite por persona (criterio 49 b y c): `ColaPdfCierre` y
+      _(commit `ccbc63f`: tramos de unos 5 ms en `pdf/cierre-pdf.ts`, sin `worker_thread`)_
+- [x] T46 · backend · La cola de generación y el límite por persona (criterio 49 b y c): `ColaPdfCierre` y
       `LIMITES_PDF_CIERRE`, el turno antes de la lectura, la liberación en `finally` y el 429 por el filtro de errores.
       Poner al día los comentarios de `HistorialService` y de `CajasController`.
-- [ ] T47 · backend · `HEAD` responde 404 en las rutas de la caja (criterio 50), con un middleware antes de las rutas
+      _(commit `ccbc63f` en `pdf/cola-pdf.ts`; los límites por persona y por academia llegan en `7dd435f`)_
+- [x] T47 · backend · `HEAD` responde 404 en las rutas de la caja (criterio 50), con un middleware antes de las rutas
       de Nest (plan 2.12). Poner al día el comentario de PQ15 en `CajasController`.
-- [ ] T48 · tester · Correr en verde las pruebas protegidas (T43 y todas las anteriores, incluidas las de PQ9 y PQ15) y
+      _(commit `ccbc63f`: `head-sin-ruta.ts`, instalado en `crear-app.ts`)_
+- [x] T48 · tester · Correr en verde las pruebas protegidas (T43 y todas las anteriores, incluidas las de PQ9 y PQ15) y
       la suite completa. Correr la prueba del 49 a al menos cinco veces seguidas para descartar que sea inestable
       (criterios 49, 50).
-- [ ] T49 · orquestador · Revisar con `git diff` desde el commit de T43 que T45 a T47 no tocaron pruebas protegidas.
+      _(hecha tras `ccbc63f`)_
+- [x] T49 · orquestador · Revisar con `git diff` desde el commit de T43 que T45 a T47 no tocaron pruebas protegidas.
+      _(verificado con `git show --name-only`: `ccbc63f` no toca ninguna prueba protegida)_
 - [x] T50 · adversarial · Ronda 2 sobre todo lo de la 006b, en especial los criterios 49 y 50:
       - cajas con muchos movimientos;
       - descargas simultáneas de varias academias y de una misma persona;
@@ -313,7 +328,7 @@ La observación O1 (lecturas de cajas enormes) queda como riesgo aceptado, con l
 `specs/backlog.md` (DT-14), sin tarea de código. Las tres observaciones aceptadas sin criterio están en el encabezado de
 `spec.md`.
 
-- [ ] T51 · test-writer · Pruebas protegidas del servidor, en rojo, desde la spec y los contratos públicos, sin mirar la
+- [x] T51 · test-writer · Pruebas protegidas del servidor, en rojo, desde la spec y los contratos públicos, sin mirar la
       implementación y con la marca de pruebas protegidas.
       - **Utilidades:** en archivos nuevos, o sumando a los existentes sin cambiar lo que ya hay:
         - una descarga que se puede cortar (`fetch` con `AbortController`, o `node:http` con `destroy()`);
@@ -336,14 +351,16 @@ La observación O1 (lecturas de cajas enormes) queda como riesgo aceptado, con l
         control.
 
       (criterios 51, 52, 53)
-- [ ] T52 · test-writer · Pruebas protegidas de componentes del criterio 54, en un archivo nuevo de
+      _(commit `d633818`)_
+- [x] T52 · test-writer · Pruebas protegidas de componentes del criterio 54, en un archivo nuevo de
       `frontend/src/modulos/caja/` con la marca de pruebas protegidas. Son los casos de 54 g: "Cerrar sesión", salir del
       detalle, cambio de identidad, simulación que ignora la señal, "Cerrar sesión" durante `useConfirmarSesion` y el
       control.
 
       Commit de T51 y T52 juntos: "Pruebas protegidas (006): 006b, ataque ronda 2: descargas abandonadas, límite por
       academia, sesión después de la espera y descarga en la web (en rojo)" (criterios 51 a 54)
-- [ ] T53 · tester · Confirmar que T51 y T52 fallan por la razón esperada, y no por sintaxis, importaciones,
+      _(commit `d633818`; componentes en `frontend/src/modulos/caja/DescargaPdfCancelada.test.tsx`)_
+- [x] T53 · tester · Confirmar que T51 y T52 fallan por la razón esperada, y no por sintaxis, importaciones,
       configuración ni el tiempo límite de Vitest. Las razones esperadas son:
       - **51:** la misma persona recibe 429 después de cortar; el generador recibe las descargas cortadas; el generador
         real termina resuelto, no abortado; `generarPdfCierre` y `turno` ignoran la señal;
@@ -358,14 +375,16 @@ La observación O1 (lecturas de cajas enormes) queda como riesgo aceptado, con l
 
       El orquestador hace el commit con el título de T52 (tres dígitos y sin letra, como exige
       `scripts/verificar-pruebas-protegidas.mjs`) (criterios 51 a 54).
-- [ ] T54 · backend · La cola, según plan 2.13 (criterios 51 a y c, y 52):
+      _(hecha sobre `d633818`)_
+- [x] T54 · backend · La cola, según plan 2.13 (criterios 51 a y c, y 52):
       - `LIMITES_PDF_CIERRE` con `porPersona` y `porAcademia`;
       - `turno({ usuarioId, academiaId }, senal?)`, con el orden persona, academia y cola;
       - la salida de la fila al abortar, con el estado de cada elemento;
       - la liberación que descuenta persona y academia;
       - `cola-pdf.test.ts` (no protegida) al día;
       - los comentarios de `ColaPdfCierre`, `HistorialService` y `CajasController` al día.
-- [ ] T55 · backend · La señal de punta a punta, según plan 2.13 (criterio 51 b, c y d):
+      _(commit `7dd435f`: `pdf/cola-pdf.ts` y `pdf/aborto.ts`)_
+- [x] T55 · backend · La señal de punta a punta, según plan 2.13 (criterio 51 b, c y d):
       - el `AbortController` del controlador con `respuesta.on('close')`;
       - el servicio pasa la señal a `turno` y a `generar`, y comprueba la señal antes de verificar, de leer y de
         generar;
@@ -373,24 +392,29 @@ La observación O1 (lecturas de cajas enormes) queda como riesgo aceptado, con l
         tramos;
       - las descargas abandonadas no escriben respuesta ni se registran como 500;
       - los bytes sin señal no cambian (`cierre-pdf.test.ts` y PQ9 d siguen pasando).
-- [ ] T56 · backend · La sesión después de la espera, según plan 2.13 (criterio 53):
+      _(commits `ccbc63f` y `7dd435f`: `cajas.controller.ts`, `historial.service.ts` y `pdf/cierre-pdf.ts`)_
+- [x] T56 · backend · La sesión después de la espera, según plan 2.13 (criterio 53):
       - el método de `SesionAcademiaService` que vuelve a verificar sin el recuerdo por petición, con las reglas del
         cambio obligatorio y del permiso y sus mismos errores;
       - `CajaModule` importa `AutenticacionModule`;
       - la lectura del PDF usa la sesión vigente (alcance y nombre de la academia);
       - sin bloqueos, sin escrituras y sin auditoría.
-- [ ] T57 · frontend · La descarga en la web, según plan 2.13 (criterio 54):
+      _(commit `7dd435f`: `volverAVerificar` en `sesion-academia.service.ts`)_
+- [x] T57 · frontend · La descarga en la web, según plan 2.13 (criterio 54):
       - `pedirArchivo` con una señal opcional;
       - un `AbortController` por descarga, con el registro de descargas en curso;
       - la cancelación al pulsar "Cerrar sesión", al cambiar o perder la sesión y al desmontar el detalle;
       - la comprobación final antes de `entregarArchivo`;
       - sin mensaje de error para una descarga cancelada;
       - las pruebas de componentes de PQ12 siguen pasando.
-- [ ] T58 · tester · Correr en verde las pruebas protegidas (T51, T52 y todas las anteriores) y la suite completa, con
+      _(commit `0d189de`: `frontend/src/lib/descargas-en-curso.ts` y `frontend/src/modulos/caja/hooks.ts`)_
+- [x] T58 · tester · Correr en verde las pruebas protegidas (T51, T52 y todas las anteriores) y la suite completa, con
       lint y verificación de tipos. Correr al menos cinco veces seguidas la prueba del 49 a y la del 51 con el generador
       real, para descartar que sean inestables (criterios 49, 51 a 54).
-- [ ] T59 · orquestador · Revisar con `git diff`, desde el commit de T51 y T52, que T54 a T57 no tocaron pruebas
+      _(hecha tras `0d189de`)_
+- [x] T59 · orquestador · Revisar con `git diff`, desde el commit de T51 y T52, que T54 a T57 no tocaron pruebas
       protegidas.
+      _(verificado con `git show --name-only`: `7dd435f` y `0d189de` no tocan pruebas protegidas. Ver la nota de T32 sobre `3d5e6fb`)_
 - [x] T60 · adversarial · Ronda 3 sobre todo lo de la 006b, en especial los criterios 51 a 54, sin perder de vista el
       49 y el 50:
       - cortes en cada paso: antes del turno, en la fila, durante la verificación de la sesión, la lectura y la
@@ -416,7 +440,7 @@ convirtieron en los criterios 55 a 57 de `spec.md`, todos críticos (DT-15 a DT-
 
 Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.md` y en "Riesgos aceptados".
 
-- [ ] T61 · test-writer · Pruebas protegidas de integración del criterio 55, en rojo, en un archivo nuevo de
+- [x] T61 · test-writer · Pruebas protegidas de integración del criterio 55, en rojo, en un archivo nuevo de
       `backend/test/integracion/caja/` (por ejemplo, `pdf-corte-antes-del-controlador.test.ts`), desde la spec y los
       contratos públicos, sin mirar la implementación y con la marca de pruebas protegidas.
       - **Utilidades,** en archivos nuevos o sumando a los existentes sin cambiar lo que ya hay:
@@ -436,7 +460,8 @@ Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.m
       - En todos, sin cambios en las filas ni en la auditoría y sin conexiones `idle in transaction`.
 
       (criterio 55)
-- [ ] T62 · test-writer · Pruebas protegidas de componentes de los criterios 56 y 57, en archivos nuevos de
+      _(commit `ab9ac3e`)_
+- [x] T62 · test-writer · Pruebas protegidas de componentes de los criterios 56 y 57, en archivos nuevos de
       `frontend/src/modulos/caja/` con la marca de pruebas protegidas (por ejemplo,
       `DescargaPdfCambioDeCaja.test.tsx` y `DescargaPdfSinConexion.test.tsx`), con la preparación del 54 g. El `GET`
       de cada caja se puede retener y responde distinto la segunda vez.
@@ -457,7 +482,8 @@ Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.m
 
       Commit de T61 y T62 juntos: "Pruebas protegidas (006): 006b, ataque ronda 3: cortes antes del controlador,
       cambio de caja en el detalle y cerrar sesión sin conexión (en rojo)" (criterios 55 a 57)
-- [ ] T63 · tester · Confirmar que T61 y T62 fallan por la razón esperada, y no por sintaxis, importaciones,
+      _(commit `ab9ac3e`)_
+- [x] T63 · tester · Confirmar que T61 y T62 fallan por la razón esperada, y no por sintaxis, importaciones,
       configuración ni el tiempo límite de Vitest. Las razones esperadas son:
       - **55:** en el caso 1, el generador recibe la llamada de la descarga cortada, `estado` no vuelve a cero y la
         segunda descarga nueva de S1 recibe 429; en el caso 3, `estado.enEspera` se queda en 1 después de cortar; el
@@ -477,7 +503,8 @@ Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.m
 
       El orquestador hace el commit con el título de T62 (tres dígitos y sin letra, como exige
       `scripts/verificar-pruebas-protegidas.mjs`) (criterios 55 a 57).
-- [ ] T64 · backend · El corte antes del controlador, según plan 2.14 (criterio 55):
+      _(hecha sobre `ab9ac3e`)_
+- [x] T64 · backend · El corte antes del controlador, según plan 2.14 (criterio 55):
       - la comprobación de la conexión al entrar a `descargarPdf`, antes de cualquier otro paso, y los oyentes de la
         respuesta y del socket en el mismo paso síncrono;
       - los oyentes se quitan en el `finally`;
@@ -485,21 +512,26 @@ Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.m
         error con `errorParaRegistro` si no lo es;
       - los comentarios de `CajasController` y de `HistorialService` al día;
       - las pruebas protegidas del 49 al 53 siguen pasando.
-- [ ] T65 · frontend · El cambio de caja en el detalle, según plan 2.14 (criterio 56):
+      _(commit `ea02809`: el corte antes del controlador en `cajas.controller.ts`)_
+- [x] T65 · frontend · El cambio de caja en el detalle, según plan 2.14 (criterio 56):
       - `<ContenidoDelDetalle key={id} />` en `DetalleCaja`;
       - "Preparando el PDF…" y el mensaje de error de `CierresDeLaCaja` comparan también la caja;
       - `useRecienPedida` no cambia;
       - las pruebas de componentes de PQ12 y del 54 siguen pasando.
-- [ ] T66 · frontend · "Cerrar sesión" sin conexión y la descarga en pausa, según plan 2.14 (criterio 57):
+      _(commit `182a3ce`: `<ContenidoDelDetalle key={id} />` en `DetalleCaja.tsx`)_
+- [x] T66 · frontend · "Cerrar sesión" sin conexión y la descarga en pausa, según plan 2.14 (criterio 57):
       - `cancelarDescargasEnCurso()` en el `onMutate` de `useCerrarSesionAcademia`;
       - la descarga se registra al pulsar, no al empezar su `mutationFn`, y comprueba su señal antes de
         `useConfirmarSesion` y antes del `fetch`;
       - "Cerrando…" y el `DELETE` diferido sin conexión no cambian.
-- [ ] T67 · tester · Correr en verde las pruebas protegidas (T61, T62 y todas las anteriores) y la suite completa, con
+      _(commit `182a3ce`: `cancelarDescargasEnCurso()` en `onMutate`, en `sesion/hooks.ts`)_
+- [x] T67 · tester · Correr en verde las pruebas protegidas (T61, T62 y todas las anteriores) y la suite completa, con
       lint y verificación de tipos. Correr al menos cinco veces seguidas la prueba del 55 y la del 51 con el generador
       real, para descartar que sean inestables (criterios 49, 51 a 57).
-- [ ] T68 · orquestador · Revisar con `git diff`, desde el commit de T61 y T62, que T64 a T66 no tocaron pruebas
+      _(hecha tras `182a3ce` y `ea02809`)_
+- [x] T68 · orquestador · Revisar con `git diff`, desde el commit de T61 y T62, que T64 a T66 no tocaron pruebas
       protegidas.
+      _(verificado con `git show --name-only`: `ea02809` y `182a3ce` no tocan pruebas protegidas)_
 - [x] T69 · adversarial · Ronda 4 sobre todo lo de la 006b, en especial los criterios 55 a 57, sin perder de vista
       del 49 al 54:
       - cortes en cada momento antes del controlador (middleware de la sesión, academia, cambio obligatorio, guards),
@@ -527,7 +559,7 @@ No hay criterios nuevos: se convirtieron en los apartados 55 g y 57 e de `spec.m
 Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.md` (y la del
 `MaxListenersExceededWarning`, también en "Riesgos aceptados").
 
-- [ ] T70 · test-writer · Pruebas protegidas de integración del 55 g, en rojo, en un archivo nuevo de
+- [x] T70 · test-writer · Pruebas protegidas de integración del 55 g, en rojo, en un archivo nuevo de
       `backend/test/integracion/caja/` (por ejemplo, `pdf-corte-antes-de-escribir.test.ts`), desde la spec y los
       contratos públicos, sin mirar la implementación y con la marca de pruebas protegidas.
       - **Utilidades,** en archivos nuevos o sumando a `backend/test/utilidades/caja-pdf-corte.ts` sin cambiar lo que
@@ -552,7 +584,8 @@ Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.m
         suite de la integración continua.
 
       (criterio 55 g)
-- [ ] T71 · test-writer · Pruebas protegidas de componentes del 57 e, en rojo, en el archivo del 57 d o en uno nuevo
+      _(commit `c35dc3b`)_
+- [x] T71 · test-writer · Pruebas protegidas de componentes del 57 e, en rojo, en el archivo del 57 d o en uno nuevo
       de `frontend/src/modulos/caja/` (por ejemplo, `DescargaPdfCerrandoSesion.test.tsx`), con la marca de pruebas
       protegidas, la preparación del 54 g y `onlineManager.setOnline(true)` en `afterEach`. Casos del 57 e:
       1. sin conexión, "Cerrar sesión" y después "Descargar PDF" (desactivado; se intenta igual); al volver la
@@ -565,7 +598,8 @@ Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.m
 
       Commit de T70 y T71 juntos: "Pruebas protegidas (006): 006b, ataque ronda 4: la conexión se mira antes de
       escribir y sin descargas mientras se cierra la sesión (en rojo)" (criterios 55 g y 57 e)
-- [ ] T72 · tester · Confirmar que T70 y T71 fallan por la razón esperada, y no por sintaxis, importaciones,
+      _(commit `c35dc3b`)_
+- [x] T72 · tester · Confirmar que T70 y T71 fallan por la razón esperada, y no por sintaxis, importaciones,
       configuración ni el tiempo límite de Vitest. Las razones esperadas son:
       - **55 g:** el espía de escritura anota `writeHead` o `end` de la descarga cortada en el caso 1, y en el caso 2
         el filtro global recibe el error (o el espía anota el 500). Si con alguna de las dos formas de corte el caso ya
@@ -579,25 +613,30 @@ Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.m
 
       El orquestador hace el commit con el título de T71 (tres dígitos y sin letra, como exige
       `scripts/verificar-pruebas-protegidas.mjs`) (criterios 55 g y 57 e).
-- [ ] T73 · backend · La conexión antes de escribir, según plan 2.15 (criterio 55 g):
+      _(hecha sobre `c35dc3b`)_
+- [x] T73 · backend · La conexión antes de escribir, según plan 2.15 (criterio 55 g):
       - `conexionCerrada` además de la señal, justo antes de escribir el 200 y en el `catch`, sin `await` entre la
         comprobación y la escritura;
       - si está cerrada: no escribe, el error no sube al filtro global, `info` si es del corte y error del manejador
         con `errorParaRegistro` si no lo es;
       - el comentario de `descargarPdf` al día (hoy dice que un error del generador siempre lo responde el filtro);
       - las pruebas protegidas del 49 al 55 siguen pasando.
-- [ ] T74 · frontend · Sin descargas mientras se cierra la sesión, según plan 2.15 (criterio 57 e):
+      _(commit `9f6a9e4`: la comprobación de la conexión antes de escribir, en `cajas.controller.ts`)_
+- [x] T74 · frontend · Sin descargas mientras se cierra la sesión, según plan 2.15 (criterio 57 e):
       - `mutationKey` exportada en `useCerrarSesionAcademia`;
       - "Descargar PDF" desactivado mientras esa mutación está pendiente, también en pausa;
       - `descargar` y la `mutationFn` de la descarga no piden ni entregan nada mientras tanto, también en la
         comprobación final;
       - "Cerrando…", el `DELETE` diferido y las pruebas del 54, 56 y 57 siguen igual.
-- [ ] T75 · tester · Correr en verde las pruebas protegidas (T70, T71 y todas las anteriores) y la suite completa, con
+      _(commit `67bdfe8`: `mutationKey` y `isMutating` en `sesion/hooks.ts` y `caja/hooks.ts`)_
+- [x] T75 · tester · Correr en verde las pruebas protegidas (T70, T71 y todas las anteriores) y la suite completa, con
       lint y verificación de tipos. Correr al menos cinco veces seguidas la prueba del 55 g y las del 51 y del 55 con
       el generador real, para descartar que sean inestables (criterios 49, 51 a 57).
-- [ ] T76 · orquestador · Revisar con `git diff`, desde el commit de T70 y T71, que T73 y T74 no tocaron pruebas
+      _(hecha tras `9f6a9e4` y `67bdfe8`)_
+- [x] T76 · orquestador · Revisar con `git diff`, desde el commit de T70 y T71, que T73 y T74 no tocaron pruebas
       protegidas.
-- [ ] T77 · adversarial · Ronda 5 sobre todo lo de la 006b, en especial los apartados 55 g y 57 e, sin perder de vista
+      _(verificado con `git show --name-only`: `9f6a9e4` y `67bdfe8` no tocan pruebas protegidas)_
+- [x] T77 · adversarial · Ronda 5 sobre todo lo de la 006b, en especial los apartados 55 g y 57 e, sin perder de vista
       del 49 al 57:
       - cortes con FIN y con RST que caen entre la destrucción del socket y el `close`, en cada paso: verificación de
         la sesión, lectura, generación y errores 404, 429, 401, 403 y 500;
@@ -623,7 +662,7 @@ apartado 55 h de `spec.md`, que amplía la definición de conexión cerrada del 
 La observación aceptada sin criterio (un FIN en la misma vuelta que el `COMMIT` del middleware ocupa un turno un
 instante, sin generar ni escribir) está en el encabezado de `spec.md`.
 
-- [ ] T78 · test-writer · Pruebas protegidas de integración del 55 h, en rojo, en un archivo nuevo de
+- [x] T78 · test-writer · Pruebas protegidas de integración del 55 h, en rojo, en un archivo nuevo de
       `backend/test/integracion/caja/` (por ejemplo, `pdf-corte-fin.test.ts`), desde la spec y los contratos públicos,
       sin mirar la implementación y con la marca de pruebas protegidas.
       - **Utilidades,** en archivos nuevos o sumando a las del 55 f y 55 g sin cambiar lo que ya hay: el generador que
@@ -643,23 +682,28 @@ instante, sin generar ni escribir) está en el encabezado de `spec.md`.
 
       Commit: "Pruebas protegidas (006): 006b, ataque ronda 5: un FIN cuenta como conexión cerrada (en rojo)"
       (criterio 55 h)
-- [ ] T79 · tester · Confirmar que T78 falla por la razón esperada, y no por sintaxis, importaciones, configuración, el
+      _(commit `15bd571`)_
+- [x] T79 · tester · Confirmar que T78 falla por la razón esperada, y no por sintaxis, importaciones, configuración, el
       tiempo límite de Vitest ni la comprobación de la ventana. La razón esperada: en el caso 1, el espía de escritura
       anota `writeHead` o `end` de la descarga cortada; en el caso 2, el filtro global recibe el error (o el espía
       anota el 500). Los controles ya pasan. Confirmar también que las pruebas protegidas anteriores (49 a 57) siguen
       pasando y que `git diff --cached --stat` solo muestra archivos de prueba. El orquestador hace el commit con el
       título de T78 (criterio 55 h).
-- [ ] T80 · backend · `conexionCerrada` con `socket.readableEnded` o `!socket.writable`, según plan 2.16 (criterio
+      _(hecha sobre `15bd571`)_
+- [x] T80 · backend · `conexionCerrada` con `socket.readableEnded` o `!socket.writable`, según plan 2.16 (criterio
       55 h):
       - la misma función en la entrada (55 b), antes del 200 y en el `catch` (55 g);
       - sin usar `solicitud.readableEnded` ni `solicitud.complete`;
       - el comentario de la función al día, con la justificación de `httpAllowHalfOpen = false`;
       - las pruebas protegidas del 49 al 57 siguen pasando.
-- [ ] T81 · tester · Correr en verde las pruebas protegidas (T78 y todas las anteriores) y la suite completa, con lint
+      _(commit `3995fc3`: `conexionCerrada` con `readableEnded` y `writable`, en `cajas.controller.ts`)_
+- [x] T81 · tester · Correr en verde las pruebas protegidas (T78 y todas las anteriores) y la suite completa, con lint
       y verificación de tipos. Correr al menos cinco veces seguidas las pruebas del 55 g y del 55 h, para descartar que
       sean inestables (criterios 49, 51 a 57).
-- [ ] T82 · orquestador · Revisar con `git diff`, desde el commit de T78, que T80 no tocó pruebas protegidas.
-- [ ] T83 · adversarial · Ronda 6 sobre todo lo de la 006b, en especial el 55 h, sin perder de vista del 49 al 57:
+      _(hecha tras `3995fc3`)_
+- [x] T82 · orquestador · Revisar con `git diff`, desde el commit de T78, que T80 no tocó pruebas protegidas.
+      _(verificado con `git show --name-only`: `3995fc3` no toca pruebas protegidas)_
+- [x] T83 · adversarial · Ronda 6 sobre todo lo de la 006b, en especial el 55 h, sin perder de vista del 49 al 57:
       - cortes con FIN y con RST en cada paso (entrada, fila, verificación de la sesión, lectura, generación y errores
         404, 429, 401, 403 y 500), también con el `COMMIT` retenido por un proxy de PostgreSQL;
       - falsos positivos: clientes que no cortan (keep-alive, pipelining, `Connection: close`, cuerpos y peticiones
@@ -667,20 +711,25 @@ instante, sin generar ni escribir) está en el encabezado de `spec.md`.
       - con el generador real, muchos cortes con FIN y con RST, y que ninguno escriba ni llegue al filtro global.
 
       Si hay fallas, se repite el ciclo hasta una ronda sin fallas.
+      _(ronda 6 sin fallas, cerrada por el orquestador)_
 
 ### Revisión y cierre
 
-- [ ] T32 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
-- [ ] T33 · revisor · Comparar con la spec y las convenciones; verificar la parte de 006b de los criterios 45 y 46
-- [ ] T34 · tester · Suite completa, lint y verificación de tipos
-- [ ] T35 · documentador · Commit, tareas marcadas, documentación del historial y del PDF; en la guía de uso, filtrar
+- [x] T32 · orquestador · Revisar con `git diff` que ningún commit de implementación tocó pruebas protegidas
+      _(verificado con `git show --name-only` sobre los commits de implementación: ninguno toca un archivo con el marcador de pruebas protegidas. `3d5e6fb`, un commit de pruebas, cambia un turno de academia en `cola-pdf-senal-protegido.test.ts` después de `7dd435f`, sin cambiar ninguna afirmación)_
+- [x] T33 · revisor · Comparar con la spec y las convenciones; verificar la parte de 006b de los criterios 45 y 46
+      _(hecha; las correcciones de la revisión están en `4fbbbe2` y `c9d14c2`)_
+- [x] T34 · tester · Suite completa, lint y verificación de tipos
+      _(hecha; el resultado queda también en la integración continua del PR)_
+- [x] T35 · documentador · Commit, tareas marcadas, documentación del historial y del PDF; en la guía de uso, filtrar
       "Desde 01/11/2026" para ver la caja de ejemplo (PQ14) (criterios 45 y 46)
+      _(documentación del historial y del PDF en este cambio; el commit lo hace el orquestador)_
 
 ## Solo ruta crítica
 
 - [x] Pruebas escritas por test-writer y confirmadas en rojo (006a)
 - [x] Pruebas en verde tras la implementación (006a)
 - [x] Ataque adversarial sin fallas abiertas (006a) _(ronda 2 sobre `88b8d4e` sin fallas, T42)_
-- [ ] Pruebas escritas por test-writer y confirmadas en rojo (006b)
-- [ ] Pruebas en verde tras la implementación (006b)
-- [ ] Ataque adversarial sin fallas abiertas (006b)
+- [x] Pruebas escritas por test-writer y confirmadas en rojo (006b) _(commits `24c0821`, `27575e8`, `d633818`, `ab9ac3e`, `c35dc3b` y `15bd571`)_
+- [x] Pruebas en verde tras la implementación (006b) _(última corrida registrada: T81, sobre `3995fc3`; las correcciones de la revisión `4fbbbe2` y `c9d14c2` son posteriores)_
+- [x] Ataque adversarial sin fallas abiertas (006b) _(rondas 1 a 5 en T31, T50, T60, T69 y T77; ronda 6, T83, sin fallas)_
