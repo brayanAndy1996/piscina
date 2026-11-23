@@ -599,7 +599,8 @@ DT-17).**
     síncrono, así que no queda ventana.
   - Opcional: al detectar la conexión cerrada, `controlador.abort()`, para que cualquier oyente de la señal vea lo
     mismo. No cambia lo observable, porque `historial.pdf` ya terminó.
-  - Lo que ya se respondía antes del manejador, y la definición de `conexionCerrada`, no cambian.
+  - Lo que ya se respondía antes del manejador, y la definición de `conexionCerrada`, no cambian. _(Ronda
+    adversarial 5: la definición se amplía en 2.16, criterio 55 h.)_
 - **El servicio y la cola no cambian:** el lugar se libera en el `finally` de `HistorialService.pdf`, cuando termina
   `generar`, como en 2.13.
 - **Pruebas (55 g 4):** el generador determinista revisa `socket.destroyed` con `setImmediate`, que corre en la fase
@@ -627,6 +628,40 @@ DT-17).**
   (control del 57 e).
 - **Alternativa aceptable:** un indicador en `descargas-en-curso.ts` que se enciende en `onMutate` (donde ya se
   cancela) y se apaga en `onSettled`. Quien implementa elige, siempre que los casos del 57 e pasen.
+
+### 2.16 [006b] Ronda adversarial 5: un FIN cuenta como conexión cerrada (criterio 55 h)
+
+**`conexionCerrada` ampliada (`cajas.controller.ts`; criterio 55 h, DT-20).**
+
+- **Por qué fallaba:** al leer el FIN del cliente, `socketOnEnd` del servidor HTTP llama a `socket.end()` (con
+  `httpAllowHalfOpen = false`). En el resto de esa fase de lectura, el socket tiene `readableEnded === true` y
+  `writable === false`, pero no `destroyed`; la respuesta no está `destroyed` ni `closed`. La `conexionCerrada` de 2.14
+  devolvía `false`, y si la continuación de la lectura (`COMMIT`) o de `generar` corría en esa fase, la descarga
+  escribía el 200, o dejaba subir el 404 o el 500 al filtro global.
+- **Corrección:** una sola función, usada en los tres lugares que ya la llaman (entrada, antes del 200 y en el
+  `catch`):
+
+  ```ts
+  const conexionCerrada = (solicitud: Request, respuesta: Response): boolean => {
+    const socket = solicitud.socket;
+    return (
+      respuesta.destroyed ||
+      (respuesta.closed && !respuesta.writableFinished) ||
+      socket.destroyed ||
+      socket.readableEnded ||
+      !socket.writable
+    );
+  };
+  ```
+
+  - Nada más cambia: ni la señal ni los oyentes de `close`, ni el servicio, ni la cola.
+  - No se usa `solicitud.readableEnded` ni `solicitud.complete` (son `true` en cualquier `GET` leído).
+  - Opcional, como en 2.15: `controlador.abort()` al detectarla.
+- **Pruebas (55 h 5):** el generador se suscribe a `socket.on('end', …)` del socket del servidor de la petición
+  marcada y resuelve o rechaza dentro del callback. El oyente de la prueba se registra después del `socketOnEnd` del
+  servidor, así que cuando corre, `socket.end()` ya se llamó y el socket todavía no está destruido. La continuación del
+  manejador corre en las microtareas de ese mismo paso. La prueba anota y exige ese estado del socket para no dar un
+  falso verde.
 
 ## 3. Decisiones
 
@@ -670,6 +705,8 @@ DT-17).**
 | [006b] Mirar la conexión con `conexionCerrada` antes de escribir y en el `catch`, no solo la señal (criterio 55 g, DT-18) | Activar la señal también con `end` o `error` del socket, o filtrar en el filtro global | Los eventos pueden llegar después de que la generación termine; la comprobación síncrona antes de escribir cierra la ventana sin depender del orden, y el filtro global no ve el 200 |
 | [006b] Prueba determinista del 55 g con un generador que termina al ver el socket destruido | Solo la prueba con el generador real y muchos cortes | Con el error, la del generador real falla solo a veces (4 de 150) y tarda minutos; no sirve para confirmar el rojo |
 | [006b] "Descargar PDF" desactivado y sin descargas nuevas mientras "Cerrar sesión" está pendiente, con el estado de la propia mutación (criterio 57 e, DT-19) | Solo desactivar el botón, o un indicador propio en `descargas-en-curso.ts` | Un clic en el mismo paso se colaría con solo el botón; el indicador duplica un estado que TanStack Query ya tiene (queda como alternativa aceptable) |
+| [006b] `conexionCerrada` suma `socket.readableEnded` o `!socket.writable` (criterio 55 h, DT-20) | Activar la señal con el `'end'` del socket, o mirar `solicitud.readableEnded` | El `'end'` puede llegar después del `COMMIT` en la misma fase; la lectura de la petición termina en todo `GET` y daría falsos positivos; con `httpAllowHalfOpen = false` el estado del socket no los da |
+| [006b] Prueba determinista del 55 h con un generador que termina dentro del `'end'` del socket | Un proxy de PostgreSQL que retiene el `COMMIT` | Abre la misma ventana sin infraestructura de red en la suite |
 | `metodo_pago` creado aquí | Que lo cree la 007 | Los movimientos lo necesitan ya; la 007 lo reutiliza |
 | `pago_id` sin llave foránea hasta la 007 | Crear `pagos` vacía | Cada historia crea sus tablas (D-17) |
 

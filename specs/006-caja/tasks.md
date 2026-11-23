@@ -6,9 +6,9 @@ dividida en dos entregas (DR-10 de la spec), cada una con sus pruebas protegidas
 - **006a · Caja del día** (T1 a T22, y T36 a T42 de la ronda adversarial 1): criterios 1 a 39, 45 y 46 sin el
   historial ni el PDF, y 47 y 48. Se construye primero.
 - **006b · Historial y PDF del cierre** (T23 a T35, marca **[006b, siguiente PR]**, T43 a T50 de la ronda
-  adversarial 1, T51 a T60 de la ronda adversarial 2, T61 a T69 de la ronda adversarial 3 y T70 a T77 de la ronda
-  adversarial 4): criterios 40 a 44, 49 a 57 (con los apartados 55 g y 57 e de la ronda 4), y la parte de 45 y 46 que
-  les toca. Se empieza con la 006a unida a `main`.
+  adversarial 1, T51 a T60 de la ronda adversarial 2, T61 a T69 de la ronda adversarial 3, T70 a T77 de la ronda
+  adversarial 4 y T78 a T83 de la ronda adversarial 5): criterios 40 a 44, 49 a 57 (con los apartados 55 g y 57 e de
+  la ronda 4 y 55 h de la ronda 5), y la parte de 45 y 46 que les toca. Se empieza con la 006a unida a `main`.
 
 En cada entrega, los criterios críticos (DT-5) llevan pruebas protegidas escritas y confirmadas en rojo antes de
 implementar y ataque adversarial después.
@@ -606,6 +606,65 @@ Las tres observaciones aceptadas sin criterio están en el encabezado de `spec.m
       - el registro técnico: ninguna descarga cortada termina como un 500 del filtro global;
       - la web: "Cerrar sesión" con y sin conexión, con descargas pulsadas antes, durante y en el mismo paso, y un
         `DELETE` que falla o tarda.
+
+      Si hay fallas, se repite el ciclo hasta una ronda sin fallas.
+      _(ronda 5 sobre `9f6a9e4`, 23/11/2026: una falla, apartado 55 h; ver más abajo)_
+
+### Ataque adversarial de la 006b, ronda 5 (23/11/2026, sobre `9f6a9e4`)
+
+Hubo una falla contra criterios que ya existían (55 d, 55 g y 51 d). No hay criterios nuevos: se convirtió en el
+apartado 55 h de `spec.md`, que amplía la definición de conexión cerrada del 55 a (DT-20):
+
+- **55 h (falla F1, media):** al leer el FIN de un corte con `destroy()`, el servidor llama a `socket.end()`. En el resto
+  de esa fase, el socket tiene `readableEnded` y no es `writable`, pero no está destruido, y la respuesta tampoco. Si
+  el `COMMIT` de la lectura llegaba en esa fase, la descarga cortada escribía un 404, un 500 (registrado por el filtro
+  global) o un 200.
+
+La observación aceptada sin criterio (un FIN en la misma vuelta que el `COMMIT` del middleware ocupa un turno un
+instante, sin generar ni escribir) está en el encabezado de `spec.md`.
+
+- [ ] T78 · test-writer · Pruebas protegidas de integración del 55 h, en rojo, en un archivo nuevo de
+      `backend/test/integracion/caja/` (por ejemplo, `pdf-corte-fin.test.ts`), desde la spec y los contratos públicos,
+      sin mirar la implementación y con la marca de pruebas protegidas.
+      - **Utilidades,** en archivos nuevos o sumando a las del 55 f y 55 g sin cambiar lo que ya hay: el generador que
+        se suscribe al `'end'` del socket del servidor de la petición marcada con `x-prueba-corte`, resuelve o rechaza
+        dentro del callback, anota `readableEnded`, `writable` y `destroyed` del socket y falla con mensaje claro si
+        no llega el `'end'` en 2 000 ms o si el socket no está en la ventana; modo normal que resuelve enseguida.
+      - **Casos del 55 h 5:**
+        1. resuelve dentro del `'end'`, con corte por `destroy()`;
+        2. rechaza con un `Error` común dentro del `'end'`;
+        3. después de cada corte, una descarga nueva de la misma persona responde 200;
+        4. los controles sin cortar: `node:http` normal, y `node:net` que escribe la petición y espera sin cerrar su
+           lado de escritura, los dos con 200 y el PDF.
+      - En todos, `espiarEscrituras` sin escrituras de la cortada, `estado` en `{ enCurso: 0, enEspera: 0 }`, el error
+        fuera del filtro global, sin cambios en las filas ni en la auditoría y sin conexiones `idle in transaction`.
+      - Si el mecanismo no reproduce la ventana con el código de `9f6a9e4`, lo dice y propone otro igual de
+        determinista, sin proxy de base.
+
+      Commit: "Pruebas protegidas (006): 006b, ataque ronda 5: un FIN cuenta como conexión cerrada (en rojo)"
+      (criterio 55 h)
+- [ ] T79 · tester · Confirmar que T78 falla por la razón esperada, y no por sintaxis, importaciones, configuración, el
+      tiempo límite de Vitest ni la comprobación de la ventana. La razón esperada: en el caso 1, el espía de escritura
+      anota `writeHead` o `end` de la descarga cortada; en el caso 2, el filtro global recibe el error (o el espía
+      anota el 500). Los controles ya pasan. Confirmar también que las pruebas protegidas anteriores (49 a 57) siguen
+      pasando y que `git diff --cached --stat` solo muestra archivos de prueba. El orquestador hace el commit con el
+      título de T78 (criterio 55 h).
+- [ ] T80 · backend · `conexionCerrada` con `socket.readableEnded` o `!socket.writable`, según plan 2.16 (criterio
+      55 h):
+      - la misma función en la entrada (55 b), antes del 200 y en el `catch` (55 g);
+      - sin usar `solicitud.readableEnded` ni `solicitud.complete`;
+      - el comentario de la función al día, con la justificación de `httpAllowHalfOpen = false`;
+      - las pruebas protegidas del 49 al 57 siguen pasando.
+- [ ] T81 · tester · Correr en verde las pruebas protegidas (T78 y todas las anteriores) y la suite completa, con lint
+      y verificación de tipos. Correr al menos cinco veces seguidas las pruebas del 55 g y del 55 h, para descartar que
+      sean inestables (criterios 49, 51 a 57).
+- [ ] T82 · orquestador · Revisar con `git diff`, desde el commit de T78, que T80 no tocó pruebas protegidas.
+- [ ] T83 · adversarial · Ronda 6 sobre todo lo de la 006b, en especial el 55 h, sin perder de vista del 49 al 57:
+      - cortes con FIN y con RST en cada paso (entrada, fila, verificación de la sesión, lectura, generación y errores
+        404, 429, 401, 403 y 500), también con el `COMMIT` retenido por un proxy de PostgreSQL;
+      - falsos positivos: clientes que no cortan (keep-alive, pipelining, `Connection: close`, cuerpos y peticiones
+        en varios trozos) y que deben seguir recibiendo 200;
+      - con el generador real, muchos cortes con FIN y con RST, y que ninguno escriba ni llegue al filtro global.
 
       Si hay fallas, se repite el ciclo hasta una ronda sin fallas.
 

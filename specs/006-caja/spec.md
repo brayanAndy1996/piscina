@@ -126,13 +126,28 @@
     que el 55 d deja igual ("lo que se responde antes de llegar al manejador no cambia");
   - `Connection: close` con pipelining: Node responde 400 a las peticiones que siguen a la que pidió cerrar, antes de
     llegar a la app.
+- **Ronda adversarial 5 de la 006b (23/11/2026, sobre `9f6a9e4`):** una falla contra criterios que ya existían (55 d,
+  55 g y 51 d). No hay criterios nuevos: se suma el apartado 55 h, crítico y de la 006b, que amplía la definición de
+  "conexión cerrada" del 55 a. Todo es técnico, sin cambios de negocio (DT-20):
+  - **Criterio 55 h (falla F1, media):** cuando Node lee el FIN del cliente (un corte con `destroy()`), el servidor
+    llama a `socket.end()`. Desde ese momento y hasta el final de esa fase de lectura del bucle, el socket ya tiene
+    `readableEnded === true` y `writable === false`, pero todavía no está destruido, y la respuesta tampoco está
+    `destroyed` ni `closed`. La definición del 55 a no lo veía como cerrado. Si en esa misma fase llegaba el `COMMIT`
+    de la lectura, la descarga cortada escribía un 404, un 500 (que además registraba el filtro global) o un 200. Se
+    reprodujo de forma determinista con un proxy de PostgreSQL, y de forma natural en 2 de 1 000 cortes.
+
+  Observaciones aceptadas sin criterio:
+  - un FIN que llega en la misma vuelta del bucle que el `COMMIT` de la verificación de la sesión del middleware: la
+    descarga puede entrar al manejador sin verlo y ocupar un turno un instante, hasta que el `close` la aborta. No
+    genera ni escribe.
 - **División (DR-10):** dos entregas desde esta misma carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR, como DR-11 de 005 (ver "División en 006a y 006b"):
   - **006a · Caja del día** (se construye primero): criterios 1 a 39, 45 y 46, salvo las partes de 45 y 46 que tratan
     del historial y del PDF, más 47 y 48 (ronda adversarial 1).
   - **006b · Historial y PDF del cierre** (siguiente PR, con la 006a unida a `main`): criterios 40 a 44, más esas
     partes, más 49 y 50 (ronda adversarial 1 de la 006b), 51 a 54 (ronda adversarial 2 de la 006b) y 55 a 57 (ronda
-    adversarial 3 de la 006b), con los apartados 55 g y 57 e (ronda adversarial 4 de la 006b).
+    adversarial 3 de la 006b), con los apartados 55 g y 57 e (ronda adversarial 4 de la 006b) y 55 h (ronda adversarial
+    5 de la 006b).
 
 ## Objetivo
 
@@ -193,6 +208,9 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
     filtro global, y el criterio 51 d prohíbe las dos cosas;
   - el 57 e, por lo mismo que el 54: el PDF podía entregarse en la PC compartida mientras la persona ya estaba
     cerrando la sesión (RNF-05).
+- **006b, ronda adversarial 5 (55 h, dentro de un criterio ya crítico):** por lo mismo que el 55 g. Una descarga cortada
+  con FIN escribía en una conexión que ya no admite escritura o terminaba como un 500 del filtro global, y el 51 d
+  prohíbe las dos cosas.
 
 No son críticos, pero llevan _(prueba obligatoria)_: 37 a 39 (web de la caja del día, con pruebas de componentes y una
 E2E) y 44 (web del historial). Los 45 y 46 (semilla y documentación) los verifica el revisor. _(DT-5.)_
@@ -1035,6 +1053,9 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
         `writableFinished`);
       - el socket de la conexión de la petición (`solicitud.socket`) está destruido.
 
+      - _(Ronda adversarial 5 de la 006b, enmienda; criterio 55 h:)_ el socket de la conexión de la petición ya
+        terminó su lectura o ya no admite escritura (`solicitud.socket.readableEnded` o `!solicitud.socket.writable`).
+
       Quien implementa puede sumar otra señal equivalente (por ejemplo, `solicitud.destroyed`), siempre que nunca dé
       por cerrada una descarga que nadie cortó. En Node 22, la petición puede emitir `close` al terminar de leerse (plan
       2.13). El control de f lo comprueba.
@@ -1047,7 +1068,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
       - a lo sumo, una línea de nivel `info` (51 d).
 
       La comprobación y la instalación de los oyentes de c ocurren en el mismo paso síncrono, sin un `await` en medio.
-      Así no queda una ventana en la que un corte se pierda.
+      Así no queda una ventana en la que un corte se pierda. _(Ronda adversarial 5 de la 006b: "cerrada" incluye el
+      socket que ya terminó su lectura o ya no admite escritura; criterio 55 h.)_
     - c) **El socket también avisa.** Además del `close` de la respuesta, la descarga escucha el `close` del socket de
       la conexión (`solicitud.socket`). Con eso se detecta el corte de una petición en pipelining, cuya respuesta
       todavía no tiene socket:
@@ -1158,7 +1180,8 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
          (cualquier error que termine la descarga: 404, 429, 401, 403 o 500 del servicio, o un `Error` común del
          generador), la descarga mira si la conexión está cerrada con la definición de a, además de la señal. La
          comprobación y la escritura (o la decisión de dejar subir el error) van en el mismo paso síncrono, sin un
-         `await` en medio, como en b.
+         `await` en medio, como en b. _(Ronda adversarial 5 de la 006b: con la definición de a ampliada por el 55 h,
+         no solo el socket destruido.)_
       2. **Si está cerrada,** la descarga cuenta como abandonada, aunque la señal todavía no se haya activado:
          - no llama a `writeHead`, `write` ni `end` sobre su respuesta (d);
          - el error, si lo hay, no llega al filtro global: no se escribe el JSON ni se registra como un 500
@@ -1213,8 +1236,82 @@ y se calculan con `Decimal` (criterio 10 de 004). Cada criterio cita entre paré
            falla solo a veces (4 de 150), así que no sirve para confirmar el rojo, y 150 PDF de 1 500 movimientos
            tardan minutos. Con la corrección no debería fallar nunca, porque la comprobación y la escritura van en el
            mismo paso. Lo repite el adversarial en la ronda 5 de la 006b.
+    - h) **Un FIN cuenta como corte desde que se lee.** _(Ronda adversarial 5 de la 006b, falla F1, media; incumplía
+      55 d, 55 g y 51 d; DT-20.)_ Cuando Node lee el FIN del cliente (un corte con `destroy()`), el servidor HTTP llama
+      a `socket.end()` (`socketOnEnd`). Desde ese momento, y en el resto de esa fase de lectura del bucle de eventos:
+      - el socket de la conexión ya tiene `readableEnded === true` y `writable === false`;
+      - pero todavía no está destruido, y la respuesta tampoco está `destroyed` ni `closed`.
 
-    _(crítico)_ (D-23; criterios 49 y 51; DT-10, DT-15 y DT-18)
+      Con la definición original de a, la conexión no se veía cerrada. Si en esa misma fase llegaba el `COMMIT` de la
+      lectura, la descarga cortada escribía un 404, un 500 (que además registraba el filtro global como
+      `ERROR_INTERNO`) o un 200. Medido en la ronda: de forma determinista con un proxy de PostgreSQL, y de forma
+      natural en 2 de 1 000 cortes.
+
+      Entonces:
+      1. **La definición de a suma una condición:** el socket de la conexión de la petición (`solicitud.socket`) ya
+         terminó su lectura o ya no admite escritura (`socket.readableEnded` o `!socket.writable`). Las condiciones
+         de a (respuesta destruida o cerrada sin terminar, socket destruido) siguen.
+         - **Por qué no da falsos positivos:** el servidor HTTP de Node tiene `httpAllowHalfOpen = false` (el valor
+           por omisión, que la app no cambia). Al leer un FIN, el servidor responde con `socket.end()`, así que
+           ninguna descarga viva queda en ese estado: si el socket ya no admite escritura, la respuesta no podría
+           llegar al cliente de ninguna forma.
+         - No vale mirar la lectura de la petición (`solicitud.readableEnded`, `solicitud.complete`), que es `true`
+           en cualquier `GET` ya leído; la condición es sobre el socket.
+      2. **Se aplica en todos los puntos donde se mira la conexión:** al entrar al manejador (b) y antes de escribir,
+         con el 200 y en el camino del error (g). La comprobación y la escritura, o la decisión de dejar subir el
+         error, siguen en el mismo paso síncrono. Si la conexión está cerrada, todo sigue como dicen b y g 2: no se
+         escribe, el error no llega al filtro global, a lo sumo una línea `info` si es del corte, el error del
+         manejador si no lo es, y el lugar y los cupos se liberan como siempre.
+      3. **No cambia** cuándo se activa la señal (con el `close` de la respuesta o del socket, c). Quien implementa
+         puede, además, activarla al detectar la conexión cerrada con esta definición (como el `controlador.abort()`
+         opcional de g), siempre que los casos de f, g y h pasen.
+      4. **Caso límite:** un cliente que envía la petición y cierra su lado de escritura (un FIN, por ejemplo
+         `shutdown`) para esperar la respuesta cuenta como corte. Con `httpAllowHalfOpen = false`, Node ya cerraba el
+         socket por su lado, así que esa respuesta nunca llegaba: no se pierde nada.
+      5. **Pruebas de integración,** en un archivo nuevo de `backend/test/integracion/caja/`, con la marca de pruebas
+         protegidas y la API escuchando en un puerto, como las de f y g. Usan las utilidades del 55 f y del 55 g
+         (`espiarEscrituras` con la cabecera `x-prueba-corte`, `estadoDeLaCola`, el cliente `node:http`, el socket
+         del servidor con el evento `request`, la comprobación de que el error no llega al filtro global) y suman las
+         que falten en archivos nuevos o sin cambiar lo que ya existe.
+         - **El generador determinista, sin proxy de base.** Un generador inyectado con `GENERADOR_PDF_CIERRE`, que
+           ignora la señal. Al llamarlo, se suscribe al evento `'end'` del socket del servidor de esa petición (el de
+           la petición marcada con `x-prueba-corte`) y, dentro de ese mismo callback, resuelve con un PDF pequeño
+           válido o rechaza con `new Error(…)`, según el caso. Así la continuación del manejador corre en la misma
+           fase de lectura, con el socket medio cerrado y todavía no destruido.
+           - **La ventana se comprueba:** dentro del callback, el generador anota `readableEnded`, `writable` y
+             `destroyed` del socket. La prueba exige `readableEnded === true`, `writable === false` y
+             `destroyed === false`; si no, falla con un mensaje claro ("no se reprodujo la ventana del FIN"), no como
+             un falso verde.
+           - Si en 2 000 ms no llega el `'end'`, la prueba falla con un mensaje claro, no por el tiempo límite de
+             Vitest.
+           - Sin la cabecera, o en el modo "normal" que elige la prueba, el generador resuelve enseguida.
+         - **Cómo corta el cliente:** cuando el generador ya recibió la llamada, el cliente `node:http` corta con
+           `destroy()`. Como el servidor todavía no envió nada, el cliente manda un FIN, no un RST.
+         - **En todos los casos,** como en el 51 e, las filas de `cajas`, `movimientos_caja`, `cierres_caja` y
+           `auditoria` no cambian, y ninguna conexión del rol de la app queda `idle in transaction`.
+
+         Casos:
+         1. **Resuelve dentro del `'end'`.** Entonces:
+            - el espía de escritura no anota ninguna llamada de la descarga cortada;
+            - el generador recibió exactamente esa llamada;
+            - enseguida (1 000 ms), `estado` es `{ enCurso: 0, enEspera: 0 }`.
+         2. **Rechaza con un `Error` común dentro del `'end'`.** Entonces:
+            - el espía de escritura no anota ninguna llamada de la descarga cortada;
+            - el error no llega al filtro global (con la misma forma que eligió el test-writer en el 55 g);
+            - enseguida, `estado` es `{ enCurso: 0, enEspera: 0 }`.
+         3. **Después de cada corte,** una descarga nueva de la misma persona, sin cortar y con el generador en modo
+            normal, responde 200 con el PDF.
+         4. **Controles, sin cortar, con el generador en modo normal:**
+            - una descarga normal con `node:http` responde 200 con el PDF;
+            - un cliente `node:net` que escribe la petición completa y espera, sin cerrar su lado de escritura, hasta
+              leer la respuesta, recibe 200 con el PDF;
+            - los controles del 55 f (caso 5) y del 55 g (caso 4) siguen pasando.
+
+         Si con el código de `9f6a9e4` este mecanismo no reproduce la ventana (los casos 1 y 2 ya pasan, o la
+         comprobación de la ventana falla), el test-writer lo dice y propone otro mecanismo igual de determinista, sin
+         proxy de base, antes de dar la tarea por hecha.
+
+    _(crítico)_ (D-23; criterios 49 y 51; DT-10, DT-15, DT-18 y DT-20)
 56. **Pasar a otra caja en el detalle cancela la descarga de la anterior.** _(Ronda adversarial 3 de la 006b, falla F2,
     media, y una observación; amplía el criterio 54 b; DT-16.)_ La ruta `/panel/cajas/:id` no desmonta el detalle
     cuando solo cambia el id, por ejemplo con "atrás" o "adelante" entre dos cajas. Si la caja de destino está en la
@@ -1652,7 +1749,8 @@ responde el mismo 404 que uno inexistente o de otra academia. `GET /api/cajas/ac
 **[006b]** `HEAD` sobre las cuatro rutas `GET` de la caja responde 404 (criterio 50).
 
 **[006b]** Una descarga del PDF cuyo cliente corta la conexión no recibe respuesta: sale de la fila o se aborta
-(criterio 51).
+(criterio 51). Un cliente que cierra su lado de escritura (FIN) también cuenta como corte desde que el servidor lo lee
+(criterio 55 h).
 
 **Orden de los errores de negocio** (después del 400 del esquema y del 401 del criterio 9):
 
@@ -1929,8 +2027,8 @@ Para documentar en `docs/arquitectura.md` (criterio 46):
 - **Un generador que ignora la señal (006b, criterio 51):** mientras no termina, su lugar sigue ocupado. El generador
   real sí la respeta; solo los generadores de las pruebas pueden ignorarla. Si además rechaza con un `Error` común
   después del corte, se registra como error (ronda adversarial 3 de la 006b), aunque no se escribe la respuesta
-  (criterio 55 d). Lo mismo si termina en la ventana en que el socket ya está destruido y la señal todavía no se
-  activó (criterio 55 g): lo registra el manejador, no el filtro global.
+  (criterio 55 d). Lo mismo si termina en la ventana en que el socket ya está destruido, o ya leyó el FIN y no admite
+  escritura, y la señal todavía no se activó (criterios 55 g y 55 h): lo registra el manejador, no el filtro global.
 - **Pipelining de muchas descargas por un socket (006b, ronda adversarial 4):** con 10 o más a la vez, Node emite
   `MaxListenersExceededWarning`, porque todas escuchan el `close` del socket hasta terminar (criterio 55 c). No es
   una fuga: al terminar, los oyentes vuelven a 1.
@@ -2049,8 +2147,8 @@ es la propuesta.
   404); prueba obligatoria 37 a 39, el contenido del 42 y el 44; revisor 45 y 46. Repartidos como dice "División en 006a
   y 006b". La ronda adversarial 1 de la 006a suma 47 y 48, críticos, por decisión del orquestador. La ronda adversarial
   1 de la 006b suma 49 y 50, también críticos; la ronda adversarial 2 de la 006b suma 51 a 54, y la ronda adversarial
-  3 de la 006b suma 55 a 57, todos críticos. La ronda adversarial 4 de la 006b suma los apartados 55 g y 57 e, dentro
-  de esos criterios críticos.
+  3 de la 006b suma 55 a 57, todos críticos. La ronda adversarial 4 de la 006b suma los apartados 55 g y 57 e, y la
+  ronda adversarial 5 de la 006b, el 55 h, dentro de esos criterios críticos.
 - **DT-6 (pregunta T6). `ultimoMovimientoVisto` en el cierre** (D3). **Decidido (la propuesta).** Alternativa
   descartada: cerrar con lo que haya en ese momento, aunque la persona no lo haya visto. _(006a; criterio 31.)_
 - **DT-7 (sin pregunta previa; ronda adversarial 1 de la 006b, 22/11/2026). Una caja con muchos movimientos y su PDF.**
@@ -2181,6 +2279,21 @@ es la propuesta.
   - cancelar al volver la conexión: el `DELETE` y la descarga se reanudan juntos y el orden no está garantizado.
 
   _(006b; criterio 57 e.)_
+- **DT-20 (sin pregunta previa; ronda adversarial 5 de la 006b, 23/11/2026). Un FIN cuenta como conexión cerrada.**
+  **Decidido por el orquestador:** la definición de conexión cerrada del 55 a suma "el socket de la petición ya terminó
+  su lectura o ya no admite escritura" (`socket.readableEnded` o `!socket.writable`), y se aplica en todos los puntos
+  donde se mira la conexión: al entrar al manejador (55 b) y antes de escribir (55 g). No da falsos positivos porque el
+  servidor tiene `httpAllowHalfOpen = false`: tras un FIN responde con `socket.end()`, y ninguna descarga viva queda en
+  ese estado. La prueba protegida usa un generador que termina dentro del evento `'end'` del socket del servidor, sin
+  proxy de base. Alternativas descartadas:
+  - activar la señal con el `'end'` del socket: sigue siendo un evento, y el `COMMIT` de la lectura puede llegar antes
+    que él en la misma fase; la comprobación síncrona con el estado del socket no depende del orden (como DT-18);
+  - mirar `solicitud.readableEnded` o `solicitud.complete`: son `true` en cualquier `GET` ya leído y darían por
+    cortadas todas las descargas;
+  - la prueba con un proxy de PostgreSQL: reproduce la falla, pero suma infraestructura a la suite; el generador
+    dentro del `'end'` abre la misma ventana sin tocar la base.
+
+  _(006b; criterio 55 h.)_
 
 ### Decisiones de diseño (técnicas)
 
