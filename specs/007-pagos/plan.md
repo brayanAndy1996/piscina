@@ -79,9 +79,12 @@ total es el ajuste.
    3. `const ahora = this.reloj.ahora()` **después** de bloquear las clases (DT-10). Toda decisión de la transacción usa
       este instante: estado visible, vigencia de la reserva, cupo, caja del día y `registrado_en`.
    4. Decisiones en el orden del contrato: clave de idempotencia (200 con lo registrado, o 409 `CLAVE_YA_USADA`), estado
-      visible, `MONTO_CAMBIO` con `totalACobrar`, cupo (si la reserva ya no está vigente en `ahora`, se cuenta con
-      `contarOcupacion` sin esta matrícula y debe quedar lugar en todas sus clases; con la reserva vigente no se cuenta,
-      criterio 18 a), y el DNI del personal (`SELECT EXISTS` en `usuarios`, sin bloqueo).
+      visible, `MONTO_CAMBIO` con `totalACobrar`, cupo y el DNI del personal (`SELECT EXISTS` en `usuarios`, sin
+      bloqueo). El estado visible se calcula con `ahora`: si la reserva de una `PENDIENTE_PAGO` venció mientras el cobro
+      esperaba las clases, la solicitud ya es `VENCIDA` y responde 409 `SOLICITUD_NO_COBRABLE` antes de llegar al cupo
+      (criterio 18 b). Cupo: con `PENDIENTE_PAGO` la reserva es vigente en `ahora` y no se cuenta (criterio 18 a); solo
+      con `PAGO_RECHAZADO` **[007b]** (matrícula `CANCELADA`) se cuenta con `contarOcupacion` sin esta matrícula y debe
+      quedar lugar en todas sus clases, o 409 `SIN_CUPO` (criterio 18 c).
    5. Escrituras: `INSERT` del pago `CONFIRMADO` (con un `id` generado en la API) → `confirmarPagoEnTransaccion`.
 3. **Después de confirmar:** el correo `PAGO_CONFIRMADO` con `enviarSinEsperar` (criterio 51 a). La respuesta lee el
    elemento del panel con la misma `tx` antes de cerrar.
@@ -204,13 +207,28 @@ Aceptadas por el orquestador el 24/11/2026 (DT-1 a DT-16 de la spec), con la spe
 | Comprobante en una petición binaria con `X-Pago-Datos` (DT-6) | Dos pasos, multipart o base64 | Atómica, reutiliza el lector y el orden de la foto |
 | Recodificar a 2000 px sin metadatos (DT-7, DT-8) | Original u 800 px | Privacidad (GPS) y legibilidad |
 | Escrito y normalizado del número (DT-9) | Solo normalizado | Evidencia de lo que escribió el cliente |
-| «Ahora» del cobro después de bloquear las clases (DT-10) | «Ahora» del inicio de la petición | Sin él, una reserva que vence durante el cobro deja la clase con uno de más |
+| «Ahora» del cobro después de bloquear las clases (DT-10); el perdedor de la carrera responde `SOLICITUD_NO_COBRABLE` | «Ahora» del inicio de la petición | Sin él, una reserva que vence durante el cobro deja la clase con uno de más |
 | Sesión de recepción verificada en el middleware (DT-11) | Rutas del panel aparte | Un solo formulario y un solo servicio; el anónimo no cambia |
 | `AJUSTAR_MONTO_COBRO` (DT-12) | Reusar un permiso de configuración | La matriz dice qué hace cada permiso |
 | Ticket numerado con la caja bloqueada (DT-13) | Secuencia de PostgreSQL | La numeración es por academia |
 | Ticket como página imprimible (DT-14) | PDF con `pdfkit` | Sin cola ni archivos (DR-4) |
 | `HEAD` 404 en `/api/pagos` (DT-15) | `HEAD` con el manejador del `GET` | No leer archivos para no enviarlos (DT-9 de 006) |
 | Consultivo del DNI en la confirmación y en la creación de personal (DT-16) | Solo el índice único | Ordena las dos sin esperar al final de una transacción larga |
+
+## Precisiones de las pruebas (test-writer, 24/11/2026)
+
+Decisiones técnicas tomadas al escribir las pruebas protegidas de la 007a. No cambian reglas de negocio.
+
+- **Criterio 4 a:** se prueba con `monto` 0, negativo, `100000.01`, un millón y `NaN`. «Más de dos decimales» no es
+  observable en la base: `numeric(10,2)` redondea al guardar, así que no hay prueba de ese caso en la base.
+- **Criterio 1:** la prueba no fija la acción `ON DELETE` de la llave `movimientos_caja (academia_id, pago_id) → pagos
+  (academia_id, id)`; solo exige que sea `DEFERRABLE INITIALLY DEFERRED`. La app no tiene `DELETE` en `pagos`.
+- **Criterio 13, auditoría `PAGO_REGISTRADO`:** la prueba no exige `ip` en la fila de auditoría.
+- **Criterio 18 b:** la prueba acepta 409 `SOLICITUD_NO_COBRABLE` o `SIN_CUPO`; según el orden de errores, la
+  implementación responde `SOLICITUD_NO_COBRABLE` (ver «Cobro en efectivo», paso 4).
+- **Pruebas de la 006 que fallan sin editarse:** las de `backend/test/integracion/caja/` que usan las utilidades
+  ampliadas quedan en rojo hasta la migración de `pagos` (lista en la spec, «Pruebas protegidas anteriores que amplía
+  la 007a»).
 
 ## Migraciones
 

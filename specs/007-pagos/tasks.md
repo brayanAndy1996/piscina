@@ -35,8 +35,9 @@ el segundo PR, con la 007a ya unida a `main`.
 - [ ] T9 · test-writer · Recepción sin los límites por conexión: middleware, envío con actor, `registrada_por`, foto
   (criterios 33 a 35)
 - [ ] T10 · test-writer · Correo `PAGO_CONFIRMADO` después de confirmar, destinatarios y fallos (criterio 51 a)
-- [ ] T11 · tester · Confirmar que T1 y T3 a T10 fallan por la razón esperada (y que las ampliadas en T2 fallan solo por
-  lo que suma la 007a); commit «Pruebas protegidas (007): 007a, … (en rojo)» (tres dígitos y sin letra en el paréntesis;
+- [ ] T11 · tester · Confirmar que T1 y T3 a T10 fallan por la razón esperada (y que las ampliadas en T2, y las de
+  `backend/test/integracion/caja/` que usan sus utilidades sin haber sido editadas, fallan solo por lo que suma la
+  007a: la tabla `pagos` que todavía no existe; lista en la spec); commit «Pruebas protegidas (007): 007a, … (en rojo)» (tres dígitos y sin letra en el paréntesis;
   la entrega va después)
 
 ### Implementación
@@ -78,7 +79,7 @@ el segundo PR, con la 007a ya unida a `main`.
   (criterios 36 a 44)
 - [ ] T31 · test-writer · Bandeja, comprobante con `HEAD`, aprobar, aprobar dos veces, aprobar y rechazar a la vez,
   rechazar, cupo liberado, mes terminado (criterios 45 a 50 y 52)
-- [ ] T32 · test-writer · Partes [007b] de los criterios 15, 18 c, 21, 28 a 32; correo `PAGO_RECHAZADO` (criterio 51 b)
+- [ ] T32 · test-writer · Partes [007b] de los criterios 11, 15, 18 c, 21, 28 a 32; correo `PAGO_RECHAZADO` (criterio 51 b)
 - [ ] T33 · tester · Confirmar en rojo; commit «Pruebas protegidas (007): 007b, … (en rojo)»
 
 ### Implementación
@@ -90,7 +91,7 @@ el segundo PR, con la 007a ya unida a `main`.
 - [ ] T36 · backend · Bandeja, comprobante y `HEAD` 404 en `/api/pagos` (criterios 45 y 46)
 - [ ] T37 · backend · Aprobación con `confirmarPagoEnTransaccion` y rechazo con el cupo y el correo (criterios 47 a 52)
 - [ ] T38 · backend · Estados `EN_VERIFICACION` y `PAGO_RECHAZADO` en el seguimiento, el panel, la cancelación, la foto y
-  el cobro en efectivo (partes [007b] de 15, 18, 28 a 32)
+  el cobro en efectivo y el ajuste del monto (partes [007b] de 11, 15, 18, 28 a 32)
 - [ ] T39 · frontend · Seguimiento: estados, datos de pago y formulario del comprobante (criterios 53 y 55)
 - [ ] T40 · frontend · Bandeja `/panel/pagos` y configuración de los datos de pago (criterios 53 y 56)
 - [ ] T41 · backend · Semilla: Yape pendiente con comprobante de ejemplo y datos de pago (criterio 57, parte de la 007b)

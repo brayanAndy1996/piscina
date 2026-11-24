@@ -158,7 +158,8 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
    _(crítico)_ (D-23, D-29)
 4. **Invariantes con `CHECK` e índices únicos.** Un `INSERT` o `UPDATE` directo (como app y como dueño) falla con
    `23514` o `23505`, según el caso:
-   - a) `monto` menor o igual que 0, mayor que `100000.00`, `NaN` o con más de dos decimales;
+   - a) `monto` menor o igual que 0, mayor que `100000.00`, `NaN` o con más de dos decimales (este último no es
+     observable: `numeric(10,2)` lo redondea al guardar; ver «Precisiones de las pruebas» en el plan);
    - b) `concepto` igual a `EGRESO_MENOR`;
    - c) un pago `EFECTIVO` con número de operación, comprobante o fecha de operación, o en un estado que no sea
      `CONFIRMADO`; un pago `YAPE` o `TRANSFERENCIA` sin número de operación (el escrito y el normalizado), sin
@@ -225,8 +226,10 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     Guarda `monto_ajustado` y `motivo_ajuste` en la matrícula y registra `MATRICULA_MONTO_AJUSTADO` (entidad
     `matricula`, `entidadId` la matrícula, actor el administrador, `motivo`, `datosAntes: { montoAjustado, total }` y
     `datosDespues: { montoAjustado, total }`, montos como texto con dos decimales). Solo se ajusta una solicitud con
-    estado visible `PENDIENTE_PAGO` o `PAGO_RECHAZADO`; en `EN_VERIFICACION`, `CONFIRMADA`, `VENCIDA` o `CANCELADA`
-    responde 409 `SOLICITUD_NO_AJUSTABLE` con `detalles: { estado }`, sin escribir. Un nuevo ajuste reemplaza al anterior;
+    estado visible `PENDIENTE_PAGO` o `PAGO_RECHAZADO` **[007b]**; en `EN_VERIFICACION` **[007b]**, `CONFIRMADA`,
+    `VENCIDA` o `CANCELADA` responde 409 `SOLICITUD_NO_AJUSTABLE` con `detalles: { estado }`, sin escribir. Los casos
+    con `EN_VERIFICACION` y `PAGO_RECHAZADO` se prueban en la 007b (en la 007a no hay forma de llegar a esos estados
+    por la API). Un nuevo ajuste reemplaza al anterior;
     el mismo monto y el mismo motivo que ya tiene responden 200 sin escribir ni auditar. El ajuste no toca el cupo, la
     reserva ni las clases totales (DR-11). _(crítico)_ (RN-25, HU-34, RN-22, D-03)
 12. **Ajuste y cobro a la vez.** El cobro en efectivo compara el total que vio quien cobra (`montoMostrado`) con el total
@@ -259,9 +262,11 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     `TZ=Asia/Tokyo`. _(crítico)_ (RN-17, D-04, DR-2 de 006; «cobrar con la caja de otro día» de `CLAUDE.md`)
 15. **Qué solicitudes se cobran.** Se cobra una solicitud con estado visible `PENDIENTE_PAGO` (con la reserva vigente) o
     `PAGO_RECHAZADO` **[007b]** (dentro del mes de su matrícula y con cupo, criterio 18). Las demás responden 409, sin
-    escribir: `SOLICITUD_YA_PAGADA` (`CONFIRMADA`), `PAGO_EN_VERIFICACION` (`EN_VERIFICACION`, hay un comprobante en
-    revisión: se aprueba o se rechaza primero) y `SOLICITUD_NO_COBRABLE` con `detalles: { estado }` (`VENCIDA` o
-    `CANCELADA`; la persona se vuelve a inscribir, DR-10). _(crítico)_ (RN-28, D-05, DR-1 y DR-12 de 005)
+    escribir: `SOLICITUD_YA_PAGADA` (`CONFIRMADA`), `PAGO_EN_VERIFICACION` **[007b]** (`EN_VERIFICACION`, hay un
+    comprobante en revisión: se aprueba o se rechaza primero) y `SOLICITUD_NO_COBRABLE` con `detalles: { estado }`
+    (`VENCIDA` o `CANCELADA`; la persona se vuelve a inscribir, DR-10). Los casos con `EN_VERIFICACION`
+    (`PAGO_EN_VERIFICACION`) y `PAGO_RECHAZADO` se prueban en la 007b; la 007a prueba `PENDIENTE_PAGO`, `CONFIRMADA`,
+    `VENCIDA` y `CANCELADA`. _(crítico)_ (RN-28, D-05, DR-1 y DR-12 de 005)
 16. **El monto que se ve es el que se cobra.** `montoMostrado` (`montoSchema`) es el total que la web mostró a quien
     cobra. Si no es igual al total a cobrar al momento de cobrar (`"42"` y `"42.00"` son iguales), responde 409
     `MONTO_CAMBIO` con `detalles: { total }`, sin escribir. _(crítico)_ (D-03, HU-34)
@@ -279,7 +284,12 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
       `bloquearClasesParaCupo`: una reserva que una inscripción simultánea ya contó como vencida (y cuyo cupo tomó) no se
       cobra como vigente. Prueba determinista: aforo 20 con 19 ocupados más la solicitud S cuya reserva vence en el
       instante T; un envío de la 005 en T toma el cupo y confirma mientras el cobro de S espera; el cobro responde 409
-      `SIN_CUPO` y la ocupación queda en 20. En el orden inverso (el cobro primero), el envío responde 409 `SIN_CUPO`;
+      y la ocupación queda en 20 (nunca 21). Según el orden de los errores del cobro («Contrato»), el estado visible se
+      calcula con ese mismo instante y la solicitud ya es `VENCIDA`, así que el código es `SOLICITUD_NO_COBRABLE` con
+      `detalles: { estado: 'VENCIDA' }`, que va antes que `SIN_CUPO`. La prueba protegida acepta cualquiera de los dos
+      409 (`SOLICITUD_NO_COBRABLE` o `SIN_CUPO`): lo que fija es el 409, que no quede nada del cobro y la ocupación en
+      20. En el orden inverso (el cobro primero, con la reserva todavía vigente), el cobro se acepta y el envío responde
+      409 `SIN_CUPO`;
     - c) **[007b]** una solicitud `PAGO_RECHAZADO` vuelve a pedir cupo: si alguna clase está llena, 409 `SIN_CUPO` con
       `detalles.clasesSinCupo`; dos cobros o reintentos de solicitudes distintas por el último cupo dejan exactamente uno.
 
@@ -372,7 +382,8 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     **[007b]** responde 409 `SOLICITUD_CON_PAGO_PENDIENTE` sin escribir (primero se aprueba o se rechaza el comprobante, DR-12); con
     `PAGO_RECHAZADO` **[007b]** cancela como una `PENDIENTE_PAGO` (la matrícula ya está `CANCELADA`); con `CONFIRMADA`, 409
     `SOLICITUD_NO_CANCELABLE`. Bloquea además los pagos de la matrícula, después de la matrícula y antes de las clases.
-    _(crítico)_ (RN-28; criterio 39 de 005)
+    Los casos con `EN_VERIFICACION` (`SOLICITUD_CON_PAGO_PENDIENTE`) y `PAGO_RECHAZADO` se prueban en la 007b; la 007a
+    prueba `CONFIRMADA` y el bloqueo de los pagos. _(crítico)_ (RN-28; criterio 39 de 005)
 31. **La foto con los estados nuevos.** La subida de la foto (005b) acepta una solicitud con estado visible
     `EN_VERIFICACION` o `PAGO_RECHAZADO` (los dos **[007b]**; sigue siendo la vigente del cliente) y responde 409
     `SOLICITUD_NO_EDITABLE` con `CONFIRMADA` (el alumno ya no está en `CLIENTE`; la foto de un alumno es de la 008).
@@ -570,7 +581,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
 - **Cobro a las 23:59:59.999 del último día con la caja de ese día:** se acepta; a las 00:00 del día siguiente responde
   `CAJA_DE_OTRO_DIA` (criterio 14).
 - **Cobro de una solicitud cuya reserva vence mientras se cobra:** se decide con el instante leído después de bloquear
-  las clases (criterio 18 b).
+  las clases; si ya venció, 409 `SOLICITUD_NO_COBRABLE` (estado `VENCIDA`) (criterio 18 b).
 - **Doble clic en «Cobrar»:** un solo pago, un movimiento y una cuenta (criterio 17).
 - **El administrador ajusta el monto mientras la secretaria tiene el diálogo abierto:** 409 `MONTO_CAMBIO`; la web
   refresca el total (criterios 12 y 16).
@@ -655,7 +666,11 @@ es binario), y el orden de 002 en las rutas del panel (sesión → academia acti
 **Orden de los errores del cobro en efectivo** (después del 400 del esquema): 401 (actor) → 404 → la clave
 (`CLAVE_YA_USADA`, o 200 si es el mismo cobro) → `SOLICITUD_YA_PAGADA` → `PAGO_EN_VERIFICACION` → `SOLICITUD_NO_COBRABLE`
 → `MONTO_CAMBIO` → `SIN_CUPO` (con las clases bloqueadas) → `DNI_DEL_PERSONAL` → `SIN_CAJA_ABIERTA` o `CAJA_DE_OTRO_DIA`
-(la caja, al final).
+(la caja, al final). Todas las decisiones de la transacción usan el instante leído después de
+`bloquearClasesParaCupo` (DT-10). Por eso, una solicitud `PENDIENTE_PAGO` cuya reserva vence mientras el cobro espera
+las clases responde `SOLICITUD_NO_COBRABLE` (estado `VENCIDA`), no `SIN_CUPO` (criterio 18 b). Una `PENDIENTE_PAGO`
+con la reserva vigente no cuenta el cupo (criterio 18 a). `SIN_CUPO` en el cobro solo sale de una `PAGO_RECHAZADO`
+**[007b]** (criterio 18 c).
 
 **Orden de los errores de la aprobación:** 401 → 404 → 200 si ya está `CONFIRMADO` → `PAGO_YA_RECHAZADO` →
 `DNI_DEL_PERSONAL` → `SIN_CAJA_ABIERTA` o `CAJA_DE_OTRO_DIA`.
@@ -990,7 +1005,10 @@ decidido es la propuesta, y la alternativa queda descartada.
   `bloquearClasesParaCupo`** (criterio 18 b). Con el instante del inicio de la petición, un envío que ya contó la reserva
   como vencida y el cobro que la cuenta como vigente dejarían la clase con uno de más. **Decidido (la propuesta).**
   Alternativa descartada: exigir siempre cupo libre sin contarse (rechazaría cobros válidos cuando el aforo se bajó con
-  confirmación, DR-5 de 004). _(007a; criterio 18 b.)_
+  confirmación, DR-5 de 004). Precisión del 24/11/2026, al escribir las pruebas protegidas: como el estado visible
+  también usa ese instante, el cobro que pierde la carrera responde `SOLICITUD_NO_COBRABLE` (estado `VENCIDA`), que en
+  el orden de errores va antes que `SIN_CUPO`. La prueba protegida acepta los dos 409, porque lo esencial es el 409 y
+  que el aforo no se supere. _(007a; criterio 18 b.)_
 - **DT-11 (pregunta T11). Recepción en las rutas públicas:** el middleware de `/api/a` verifica la cookie `aq_sesion`
   (con `SesionAcademiaService`, sin escribir) solo si viene y antes de contar; si es de `ADMIN` o `SECRETARIA` de la
   academia del nombre corto, no cuenta. El envío pasa la sesión al servicio. **Decidido (la propuesta).** Alternativa
@@ -1099,6 +1117,13 @@ línea «Actualizada por la 007 (spec 007-pagos, …): …», como hizo la 006 c
     aceptan la misma clave, el mismo numero y el mismo pago_id que en A» quita la parte del `pago_id`; en
     `ingreso-interfaz.test.ts`, la prueba del criterio 24 b «un pagoId de otra academia no cuenta» espera que el ingreso
     en A con el `pagoId` de un pago de B falle al confirmar con 23503 y no deje nada en A.
+
+**Pruebas anteriores que fallan sin haber sido editadas.** Como las utilidades de la 006 (`backend/test/utilidades/caja.ts`
+y `sembradores.ts`) ahora crean el pago `CONFIRMADO` de cada ingreso, estas pruebas de `backend/test/integracion/caja/`
+fallan hasta que exista la tabla `pagos` (T12), sin que se haya tocado su archivo: `historial-alcance`,
+`aislamiento-api`, `privilegios`, `pdf-descarga`, `head`, `cierre`, `pdf-generacion`, `detalle`, `historial-lista`,
+`pdf-concurrencia`, `egresos`, `pdf-texto`, `trigger-caja-cerrada`, `apertura-carreras`, `caja-actual` y `reapertura`
+(todas `.test.ts`). Es el rojo esperado de la 007a: vuelven a verde con la migración, sin editarlas.
 
 Si al confirmar el rojo aparece otra prueba protegida anterior que falla por el contrato de la 007a y no está en esta
 lista, el test-writer no la toca: la informa al orquestador, y el especificador la suma aquí antes del commit.
