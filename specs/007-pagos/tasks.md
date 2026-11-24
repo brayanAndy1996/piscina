@@ -5,8 +5,12 @@ el segundo PR, con la 007a ya unida a `main`.
 
 ## 0. Aprobación
 
-- [ ] T0.1 · orquestador · Mostrar a Bryan P1 a P14 con sus propuestas y decidir T1 a T16; el especificador pasa las
-  respuestas a «Decisiones» y ajusta los criterios marcados «provisional» (todos)
+- [x] T0.1 · orquestador · Mostrar a Bryan P1 a P14 con sus propuestas y decidir T1 a T16; el especificador pasa las
+  respuestas a «Decisiones» y ajusta los criterios marcados «provisional» (todos). Hecho el 24/11/2026: DR-1 a DR-14
+  (todas con la propuesta) y DT-1 a DT-16 (aceptadas por el orquestador)
+- [x] T0.2 · orquestador · Decidir T17 a T19 de la spec (pruebas protegidas anteriores que no se pueden ajustar solo
+  sumando) antes del commit de pruebas protegidas de la 007a; el especificador las pasa a DT-17 a DT-19. Hecho el
+  24/11/2026: DT-17 a DT-19, con la propuesta
 
 ## 007a · Cobro en recepción y cuenta del alumno
 
@@ -14,9 +18,11 @@ el segundo PR, con la 007a ya unida a `main`.
 
 - [ ] T1 · test-writer · Catálogo, privilegios, RLS, llaves (también la diferida), `CHECK`, índices y triggers de `pagos`;
   `CONFIRMADA` y `registrada_por` (criterios 1 a 7)
-- [ ] T2 · test-writer · Ajustar las pruebas protegidas de 001 (listas exactas), 002 (matriz de 26 filas), 005b (claves
-  del elemento del panel) y 006 (crear el pago del `pagoId` antes del movimiento), solo para sumar, con la aprobación del
-  orquestador (Impacto)
+- [ ] T2 · test-writer · Ampliar las pruebas protegidas anteriores de la lista «Pruebas protegidas anteriores que amplía
+  la 007a» (spec, «Decisiones»): 001 (listas exactas), 002 (matriz de 26 filas, DT-12), 005 (tablas, privilegios y
+  claves del elemento del panel) y 006 (llave de `pago_id` y pago `CONFIRMADO` en la misma transacción que su ingreso,
+  dentro de las utilidades), solo sumando y con la línea «Actualizada por la 007» en el encabezado; y los tres
+  cambios aprobados por el orquestador que no son solo una suma (DT-17 a DT-19). Lo revisa el orquestador con `git diff` antes del commit (Impacto)
 - [ ] T3 · test-writer · Permisos y aislamiento de las rutas de la 007a; actor vigente (criterios 8 y 9)
 - [ ] T4 · test-writer · Total a cobrar, ajuste y ajuste frente a cobro (criterios 10 a 12)
 - [ ] T5 · test-writer · Cobro en efectivo: correcto, caja, estados, monto, idempotencia, cupo con la reserva que vence,
@@ -29,7 +35,9 @@ el segundo PR, con la 007a ya unida a `main`.
 - [ ] T9 · test-writer · Recepción sin los límites por conexión: middleware, envío con actor, `registrada_por`, foto
   (criterios 33 a 35)
 - [ ] T10 · test-writer · Correo `PAGO_CONFIRMADO` después de confirmar, destinatarios y fallos (criterio 51 a)
-- [ ] T11 · tester · Confirmar que T1 a T10 fallan por la razón esperada; commit «Pruebas protegidas (007a): … (en rojo)»
+- [ ] T11 · tester · Confirmar que T1 y T3 a T10 fallan por la razón esperada (y que las ampliadas en T2 fallan solo por
+  lo que suma la 007a); commit «Pruebas protegidas (007): 007a, … (en rojo)» (tres dígitos y sin letra en el paréntesis;
+  la entrega va después)
 
 ### Implementación
 
@@ -71,7 +79,7 @@ el segundo PR, con la 007a ya unida a `main`.
 - [ ] T31 · test-writer · Bandeja, comprobante con `HEAD`, aprobar, aprobar dos veces, aprobar y rechazar a la vez,
   rechazar, cupo liberado, mes terminado (criterios 45 a 50 y 52)
 - [ ] T32 · test-writer · Partes [007b] de los criterios 15, 18 c, 21, 28 a 32; correo `PAGO_RECHAZADO` (criterio 51 b)
-- [ ] T33 · tester · Confirmar en rojo; commit «Pruebas protegidas (007b): … (en rojo)»
+- [ ] T33 · tester · Confirmar en rojo; commit «Pruebas protegidas (007): 007b, … (en rojo)»
 
 ### Implementación
 

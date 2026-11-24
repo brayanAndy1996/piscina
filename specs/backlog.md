@@ -19,7 +19,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 005b | Foto de la inscripción y panel de solicitudes | Sí | ✅ |
 | 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | ✅ |
 | 006b | Historial y PDF del cierre de caja | Sí | ✅ |
-| 007 | Pagos, verificación y paso de cliente a alumno | Sí | 🟨 |
+| 007a | Cobro en recepción y cuenta del alumno | Sí | 🟨 |
+| 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ⬜ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
 | 010 | Mensualidades y renovación | En parte | ⬜ |
@@ -163,9 +164,27 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de
   operación sin duplicados, caja al verificar (D-04), paso de cliente a alumno con usuario (HU-04, HU-07 a HU-09,
   RN-01, RN-04, RN-28), ticket interno (D-09).
+  - Estado: spec aprobada por Bryan el 24/11/2026 (DR-1 a DR-14 de 007, todas con la propuesta; DT-1 a DT-16 de 007,
+    aceptadas por el orquestador), en [`specs/007-pagos/`](007-pagos/spec.md). Por DR-14 se entrega en dos PR desde esa
+    misma carpeta, los dos de ruta crítica:
+    - **007a · cobro en recepción y cuenta del alumno** (en curso): criterios 1 a 35 y 54 a 57 sin las partes [007b]
+      (tabla `pagos` completa con sus invariantes, cobro en efectivo con la caja de hoy, ajuste del monto por el
+      administrador, paso de cliente a alumno con su cuenta, ticket imprimible, estado `CONFIRMADA`, recepción sin los
+      límites por conexión, correo de pago confirmado).
+    - **007b · Yape y transferencia** (siguiente PR, con la 007a unida): criterios 36 a 53, más las partes [007b]
+      (subida del comprobante desde el enlace, número de operación sin duplicados, bandeja, aprobación y rechazo, datos
+      de pago en la configuración, correo de pago rechazado). Sin migración.
+  - Lo decidido: el personal y los alumnos no comparten DNI (DR-1); un comprobante en revisión al terminar el mes se
+    puede aprobar (DR-2); el DNI físico se revisa en la primera visita, riesgo aceptado (DR-3); el ticket es una página
+    imprimible, sin DNI, con la frase de que no es un comprobante SUNAT (DR-4); el rechazo libera el cupo y se puede
+    reintentar, mostrando el motivo (DR-5); monto exacto, sin pagos parciales (DR-6); en recepción solo efectivo (DR-7);
+    correos de pago confirmado y rechazado (DR-8); número de operación único dentro del mismo método (DR-9); con la
+    reserva vencida, se vuelve a inscribir (DR-10); ajuste solo del administrador, en soles enteros desde S/ 1 y con
+    motivo (DR-11); para cancelar, primero se rechaza el comprobante (DR-12); datos de pago en la configuración (DR-13).
   - Desde 002: la cuenta del alumno se crea con `UsuariosService.crearEnTransaccion`, y cada escritura a pedido de un
     usuario de la academia llama antes a `bloquearActorVigente` (regla DT-5, en `docs/arquitectura.md`).
-  - Preguntas abiertas que llegan de la 005 (para el especificador de la 007, a consultar con el responsable):
+  - Preguntas abiertas que llegan de la 005 (para el especificador de la 007, a consultar con el responsable; resueltas
+    el 24/11/2026 con DR-1, DR-2 y DR-3 de 007):
     - **DNI del personal igual al de un cliente (DR-16 de 005, antes R5).** La 005 rechaza la inscripción con el DNI de
       alguien del personal (criterio 21 a de 005). ¿Una persona del personal (por ejemplo, un entrenador) puede
       inscribirse como alumna en su academia? Y al revés: si el administrador crea un usuario del personal con el DNI

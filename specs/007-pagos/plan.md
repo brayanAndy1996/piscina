@@ -25,7 +25,7 @@ historias. Lo marcado **[007b]** va en el segundo PR.
 - `backend/src/modulos/autenticacion/sesion-academia.service.ts`: una lectura de la sesión que no lanza (para el
   middleware de `/api/a`).
 - `backend/src/modulos/usuarios/usuarios.service.ts`: `crearPersonal` con el consultivo del DNI y la comprobación de
-  `alumnos` (P1). `crearEnTransaccion` no cambia.
+  `alumnos` (DR-1). `crearEnTransaccion` no cambia.
 - `backend/src/modulos/caja/head-sin-ruta.ts` **[007b]**: también `/api/pagos`.
 - `backend/src/infraestructura/correo/enviador-correo.ts`: plantillas `PAGO_CONFIRMADO` y **[007b]** `PAGO_RECHAZADO`.
 - `backend/src/infraestructura/registro/opciones-registro.ts` **[007b]**: `x-pago-datos` en `RUTAS_REDACTADAS`.
@@ -63,7 +63,7 @@ historias. Lo marcado **[007b]** va en el segundo PR.
 
 `totalACobrar(matricula)` = `calcularTotal({ base: baseProporcional(precioPlan, clasesPorMesPlan, clasesTotales),
 montoAjustado })`. Se usa en el cobro, la subida del comprobante, la lista del panel (en SQL se lee lo necesario y el
-total se calcula en TypeScript), la vista de seguimiento y el ticket. Con `monto_ajustado` en soles enteros (P11), el
+total se calcula en TypeScript), la vista de seguimiento y el ticket. Con `monto_ajustado` en soles enteros (DR-11), el
 total es el ajuste.
 
 ### Cobro en efectivo (criterios 13 a 19)
@@ -76,7 +76,7 @@ total es el ajuste.
    2. `bloquearFilasDelCobro`: `pg_advisory_xact_lock(hashtextextended('inscripcion-dni:' || academia || ':' || dni, 0))`
       → `alumnos` `FOR UPDATE` (y se comprueba que su DNI sea el leído; si no, 404) → la solicitud `FOR UPDATE` → su
       matrícula `FOR UPDATE` → sus pagos `FOR UPDATE` → `bloquearClasesParaCupo(tx, claseIds)` en una llamada.
-   3. `const ahora = this.reloj.ahora()` **después** de bloquear las clases (T10). Toda decisión de la transacción usa
+   3. `const ahora = this.reloj.ahora()` **después** de bloquear las clases (DT-10). Toda decisión de la transacción usa
       este instante: estado visible, vigencia de la reserva, cupo, caja del día y `registrado_en`.
    4. Decisiones en el orden del contrato: clave de idempotencia (200 con lo registrado, o 409 `CLAVE_YA_USADA`), estado
       visible, `MONTO_CAMBIO` con `totalACobrar`, cupo (si la reserva ya no está vigente en `ahora`, se cuenta con
@@ -97,7 +97,7 @@ Recibe la `tx` con todo ya bloqueado hasta las clases. En orden:
 1. `registrarIngresoEnCaja(tx, { concepto, metodo, monto, alumnoId, pagoId, usuarioId: actor.id, ip }, ahora)`: bloquea
    la caja al final y lanza `SIN_CAJA_ABIERTA` o `CAJA_DE_OTRO_DIA`.
 2. `numero_ticket` = `coalesce(max(numero_ticket), 0) + 1` de la academia (seguro con la caja bloqueada: toda
-   confirmación pasa por ella; el índice único es el respaldo, T13).
+   confirmación pasa por ella; el índice único es el respaldo, DT-13).
 3. El pago queda `CONFIRMADO` y completo:
    - **efectivo:** `INSERT` del pago ya `CONFIRMADO`, con `verificado_por`, `verificado_en` y `numero_ticket`. Va después
      del movimiento porque el `CHECK` del criterio 4 exige el ticket en un `CONFIRMADO` y el efectivo no puede nacer
@@ -191,24 +191,26 @@ relectura con `FOR SHARE` y `esperaMaximaDeBloqueoMs` si la confirmación es inc
 
 ## Decisiones
 
+Aceptadas por el orquestador el 24/11/2026 (DT-1 a DT-16 de la spec), con la spec aprobada por Bryan (DR-1 a DR-14).
+
 | Decisión | Alternativa descartada | Motivo |
 | --- | --- | --- |
-| Tabla `pagos` completa en la 007a (T1) | Una migración por entrega | Las pruebas de catálogo y privilegios no cambian dos veces |
-| La caja del pago es la de su movimiento, con trigger diferido (T2) | `pagos.caja_id` | Una sola fuente; el invariante «confirmado ⇔ movimiento» lo cuida la base |
+| Tabla `pagos` completa en la 007a (DT-1) | Una migración por entrega | Las pruebas de catálogo y privilegios no cambian dos veces |
+| La caja del pago es la de su movimiento, con trigger diferido (DT-2) | `pagos.caja_id` | Una sola fuente; el invariante «confirmado ⇔ movimiento» lo cuida la base |
 | Llave `movimientos_caja.pago_id` diferida | Inmediata | El efectivo nace `CONFIRMADO` y completo después de registrar su movimiento |
-| Trigger de transiciones (T3) | Solo el servicio | Ataque «aprobar un rechazado» también por escrituras directas |
-| `CONFIRMADA` en la fila; `EN_VERIFICACION` y `PAGO_RECHAZADO` calculados (T4) | Tres estados en la fila | Un hecho, una fuente; el índice de la 005 sigue valiendo |
-| Rechazo: matrícula `CANCELADA`; reintento a `RESERVADA` (T5) | `RESERVADA` vencida | El `CHECK` del fin de mes de la 005 y el estado visible de 005b |
-| Comprobante en una petición binaria con `X-Pago-Datos` (T6) | Dos pasos, multipart o base64 | Atómica, reutiliza el lector y el orden de la foto |
-| Recodificar a 2000 px sin metadatos (T7, T8) | Original u 800 px | Privacidad (GPS) y legibilidad |
-| Escrito y normalizado del número (T9) | Solo normalizado | Evidencia de lo que escribió el cliente |
-| «Ahora» del cobro después de bloquear las clases (T10) | «Ahora» del inicio de la petición | Sin él, una reserva que vence durante el cobro deja la clase con uno de más |
-| Sesión de recepción verificada en el middleware (T11) | Rutas del panel aparte | Un solo formulario y un solo servicio; el anónimo no cambia |
-| `AJUSTAR_MONTO_COBRO` (T12) | Reusar un permiso de configuración | La matriz dice qué hace cada permiso |
-| Ticket numerado con la caja bloqueada (T13) | Secuencia de PostgreSQL | La numeración es por academia |
-| Ticket como página imprimible (T14) | PDF con `pdfkit` | Sin cola ni archivos; provisional P4 |
-| `HEAD` 404 en `/api/pagos` (T15) | `HEAD` con el manejador del `GET` | No leer archivos para no enviarlos (DT-9 de 006) |
-| Consultivo del DNI en la confirmación y en la creación de personal (T16) | Solo el índice único | Ordena las dos sin esperar al final de una transacción larga |
+| Trigger de transiciones (DT-3) | Solo el servicio | Ataque «aprobar un rechazado» también por escrituras directas |
+| `CONFIRMADA` en la fila; `EN_VERIFICACION` y `PAGO_RECHAZADO` calculados (DT-4) | Tres estados en la fila | Un hecho, una fuente; el índice de la 005 sigue valiendo |
+| Rechazo: matrícula `CANCELADA`; reintento a `RESERVADA` (DT-5) | `RESERVADA` vencida | El `CHECK` del fin de mes de la 005 y el estado visible de 005b |
+| Comprobante en una petición binaria con `X-Pago-Datos` (DT-6) | Dos pasos, multipart o base64 | Atómica, reutiliza el lector y el orden de la foto |
+| Recodificar a 2000 px sin metadatos (DT-7, DT-8) | Original u 800 px | Privacidad (GPS) y legibilidad |
+| Escrito y normalizado del número (DT-9) | Solo normalizado | Evidencia de lo que escribió el cliente |
+| «Ahora» del cobro después de bloquear las clases (DT-10) | «Ahora» del inicio de la petición | Sin él, una reserva que vence durante el cobro deja la clase con uno de más |
+| Sesión de recepción verificada en el middleware (DT-11) | Rutas del panel aparte | Un solo formulario y un solo servicio; el anónimo no cambia |
+| `AJUSTAR_MONTO_COBRO` (DT-12) | Reusar un permiso de configuración | La matriz dice qué hace cada permiso |
+| Ticket numerado con la caja bloqueada (DT-13) | Secuencia de PostgreSQL | La numeración es por academia |
+| Ticket como página imprimible (DT-14) | PDF con `pdfkit` | Sin cola ni archivos (DR-4) |
+| `HEAD` 404 en `/api/pagos` (DT-15) | `HEAD` con el manejador del `GET` | No leer archivos para no enviarlos (DT-9 de 006) |
+| Consultivo del DNI en la confirmación y en la creación de personal (DT-16) | Solo el índice único | Ordena las dos sin esperar al final de una transacción larga |
 
 ## Migraciones
 
@@ -224,8 +226,10 @@ relectura con `FOR SHARE` y `esperaMaximaDeBloqueoMs` si la confirmación es inc
 
 - **Trigger diferido y RLS:** el trigger corre al `COMMIT` con el contexto de la transacción (`set_config(…, true)` sigue
   vigente hasta el final). Se prueba como app y como dueño (criterio 5).
-- **Pruebas de la 006 con `pagoId` inventados:** la llave nueva las rompe; se ajustan en el commit de pruebas protegidas
-  (ver «Impacto» de la spec) con la aprobación del orquestador.
+- **Pruebas protegidas anteriores:** la tabla nueva, los privilegios, la llave y el trigger de `pago_id` y las claves
+  nuevas del panel rompen pruebas de 001, 002, 005 y 006. Se amplían solo sumando en el commit de pruebas protegidas de
+  la 007a, según la lista de la spec («Decisiones», «Pruebas protegidas anteriores que amplía la 007a»), con la
+  aprobación del orquestador. Tres casos no son solo una suma; el orquestador los aprobó como DT-17 a DT-19 de la spec.
 - **Hash antes de saber si hace falta:** la aprobación de un pago ya confirmado calcula un argon2 de más; no cambia el
   resultado.
 - **Duración de la transacción del cobro:** toma el consultivo, cinco tablas, las clases y la caja; la caja serializa los

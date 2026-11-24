@@ -27,10 +27,12 @@
 - **Ruta crítica:** sí. Toca siete puntos de la lista de `CLAUDE.md`: pagos y verificación, caja, aforo y reservas,
   permisos y datos sensibles, autenticación (la contraseña inicial igual al DNI), entradas públicas (subida del
   comprobante) y aislamiento entre academias. La web, el ticket impreso, la semilla y la documentación no son críticos.
-- **Estado:** borrador (24/11/2026), pendiente de la aprobación del responsable. Las preguntas de negocio (P1 a P14) y
-  las propuestas técnicas para el orquestador (T1 a T16) están en «Preguntas abiertas». Donde un criterio depende de
-  una pregunta, lleva el valor provisional de la propuesta, marcado «(provisional, Pn)».
-- **División propuesta (P14):** dos entregas desde esta carpeta, las dos de ruta crítica, cada una con sus pruebas
+- **Estado:** aprobada por Bryan el 24/11/2026, con la propuesta de cada pregunta de negocio (P1 a P14, que son DR-1 a
+  DR-14 de esta spec) y con las técnicas aceptadas por el orquestador tal como se propusieron (T1 a T16, que son DT-1 a
+  DT-16), en «Decisiones». Los valores que el borrador llamaba «provisionales» quedan como definitivos; ningún criterio
+  cambió de intención. En curso: la 007a (pruebas protegidas). El orquestador decidió además T17 a T19 (DT-17 a DT-19,
+  24/11/2026): tres pruebas protegidas anteriores (de 005 y 006) que cambian sin ser solo una suma.
+- **División (DR-14):** dos entregas desde esta carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR (ver «División en 007a y 007b»):
   - **007a · Cobro en recepción y cuenta del alumno** (primero): criterios 1 a 35 y 54 a 57, salvo las partes marcadas
     **[007b]**.
@@ -80,9 +82,12 @@ de la semilla.
 
 ## División en 007a y 007b
 
-Propuesta (P14). Las dos entregas comparten esta spec, `plan.md` y `tasks.md`; los criterios y las tareas de la 007b
-llevan la marca **[007b]**. El test-writer de la 007a escribe solo las pruebas protegidas de los criterios críticos de la
-007a; las de la 007b se escriben, se confirman en rojo y se atacan en su PR, en archivos nuevos.
+Decidida por Bryan el 24/11/2026 (DR-14). Las dos entregas comparten esta spec, `plan.md` y `tasks.md`; los criterios y
+las tareas de la 007b llevan la marca **[007b]**. El test-writer de la 007a escribe solo las pruebas protegidas de los
+criterios críticos de la 007a (más los ajustes de las pruebas protegidas anteriores de «Pruebas protegidas anteriores
+que amplía la 007a», en «Decisiones»); las de la 007b se escriben, se confirman en rojo y se atacan en su PR, en
+archivos nuevos. Los commits de pruebas protegidas llevan la historia sin letra en el paréntesis y la entrega después:
+«Pruebas protegidas (007): 007a, … (en rojo)» y «Pruebas protegidas (007): 007b, … (en rojo)».
 
 | Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- |
@@ -166,7 +171,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
      `registrado_en`;
    - f) dos pagos abiertos de la misma matrícula (`23505`, índice parcial `pagos_un_abierto_por_matricula`);
    - g) dos pagos abiertos de la misma academia y el mismo método con el mismo número normalizado (`23505`, índice
-     parcial `pagos_numero_operacion_abierto_key`; provisional P9); un pago `RECHAZADO` no cuenta, y otra academia
+     parcial `pagos_numero_operacion_abierto_key`; DR-9); un pago `RECHAZADO` no cuenta, y otra academia
      tampoco;
    - h) dos pagos de la academia con la misma `clave_idempotencia` o el mismo `numero_ticket` (`23505`).
 
@@ -215,7 +220,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     monto del pago, el del movimiento de caja, el de la vista de seguimiento, el del panel y el del ticket son ese total.
     Ningún paso usa `number`. _(crítico)_ (D-03, RN-25, HU-34, HU-19)
 11. **Ajuste del monto.** `POST /api/solicitudes/{id}/ajuste-monto` con `{ montoAjustado, motivo }`
-    (`ajustarMontoSchema`: un monto en soles enteros de `"1"` a `"99999"`, provisional P11; `motivo` con
+    (`ajustarMontoSchema`: un monto en soles enteros de `"1"` a `"99999"`, DR-11; `motivo` con
     `textoVisibleSchema` de 3 a 200 caracteres) responde 200 con `{ solicitud }` (el elemento del panel, criterio 29).
     Guarda `monto_ajustado` y `motivo_ajuste` en la matrícula y registra `MATRICULA_MONTO_AJUSTADO` (entidad
     `matricula`, `entidadId` la matrícula, actor el administrador, `motivo`, `datosAntes: { montoAjustado, total }` y
@@ -223,7 +228,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     estado visible `PENDIENTE_PAGO` o `PAGO_RECHAZADO`; en `EN_VERIFICACION`, `CONFIRMADA`, `VENCIDA` o `CANCELADA`
     responde 409 `SOLICITUD_NO_AJUSTABLE` con `detalles: { estado }`, sin escribir. Un nuevo ajuste reemplaza al anterior;
     el mismo monto y el mismo motivo que ya tiene responden 200 sin escribir ni auditar. El ajuste no toca el cupo, la
-    reserva ni las clases totales (provisional P11). _(crítico)_ (RN-25, HU-34, RN-22, D-03)
+    reserva ni las clases totales (DR-11). _(crítico)_ (RN-25, HU-34, RN-22, D-03)
 12. **Ajuste y cobro a la vez.** El cobro en efectivo compara el total que vio quien cobra (`montoMostrado`) con el total
     al momento de cobrar (criterio 16). Con un ajuste y un cobro simultáneos sobre la misma solicitud, termina uno de dos
     modos: el cobro primero (201 con el total de antes) y el ajuste responde 409 `SOLICITUD_NO_AJUSTABLE`; o el ajuste
@@ -256,7 +261,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     `PAGO_RECHAZADO` **[007b]** (dentro del mes de su matrícula y con cupo, criterio 18). Las demás responden 409, sin
     escribir: `SOLICITUD_YA_PAGADA` (`CONFIRMADA`), `PAGO_EN_VERIFICACION` (`EN_VERIFICACION`, hay un comprobante en
     revisión: se aprueba o se rechaza primero) y `SOLICITUD_NO_COBRABLE` con `detalles: { estado }` (`VENCIDA` o
-    `CANCELADA`; la persona se vuelve a inscribir, provisional P10). _(crítico)_ (RN-28, D-05, DR-1 y DR-12 de 005)
+    `CANCELADA`; la persona se vuelve a inscribir, DR-10). _(crítico)_ (RN-28, D-05, DR-1 y DR-12 de 005)
 16. **El monto que se ve es el que se cobra.** `montoMostrado` (`montoSchema`) es el total que la web mostró a quien
     cobra. Si no es igual al total a cobrar al momento de cobrar (`"42"` y `"42.00"` son iguales), responde 409
     `MONTO_CAMBIO` con `detalles: { total }`, sin escribir. _(crítico)_ (D-03, HU-34)
@@ -306,7 +311,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     existe) y sin cambios en su matrícula salvo la reserva. Si la confirmación falla por cualquier motivo (sin caja,
     caja de otro día, DNI del personal, cupo, actor no vigente), no queda nada de ella: ni pago confirmado, ni cuenta, ni
     alumno activo, ni matrícula vigente, ni movimiento, ni auditoría. _(crítico)_ (RN-01, RN-05; D-04)
-22. **El DNI del personal (provisional P1).** El personal y los alumnos de una academia no comparten DNI:
+22. **El DNI del personal (DR-1).** El personal y los alumnos de una academia no comparten DNI:
     - a) si al confirmar ya hay un usuario de la academia con el DNI del cliente (datos anteriores a esta historia o
       escritos por otra vía), responde 409 `DNI_DEL_PERSONAL` sin escribir nada (criterio 21), y el administrador decide
       con el cliente;
@@ -331,17 +336,17 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
 25. **Número del ticket.** Cada pago `CONFIRMADO` recibe al confirmarse el siguiente `numero_ticket` de su academia (1,
     2, 3…), sin saltos ni repetidos aunque se confirmen pagos a la vez (la caja abierta, bloqueada al final, ordena las
     confirmaciones de una academia). Cada academia tiene su propia numeración. Un pago pendiente o rechazado no tiene
-    número. _(prueba obligatoria)_ (HU-07, D-09; provisional P4)
+    número. _(prueba obligatoria)_ (HU-07, D-09; DR-4)
 26. **Datos del ticket.** `GET /api/pagos/{id}/ticket` (`REGISTRAR_INSCRIPCION_Y_COBRO`) responde 200 con
     `{ ticket }` (`ticketSchema`, estricto): academia (`nombre`, `telefono`), `numero`, `fechaHora` (de la confirmación, en
-    ISO), alumno (`nombres` y `apellidos`, sin DNI; provisional P4), concepto (`INSCRIPCION`), plan, mes, método, número de
+    ISO), alumno (`nombres` y `apellidos`, sin DNI; DR-4), concepto (`INSCRIPCION`), plan, mes, método, número de
     operación (solo Yape o transferencia), `monto` (el total, texto con dos decimales), quién cobró o verificó (nombres y
-    apellidos) y la `leyenda` fija «Comprobante interno de pago. No es un comprobante electrónico SUNAT» (provisional
-    P4). Un pago pendiente o rechazado, de otra academia o inexistente responde 404 `NO_ENCONTRADO`. No escribe ni audita.
+    apellidos) y la `leyenda` fija «Comprobante interno de pago. No es un comprobante electrónico SUNAT» (DR-4).
+    Un pago pendiente o rechazado, de otra academia o inexistente responde 404 `NO_ENCONTRADO`. No escribe ni audita.
     _(crítico en el aislamiento y el permiso; prueba obligatoria en el contenido)_ (HU-07, D-09, D-23)
 27. **Ticket imprimible.** Después de un cobro (y desde el panel de solicitudes, para una solicitud `CONFIRMADA`), la
     web abre `/panel/pagos/{id}/ticket`, una página con los datos del criterio 26 y estilos de impresión para papel de
-    80 mm y A4 (provisional P4), con el botón «Imprimir». No genera archivos. _(prueba obligatoria)_ (HU-07)
+    80 mm y A4 (DR-4 y DT-14), con el botón «Imprimir». No genera archivos. _(prueba obligatoria)_ (HU-07)
 
 ### G. Estados nuevos en el seguimiento, el panel y la 005
 
@@ -350,7 +355,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     005 salvo `reservaVenceEn`:
     - `CONFIRMADA` (007a): sin `fotoCargada`, con `pago: { metodo, monto, confirmadoEn, numeroTicket }`;
     - **[007b]** `EN_VERIFICACION`: con `fotoCargada` y `pago: { metodo, monto, fechaOperacion, enviadoEn }`;
-    - **[007b]** `PAGO_RECHAZADO`: con `fotoCargada`, `rechazo: { motivo, rechazadoEn }` (provisional P5) y
+    - **[007b]** `PAGO_RECHAZADO`: con `fotoCargada`, `rechazo: { motivo, rechazadoEn }` (DR-5) y
       `pagableHasta` (el fin del mes de la matrícula en Lima, ISO).
 
     Ninguna lleva DNI, apellidos, número de operación, comprobante, quién verificó, ids internos ni el hash del token. La
@@ -364,7 +369,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     `ACTIVAS` muestra `PENDIENTE_PAGO`, `EN_VERIFICACION` y `PAGO_RECHAZADO`, y suma el filtro `CONFIRMADAS`.
     _(crítico)_ (HU-09, RN-21: sin datos médicos; criterio 38 de 005)
 30. **Cancelar con pagos.** `POST /api/solicitudes/{id}/cancelar` (005b): con estado visible `EN_VERIFICACION`
-    **[007b]** responde 409 `SOLICITUD_CON_PAGO_PENDIENTE` sin escribir (primero se aprueba o se rechaza el comprobante, provisional P12); con
+    **[007b]** responde 409 `SOLICITUD_CON_PAGO_PENDIENTE` sin escribir (primero se aprueba o se rechaza el comprobante, DR-12); con
     `PAGO_RECHAZADO` **[007b]** cancela como una `PENDIENTE_PAGO` (la matrícula ya está `CANCELADA`); con `CONFIRMADA`, 409
     `SOLICITUD_NO_CANCELABLE`. Bloquea además los pagos de la matrícula, después de la matrícula y antes de las clases.
     _(crítico)_ (RN-28; criterio 39 de 005)
@@ -415,7 +420,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     numeroOperacionNormalizado, fechaOperacion }`, sin DNI ni token). La persona sigue en `CLIENTE` (criterio 21).
     _(crítico)_ (HU-08, RN-04, RN-28, D-04, D-07)
 37. **Orden de las comprobaciones.** Como la foto (criterio 34 de 005), la primera que falla decide:
-    1. límite por conexión: regla `comprobante`, 10 por hora (provisional, como la foto), con su propio contador y la
+    1. límite por conexión: regla `comprobante`, 10 por hora (como la foto, criterio 33 de 005), con su propio contador y la
        clave de conexión; 429 `DEMASIADAS_SOLICITUDES` sin leer el cuerpo;
     2. tipo y codificación (400 `IMAGEN_NO_VALIDA`), antes de leer el cuerpo;
     3. tamaño: más de 5 242 880 bytes, 413 `CARGA_EXCESIVA`;
@@ -430,13 +435,13 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
         `NUMERO_OPERACION_YA_USADO` y 409 `SIN_CUPO` (reintento).
 
     Ningún rechazo deja un pago, un archivo ni una auditoría. _(crítico)_ (HU-08, RNF-09; criterio 34 de 005)
-38. **Datos del comprobante (provisional P6).** `numeroOperacion`: texto de 1 a 40 caracteres que, normalizado, cumple
+38. **Datos del comprobante (DR-6).** `numeroOperacion`: texto de 1 a 40 caracteres que, normalizado, cumple
     `^[0-9A-Z]{1,30}$` (otros caracteres, como letras con tilde, controles o caracteres de dirección, responden 400).
     `monto`: `montoSchema`; si no es igual al total a cobrar, 409 `MONTO_DISTINTO` con `detalles: { total }` (no hay pagos
     parciales ni de más). `fechaOperacion`: una fecha real `AAAA-MM-DD`, no posterior a hoy en Lima ni anterior al día en
     Lima en que se creó la solicitud; si no, 400 en ese campo. _(crítico)_ (HU-08, D-07, RNF-12)
 39. **Número de operación sin duplicados.** Con un pago abierto de la academia con el número normalizado N y el mismo
-    método (provisional P9), una subida con un número que se normaliza a N responde 409 `NUMERO_OPERACION_YA_USADO` sin
+    método (DR-9), una subida con un número que se normaliza a N responde 409 `NUMERO_OPERACION_YA_USADO` sin
     escribir. Pruebas con `12345`, ` 12 345 `, `00012345`, `0001-2345`, `1.2345`, `１２３４５` y, para letras, `ab12` frente
     a `AB12`. Un número de un pago `RECHAZADO` se puede volver a usar (D-07); el de otra academia no cuenta. Dos subidas
     simultáneas con el mismo número para solicitudes distintas: exactamente una responde 201 y la otra 409
@@ -444,7 +449,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     8.4; «el mismo número de operación con espacios, ceros o mayúsculas distintas» de `CLAUDE.md`)
 40. **Imagen del comprobante.** Las mismas comprobaciones de la foto (criterio 34 g de 005 y `fotos.ts`: firma del tipo
     declarado, decodificable con `sharp`, lados de 100 a 8000 píxeles y hasta 40 megapíxeles). La imagen aceptada se
-    vuelve a codificar como JPEG de como mucho 2000 píxeles en su lado mayor (provisional T8), con la orientación aplicada
+    vuelve a codificar como JPEG de como mucho 2000 píxeles en su lado mayor (DT-8), con la orientación aplicada
     y sin metadatos (EXIF, GPS, XMP, ICC, comentarios), y se guarda en `AlmacenArchivos` con una clave del servidor
     (`academias/{academiaId}/pagos/{pagoId}/comprobante-{uuid}.jpg`) antes de la transacción. Si la transacción rechaza la
     subida, el archivo nuevo se borra; si la confirmación es incierta, se aplica el proceso de los criterios 61 y 64 de
@@ -510,7 +515,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     _(crítico)_ (RN-28, RN-11)
 51. **Correos después de confirmar.** Con `EnviadorCorreo` y `enviarSinEsperar`, después de confirmar la transacción,
     una vez por cada destinatario distinto entre el correo del alumno y, si es menor, el de su apoderado (DR-13 de 005),
-    con los datos actuales del alumno (provisional P8):
+    con los datos actuales del alumno (DR-8):
     - a) al confirmar un pago (efectivo o aprobación): plantilla `PAGO_CONFIRMADO`, con el nombre de la academia, el
       código, la dirección de ingreso (`/a/{nombreCorto}/ingresar`) y el aviso de que el usuario y la contraseña inicial
       son su DNI y que debe cambiarla al entrar;
@@ -520,13 +525,13 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     Ningún correo lleva el DNI ni el token. Si la transacción falla o es un reintento (200), no se envía nada. La
     respuesta no espera al correo, y un fallo se registra solo con el tipo del error (criterios 51 y 52 de 005).
     _(crítico)_ (HU-09, D-08, D-19, DR-13 de 005)
-52. **Comprobante en revisión cuando termina el mes (provisional P2).** Un pago cuya matrícula es de un mes que ya
+52. **Comprobante en revisión cuando termina el mes (DR-2).** Un pago cuya matrícula es de un mes que ya
     terminó en Lima se puede aprobar: entra a la caja abierta de hoy, la matrícula pasa a `VIGENTE` en su mes y la persona
     a `ALUMNO_ACTIVO` (las clases no usadas se tratan con RN-23 y la 018; el mes siguiente se paga con la renovación de la
     010). La bandeja lo marca con `mesTerminado: true` y la web lo destaca. También se puede rechazar; en ese caso la
     solicitud se ve `VENCIDA` (no se puede reintentar en un mes cerrado). Pruebas con `RELOJ` el 1 de diciembre a las 00:00
     de Lima con un pago de noviembre. _(crítico)_ (DR-12 de 005, D-04)
-53. **Datos de pago de la academia (provisional P13).** La configuración (003) suma `yapeNumero` (celular de 9 dígitos),
+53. **Datos de pago de la academia (DR-13).** La configuración (003) suma `yapeNumero` (celular de 9 dígitos),
     `yapeTitular`, `transferenciaBanco`, `transferenciaCuenta`, `transferenciaCci` y `transferenciaTitular`, todos
     opcionales, con `CONFIGURAR_ACADEMIA`. La consulta del seguimiento los devuelve en `academia.datosDePago` (solo los
     que tienen valor) cuando la solicitud está `PENDIENTE_PAGO` o `PAGO_RECHAZADO`, y la página los muestra junto al
@@ -575,7 +580,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
   21).
 - **[007b] Yape con el número escrito con espacios o con ceros adelante:** se normaliza y choca con el ya registrado
   (criterio 39).
-- **[007b] El mismo número en un Yape y en una transferencia:** con la propuesta P9 no choca (el método es parte del
+- **[007b] El mismo número en un Yape y en una transferencia:** con DR-9 no choca (el método es parte del
   índice).
 - **[007b] Comprobante con un monto distinto del total:** 409 `MONTO_DISTINTO` con el total (criterio 38).
 - **[007b] Comprobante rechazado por foto ilegible, con el mismo número de operación:** se acepta otra vez (el rechazado
@@ -602,7 +607,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
   contraseña iguales a su DNI.
 - **RN-02, HU-05, RNF-03 y RNF-04:** contraseña inicial igual al DNI, con argon2 y cambio obligatorio en el primer
   ingreso.
-- **RN-03 y D-28:** DNI único por academia, también entre el personal y los alumnos (P1).
+- **RN-03 y D-28:** DNI único por academia, también entre el personal y los alumnos (DR-1).
 - **RN-04, HU-07 a HU-09:** efectivo confirmado al instante; Yape y transferencia con foto, número de operación, monto y
   fecha, pendientes hasta que la secretaria los apruebe o los rechace con motivo; quién verificó y cuándo.
 - **RN-05:** el carnet solo con el pago confirmado (lo genera la 008).
@@ -639,7 +644,7 @@ es binario), y el orden de 002 en las rutas del panel (sesión → academia acti
 | `GET /api/pagos/{id}/ticket` | `REGISTRAR_INSCRIPCION_Y_COBRO` | — | 200 `{ ticket }` | 401, 403, 404 |
 | `GET /api/solicitudes?estado=` (de 005b) | `REGISTRAR_INSCRIPCION_Y_COBRO` | suma `CONFIRMADAS` | 200 (elementos con `ajuste` y `pago`) | los de 005b |
 | `POST /api/solicitudes/{id}/cancelar` (de 005b) | `REGISTRAR_INSCRIPCION_Y_COBRO` | — | los de 005b | suma 409 `SOLICITUD_CON_PAGO_PENDIENTE` |
-| `POST /api/usuarios` (de 002) | `GESTIONAR_USUARIOS` | — | los de 002 | 409 `DNI_EN_USO` también con el DNI de un alumno (P1) |
+| `POST /api/usuarios` (de 002) | `GESTIONAR_USUARIOS` | — | los de 002 | 409 `DNI_EN_USO` también con el DNI de un alumno (DR-1) |
 | Rutas públicas de 005 con límite | pública (sesión opcional de recepción) | — | las de 005 | las de 005 (criterios 33 a 35) |
 | **[007b]** `PUT /api/a/{nombreCorto}/solicitudes/comprobante` | pública, `X-Token-Solicitud` y `X-Pago-Datos` | JPEG o PNG hasta 5 242 880 bytes | 201 (200 si es un reintento) `{ solicitud }` | en el orden del criterio 37 |
 | **[007b]** `GET /api/pagos/pendientes` | `VERIFICAR_PAGOS` | — | 200 `{ pagos }` | 401, 403 |
@@ -742,7 +747,7 @@ de tocar el código).
     numero_ticket)`; `pagos_un_abierto_por_matricula` sobre `(academia_id, matricula_id) WHERE estado IN
     ('PENDIENTE_VERIFICACION', 'CONFIRMADO')`; `pagos_numero_operacion_abierto_key` sobre `(academia_id, metodo,
     numero_operacion_normalizado) WHERE estado IN ('PENDIENTE_VERIFICACION', 'CONFIRMADO') AND
-    numero_operacion_normalizado IS NOT NULL` (provisional P9); `(academia_id, estado, registrado_en)` para la bandeja.
+    numero_operacion_normalizado IS NOT NULL` (DR-9); `(academia_id, estado, registrado_en)` para la bandeja.
   - `CHECK` del criterio 4; trigger `pagos_transiciones` (criterio 6); trigger de restricción diferido
     `pagos_confirmado_con_movimiento` en `pagos` y en `movimientos_caja` (criterio 5). Las funciones son `SECURITY
     INVOKER`, con `search_path` fijo y `REVOKE ALL … FROM PUBLIC`.
@@ -762,10 +767,12 @@ de tocar el código).
 - **Renovaciones y mensualidades, y su cobro:** 010 (reutiliza `confirmarPagoEnTransaccion` con concepto `MENSUALIDAD`).
 - **Códigos de descuento:** 015 (el total ya admite el descuento, criterio 10 de 005).
 - **Cobro de clases particulares:** 016.
-- **Ajuste de las clases totales de la matrícula (HU-34, «o las clases»):** fuera, provisional P11.
+- **Ajuste de las clases totales de la matrícula (HU-34, «o las clases»):** fuera (DR-11); va con la asistencia o las mensualidades (009 o
+  010).
 - **Facturación SUNAT:** último módulo (D-09).
-- **Anular o devolver un pago confirmado, pagos parciales y pagos de más:** no (DR-5 de 006; P6).
-- **Yape o transferencia registrados por la secretaria en recepción:** según P7 (provisional: fuera).
+- **Anular o devolver un pago confirmado, pagos parciales y pagos de más:** no (DR-5 de 006; DR-6).
+- **Yape o transferencia registrados por la secretaria en recepción:** fuera (DR-7); quien paga con Yape lo hace desde
+  su enlace.
 - **Panel del alumno:** 011. Después de entrar y cambiar su contraseña, el alumno ve el inicio genérico de la 002.
 - **Reportes R1, R2 y R8:** Fase 3.
 - **Retención y borrado de los comprobantes y de los datos de solicitudes no pagadas (Ley 29733):** pendiente antes de
@@ -774,12 +781,15 @@ de tocar el código).
 
 ## Impacto en especificaciones anteriores
 
+La lista de las pruebas protegidas anteriores que se ajustan, archivo por archivo, y las que no se pueden ajustar solo
+sumando (DT-17 a DT-19), está en «Decisiones», «Pruebas protegidas anteriores que amplía la 007a».
+
 - **001, catálogo y privilegios:** `TABLAS_DESPUES_DE_MIGRAR`, `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs` suman `pagos`
   y las columnas nuevas de `UPDATE`; las funciones de los triggers son `SECURITY INVOKER` (sin excepción en
   `FUNCIONES_SECURITY_DEFINER_PERMITIDAS`). Las pruebas protegidas que comparan listas exactas las actualiza el
   test-writer, solo para sumar, en el commit de pruebas protegidas de la 007a.
 - **002, criterio 26 (matriz):** suma `AJUSTAR_MONTO_COBRO` (de 25 a 26 filas), solo para sumar la fila.
-- **002, `POST /api/usuarios`:** con P1, responde 409 `DNI_EN_USO` también con el DNI de un alumno o de un cliente con
+- **002, `POST /api/usuarios`:** con DR-1, responde 409 `DNI_EN_USO` también con el DNI de un alumno o de un cliente con
   solicitud activa, y toma el bloqueo consultivo del DNI después del actor. `crearEnTransaccion` no cambia.
 - **005, estado visible (PB2) y vistas:** `estadoVisible` y `estadoVisibleSql` suman las reglas de la definición, y
   `vistaSolicitudSchema`, `solicitudPanelSchema` y los filtros suman lo del criterio 28 y 29. Las pruebas protegidas de
@@ -792,12 +802,18 @@ de tocar el código).
   (criterio 33); **[007b]** suma la regla `comprobante` y `LimitePublico` ya admite `PUT`. `crear-app.ts` suma la ruta del
   comprobante a `noLeerCuerpoEn` **[007b]**. `RUTAS_REDACTADAS` suma `req.headers["x-pago-datos"]` **[007b]**; la prueba
   no protegida `opciones-registro.test.ts` pasa de 5 a 6 en el mismo cambio.
-- **005, panel:** el `monto` del elemento pasa a ser el total a cobrar (igual al de antes cuando no hay ajuste).
-- **006, `movimientos_caja.pago_id`:** gana su llave foránea (criterio 1). Las pruebas de la 006 que llaman a
-  `registrarIngresoEnCaja` con un `pagoId` inventado (criterios 24, 25, 26 y 48) dejarían de pasar: el test-writer las
-  ajusta en el commit de pruebas protegidas de la 007a, solo para crear antes el pago de ese `pagoId` (como dueño de las
-  tablas, con la transacción que también inserta el movimiento, por el criterio 5), sin cambiar lo que comprueban. Lo
-  aprueba el orquestador antes del commit.
+- **005, panel:** el `monto` del elemento pasa a ser el total a cobrar (igual al de antes cuando no hay ajuste; con un
+  ajuste con céntimos escrito como dueño, el total lo redondea hacia arriba, DT-17).
+- **005, tablas y privilegios (criterios 1 y 2 de 005):** `estado_solicitud` suma `CONFIRMADA`;
+  `solicitudes_inscripcion` suma `registrada_por` y su llave; `matriculas` suma `UNIQUE (academia_id, id, alumno_id)`;
+  la app gana `UPDATE` de `alumnos.estado`, `alumnos.usuario_id`, `matriculas.monto_ajustado` y
+  `matriculas.motivo_ajuste` (criterio 2), que la 005 comprobaba como prohibidos (DT-18).
+- **006, `movimientos_caja.pago_id`:** gana su llave foránea (criterio 1) y el trigger diferido del criterio 5. Las
+  pruebas de la 006 que insertan un ingreso o llaman a `registrarIngresoEnCaja` con un `pagoId` inventado (criterios 1,
+  3 a 6, 24 a 26 y 48, y las de la 006b que siembran ingresos) dejarían de pasar: el test-writer las ajusta en el commit
+  de pruebas protegidas de la 007a, solo para crear el pago `CONFIRMADO` de ese `pagoId` en la misma transacción que
+  inserta el movimiento (como dueño de las tablas, por el criterio 5), de preferencia dentro de las utilidades
+  compartidas, sin cambiar lo que comprueban. Lo aprueba el orquestador antes del commit.
 - **006, regla «Después de la caja solo se insertan filas y auditoría»:** se precisa: después de la caja también se
   actualizan filas que la misma transacción ya bloqueó (el pago, el alumno, la solicitud y la matrícula), porque no
   esperan a nadie.
@@ -828,7 +844,8 @@ de tocar el código).
   por la secretaria (002).
 - **El DNI en la auditoría de la cuenta:** `USUARIO_CREADO` (002) guarda el DNI como usuario, también el de un menor. La
   auditoría es interna de la academia y el DNI es el usuario (RN-02); no se cambia la función de 002.
-- **Identidad sin pasar por recepción (P3):** con Yape o transferencia, la cuenta se crea sin ver el DNI físico.
+- **Identidad sin pasar por recepción (DR-3):** con Yape o transferencia, la cuenta se crea sin ver el DNI físico; el DNI
+  físico se revisa la primera vez que la persona va a la academia.
 - **[007b] Comprobantes falsos o editados:** la verificación es humana (sección 8.4); el sistema solo impide repetir el
   número de operación.
 - **[007b] Archivos sin referencia:** como la foto de la 005b (un archivo guardado cuya transacción falló o cuya
@@ -836,130 +853,303 @@ de tocar el código).
 - **[007b] Saber si un número de operación ya se usó:** el 409 de HU-08 lo revela a quien tiene un token válido; lo
   limitan el token y el límite por conexión.
 - **Correo que no llega:** sin reintento, como en la 005; el cliente ve el estado en su enlace.
-- **Ticket sin valor tributario:** hasta el módulo de facturación (D-09); la leyenda lo dice (P4).
+- **Ticket sin valor tributario:** hasta el módulo de facturación (D-09); la leyenda lo dice (DR-4).
 
 ## Decisiones
 
-Ninguna todavía: las preguntas de negocio y las propuestas técnicas esperan la aprobación (sección siguiente).
+**Cómo se citan.** Las decisiones del responsable de esta spec se citan como «DR-n» dentro de ella y como «DR-n de 007»
+fuera; las del orquestador, «DT-n» y «DT-n de 007». Las de otras specs llevan siempre su número («DT-5 de 002», «DR-12
+de 005»). La pregunta Pn del borrador es DR-n y la Tn es DT-n (P1 es DR-1, T1 es DT-1, y así hasta P14 y T16). T17 a T19,
+encontradas al preparar la lista de pruebas protegidas anteriores, son DT-17 a DT-19.
 
-## Preguntas abiertas
+### Decisiones del responsable (24/11/2026)
 
-### De negocio, para el responsable (P1 a P14)
+Bryan aprobó la especificación y aceptó la propuesta de cada pregunta de negocio, incluida la división en 007a y 007b.
+Como los criterios ya usaban la propuesta como valor provisional, ninguno cambia de intención: esos valores quedan como
+definitivos. Se conserva el texto de cada pregunta; lo decidido es la propuesta, y las alternativas quedan descartadas.
 
-Cada una lleva la propuesta y su valor provisional, que es el que usan los criterios mientras no haya respuesta.
+- **DR-1 (pregunta P1). DNI del personal igual al de un cliente (DR-16 de 005).** Una cuenta tiene un solo rol, y el DNI
+  es único por academia, así que una persona no puede ser a la vez entrenador y alumno en la misma academia.
+  **Decidido (la propuesta):** el personal y los alumnos no comparten DNI. Al crear personal con el DNI de un alumno o de
+  un cliente con solicitud en curso, se rechaza; si al cobrar ya hay un miembro del personal con ese DNI (datos de
+  antes), se rechaza el cobro y el administrador lo resuelve con la persona. Alternativas descartadas: (b) permitir que el
+  personal también sea alumno, con varios roles por cuenta (cambia la 002 y los permisos; es una historia aparte); (c) no
+  revisar al crear personal y solo rechazar al cobrar (el problema aparece tarde, con el cliente en recepción).
+  _(007a; criterio 22, «Impacto»: 002.)_
+- **DR-2 (pregunta P2). Yape en revisión cuando termina el mes (DR-12 de 005).** **Decidido (la propuesta):** se puede
+  aprobar igual: el dinero llegó y la demora fue de la academia. El pago entra a la caja del día en que se revisa, el
+  alumno queda activo y su inscripción es del mes en que pagó; el mes siguiente lo paga con la renovación. La bandeja
+  marca estos pagos para revisarlos primero. Alternativas descartadas: (b) no permitir aprobarlo: se rechaza y la
+  devolución se hace fuera del sistema; (c) pasarlo al mes nuevo con un nuevo cálculo del monto (más complejo y con
+  diferencias de dinero). _(007b; criterios 45 y 52.)_
+- **DR-3 (pregunta P3). Identidad en los pagos que no pasan por recepción (DR-14 de 005).** Con Yape, nadie ve el DNI
+  físico antes de crear la cuenta. **Decidido (la propuesta):** se acepta el riesgo en esta historia; el DNI físico se
+  revisa la primera vez que la persona va a la academia (al entregarle el carnet o en su primera clase), y la 008 o la
+  009 pueden sumar una marca «DNI comprobado». Alternativas descartadas: (b) aprobar el Yape pero crear la cuenta recién
+  cuando la persona muestre su DNI en recepción (contradice «se crea automáticamente» de HU-04); (c) pedir una foto del
+  DNI al subir el comprobante (más datos personales que cuidar). _(007b; «Riesgos aceptados».)_
+- **DR-4 (pregunta P4). Ticket interno (D-09).** **Decidido (la propuesta):** una página imprimible, en papel de 80 mm
+  (ticketera) o A4, con el nombre y el teléfono de la academia, un número correlativo por academia, fecha y hora, nombres
+  y apellidos del alumno (sin DNI), plan y mes, método, número de operación si es Yape o transferencia, monto, quién
+  cobró y la frase «Comprobante interno de pago. No es un comprobante electrónico SUNAT». El cliente que pagó por Yape ve
+  el número del ticket en su enlace, pero no lo imprime desde ahí. Alternativas descartadas: (b) un PDF descargable; (c)
+  mostrar el DNI completo o parcial; (d) consultar antes con el contador la frase y si conviene entregar este papel.
+  _(007a; criterios 25 a 27 y 28.)_
+- **DR-5 (pregunta P5). Rechazo y nuevo intento (D-05).** **Decidido (la propuesta):** al rechazar, el cupo se libera en
+  ese momento; el cliente ve el motivo en su enlace y por correo, y puede subir otro comprobante (o pagar en efectivo)
+  las veces que necesite mientras sea el mismo mes y haya cupo. La secretaria escribe el motivo sabiendo que el cliente
+  lo leerá. Alternativas descartadas: (b) guardar el cupo unas horas después del rechazo para que pueda corregir
+  (contradice «al rechazarse, el cupo se libera» de RN-28); (c) no mostrar el motivo al cliente (solo «rechazado, llama a
+  la academia»). _(007b; criterios 15, 18 c, 28, 41, 49, 50 y 51 b.)_
+- **DR-6 (pregunta P6). Monto y datos del comprobante.** **Decidido (la propuesta):** no hay pagos parciales ni de más:
+  el monto del comprobante debe ser igual al total; si no, el sistema avisa antes de enviar. La fecha de la operación no
+  puede ser futura ni anterior al día de la inscripción. Alternativas descartadas: (b) aceptar cualquier monto y que la
+  secretaria decida al revisar; (c) aceptar pagos parciales con saldo pendiente (cambia el cobro, la caja y el estado del
+  alumno). _(007b; criterio 38; «Fuera de alcance».)_
+- **DR-7 (pregunta P7). Yape o transferencia en recepción.** Un cliente en el mostrador paga con Yape al celular de la
+  academia. **Decidido (la propuesta):** en esta historia, recepción solo cobra en efectivo; quien paga con Yape lo hace
+  desde su enlace (también en el mostrador, con su celular). Alternativas descartadas: (b) la secretaria registra el Yape
+  en el panel con el número de operación, después de verlo en el celular de la academia, y queda confirmado al instante,
+  sin foto; (c) lo mismo, pero con la foto, y se aprueba en la bandeja. _(007a; criterios 13 y 54; «Fuera de alcance».)_
+- **DR-8 (pregunta P8). Correos.** **Decidido (la propuesta):** dos avisos por correo (si hay correo), al alumno y al
+  apoderado: «pago confirmado», con cómo ingresar (usuario y contraseña inicial, su DNI, con el aviso de cambiarla), y
+  «pago rechazado», con el motivo. No se avisa al recibir el comprobante (lo ve en su enlace). Alternativas descartadas:
+  (b) también un correo al recibir el comprobante; (c) solo el de rechazo, que es el que pide HU-09. _(Criterio 51: el
+  a en la 007a y el b en la 007b.)_
+- **DR-9 (pregunta P9). ¿El número de operación se compara también entre Yape y transferencia?** **Decidido (la
+  propuesta):** no: no se repite dentro del mismo método (un número de Yape y el de un banco pueden coincidir sin ser el
+  mismo pago). Los espacios, guiones, puntos, mayúsculas y ceros a la izquierda no cuentan. Alternativa descartada: (b)
+  un número no se repite en ningún método (más estricto; un pago real podría quedar bloqueado y solo se resolvería con
+  otro número). _(Criterio 4 g en la 007a, porque el índice nace con la tabla; criterio 39 en la 007b.)_
+- **DR-10 (pregunta P10). ¿Se puede pagar una solicitud vencida?** **Decidido (la propuesta):** no: se vuelve a llenar
+  el formulario (en recepción, con «Nueva inscripción»; con el mismo DNI se acepta), y el monto se calcula de nuevo con
+  las clases que quedan. Alternativa descartada: (b) un botón «renovar la reserva» que vuelve a pedir cupo y recalcula el
+  monto sin llenar todo otra vez. _(007a; criterio 15.)_
+- **DR-11 (pregunta P11). Ajuste del monto (RN-25, HU-34).** **Decidido (la propuesta):** solo el administrador, antes
+  de que haya un pago (pendiente de pago o tras un rechazo), en soles enteros de S/ 1 en adelante (el total igual se
+  redondea al sol), con motivo. No se puede dejar en S/ 0: las becas llegan con los códigos de descuento (015). En esta
+  historia solo se ajusta el monto; el ajuste de las clases del mes («o las clases» de HU-34) va con la asistencia o las
+  mensualidades (009 o 010). Alternativas descartadas: (b) permitir céntimos; (c) permitir S/ 0 (sin cobro ni movimiento
+  de caja); (d) ajustar también las clases en esta historia. _(007a; criterios 8, 11 y 12; «Fuera de alcance».)_
+- **DR-12 (pregunta P12). ¿Se puede cancelar una solicitud con un Yape en revisión?** **Decidido (la propuesta):** no:
+  primero se rechaza el comprobante (con su motivo) y después se cancela. Alternativa descartada: (b) cancelar rechaza el
+  comprobante automáticamente. _(007b; criterio 30.)_
+- **DR-13 (pregunta P13). ¿Dónde ve el cliente a qué número yapear o a qué cuenta transferir?** No está en los
+  documentos. **Decidido (la propuesta):** el administrador los escribe en la configuración de su academia (número de
+  Yape y titular; banco, cuenta, CCI y titular), y el enlace de seguimiento los muestra junto al formulario del
+  comprobante. Alternativa descartada: (b) la secretaria los comparte por teléfono. _(007b; criterios 53 y 55.)_
+- **DR-14 (pregunta P14). ¿Dividimos la historia?** Es grande: tablas, cobro, cuenta del alumno, ticket, ajuste, límites
+  de recepción, comprobante, bandeja, aprobación y rechazo. **Decidido (la propuesta):** dos entregas, las dos de ruta
+  crítica, cada una con sus pruebas protegidas, su ataque y su PR, desde esta misma carpeta:
+  - **007a · cobro en recepción y cuenta del alumno** (primero): criterios 1 a 35 y 54 a 57, sin las partes [007b];
+  - **007b · Yape y transferencia** (siguiente PR, con la 007a unida): criterios 36 a 53, más las partes [007b].
 
-- **P1. DNI del personal igual al de un cliente (DR-16 de 005).** Una cuenta tiene un solo rol, y el DNI es único por
-  academia, así que una persona no puede ser a la vez entrenador y alumno en la misma academia. _Propuesta:_ el personal y
-  los alumnos no comparten DNI. Al crear personal con el DNI de un alumno o de un cliente con solicitud en curso, se
-  rechaza; si al cobrar ya hay un miembro del personal con ese DNI (datos de antes), se rechaza el cobro y el
-  administrador lo resuelve con la persona. _Alternativas:_ (b) permitir que el personal también sea alumno, con varios
-  roles por cuenta (cambia la 002 y los permisos; es una historia aparte); (c) no revisar al crear personal y solo
-  rechazar al cobrar (el problema aparece tarde, con el cliente en recepción).
-- **P2. Yape en revisión cuando termina el mes (DR-12 de 005).** _Propuesta:_ se puede aprobar igual: el dinero llegó y
-  la demora fue de la academia. El pago entra a la caja del día en que se revisa, el alumno queda activo y su inscripción
-  es del mes en que pagó; el mes siguiente lo paga con la renovación. La bandeja marca estos pagos para revisarlos
-  primero. _Alternativas:_ (b) no permitir aprobarlo: se rechaza y la devolución se hace fuera del sistema; (c) pasarlo
-  al mes nuevo con un nuevo cálculo del monto (más complejo y con diferencias de dinero).
-- **P3. Identidad en los pagos que no pasan por recepción (DR-14 de 005).** Con Yape, nadie ve el DNI físico antes de
-  crear la cuenta. _Propuesta:_ se acepta el riesgo en esta historia; el DNI físico se revisa la primera vez que la
-  persona va a la academia (al entregarle el carnet o en su primera clase), y la 008 o la 009 pueden sumar una marca
-  «DNI comprobado». _Alternativas:_ (b) aprobar el Yape pero crear la cuenta recién cuando la persona muestre su DNI en
-  recepción (contradice «se crea automáticamente» de HU-04); (c) pedir una foto del DNI al subir el comprobante (más
-  datos personales que cuidar).
-- **P4. Ticket interno (D-09).** _Propuesta:_ una página imprimible, en papel de 80 mm (ticketera) o A4, con el nombre y
-  el teléfono de la academia, un número correlativo por academia, fecha y hora, nombres y apellidos del alumno (sin DNI),
-  plan y mes, método, número de operación si es Yape o transferencia, monto, quién cobró y la frase «Comprobante interno
-  de pago. No es un comprobante electrónico SUNAT». El cliente que pagó por Yape ve el número del ticket en su enlace,
-  pero no lo imprime desde ahí. _Alternativas:_ (b) un PDF descargable; (c) mostrar el DNI completo o parcial; (d)
-  ¿confirmar con el contador la frase y si conviene entregar este papel?
-- **P5. Rechazo y nuevo intento (D-05).** _Propuesta:_ al rechazar, el cupo se libera en ese momento; el cliente ve el
-  motivo en su enlace y por correo, y puede subir otro comprobante (o pagar en efectivo) las veces que necesite mientras
-  sea el mismo mes y haya cupo. La secretaria escribe el motivo sabiendo que el cliente lo leerá. _Alternativas:_ (b)
-  guardar el cupo unas horas después del rechazo para que pueda corregir (contradice «al rechazarse, el cupo se libera»
-  de RN-28); (c) no mostrar el motivo al cliente (solo «rechazado, llama a la academia»).
-- **P6. Monto y datos del comprobante.** _Propuesta:_ no hay pagos parciales ni de más: el monto del comprobante debe ser
-  igual al total; si no, el sistema avisa antes de enviar. La fecha de la operación no puede ser futura ni anterior al
-  día de la inscripción. _Alternativas:_ (b) aceptar cualquier monto y que la secretaria decida al revisar; (c) aceptar
-  pagos parciales con saldo pendiente (cambia el cobro, la caja y el estado del alumno).
-- **P7. Yape o transferencia en recepción.** Un cliente en el mostrador paga con Yape al celular de la academia.
-  _Propuesta:_ en esta historia, recepción solo cobra en efectivo; quien paga con Yape lo hace desde su enlace (también
-  en el mostrador, con su celular). _Alternativas:_ (b) la secretaria registra el Yape en el panel con el número de
-  operación, después de verlo en el celular de la academia, y queda confirmado al instante, sin foto (iría en la 007b);
-  (c) lo mismo, pero con la foto, y se aprueba en la bandeja.
-- **P8. Correos.** _Propuesta:_ dos avisos por correo (si hay correo), al alumno y al apoderado: «pago confirmado», con
-  cómo ingresar (usuario y contraseña inicial, su DNI, con el aviso de cambiarla), y «pago rechazado», con el motivo. No
-  se avisa al recibir el comprobante (lo ve en su enlace). _Alternativas:_ (b) también un correo al recibir el
-  comprobante; (c) solo el de rechazo, que es el que pide HU-09.
-- **P9. ¿El número de operación se compara también entre Yape y transferencia?** _Propuesta:_ no: no se repite dentro
-  del mismo método (un número de Yape y el de un banco pueden coincidir sin ser el mismo pago). Los espacios, guiones,
-  puntos, mayúsculas y ceros a la izquierda no cuentan. _Alternativa:_ (b) un número no se repite en ningún método (más
-  estricto; un pago real podría quedar bloqueado y solo se resolvería con otro número).
-- **P10. ¿Se puede pagar una solicitud vencida?** _Propuesta:_ no: se vuelve a llenar el formulario (en recepción, con
-  «Nueva inscripción»; con el mismo DNI se acepta), y el monto se calcula de nuevo con las clases que quedan.
-  _Alternativa:_ (b) un botón «renovar la reserva» que vuelve a pedir cupo y recalcula el monto sin llenar todo otra vez.
-- **P11. Ajuste del monto (RN-25, HU-34).** _Propuesta:_ solo el administrador, antes de que haya un pago (pendiente de
-  pago o tras un rechazo), en soles enteros de S/ 1 en adelante (el total igual se redondea al sol), con motivo. No se
-  puede dejar en S/ 0: las becas llegan con los códigos de descuento (015). En esta historia solo se ajusta el monto; el
-  ajuste de las clases del mes («o las clases» de HU-34) va con la asistencia o las mensualidades (009 o 010).
-  _Alternativas:_ (b) permitir céntimos; (c) permitir S/ 0 (sin cobro ni movimiento de caja); (d) ajustar también las
-  clases en esta historia.
-- **P12. ¿Se puede cancelar una solicitud con un Yape en revisión?** _Propuesta:_ no: primero se rechaza el comprobante
-  (con su motivo) y después se cancela. _Alternativa:_ (b) cancelar rechaza el comprobante automáticamente.
-- **P13. ¿Dónde ve el cliente a qué número yapear o a qué cuenta transferir?** No está en los documentos. _Propuesta:_ el
-  administrador los escribe en la configuración de su academia (número de Yape y titular; banco, cuenta, CCI y titular),
-  y el enlace de seguimiento los muestra junto al formulario del comprobante. _Alternativa:_ (b) la secretaria los
-  comparte por teléfono.
-- **P14. ¿Dividimos la historia?** Es grande: tablas, cobro, cuenta del alumno, ticket, ajuste, límites de recepción,
-  comprobante, bandeja, aprobación y rechazo. _Propuesta:_ dos entregas, las dos de ruta crítica: **007a · cobro en
-  recepción y cuenta del alumno** (primero) y **007b · Yape y transferencia** (después), como dice «División en 007a y
-  007b». _Alternativas:_ (b) una sola entrega; (c) tres, separando la subida del comprobante (007b) de la bandeja (007c).
+  Alternativas descartadas: (b) una sola entrega; (c) tres, separando la subida del comprobante (007b) de la bandeja
+  (007c). Reparto y dependencias: «División en 007a y 007b». _(Todos.)_
 
 **Resuelto por los documentos, sin pregunta:** quién verifica (el administrador y la secretaria, sección 2.1) y con qué
 caja (la abierta de hoy, D-04 y DR-2 de 006); la verificación es humana (sección 8.4).
 
-### Técnicas, para el orquestador (T1 a T16)
+### Decisiones técnicas del orquestador (24/11/2026)
 
-- **T1. La tabla `pagos` completa en la 007a,** con las columnas del Yape, para que la 007b no tenga migración.
-  _Alternativa:_ cada entrega su migración (cambian dos veces las pruebas de catálogo).
-- **T2. La caja del pago sale de su movimiento** (`movimientos_caja.pago_id`, único y con llave), sin `caja_id` en
-  `pagos`, y un trigger de restricción diferido garantiza «confirmado ⇔ un movimiento» (criterio 5). _Alternativa:_
-  `pagos.caja_id` (dos fuentes que pueden no coincidir; un `CHECK` no puede verlo, porque el movimiento se inserta
-  después del pago).
-- **T3. Trigger de transiciones** (criterio 6) además de la lógica del servicio. _Alternativa:_ solo el servicio.
-- **T4. Un solo estado nuevo en la fila de la solicitud (`CONFIRMADA`);** `EN_VERIFICACION` y `PAGO_RECHAZADO` se calculan
-  con el pago. Mantiene «una solicitud abierta por alumno» con el índice de la 005. _Alternativa:_ guardar los tres en
-  la fila (dos fuentes del mismo hecho y un índice más complejo).
-- **T5. Rechazo: la matrícula pasa a `CANCELADA`; el reintento la vuelve a `RESERVADA`** (la única salida de
-  `CANCELADA`, solo con un último pago rechazado). Conserva el monto y las clases de la matrícula (DR-2 de 005).
-  _Alternativa:_ dejarla `RESERVADA` con el vencimiento en «ahora» (choca con el `CHECK` del fin de mes cuando el rechazo
-  es del mes siguiente).
-- **T6. Subida en una sola petición binaria con los datos en la cabecera `X-Pago-Datos`** (JSON ASCII de hasta 1 KB,
-  validado con zod), con el mismo lector y orden de la foto. _Alternativas:_ dos pasos (datos y luego imagen: un pago sin
-  foto o un archivo sin pago entre medio), `multipart/form-data` (descartado en DT-1 de 005) o base64 en el JSON (límite
-  de 100 KB del cuerpo y un 33 % más).
-- **T7. Comprobante recodificado** como JPEG sin metadatos, con la orientación aplicada. _Alternativa:_ guardar el archivo
-  original (con GPS y otros metadatos).
-- **T8. 2000 píxeles en el lado mayor** del comprobante guardado, para que se lean los números. _Alternativa:_ los 800 de
-  la foto (ilegible en capturas largas).
-- **T9. Número de operación: se guardan el escrito y el normalizado,** con un índice único parcial sobre el normalizado y
-  el 409 por el nombre del índice. _Alternativa:_ guardar solo el normalizado (se pierde lo que escribió el cliente).
-- **T10. El cobro en efectivo decide la vigencia de la reserva con el instante leído después de
+El orquestador aceptó las dieciséis propuestas técnicas tal como estaban. Se conserva el texto de cada pregunta; lo
+decidido es la propuesta, y la alternativa queda descartada.
+
+- **DT-1 (pregunta T1). La tabla `pagos` completa en la 007a,** con las columnas del Yape, para que la 007b no tenga
+  migración. **Decidido (la propuesta).** Alternativa descartada: cada entrega su migración (cambian dos veces las
+  pruebas de catálogo). _(007a; criterios 1 a 7.)_
+- **DT-2 (pregunta T2). La caja del pago sale de su movimiento** (`movimientos_caja.pago_id`, único y con llave), sin
+  `caja_id` en `pagos`, y un trigger de restricción diferido garantiza «confirmado ⇔ un movimiento» (criterio 5).
+  **Decidido (la propuesta).** Alternativa descartada: `pagos.caja_id` (dos fuentes que pueden no coincidir; un `CHECK`
+  no puede verlo, porque el movimiento se inserta después del pago). _(007a; criterios 1, 3 y 5.)_
+- **DT-3 (pregunta T3). Trigger de transiciones** (criterio 6) además de la lógica del servicio. **Decidido (la
+  propuesta).** Alternativa descartada: solo el servicio. _(007a; criterio 6.)_
+- **DT-4 (pregunta T4). Un solo estado nuevo en la fila de la solicitud (`CONFIRMADA`);** `EN_VERIFICACION` y
+  `PAGO_RECHAZADO` se calculan con el pago. Mantiene «una solicitud abierta por alumno» con el índice de la 005.
+  **Decidido (la propuesta).** Alternativa descartada: guardar los tres en la fila (dos fuentes del mismo hecho y un
+  índice más complejo). _(007a; criterios 7 y 28; «Estado visible de una solicitud».)_
+- **DT-5 (pregunta T5). Rechazo: la matrícula pasa a `CANCELADA`; el reintento la vuelve a `RESERVADA`** (la única
+  salida de `CANCELADA`, solo con un último pago rechazado). Conserva el monto y las clases de la matrícula (DR-2 de
+  005). **Decidido (la propuesta).** Alternativa descartada: dejarla `RESERVADA` con el vencimiento en «ahora» (choca con
+  el `CHECK` del fin de mes cuando el rechazo es del mes siguiente). _(007b; criterios 41 y 49.)_
+- **DT-6 (pregunta T6). Subida en una sola petición binaria con los datos en la cabecera `X-Pago-Datos`** (JSON ASCII de
+  hasta 1 KB, validado con zod), con el mismo lector y orden de la foto. **Decidido (la propuesta).** Alternativas
+  descartadas: dos pasos (datos y luego imagen: un pago sin foto o un archivo sin pago entre medio),
+  `multipart/form-data` (descartado en DT-1 de 005) o base64 en el JSON (límite de 100 KB del cuerpo y un 33 % más).
+  _(007b; criterios 36 y 37.)_
+- **DT-7 (pregunta T7). Comprobante recodificado** como JPEG sin metadatos, con la orientación aplicada. **Decidido (la
+  propuesta).** Alternativa descartada: guardar el archivo original (con GPS y otros metadatos). _(007b; criterio 40.)_
+- **DT-8 (pregunta T8). 2000 píxeles en el lado mayor** del comprobante guardado, para que se lean los números.
+  **Decidido (la propuesta).** Alternativa descartada: los 800 de la foto (ilegible en capturas largas). _(007b;
+  criterio 40.)_
+- **DT-9 (pregunta T9). Número de operación: se guardan el escrito y el normalizado,** con un índice único parcial sobre
+  el normalizado y el 409 por el nombre del índice. **Decidido (la propuesta).** Alternativa descartada: guardar solo el
+  normalizado (se pierde lo que escribió el cliente). _(Las columnas, los `CHECK` y el índice en la 007a, criterio 4 d y
+  g; su uso en la 007b, criterio 39.)_
+- **DT-10 (pregunta T10). El cobro en efectivo decide la vigencia de la reserva con el instante leído después de
   `bloquearClasesParaCupo`** (criterio 18 b). Con el instante del inicio de la petición, un envío que ya contó la reserva
-  como vencida y el cobro que la cuenta como vigente dejarían la clase con uno de más. _Alternativa:_ exigir siempre cupo
-  libre sin contarse (rechazaría cobros válidos cuando el aforo se bajó con confirmación, DR-5 de 004).
-- **T11. Recepción en las rutas públicas:** el middleware de `/api/a` verifica la cookie `aq_sesion` (con
-  `SesionAcademiaService`, sin escribir) solo si viene y antes de contar; si es de `ADMIN` o `SECRETARIA` de la academia
-  del nombre corto, no cuenta. El envío pasa la sesión al servicio. _Alternativa:_ rutas del panel separadas para
-  inscribir (`/api/recepcion/…`), que duplican la cotización, el envío y la foto, y la web pública.
-- **T12. Permiso nuevo `AJUSTAR_MONTO_COBRO`** (solo `ADMIN`). _Alternativa:_ usar `CONFIGURAR_PLANES_HORARIOS_AFORO`
-  (mezcla configuración con cobro).
-- **T13. Número de ticket asignado con la caja bloqueada** (la caja serializa las confirmaciones de una academia), con un
-  índice único de respaldo. _Alternativas:_ una secuencia de PostgreSQL (no es por academia) o «fecha de caja y número
-  del movimiento» (no es un correlativo).
-- **T14. Ticket como JSON y página imprimible de la web,** sin PDF (provisional P4). _Alternativa:_ PDF con `pdfkit`, con
-  la cola y los cuidados de la 006b.
-- **T15. `HEAD` en `/api/pagos` responde 404** con el mismo middleware de la caja (DT-9 de 006). _Alternativa:_ dejar que
-  `HEAD` llame al manejador del `GET` (leería el archivo del almacén para no enviarlo).
-- **T16. La confirmación toma el bloqueo consultivo del DNI** (el mismo del envío de la 005) después del actor, y la
-  creación de personal también (P1), para que las dos se ordenen. _Alternativa:_ confiar solo en el índice único de
-  `usuarios` (el 409 llegaría después de registrar el ingreso en la caja, con la transacción ya larga).
+  como vencida y el cobro que la cuenta como vigente dejarían la clase con uno de más. **Decidido (la propuesta).**
+  Alternativa descartada: exigir siempre cupo libre sin contarse (rechazaría cobros válidos cuando el aforo se bajó con
+  confirmación, DR-5 de 004). _(007a; criterio 18 b.)_
+- **DT-11 (pregunta T11). Recepción en las rutas públicas:** el middleware de `/api/a` verifica la cookie `aq_sesion`
+  (con `SesionAcademiaService`, sin escribir) solo si viene y antes de contar; si es de `ADMIN` o `SECRETARIA` de la
+  academia del nombre corto, no cuenta. El envío pasa la sesión al servicio. **Decidido (la propuesta).** Alternativa
+  descartada: rutas del panel separadas para inscribir (`/api/recepcion/…`), que duplican la cotización, el envío y la
+  foto, y la web pública. _(007a; criterios 33 a 35.)_
+- **DT-12 (pregunta T12). Permiso nuevo `AJUSTAR_MONTO_COBRO`** (solo `ADMIN`). **Decidido (la propuesta):** la prueba
+  protegida de la matriz (criterio 26 de 002) crece una fila, de 25 a 26, en el commit de pruebas protegidas de la 007a,
+  sin quitar ni cambiar nada. Alternativa descartada: usar `CONFIGURAR_PLANES_HORARIOS_AFORO` (mezcla configuración con
+  cobro). _(007a; criterios 8 y 11.)_
+- **DT-13 (pregunta T13). Número de ticket asignado con la caja bloqueada** (la caja serializa las confirmaciones de una
+  academia), con un índice único de respaldo. **Decidido (la propuesta).** Alternativas descartadas: una secuencia de
+  PostgreSQL (no es por academia) o «fecha de caja y número del movimiento» (no es un correlativo). _(007a; criterio
+  25.)_
+- **DT-14 (pregunta T14). Ticket como JSON y página imprimible de la web,** sin PDF (DR-4). **Decidido (la
+  propuesta).** Alternativa descartada: PDF con `pdfkit`, con la cola y los cuidados de la 006b. _(007a; criterios 26 y
+  27.)_
+- **DT-15 (pregunta T15). `HEAD` en `/api/pagos` responde 404** con el mismo middleware de la caja (DT-9 de 006).
+  **Decidido (la propuesta).** Alternativa descartada: dejar que `HEAD` llame al manejador del `GET` (leería el archivo
+  del almacén para no enviarlo). _(007b; criterio 46.)_
+- **DT-16 (pregunta T16). La confirmación toma el bloqueo consultivo del DNI** (el mismo del envío de la 005) después del
+  actor, y la creación de personal también (DR-1), para que las dos se ordenen. **Decidido (la propuesta).** Alternativa
+  descartada: confiar solo en el índice único de `usuarios` (el 409 llegaría después de registrar el ingreso en la caja,
+  con la transacción ya larga). _(007a; criterios 19 y 22.)_
+
+Las tres siguientes las decidió el orquestador el 24/11/2026, con la propuesta, al preparar la lista de «Pruebas
+protegidas anteriores que amplía la 007a». En los tres casos la prueba anterior no se podía ajustar solo sumando, porque
+lo que comprobaba contradice un criterio ya aprobado. Ninguna cambia una regla de negocio.
+
+- **DT-17 (pregunta T17). El monto del panel con un ajuste con céntimos.** `panel-solicitudes-lista.test.ts` (criterio
+  38 de 005, «el monto es el ajustado si lo hay») escribía como dueño `monto_ajustado = 99.5` y esperaba
+  `monto: '99.50'`. Con el criterio 29 de la 007, el `monto` del elemento es el total a cobrar, que redondea hacia arriba
+  una vez (D-03): `'100.00'`. La API ya no escribe céntimos (DR-11), pero la base los admite (`CHECK` de la 005:
+  `monto_ajustado >= 0`). **Decidido (la propuesta):** esa prueba pasa a un ajuste en soles enteros (`99` → `'99.00'`,
+  que conserva la intención) y suma el caso `99.5` escrito como dueño → `'100.00'`. Alternativa descartada: además, un
+  `CHECK` en la base que exija `monto_ajustado` entero y desde 1; no se agrega en esta historia (sumaría un criterio
+  crítico y una migración del `CHECK` de la 005, y la prueba igual cambiaría). _(007a; criterio 29.)_
+- **DT-18 (pregunta T18). Columnas que la 005 comprobaba como prohibidas.** `privilegios.test.ts` de 005 (criterio 2 de
+  005) esperaba 42501 en `UPDATE` de `alumnos.estado`, `alumnos.usuario_id` y `matriculas.monto_ajustado` como app. El
+  criterio 2 de la 007 da esos privilegios (la confirmación y el ajuste los necesitan). **Decidido (la propuesta):** se
+  quitan esos tres intentos de las listas de 42501 (y «el estado» del título de la prueba de `alumnos`), y las cuatro
+  columnas (`alumnos.estado`, `alumnos.usuario_id`, `matriculas.monto_ajustado` y `matriculas.motivo_ajuste`) se suman a
+  `UPDATE_EXACTO`, que sigue fijando los privilegios exactos. El DNI, la `academia_id`, el `id` y `creado_en` siguen
+  prohibidos y comprobados. Alternativa descartada: no dar esos privilegios y confirmar y ajustar con una función
+  `SECURITY DEFINER` (excepción en `FUNCIONES_SECURITY_DEFINER_PERMITIDAS` de la 001 y RLS saltada dentro de la
+  función). _(007a; criterio 2.)_
+- **DT-19 (pregunta T19). El mismo `pagoId` en dos academias.** `indices-unicos.test.ts` («en B se aceptan la misma
+  clave, el mismo número y el mismo `pago_id` que en A», criterio 5 de 006) e `ingreso-interfaz.test.ts` («un `pagoId`
+  de otra academia no cuenta: la misma UUID registra su ingreso en A», criterio 24 b de 006) usaban el mismo `pago_id` en
+  A y en B. Con la llave compuesta hacia `pagos` y `pagos.id` como llave primaria, el mismo pago no puede existir en las
+  dos academias (criterio 3 de la 007). **Decidido (la propuesta):** en `indices-unicos.test.ts` se quita la parte del
+  `pago_id` y quedan la de la clave y la del número; en `ingreso-interfaz.test.ts`, el ingreso en A con el `pagoId` de un
+  pago de B falla al confirmar con 23503 y no deja nada en A (conserva la intención: un pago de otra academia nunca
+  cuenta como de A). Alternativa descartada: llave primaria `(academia_id, id)` en `pagos`, que se aparta de la
+  convención de todas las tablas. _(007a; criterios 1, 3 y 5.)_
+
+### Pruebas protegidas anteriores que amplía la 007a
+
+Las amplía el test-writer en el commit de pruebas protegidas de la 007a («Pruebas protegidas (007): 007a, … (en
+rojo)»), **solo sumando**: filas, columnas, claves, llaves o valores nuevos en las listas exactas, y la creación del pago
+que ahora exige la base, sin quitar ni debilitar lo que ya comprueban. Las únicas excepciones son los tres puntos
+marcados «cambio aprobado por el orquestador (no solo suma)», que siguen DT-17 a DT-19. Cada archivo tocado suma en su encabezado una
+línea «Actualizada por la 007 (spec 007-pagos, …): …», como hizo la 006 con la matriz. Lo revisa el orquestador con
+`git diff` antes del commit.
+
+- **001 (catálogo y privilegios, criterio 2 y DT-1):**
+  - `backend/src/infraestructura/prisma/privilegios-app.test.ts`: la lista exacta de `PRIVILEGIOS_APP` suma `pagos`
+    (`SELECT`, `INSERT` y `UPDATE` de `estado`, `verificado_por`, `verificado_en`, `motivo_rechazo`, `numero_ticket` y
+    `actualizado_en`), `UPDATE` de `alumnos.estado` y `alumnos.usuario_id`, y de `matriculas.monto_ajustado` y
+    `matriculas.motivo_ajuste`;
+  - `backend/test/utilidades/catalogo.ts`: `TABLAS_DESPUES_DE_MIGRAR` suma `pagos`;
+  - las de `backend/test/integracion/aislamiento/` que comparan listas exactas de tablas, privilegios o funciones (por
+    ejemplo `privilegios-de-mas.test.ts` y `rls-todas-las-tablas.test.ts`), si fallan solo por la tabla, los privilegios
+    o las funciones de trigger nuevas (que son `SECURITY INVOKER`: `FUNCIONES_SECURITY_DEFINER_PERMITIDAS` no cambia).
+- **002 (matriz, criterio 26 de 002; DT-12):** `packages/contratos/src/permisos.test.ts` suma la fila
+  `AJUSTAR_MONTO_COBRO: { ADMIN: 'TODO' }` (de 25 a 26) y su comprobación con `puede`.
+- **005 (tablas, privilegios y panel; criterios 1, 2, 38 y 39 de 005):**
+  - `backend/test/integracion/inscripciones/tablas.test.ts`: el tipo `estado_solicitud` suma `CONFIRMADA`; las columnas
+    de `solicitudes_inscripcion` suman `registrada_por` (uuid, nula); sus llaves suman
+    `academia_id,registrada_por->usuarios(academia_id,id)`; y, si la prueba fija los únicos de `matriculas`, suman
+    `(academia_id, id, alumno_id)`;
+  - `backend/test/integracion/inscripciones/privilegios.test.ts`: `UPDATE_EXACTO` suma `estado` y `usuario_id` en
+    `alumnos`, y `monto_ajustado` y `motivo_ajuste` en `matriculas`;
+  - **cambio aprobado por el orquestador (no solo suma), DT-18:** en ese mismo archivo se quitan los intentos que esperan
+    42501 en `alumnos.estado`, `alumnos.usuario_id` y `matriculas.monto_ajustado`, y «el estado» del título de la prueba
+    de `alumnos`; el DNI, la `academia_id`, el `id` y `creado_en` siguen prohibidos;
+  - `backend/test/integracion/inscripciones/panel-solicitudes-lista.test.ts` y `panel-solicitudes-cancelar.test.ts`:
+    `CLAVES_DEL_ELEMENTO` suma `ajuste` y `pago`;
+  - **cambio aprobado por el orquestador (no solo suma), DT-17:** en `panel-solicitudes-lista.test.ts`, la prueba «el
+    monto es el ajustado si lo hay» pasa a `monto_ajustado = 99` → `'99.00'` y suma el caso `99.5` escrito como dueño →
+    `'100.00'`;
+  - `packages/contratos/src/foto-panel-protegido.test.ts`: el elemento de ejemplo de `solicitudPanelSchema` suma
+    `ajuste: null` y `pago: null`, y la lista de claves obligatorias suma las dos.
+- **006 (llave y trigger de `movimientos_caja.pago_id`, criterios 1, 3 y 5 de 007; DT-2):**
+  - `backend/test/integracion/caja/tablas.test.ts`: las llaves de `movimientos_caja` suman
+    `academia_id,pago_id->pagos(academia_id,id)`, y el título deja de decir «pago_id no tiene llave (la agrega la 007)»;
+  - las utilidades `backend/test/utilidades/caja.ts` (`filaIngresoValida`, `insertarFilaCaja`, `crearIngresoDePrueba`,
+    `ingresoDeEjemplo`, `cobroImitado`), `caja-historial.ts` y, si siembra ingresos, `sembradores.ts`: todo ingreso con
+    `pago_id` crea, en la misma transacción, su pago `CONFIRMADO` del mismo alumno, método, monto y concepto (con una
+    matrícula de ese alumno; si es Yape o transferencia, con número de operación, comprobante y fecha de operación
+    inventados, y su `numero_ticket`). Así no cambian las pruebas que las usan: `checks.test.ts`,
+    `indices-unicos.test.ts`, `rls-llaves.test.ts`, `ingreso-interfaz.test.ts`, `interfaces-validacion.test.ts`,
+    `orden-bloqueos.test.ts`, `cierre-carreras.test.ts` y las de la 006b que siembran ingresos;
+  - en `ingreso-interfaz.test.ts` e `interfaces-validacion.test.ts`, la función local `ingresar` inserta el pago en la
+    misma transacción, después de `registrarIngresoEnCaja` (si lanza, no se inserta nada);
+  - **cambio aprobado por el orquestador (no solo suma), DT-19:** en `indices-unicos.test.ts`, la prueba «en B se
+    aceptan la misma clave, el mismo numero y el mismo pago_id que en A» quita la parte del `pago_id`; en
+    `ingreso-interfaz.test.ts`, la prueba del criterio 24 b «un pagoId de otra academia no cuenta» espera que el ingreso
+    en A con el `pagoId` de un pago de B falle al confirmar con 23503 y no deje nada en A.
+
+Si al confirmar el rojo aparece otra prueba protegida anterior que falla por el contrato de la 007a y no está en esta
+lista, el test-writer no la toca: la informa al orquestador, y el especificador la suma aquí antes del commit.
+
+## Preguntas abiertas
+
+Ninguna. Las preguntas del borrador (P1 a P14 y T1 a T16) quedaron resueltas el 24/11/2026, y T17 a T19, encontradas
+al preparar la lista de «Pruebas protegidas anteriores que amplía la 007a», el mismo día. El texto completo de cada una,
+con lo decidido y la alternativa descartada, está en «Decisiones».
+
+### Resueltas (24/11/2026)
+
+Para el responsable (negocio), respondidas por Bryan, todas con la propuesta:
+
+| Pregunta | Respuesta | Decisión | Criterios |
+| --- | --- | --- | --- |
+| P1. ¿DNI del personal igual al de un cliente? | El personal y los alumnos no comparten DNI | DR-1 | 22 |
+| P2. ¿Yape en revisión al terminar el mes? | Se puede aprobar | DR-2 | 45, 52 |
+| P3. ¿Identidad en los pagos sin recepción? | El DNI físico se revisa en la primera visita; riesgo aceptado | DR-3 | «Riesgos aceptados» |
+| P4. ¿Ticket interno? | Página imprimible, sin DNI, con la frase de que no es un comprobante SUNAT | DR-4 | 25 a 28 |
+| P5. ¿Rechazo y nuevo intento? | El rechazo libera el cupo; se puede reintentar, mostrando el motivo | DR-5 | 15, 18 c, 28, 41, 49 a 51 |
+| P6. ¿Monto y datos del comprobante? | Monto exacto, sin pagos parciales, con las reglas de fecha | DR-6 | 38 |
+| P7. ¿Yape en recepción? | En recepción solo efectivo; el Yape se paga desde el enlace | DR-7 | 13, 54, «Fuera de alcance» |
+| P8. ¿Correos? | Pago confirmado y pago rechazado | DR-8 | 51 |
+| P9. ¿Número de operación entre métodos? | Único dentro del mismo método | DR-9 | 4 g, 39 |
+| P10. ¿Pagar una solicitud vencida? | No; se vuelve a inscribir | DR-10 | 15 |
+| P11. ¿Ajuste del monto? | Solo el administrador, soles enteros desde S/ 1, con motivo; sin S/ 0 ni ajuste de clases | DR-11 | 8, 11, 12 |
+| P12. ¿Cancelar con un Yape en revisión? | No; primero se rechaza el comprobante | DR-12 | 30 |
+| P13. ¿Datos de pago de la academia? | En la configuración de la academia | DR-13 | 53, 55 |
+| P14. ¿Dividir la historia? | Sí: 007a y 007b | DR-14 | todos |
+
+Para el orquestador (técnicas), aceptadas tal como se propusieron (T17 a T19, después de las demás):
+
+| Pregunta | Respuesta | Decisión | Criterios |
+| --- | --- | --- | --- |
+| T1. Tabla `pagos` completa en la 007a | Sí | DT-1 | 1 a 7 |
+| T2. Caja del pago por su movimiento, con trigger diferido | Sí | DT-2 | 1, 3, 5 |
+| T3. Trigger de transiciones | Sí | DT-3 | 6 |
+| T4. Solo `CONFIRMADA` en la fila de la solicitud | Sí | DT-4 | 7, 28 |
+| T5. Rechazo a `CANCELADA` y reintento a `RESERVADA` | Sí | DT-5 | 41, 49 |
+| T6. Comprobante binario con `X-Pago-Datos` | Sí | DT-6 | 36, 37 |
+| T7. Comprobante recodificado sin metadatos | Sí | DT-7 | 40 |
+| T8. 2000 píxeles en el lado mayor | Sí | DT-8 | 40 |
+| T9. Número escrito y normalizado | Sí | DT-9 | 4, 39 |
+| T10. «Ahora» después de bloquear las clases | Sí | DT-10 | 18 b |
+| T11. Sesión de recepción en el middleware | Sí | DT-11 | 33 a 35 |
+| T12. Permiso `AJUSTAR_MONTO_COBRO` | Sí, solo `ADMIN`; la matriz de 002 crece una fila | DT-12 | 8, 11 |
+| T13. Ticket numerado con la caja bloqueada | Sí | DT-13 | 25 |
+| T14. Ticket como página imprimible | Sí | DT-14 | 26, 27 |
+| T15. `HEAD` 404 en `/api/pagos` | Sí | DT-15 | 46 |
+| T16. Consultivo del DNI en la confirmación y en la creación de personal | Sí | DT-16 | 19, 22 |
+| T17. Monto del panel con un ajuste con céntimos | La prueba pasa a `99` → `'99.00'` y suma `99.5` → `'100.00'`; sin `CHECK` nuevo | DT-17 | 29 |
+| T18. Columnas que la 005 comprobaba como prohibidas | Se quitan los tres intentos 42501 y las columnas se suman a `UPDATE_EXACTO` | DT-18 | 2 |
+| T19. El mismo `pagoId` en dos academias | `indices-unicos` sin la parte del `pago_id`; `ingreso-interfaz` espera 23503 sin dejar nada en A | DT-19 | 1, 3, 5 |
