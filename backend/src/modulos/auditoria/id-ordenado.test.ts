@@ -142,6 +142,75 @@ describe('criterio 59 a y b: el rechazo no cambia el estado y las llamadas sigui
   });
 });
 
+// Ronda adversarial 2 de la 007a: un objeto con el prototipo de Date pasa `instanceof Date`, pero no es un Date (no tiene el valor interno de fecha); `getTime()` puede
+// lanzar un TypeError, lanzar otro error, devolver un número que parece válido o algo que no es un número. En todos los casos es «un valor que no es un Date»: RangeError.
+const FALSOS_DATE: [string, () => Date][] = [
+  ['Object.create(Date.prototype) (getTime() lanza TypeError)', () => Object.create(Date.prototype) as Date],
+  [
+    'un objeto con prototipo Date y getTime() propio que devuelve 5',
+    () => Object.setPrototypeOf({ getTime: () => 5 }, Date.prototype) as Date,
+  ],
+  [
+    'un objeto con prototipo Date y getTime() propio que devuelve un instante válido',
+    () => Object.setPrototypeOf({ getTime: () => T0.getTime() }, Date.prototype) as Date,
+  ],
+  [
+    'un objeto con prototipo Date y getTime() propio que lanza un Error',
+    () =>
+      Object.setPrototypeOf(
+        {
+          getTime: () => {
+            throw new Error('getTime roto');
+          },
+        },
+        Date.prototype,
+      ) as Date,
+  ],
+  [
+    'un objeto con prototipo Date y getTime() propio que devuelve un texto',
+    () => Object.setPrototypeOf({ getTime: () => '5' }, Date.prototype) as Date,
+  ],
+  [
+    'un objeto con prototipo Date y getTime() propio que devuelve NaN',
+    () => Object.setPrototypeOf({ getTime: () => Number.NaN }, Date.prototype) as Date,
+  ],
+];
+
+describe('criterio 59 a y b (ronda adversarial 2 de la 007a): un objeto con prototipo Date que no es un Date lanza RangeError', () => {
+  it.each(FALSOS_DATE)('criterio 59 a: %s lanza RangeError, no TypeError ni otro error', async (_nombre, fecha) => {
+    const generar = await generadorLimpio();
+
+    expect(() => generar(fecha())).toThrow(RangeError);
+  });
+
+  it.each(FALSOS_DATE)(
+    'criterio 59 b: una id válida antes y varias después del rechazo de %s: todas con el formato, distintas y crecientes',
+    async (_nombre, fecha) => {
+      const generar = await generadorLimpio();
+      const ids = [generar(T0)];
+
+      expect(() => generar(fecha())).toThrow(RangeError);
+      for (let i = 0; i < 5; i += 1) ids.push(generar(T0));
+      ids.push(generar(new Date(T0.getTime() + 1)));
+
+      esperarValidasYCrecientes(ids);
+    },
+  );
+
+  it('criterio 59 b: varios falsos Date seguidos entre ids válidas no dañan el orden ni el formato', async () => {
+    const generar = await generadorLimpio();
+    const ids: string[] = [];
+
+    ids.push(generar(T0));
+    for (const [, fecha] of FALSOS_DATE) {
+      expect(() => generar(fecha())).toThrow(RangeError);
+      ids.push(generar(T0));
+    }
+
+    esperarValidasYCrecientes(ids);
+  });
+});
+
 describe('criterio 59 b: orden, unicidad y formato con muchas llamadas y con el reloj hacia atrás', () => {
   it('criterio 59 b: la misma fecha repetida 5000 veces seguidas (el contador desborda al milisegundo siguiente) da ids válidas, distintas y crecientes', async () => {
     const generar = await generadorLimpio();
