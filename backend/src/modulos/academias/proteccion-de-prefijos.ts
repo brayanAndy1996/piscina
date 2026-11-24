@@ -6,6 +6,8 @@ import { claveDeConexion } from '../../comun/http/conexion';
 import { FiltroErrores } from '../../comun/filtros/filtro-errores';
 import { responderError } from '../../comun/filtros/responder-error';
 import { ErrorAcademiaNoEncontrada } from '../../infraestructura/prisma';
+import { SesionAcademiaService } from '../autenticacion/sesion-academia.service';
+import type { SolicitudDeRecepcion } from '../autenticacion/tipos';
 import { LIMITE_INICIO_SESION, LIMITES_PUBLICOS } from './limite-inicio-sesion';
 import { SesionPlataformaService } from './sesion-plataforma.service';
 
@@ -77,6 +79,30 @@ export function instalarProteccionDePrefijos(app: NestExpressApplication, prefij
   const sesion = app.get(SesionPlataformaService, { strict: false });
   const filtro = app.get(FiltroErrores, { strict: false });
   const almacenLimite = app.get<ThrottlerStorage>(ThrottlerStorage, { strict: false });
+  const sesionesDeAcademia = app.get(SesionAcademiaService, { strict: false });
+
+  /**
+   * ¿Es una petición de recepción (spec 007, criterios 33 a 35)? Trae una cookie `aq_sesion` válida de un `ADMIN` o una `SECRETARIA` activos,
+   * sin cambio de contraseña pendiente, de la academia del nombre corto de la dirección. Si es así, la sesión queda en la petición
+   * (`sesionDeRecepcion`) para el envío del formulario y la petición no suma en el contador. Cualquier otra cosa cuenta como siempre y nunca
+   * responde 401 ni 403 por la cookie. Sin cookie no toca la base; con una firma inválida, tampoco.
+   */
+  async function esDeRecepcion(solicitud: Request): Promise<boolean> {
+    if (!solicitud.headers.cookie) return false;
+    const sesion = await sesionesDeAcademia.leerSesionDeRecepcion(solicitud);
+    if (sesion === null) return false;
+    const nombreCorto = /^\/([^/]+)/.exec(solicitud.path)?.[1];
+    if (nombreCorto === undefined) return false;
+    let deLaDireccion: string;
+    try {
+      deLaDireccion = decodeURIComponent(nombreCorto).toLowerCase();
+    } catch {
+      return false;
+    }
+    if (deLaDireccion !== sesion.academia.nombreCorto.toLowerCase()) return false;
+    (solicitud as SolicitudDeRecepcion).sesionDeRecepcion = sesion;
+    return true;
+  }
 
   app.use(`/${prefijoApi}/a`, (solicitud: Request, respuesta: Response, siguiente: NextFunction) => {
     respuesta.setHeader('Cache-Control', CABECERA_SIN_CACHE);
@@ -101,14 +127,21 @@ export function instalarProteccionDePrefijos(app: NestExpressApplication, prefij
       // no llega a leer el cuerpo ni a abrir una transacción.
       // La clave es la de conexión (criterio 59): una IPv4 por dirección, una IPv6 por bloque /64.
       const clave = `publico-${publico.nombre}:${claveDeConexion(solicitud.ip ?? '')}`;
-      almacenLimite.increment(clave, publico.ttl, publico.limite, publico.ttl, `publico-${publico.nombre}`).then(
-        (registro) => {
-          if (registro.isBlocked)
-            responderError(filtro, new HttpException('Too Many Requests', 429), solicitud, respuesta, siguiente);
-          else comprobarDireccion(solicitud, respuesta, siguiente);
-        },
-        (error: unknown) => responderError(filtro, error, solicitud, respuesta, siguiente),
-      );
+      // La recepción (007, criterio 33) no cuenta: se mira la cookie antes de contar.
+      esDeRecepcion(solicitud)
+        .then((recepcion) =>
+          recepcion
+            ? { isBlocked: false }
+            : almacenLimite.increment(clave, publico.ttl, publico.limite, publico.ttl, `publico-${publico.nombre}`),
+        )
+        .then(
+          (registro) => {
+            if (registro.isBlocked)
+              responderError(filtro, new HttpException('Too Many Requests', 429), solicitud, respuesta, siguiente);
+            else comprobarDireccion(solicitud, respuesta, siguiente);
+          },
+          (error: unknown) => responderError(filtro, error, solicitud, respuesta, siguiente),
+        );
       return;
     }
     comprobarDireccion(solicitud, respuesta, siguiente);

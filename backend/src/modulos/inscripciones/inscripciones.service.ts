@@ -30,6 +30,8 @@ import {
 import { ENVIADOR_CORREO, enviarSinEsperar, tipoDeError, type EnviadorCorreo } from '../../infraestructura/correo';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { AuditoriaService, ipParaAuditoria } from '../auditoria';
+import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
+import type { SesionVerificada } from '../autenticacion/tipos';
 import { bloquearClasesParaCupo } from '../clases';
 import { leerConfiguracion } from '../configuracion/lectura';
 import { type ClaseElegida, contarOcupacion, vencimientoDeReserva } from '../matriculas';
@@ -205,6 +207,7 @@ export class InscripcionesService {
     academia: AcademiaResuelta,
     datos: EnviarInscripcion,
     ip: string | null,
+    recepcion?: SesionVerificada,
   ): Promise<RespuestaInscripcionCreada> {
     const ahora = this.reloj.ahora();
     const hoy = hoyEnLima(ahora);
@@ -214,7 +217,13 @@ export class InscripcionesService {
     let creada: ResultadoDelEnvio;
     try {
       creada = await this.baseDatos.conAcademia(academia.id, (tx) =>
-        this.enviarEnTransaccion(tx, academia, datos, { ahora, hoy, menor, ipOrigen }),
+        this.enviarEnTransaccion(tx, academia, datos, {
+          ahora,
+          hoy,
+          menor,
+          ipOrigen,
+          actor: recepcion === undefined ? null : actorDeSesion(recepcion),
+        }),
       );
     } catch (error) {
       throw await this.errorDeEscritura(academia.id, error, datos);
@@ -266,9 +275,25 @@ export class InscripcionesService {
     tx: TransaccionAcademia,
     academia: AcademiaResuelta,
     datos: EnviarInscripcion,
-    contexto: { ahora: Date; hoy: string; menor: boolean; ipOrigen: string | null },
+    contexto: {
+      ahora: Date;
+      hoy: string;
+      menor: boolean;
+      ipOrigen: string | null;
+      /** Quien inscribe desde recepción (007, criterio 34): un `ADMIN` o una `SECRETARIA` con su sesión; `null` si se inscribe el público. */
+      actor: { id: string; versionToken: number } | null;
+    },
   ): Promise<ResultadoDelEnvio> {
-    const { ahora, hoy, menor, ipOrigen } = contexto;
+    const { ahora, hoy, menor, ipOrigen, actor } = contexto;
+    // 0. Desde recepción, el actor sigue vigente dentro de la transacción: primera sentencia (DT-5 de 002, criterio 34 a). Si dejó de serlo,
+    //    401 sin escribir nada.
+    if (actor !== null) {
+      await bloquearActorVigente(
+        tx,
+        { id: actor.id, versionToken: actor.versionToken },
+        { registro: this.registro, ip: ipOrigen },
+      );
+    }
     const dni = datos.alumno.dni;
     const claseIds = datos.inscripcion.claseIds.map((id) => id.toLowerCase());
     const planId = datos.inscripcion.planId.toLowerCase();
@@ -309,8 +334,12 @@ export class InscripcionesService {
     const cliente = await this.comprobarPersona(tx, dni, ahora);
 
     // 6. Límite de reservas sin pagar por conexión (criterio 25). Una IP desconocida es una conexión más (clave ''), igual que en el
-    //    bloqueo consultivo: sus solicitudes se guardan con `ip_origen` nulo y se cuentan juntas.
-    if ((await this.reservasActivasDeLaConexion(tx, ipOrigen, conexion, ahora)) >= LIMITE_RESERVAS_POR_CONEXION) {
+    //    bloqueo consultivo: sus solicitudes se guardan con `ip_origen` nulo y se cuentan juntas. La recepción no tiene este límite
+    //    (007, criterio 34 b) y sus solicitudes no cuentan en el de la conexión.
+    if (
+      actor === null &&
+      (await this.reservasActivasDeLaConexion(tx, ipOrigen, conexion, ahora)) >= LIMITE_RESERVAS_POR_CONEXION
+    ) {
       throw limiteDeReservasPendientes();
     }
 
@@ -341,13 +370,15 @@ export class InscripcionesService {
       token,
       claveIdempotencia: datos.claveIdempotencia.toLowerCase(),
       ipOrigen,
+      registradaPor: actor?.id ?? null,
       ahora,
     });
     await this.crearMatricula(tx, { alumnoId, solicitudId, planId, plan, cotizacion, claseIds, reservaVenceEn, ahora });
     await this.crearConsentimientos(tx, { alumnoId, solicitudId, datos, menor, ipOrigen, ahora });
     await this.auditoria.registrarEnAcademia(tx, {
-      actorTipo: 'PUBLICO',
-      actorId: null,
+      // Quien inscribe desde recepción es un usuario de la academia (007, criterio 34 c); el público, `PUBLICO`.
+      actorTipo: actor === null ? 'PUBLICO' : 'USUARIO',
+      actorId: actor?.id ?? null,
       accion: 'SOLICITUD_INSCRIPCION_CREADA',
       entidad: 'solicitud_inscripcion',
       entidadId: solicitudId,
@@ -412,7 +443,7 @@ export class InscripcionesService {
 
   /**
    * Cuántas solicitudes activas se crearon desde la misma conexión en la academia (criterio 60; las vencidas y las canceladas no
-   * cuentan). La conexión es la clave del criterio 59: una IPv4 cuenta las filas con esa dirección (también escrita como IPv6 mapeada,
+   * cuentan, y tampoco las que inscribió recepción, `registrada_por` no nulo: 007, criterio 34 b). La conexión es la clave del criterio 59: una IPv4 cuenta las filas con esa dirección (también escrita como IPv6 mapeada,
    * porque `ip_origen` guarda la dirección exacta tal como llegó) y un bloque /64 cuenta las filas dentro del bloque, salvo las IPv6
    * mapeadas (que son IPv4 aunque caigan en `::/64`). Una IP desconocida (`ip` nula, clave de conexión `''`) cuenta las filas con
    * `ip_origen` nulo: es una conexión más, con el mismo tope. Los valores van como parámetros, nunca concatenados en el texto de la
@@ -437,7 +468,7 @@ export class InscripcionesService {
         FROM solicitudes_inscripcion s
         JOIN matriculas m ON m.academia_id = s.academia_id AND m.solicitud_id = s.id
        WHERE s.academia_id = ${tx.academiaId}::uuid AND ${mismaConexion} AND s.estado = 'PENDIENTE_PAGO'::estado_solicitud
-         AND m.estado = 'RESERVADA'::estado_matricula AND (m.reserva_vence_en IS NULL OR m.reserva_vence_en > ${ahora}::timestamptz)`;
+         AND s.registrada_por IS NULL AND m.estado = 'RESERVADA'::estado_matricula AND (m.reserva_vence_en IS NULL OR m.reserva_vence_en > ${ahora}::timestamptz)`;
     return filas[0]?.n ?? 0;
   }
 
@@ -521,17 +552,24 @@ export class InscripcionesService {
    */
   private async crearSolicitud(
     tx: TransaccionAcademia,
-    datos: { alumnoId: string; token: string; claveIdempotencia: string; ipOrigen: string | null; ahora: Date },
+    datos: {
+      alumnoId: string;
+      token: string;
+      claveIdempotencia: string;
+      ipOrigen: string | null;
+      registradaPor: string | null;
+      ahora: Date;
+    },
   ): Promise<{ id: string; codigo: string }> {
     const hash = hashDeToken(datos.token);
     for (let intento = 0; intento < INTENTOS_DE_CODIGO; intento++) {
       const codigo = nuevoCodigo();
       const filas = await tx.cliente.$queryRaw<{ id: string }[]>`
         INSERT INTO solicitudes_inscripcion (id, academia_id, alumno_id, codigo, token_hash, clave_idempotencia, estado, ip_origen,
-                                             creado_en, actualizado_en)
+                                             registrada_por, creado_en, actualizado_en)
         VALUES (gen_random_uuid(), ${tx.academiaId}::uuid, ${datos.alumnoId}::uuid, ${codigo}, decode(${hash}::text, 'hex'),
                 ${datos.claveIdempotencia}::uuid, 'PENDIENTE_PAGO'::estado_solicitud, ${datos.ipOrigen}::inet,
-                ${datos.ahora}::timestamptz, ${datos.ahora}::timestamptz)
+                ${datos.registradaPor}::uuid, ${datos.ahora}::timestamptz, ${datos.ahora}::timestamptz)
         ON CONFLICT ON CONSTRAINT solicitudes_inscripcion_academia_id_codigo_key DO NOTHING
         RETURNING id::text AS id`;
       const creada = filas[0];

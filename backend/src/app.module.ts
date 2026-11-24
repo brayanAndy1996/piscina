@@ -16,6 +16,7 @@ import { CajaModule } from './modulos/caja';
 import { ClasesModule } from './modulos/clases';
 import { ConfiguracionModule } from './modulos/configuracion';
 import { InscripcionesModule } from './modulos/inscripciones';
+import { PagosModule } from './modulos/pagos';
 import { PlanesModule } from './modulos/planes';
 import { SaludModule } from './modulos/salud/salud.module';
 import { UsuariosModule } from './modulos/usuarios';
@@ -55,6 +56,7 @@ export class AppModule {
         ClasesModule,
         InscripcionesModule,
         CajaModule,
+        PagosModule,
         SaludModule,
       ],
       // El filtro también es un proveedor normal: el middleware de `/api/plataforma` lo reutiliza para sus respuestas.

@@ -1,8 +1,11 @@
 /** Token para inyectar el enviador de correo: `@Inject(ENVIADOR_CORREO) private readonly correo: EnviadorCorreo` (P7 de 005). */
 export const ENVIADOR_CORREO = Symbol('ENVIADOR_CORREO');
 
-/** Las plantillas de correo que existen (la 005 trae la del seguimiento de la solicitud; la 007 y la 010 suman las suyas). */
-export type PlantillaDeCorreo = 'SEGUIMIENTO_SOLICITUD';
+/**
+ * Las plantillas de correo que existen: la 005 trae la del seguimiento de la solicitud; la 007 suma `PAGO_CONFIRMADO` (con `nombreAcademia`,
+ * `codigo` y `enlaceDeIngreso`) y, en su segunda entrega, `PAGO_RECHAZADO`; la 010 suma las suyas.
+ */
+export type PlantillaDeCorreo = 'SEGUIMIENTO_SOLICITUD' | 'PAGO_CONFIRMADO';
 
 export interface MensajeDeCorreo {
   /** La academia que envía: el proveedor real arma el remitente y el nombre con ella. */

@@ -1,5 +1,5 @@
 /**
- * Matriz de permisos (sección 2.1 de los requerimientos, más `GESTIONAR_USUARIOS` y `RESTABLECER_CLAVE` de la spec 002, `CONFIGURAR_ACADEMIA` de la spec 003 y `REABRIR_CAJA` de la spec 006). La
+ * Matriz de permisos (sección 2.1 de los requerimientos, más `GESTIONAR_USUARIOS` y `RESTABLECER_CLAVE` de la spec 002, `CONFIGURAR_ACADEMIA` de la spec 003 y `REABRIR_CAJA` de la spec 006 y `AJUSTAR_MONTO_COBRO` de la spec 007: solo el administrador ajusta el monto de un cobro, RN-25). La
  * comparten la API (guard de permisos) y la web (menú). Quien decide siempre es la API: la web solo muestra u oculta.
  *
  * El guard de la API solo decide si el rol pasa (`puede`); el alcance de cada celda (`SUS_ALUMNOS`, `PROPIO`…) lo aplica el
@@ -43,6 +43,7 @@ export const PERMISOS = [
   'RESTABLECER_CLAVE',
   'CONFIGURAR_ACADEMIA',
   'REABRIR_CAJA',
+  'AJUSTAR_MONTO_COBRO',
 ] as const;
 export type Permiso = (typeof PERMISOS)[number];
 
@@ -78,6 +79,7 @@ export const MATRIZ_PERMISOS: Readonly<Record<Permiso, FilaDePermiso>> = {
   RESTABLECER_CLAVE: { ADMIN: 'TODO', SECRETARIA: 'ALUMNOS' },
   CONFIGURAR_ACADEMIA: { ADMIN: 'TODO' },
   REABRIR_CAJA: { ADMIN: 'TODO' },
+  AJUSTAR_MONTO_COBRO: { ADMIN: 'TODO' },
 };
 
 /**

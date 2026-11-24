@@ -5,4 +5,8 @@ export const ESTADO_EN_PALABRAS: Readonly<Record<EstadoSolicitud, { titulo: stri
   PENDIENTE_PAGO: { titulo: 'Pendiente de pago', color: 'ambar' },
   VENCIDA: { titulo: 'Vencida', color: 'gris' },
   CANCELADA: { titulo: 'Cancelada', color: 'gris' },
+  // Los estados de la 007 (pagos); la web de la 007a los pinta mejor en sus tareas del frontend.
+  CONFIRMADA: { titulo: 'Pago confirmado', color: 'gris' },
+  EN_VERIFICACION: { titulo: 'Comprobante en revisión', color: 'ambar' },
+  PAGO_RECHAZADO: { titulo: 'Pago rechazado', color: 'ambar' },
 };

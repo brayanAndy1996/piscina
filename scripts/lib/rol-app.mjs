@@ -176,6 +176,8 @@ export const PRIVILEGIOS_APP = Object.freeze(
     { tabla: 'alumnos', columna: 'nivel', privilegio: 'UPDATE' },
     { tabla: 'alumnos', columna: 'foto_clave', privilegio: 'UPDATE' },
     { tabla: 'alumnos', columna: 'actualizado_en', privilegio: 'UPDATE' },
+    { tabla: 'alumnos', columna: 'estado', privilegio: 'UPDATE' },
+    { tabla: 'alumnos', columna: 'usuario_id', privilegio: 'UPDATE' },
     { tabla: 'apoderados', columna: null, privilegio: 'SELECT' },
     { tabla: 'apoderados', columna: null, privilegio: 'INSERT' },
     { tabla: 'apoderados', columna: null, privilegio: 'DELETE' },
@@ -207,6 +209,8 @@ export const PRIVILEGIOS_APP = Object.freeze(
     { tabla: 'matriculas', columna: 'estado', privilegio: 'UPDATE' },
     { tabla: 'matriculas', columna: 'reserva_vence_en', privilegio: 'UPDATE' },
     { tabla: 'matriculas', columna: 'actualizado_en', privilegio: 'UPDATE' },
+    { tabla: 'matriculas', columna: 'monto_ajustado', privilegio: 'UPDATE' },
+    { tabla: 'matriculas', columna: 'motivo_ajuste', privilegio: 'UPDATE' },
     { tabla: 'matricula_clases', columna: null, privilegio: 'SELECT' },
     { tabla: 'matricula_clases', columna: null, privilegio: 'INSERT' },
     // Historia 006 (criterio 2): las tres tablas de la caja. Nada se borra y los movimientos no cambian (sin UPDATE). En `cajas` solo
@@ -222,6 +226,17 @@ export const PRIVILEGIOS_APP = Object.freeze(
     { tabla: 'cierres_caja', columna: 'reabierto_por', privilegio: 'UPDATE' },
     { tabla: 'cierres_caja', columna: 'reabierto_en', privilegio: 'UPDATE' },
     { tabla: 'cierres_caja', columna: 'motivo_reapertura', privilegio: 'UPDATE' },
+    // Historia 007 (criterio 2): `pagos` (sin DELETE; solo cambian al resolverse el estado, quién y cuándo, el motivo y el ticket). La
+    // confirmación pasa al alumno a `ALUMNO_ACTIVO` con su cuenta (`alumnos.estado` y `usuario_id`) y el ajuste del administrador cambia
+    // `matriculas.monto_ajustado` y `motivo_ajuste`.
+    { tabla: 'pagos', columna: null, privilegio: 'SELECT' },
+    { tabla: 'pagos', columna: null, privilegio: 'INSERT' },
+    { tabla: 'pagos', columna: 'estado', privilegio: 'UPDATE' },
+    { tabla: 'pagos', columna: 'verificado_por', privilegio: 'UPDATE' },
+    { tabla: 'pagos', columna: 'verificado_en', privilegio: 'UPDATE' },
+    { tabla: 'pagos', columna: 'motivo_rechazo', privilegio: 'UPDATE' },
+    { tabla: 'pagos', columna: 'numero_ticket', privilegio: 'UPDATE' },
+    { tabla: 'pagos', columna: 'actualizado_en', privilegio: 'UPDATE' },
   ].map((privilegio) => Object.freeze(privilegio)),
 );
 

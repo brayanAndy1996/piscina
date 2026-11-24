@@ -24,6 +24,7 @@ const TEXTO_DEL_FILTRO: Readonly<Record<FiltroEstadoSolicitudes, string>> = {
   ACTIVAS: 'Activas',
   VENCIDAS: 'Vencidas',
   CANCELADAS: 'Canceladas',
+  CONFIRMADAS: 'Confirmadas',
   TODAS: 'Todas',
 };
 
@@ -31,6 +32,7 @@ const SIN_SOLICITUDES: Readonly<Record<FiltroEstadoSolicitudes, string>> = {
   ACTIVAS: 'No hay solicitudes activas.',
   VENCIDAS: 'No hay solicitudes vencidas.',
   CANCELADAS: 'No hay solicitudes canceladas.',
+  CONFIRMADAS: 'No hay solicitudes confirmadas.',
   TODAS: 'Todavía no hay solicitudes.',
 };
 

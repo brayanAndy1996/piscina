@@ -107,6 +107,8 @@ const CLIENTES_DE_EJEMPLO = [
     textoDelToken: 'semilla-delfines-solicitud-1',
     estado: 'VIGENTE',
     apoderado: null,
+    // Un ajuste del administrador de ejemplo (spec 007, criterio 57): soles enteros, con su motivo (RN-25, DR-11).
+    ajuste: { monto: '60', motivo: 'Descuento de ejemplo autorizado por la dirección' },
   },
   {
     dni: '20000002',
@@ -117,6 +119,7 @@ const CLIENTES_DE_EJEMPLO = [
     textoDelToken: 'semilla-delfines-solicitud-2',
     estado: 'VENCIDA',
     apoderado: null,
+    ajuste: null,
   },
   {
     dni: '20000003',
@@ -133,6 +136,7 @@ const CLIENTES_DE_EJEMPLO = [
       telefono: '955123456',
       parentesco: 'MADRE',
     },
+    ajuste: null,
   },
 ] as const;
 /** Las clases de ejemplo que eligen los clientes (BASICO, lunes, miércoles y viernes a las 18:00: las del plan de 3 veces por semana). */
@@ -443,6 +447,19 @@ async function sembrar(): Promise<number> {
         return true;
       });
       if (creado) clientesCreados += 1;
+      // El ajuste de ejemplo (007, criterio 57): solo a una matrícula de ejemplo que nadie tocó (sin ajuste, todavía reservada y sin cambios
+      // desde que se sembró): repetir la semilla no lo duplica ni pisa un ajuste o un cambio del administrador.
+      if (ejemplo.ajuste !== null) {
+        await enAcademia(
+          cliente,
+          delfinesId,
+          (tx) => tx.$executeRaw`
+            UPDATE matriculas m SET monto_ajustado = ${ejemplo.ajuste.monto}::numeric(10,2), motivo_ajuste = ${ejemplo.ajuste.motivo}
+              FROM alumnos a
+             WHERE m.academia_id = ${delfinesId}::uuid AND a.academia_id = m.academia_id AND a.id = m.alumno_id AND a.dni = ${ejemplo.dni}
+               AND m.estado = 'RESERVADA'::estado_matricula AND m.monto_ajustado IS NULL AND m.actualizado_en = m.creado_en`,
+        );
+      }
     }
     console.log(
       !plan

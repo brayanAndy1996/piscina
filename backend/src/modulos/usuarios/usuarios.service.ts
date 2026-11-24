@@ -156,8 +156,34 @@ export class UsuariosService {
       if (actor.tipo === 'USUARIO') {
         await bloquearActorVigente(tx, actor, { registro: this.registro, ip });
       }
+      await this.comprobarQueNoEsDeUnAlumno(tx, datos.dni);
       return this.crearEnTransaccion(tx, { ...datos, claveHash }, { tipo: actor.tipo, id: actor.id }, ip);
     });
+  }
+
+  /**
+   * El personal y los alumnos de una academia no comparten DNI (spec 007, DR-1, criterio 22 b; D-28): una cuenta tiene un solo rol. Toma el
+   * bloqueo consultivo del DNI (el mismo del envío de la 005 y de la confirmación de un pago, DT-16) después del actor, para que la creación
+   * de personal y el cobro del mismo DNI se ordenen, y rechaza con 409 `DNI_EN_USO` (el mismo cuerpo de 002) el DNI de un alumno que no está
+   * en `CLIENTE` o de un cliente con una solicitud activa (en espera de pago o con el comprobante en revisión, que todavía ocupa cupo). Con
+   * el DNI de un cliente sin solicitud activa se crea la cuenta como siempre, y ese cliente ya no puede volver a inscribirse (criterio 21 a de 005).
+   */
+  private async comprobarQueNoEsDeUnAlumno(tx: TransaccionAcademia, dni: string): Promise<void> {
+    const ahora = this.reloj.ahora();
+    await tx.cliente.$executeRaw`
+      SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`inscripcion-dni:${tx.academiaId}:${dni}`}::text, 0))`;
+    const filas = await tx.cliente.$queryRaw<{ estado: string; activa: boolean }[]>`
+      SELECT a.estado::text AS estado,
+             EXISTS (SELECT 1
+                       FROM solicitudes_inscripcion s
+                       JOIN matriculas m ON m.academia_id = s.academia_id AND m.solicitud_id = s.id
+                      WHERE s.academia_id = a.academia_id AND s.alumno_id = a.id AND s.estado = 'PENDIENTE_PAGO'::estado_solicitud
+                        AND m.estado = 'RESERVADA'::estado_matricula
+                        AND (m.reserva_vence_en IS NULL OR m.reserva_vence_en > ${ahora}::timestamptz)) AS activa
+        FROM alumnos a
+       WHERE a.academia_id = ${tx.academiaId}::uuid AND a.dni = ${dni}`;
+    const alumno = filas[0];
+    if (alumno && (alumno.estado !== 'CLIENTE' || alumno.activa)) throw dniEnUso();
   }
 
   /** El personal de la academia (administradores, secretarias y entrenadores; también los inactivos), por apellidos y nombres. */

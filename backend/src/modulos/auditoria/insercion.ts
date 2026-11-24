@@ -1,4 +1,5 @@
 import type { ClienteTransaccion } from '../../infraestructura/prisma';
+import { idDeAuditoriaOrdenado } from './id-ordenado';
 import { ipParaAuditoria } from './ip';
 
 /** Lo que se registra de una acción crítica: quién, cuándo (lo pone el servicio) y qué (RN-22, RNF-06). */
@@ -61,7 +62,7 @@ export async function insertarEnAuditoriaDeAcademia(
       (id, academia_id, fecha_hora, actor_tipo, actor_id, accion, entidad, entidad_id,
        datos_antes, datos_despues, motivo, ip)
     VALUES
-      (gen_random_uuid(), ${academiaId}::uuid, ${fechaHora}::timestamptz,
+      (${idDeAuditoriaOrdenado(fechaHora)}::uuid, ${academiaId}::uuid, ${fechaHora}::timestamptz,
        ${entrada.actorTipo}::tipo_actor, ${entrada.actorId}::uuid, ${entrada.accion}, ${entrada.entidad},
        ${entrada.entidadId}, ${comoJson(entrada.datosAntes)}::jsonb, ${comoJson(entrada.datosDespues)}::jsonb,
        ${entrada.motivo ?? null}, ${ip}::inet)`;

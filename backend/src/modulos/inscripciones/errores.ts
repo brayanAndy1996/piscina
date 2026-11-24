@@ -112,3 +112,12 @@ export function solicitudNoCancelable(): ErrorNegocio {
 export function noEncontrado(): ErrorNegocio {
   return new ErrorNegocio(404, 'NO_ENCONTRADO', 'No se encontró el recurso solicitado.');
 }
+
+/** 409 de la cancelación (007, criterio 30): hay un comprobante en revisión; primero se aprueba o se rechaza (DR-12). Sin `detalles`. */
+export function solicitudConPagoPendiente(): ErrorNegocio {
+  return new ErrorNegocio(
+    409,
+    'SOLICITUD_CON_PAGO_PENDIENTE',
+    'La solicitud tiene un comprobante en revisión. Apruébalo o recházalo antes de cancelar.',
+  );
+}
