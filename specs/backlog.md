@@ -17,8 +17,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 004 | Planes y clases con aforo | En parte | ✅ |
 | 005a | Inscripción pública, reserva y seguimiento de la solicitud | Sí | ✅ |
 | 005b | Foto de la inscripción y panel de solicitudes | Sí | ✅ |
-| 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | 🟨 |
-| 006b | Historial y PDF del cierre de caja | Sí | ⬜ |
+| 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | ✅ |
+| 006b | Historial y PDF del cierre de caja | Sí | 🟨 |
 | 007 | Pagos, verificación y paso de cliente a alumno | Sí | ⬜ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
@@ -56,6 +56,15 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     formulario de inscripción**. Sin eso, detrás del proxy todas las peticiones llegan con la misma IP, y los límites
     por IP de la inscripción pública (criterio 33 de 005: lecturas, cotización, envío, consulta y foto) y el de 5
     solicitudes sin pagar por conexión (criterio 25 de 005) bloquearían a todos a la vez.
+  - **Pendiente antes de producción, desde la 006b (DT-14 de 006): un límite general de peticiones por usuario o por
+    academia en toda la API con sesión.** Hoy las rutas con sesión no tienen un límite general de peticiones; solo el
+    PDF del cierre de caja tiene los suyos (criterios 49 y 52 de 006). Medido en la ronda adversarial 2 de la 006b, con
+    una caja de 20 000 movimientos:
+    - el detalle de la caja tarda unos 245 ms y responde de 7 a 11,8 MB, y `/api/cajas/actual` tarda unos 180 ms;
+    - con 10 detalles a la vez, un egreso de otra academia tarda unos 2 s; con 30 a la vez, unos 5,8 s.
+
+    Se decide junto con `trust proxy` y el hosting (D-21). Con varias instancias, los contadores en memoria de cada
+    proceso (PO-6) no bastan.
   - DT-4: `DELETE /api/plataforma/sesion` con un cuerpo que no es JSON responde 400 y no cierra (criterio 74 de 001),
     mientras que `DELETE /api/sesion` cierra con cualquier cuerpo (criterio 54 de 002). Alinearlos cambia pruebas
     protegidas de la 001: va en una historia propia.
@@ -139,15 +148,18 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Estado: spec aprobada por Bryan el 22/11/2026 (DR-1 a DR-11 y DT-1 a DT-6 de 006, todas con la propuesta), en
     [`specs/006-caja/`](006-caja/spec.md). Por DR-10 se entrega en dos PR desde esa misma carpeta, los dos de ruta
     crítica:
-    - **006a · caja del día** (primero): criterios 1 a 39, y 45 y 46 sin el historial ni el PDF (tablas, aislamiento,
+    - **006a · caja del día** (unida a main el 22/11/2026, [PR #11](https://github.com/brayanAndy1996/piscina/pull/11)): criterios 1 a 39, y 45 y 46 sin el historial ni el PDF (tablas, aislamiento,
       permisos con `REABRIR_CAJA`, apertura, egresos, cierre, reapertura, la interfaz para la 007 y la pantalla
       `/panel/caja`).
-    - **006b · historial y PDF del cierre** (siguiente PR, con la 006a unida): criterios 40 a 44, más su parte de 45 y 46
+    - **006b · historial y PDF del cierre** (en curso): criterios 40 a 44, más su parte de 45 y 46
       (historial con el alcance de la secretaria, detalle, PDF bajo pedido con `pdfkit`). Sin migración.
   - Lo decidido: una caja abierta a la vez por academia y una por día (DR-1); la caja de un día anterior no admite
     movimientos y se cierra, contando el efectivo y con la marca «tardío», antes de abrir la de hoy (DR-2); el egreso es
     siempre en efectivo, sin superar el efectivo de la caja (DR-3, DR-4); los movimientos no se anulan (DR-5); no hay
     ingresos manuales (DR-11).
+  - Pendiente antes de producción (DT-14 de 006): el límite general de peticiones por usuario o por academia en la API,
+    anotado en las notas de hosting de la 002. Las lecturas de una caja con decenas de miles de movimientos quedan como
+    riesgo aceptado de la 006b.
 - **007 · Pagos y verificación.** Efectivo, Yape y transferencia con comprobante, bandeja de verificación, número de
   operación sin duplicados, caja al verificar (D-04), paso de cliente a alumno con usuario (HU-04, HU-07 a HU-09,
   RN-01, RN-04, RN-28), ticket interno (D-09).

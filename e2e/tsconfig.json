@@ -6,5 +6,12 @@
     "moduleResolution": "bundler",
     "noEmit": true
   },
-  "include": ["playwright.config.ts", "global-setup.ts", "global-teardown.ts", "datos-e2e.ts", "pruebas"]
+  "include": [
+    "playwright.config.ts",
+    "global-setup.ts",
+    "global-teardown.ts",
+    "datos-e2e.ts",
+    "ayudas-caja.ts",
+    "pruebas"
+  ]
 }

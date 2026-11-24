@@ -1,7 +1,9 @@
 import { esErrorDeApi } from '../../api/cliente';
 import { formatearSoles } from '../../lib/dinero';
 import { formatearFechaCalendario } from '../../lib/fechas';
+import { DescargaCanceladaError } from '../../lib/descargas-en-curso';
 import { mensajeGeneral } from '../../lib/errores';
+import { esErrorDeCambioDeSesion } from '../sesion/hooks';
 import { z } from 'zod';
 
 /** Lo que se dice ante cada error de la caja (criterios 13 a 15, 19 a 22, 31, 34 y 36 de 006). Los textos van en español y sin códigos. */
@@ -77,4 +79,28 @@ export function mensajeDeCaja(error: unknown): string {
   if (esErrorDeApi(error, 404)) return 'La caja ya no existe o no es de tu academia. Actualizamos la pantalla.';
   if (esErrorDeApi(error, 403, 'SIN_PERMISO')) return 'No tienes permiso para esta acción.';
   return mensajeGeneral(error);
+}
+
+export const MENSAJE_PDF_NO_ENCONTRADO = 'No se encontró el cierre';
+export const MENSAJE_PDF_MUCHAS_DESCARGAS =
+  'Hay muchas descargas de PDF en curso. Espera un momento e inténtalo de nuevo.';
+export const MENSAJE_PDF_FALLIDO = 'No se pudo generar el PDF. Inténtalo de nuevo.';
+
+/**
+ * Lo que se dice cuando falla la descarga del PDF de un cierre (criterio 44, PQ12): un mensaje fijo para cada caso. Con 401 o con un cambio
+ * de sesión no se dice nada aquí: la web ya lleva a la página que corresponde.
+ */
+export function mensajeDeDescargaDelPdf(error: unknown): string | null {
+  if (
+    error instanceof DescargaCanceladaError ||
+    esErrorDeApi(error, 401) ||
+    esErrorDeApi(error, 403, 'ACADEMIA_SUSPENDIDA') ||
+    esErrorDeApi(error, 403, 'CAMBIO_DE_CLAVE_OBLIGATORIO') ||
+    esErrorDeCambioDeSesion(error)
+  ) {
+    return null;
+  }
+  if (esErrorDeApi(error, 404)) return MENSAJE_PDF_NO_ENCONTRADO;
+  if (esErrorDeApi(error, 429, 'DEMASIADAS_SOLICITUDES')) return MENSAJE_PDF_MUCHAS_DESCARGAS;
+  return MENSAJE_PDF_FALLIDO;
 }

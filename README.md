@@ -184,8 +184,7 @@ lint, los tipos y la integración continua en Windows) y el PR para unirse a `ma
 La historia 005 (la 005a y la 005b) está en [`specs/005-inscripcion-publica/`](specs/005-inscripcion-publica/spec.md). Su estado
 está en [`specs/backlog.md`](specs/backlog.md).
 
-**006a · Caja del día** está construida. Falta la verificación final (la suite completa, el lint, los tipos y la
-integración continua en Windows) y el PR para unirse a `main`. Trae:
+**006a · Caja del día** está construida y unida a `main`. Trae:
 
 - **Apertura:** la secretaria o el administrador abren la caja del día con su monto inicial, que puede ser cero. Hay una
   caja por día y una abierta a la vez en cada academia. Si la caja de un día anterior sigue abierta, hay que cerrarla
@@ -211,15 +210,40 @@ integración continua en Windows) y el PR para unirse a `main`. Trae:
   `backend/src/modulos/caja/`) son la forma en que la 007, la 016 y la 019 registran dinero en la caja. Todavía no hay
   cobros: llegan con la 007. Sus reglas están en [`docs/arquitectura.md`](docs/arquitectura.md).
 - **Datos de ejemplo:** `delfines` tiene una caja cerrada del 2 de noviembre de 2026, con un egreso de S/ 15.50 y un
-  sobrante de S/ 0.50. `/panel/caja` solo muestra la caja de hoy, así que esa se verá en el historial (006b). `tiburones`
-  queda sin cajas.
+  sobrante de S/ 0.50. `/panel/caja` solo muestra la caja de hoy, así que esa se ve en el historial (`/panel/cajas`, desde
+  la 006b). `tiburones` queda sin cajas.
 - **Sin paquetes ni variables nuevas.** La migración es `20261122120000_caja`.
-- **Lo que todavía no trae:** los cobros y las verificaciones de pago (007 y 016), el egreso desde caja de los
-  entrenadores (019), el historial y el PDF del cierre (006b), y la reapertura de un día anterior desde la web (006b).
+- **Lo que todavía no trae:** los cobros y las verificaciones de pago (007 y 016), y el egreso desde caja de los
+  entrenadores (019). El historial y el PDF llegaron con la 006b.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria y pulsa **Caja**. El paso a paso está
   en la guía, en «Probar la caja del día».
 
-La historia 006 (la 006a) está en [`specs/006-caja/`](specs/006-caja/spec.md). Su estado está en
+**006b · Historial y PDF del cierre** está construida, encima de la 006a. Falta el PR para unirse a `main`, y la
+integración continua en Linux y en Windows sobre ese PR. Trae:
+
+- **Historial:** `/panel/cajas`, con la opción **Historial de caja** del inicio del panel, para el administrador y la
+  secretaria. Lista las cajas entre dos fechas. Sin fechas, muestra los últimos 31 días hasta hoy, en la hora de Lima;
+  el rango puede ser de como mucho 366 días. Cada caja muestra su estado, quién la abrió, los ingresos por método, los
+  egresos y el último cierre (lo declarado, la diferencia y si fue tardío).
+- **Alcance:** el administrador ve todas las cajas de la academia. La secretaria ve las que abrió, las que cerró alguna
+  vez, la que está abierta y la de hoy. Lo que no le corresponde no aparece en la lista, y un enlace directo responde
+  como si la caja no existiera.
+- **Detalle:** `/panel/cajas/:id` muestra la caja con sus movimientos y todos sus cierres, cada uno con su reapertura si la
+  tuvo. Es de solo lectura. El administrador puede reabrir desde aquí una caja cerrada, con un motivo.
+- **PDF del cierre:** un botón **Descargar PDF** por cada cierre. El PDF (A4) trae la academia, la fecha de la caja, los
+  movimientos hasta el cierre, los totales, el esperado, lo declarado, la diferencia, la observación y quién cerró. Se
+  arma al pedirlo y no se guarda en ningún lado. Solo muestra caracteres latinos: lo demás sale como `?` en el PDF, aunque
+  en la pantalla se vea bien.
+- **Límites de descarga:** la API arma pocos PDF a la vez (2, con 8 en espera), y cada persona y cada academia tienen un
+  cupo chico. Si aparece «Hay muchas descargas de PDF en curso», espera unos segundos y vuelve a pulsar.
+- **Dependencia nueva:** `pdfkit` (y `@types/pdfkit` en desarrollo). No hay migración ni variables nuevas, y la semilla no
+  cambia.
+- **Lo que todavía no trae:** los cobros y las verificaciones de pago (007 y 016), el egreso desde caja de los
+  entrenadores (019) y la facturación SUNAT (último módulo). Los reportes exportables y el dashboard son de la Fase 3.
+- **Cómo probarlo en tu PC:** con `npm run dev` encendido, entra como el administrador o la secretaria y pulsa **Historial
+  de caja**. El paso a paso está en la guía, en «Probar el historial y el PDF del cierre».
+
+La historia 006 (la 006a y la 006b) está en [`specs/006-caja/`](specs/006-caja/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
 
 ## Cómo levantarlo en Windows
@@ -263,6 +287,9 @@ migraciones. Los pasos están en la guía, en "Después de traer la historia 005
 Si ya tenías la historia 005b y traes la 006a, ejecuta `npm run db:preparar`: la 006a agrega las tablas de la caja, con su
 migración, y la semilla suma la caja cerrada de ejemplo de `delfines`. No hay paquetes ni variables nuevas, así que `npm ci`
 no hace falta. Los pasos están en la guía, en "Después de traer la historia 006a".
+
+Si ya tenías la historia 006a y traes la 006b, ejecuta `npm ci`: la 006b agrega `pdfkit`, que arma el PDF del cierre. No tiene
+migraciones ni variables nuevas, y la semilla no cambia. Los pasos están en la guía, en "Después de traer la historia 006b".
 
 ## Comandos principales
 
@@ -308,7 +335,7 @@ no hace falta. Los pasos están en la guía, en "Después de traer la historia 0
   `docs/arquitectura.md`.
 - **Archivos:** las fotos se guardan con `AlmacenArchivos`, en la carpeta de `ALMACEN_DIRECTORIO`, fuera de lo que sirve la web.
   Cada historia que guarda archivos los guarda antes de confirmar la transacción, y borra lo que reemplaza después de confirmar
-  (reglas en `docs/arquitectura.md`).
+  (reglas en `docs/arquitectura.md`). Los PDF del cierre de caja no se guardan: se arman al descargarlos (006b).
 - **Varias academias:** cada tabla de negocio lleva `academia_id`, y PostgreSQL filtra por academia con seguridad a nivel
   de fila (D-23). Eso ya está en la 001. Las reglas de fechas, transacciones y errores que siguen las historias nuevas
   están en [`docs/arquitectura.md`](docs/arquitectura.md).
@@ -342,7 +369,7 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 - [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, cómo
-  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases y la caja del día.
+  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día y el historial de caja con su PDF.
 
 ## Forma de trabajo
 

@@ -1,15 +1,28 @@
-import type { Caja } from '@aquagestion/contratos';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import type { Caja, FiltroHistorialCajas } from '@aquagestion/contratos';
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { DescargaCanceladaError, iniciarDescarga } from '../../lib/descargas-en-curso';
 import { hoyEnLima } from '../../lib/fechas';
 import { useUsuario } from '../sesion/contexto';
-import { useConfirmarSesion } from '../sesion/hooks';
+import { CLAVE_CERRAR_SESION, useConfirmarSesion, useVigilanteDeLaSesion } from '../sesion/hooks';
 import * as api from './api';
+import { entregarArchivo, nombreDelPdfDelCierre } from './descarga';
 
-/** La clave lleva la identidad de la sesión: la caja de otra academia o de otra persona nunca se reutiliza (criterio 28 de 003). */
+/**
+ * Las claves llevan la identidad de la sesión: la caja de otra academia o de otra persona nunca se reutiliza (criterio 28 de 003). Las del
+ * historial y del detalle son las de PQ12.
+ */
 export function useClavesCaja() {
   const usuario = useUsuario();
-  return { actual: ['caja-actual', usuario.academia.nombreCorto, usuario.id] as const };
+  const identidad = [usuario.academia.nombreCorto, usuario.id] as const;
+  return {
+    actual: ['caja-actual', ...identidad] as const,
+    historialTodos: ['cajas-historial', ...identidad] as const,
+    historial: (filtro: FiltroHistorialCajas) =>
+      ['cajas-historial', ...identidad, filtro.desde ?? null, filtro.hasta ?? null] as const,
+    detalleTodos: ['caja', ...identidad] as const,
+    detalle: (id: string) => ['caja', ...identidad, id] as const,
+  };
 }
 
 /**
@@ -65,9 +78,17 @@ function useEscrituraDeCaja<Entrada, Salida>(
       return escribir(entrada);
     },
     onSuccess: (salida) => {
-      cliente.setQueryData(claves.actual, cajaDe(salida));
+      const caja = cajaDe(salida);
+      cliente.setQueryData(claves.actual, caja);
+      cliente.setQueryData(claves.detalle(caja.id), caja);
     },
-    onSettled: () => cliente.invalidateQueries({ queryKey: claves.actual }),
+    // El historial y el detalle también cambian con cada escritura: se vuelven a pedir cuando se abran.
+    onSettled: () =>
+      Promise.all([
+        cliente.invalidateQueries({ queryKey: claves.actual }),
+        cliente.invalidateQueries({ queryKey: claves.historialTodos }),
+        cliente.invalidateQueries({ queryKey: claves.detalleTodos }),
+      ]),
   });
 }
 
@@ -85,4 +106,131 @@ export function useCerrarCaja() {
 
 export function useReabrirCaja() {
   return useEscrituraDeCaja(api.reabrirCaja, (caja) => caja);
+}
+
+/** El historial de cajas del filtro pedido (criterio 40). Siempre se vuelve a pedir al entrar; no se reintenta. */
+export function useHistorialCajas(filtro: FiltroHistorialCajas) {
+  const claves = useClavesCaja();
+  return useQuery({
+    queryKey: claves.historial(filtro),
+    queryFn: () => api.obtenerHistorial(filtro),
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** El detalle de una caja (criterio 41). Siempre se vuelve a pedir al entrar; no se reintenta. */
+export function useDetalleCaja(id: string) {
+  const claves = useClavesCaja();
+  return useQuery({
+    queryKey: claves.detalle(id),
+    queryFn: () => api.obtenerCaja(id),
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * Descarga el PDF de un cierre (criterio 42): antes confirma que la sesión sigue siendo la de la página (como las escrituras), pide el
+ * archivo con la misma cookie y se lo entrega al navegador con su nombre.
+ *
+ * Cada descarga tiene su propio `AbortController` (criterio 54, DT-13) y se cancela si la persona pulsa "Cerrar sesión" (lo hace
+ * `useCerrarSesionAcademia` con el registro de descargas), si la sesión se pierde o cambia de identidad, o si la página se desmonta. Antes
+ * de entregar se comprueba otra vez, aunque el `fetch` haya ignorado la señal. Una descarga cancelada falla con `DescargaCanceladaError`,
+ * que no lleva mensaje.
+ */
+export function useDescargarPdfDelCierre() {
+  const cliente = useQueryClient();
+  const confirmarSesion = useConfirmarSesion();
+  const vigilarLaSesion = useVigilanteDeLaSesion();
+  // Las descargas de esta página que todavía no terminaron, cada una con cómo soltar lo que registró.
+  const propias = useRef(new Map<AbortController, () => void>());
+  useEffect(() => {
+    const descargas = propias.current;
+    return () => {
+      for (const [controlador, soltar] of descargas) {
+        controlador.abort();
+        soltar();
+      }
+      descargas.clear();
+    };
+  }, []);
+  // Criterio 57 e (DT-19): desde que se pulsa "Cerrar sesión" hasta que su mutación termina (incluida la pausa sin conexión), no se descarga.
+  const seEstaCerrandoLaSesion = useCallback(
+    () => cliente.isMutating({ mutationKey: CLAVE_CERRAR_SESION }) > 0,
+    [cliente],
+  );
+  const mutacion = useMutation({
+    mutationFn: async ({ cajaId, fecha, numero, controlador, sigue, soltar }: DescargaPedida) => {
+      // Si se está cerrando la sesión, esta descarga se cancela (su señal queda activa para quien la vigile) y no pide ni entrega nada.
+      const cancelada = () => {
+        if (seEstaCerrandoLaSesion()) controlador.abort();
+        return controlador.signal.aborted;
+      };
+      try {
+        // Criterio 57 b: si la mutación estuvo en pausa (sin conexión) y la descarga se canceló mientras tanto, no pide nada.
+        if (cancelada()) throw new DescargaCanceladaError();
+        await confirmarSesion();
+        if (cancelada()) throw new DescargaCanceladaError();
+        const pdf = await api.obtenerPdfDelCierre({ cajaId, numero }, controlador.signal);
+        // Comprobación final: la respuesta ya llegó, pero ya no corresponde si se canceló, si se está cerrando la sesión o si la identidad cambió.
+        if (cancelada() || !sigue()) throw new DescargaCanceladaError();
+        entregarArchivo(pdf, nombreDelPdfDelCierre(fecha, numero));
+      } catch (error) {
+        if (controlador.signal.aborted || error instanceof DescargaCanceladaError) throw new DescargaCanceladaError();
+        throw error;
+      } finally {
+        soltar();
+        propias.current.delete(controlador);
+        enCurso.current = false;
+      }
+    },
+  });
+  const { mutate } = mutacion;
+  // Una descarga a la vez desde este hook: se marca en el mismo paso del clic, antes de que el botón se pinte desactivado.
+  const enCurso = useRef(false);
+  /**
+   * Criterio 57 b: la descarga cuenta como "en curso" desde que se pulsa, no desde que empieza su `mutationFn` (que sin conexión queda en
+   * pausa). La identidad de la página también se toma al pulsar.
+   */
+  const descargar = useCallback(
+    (datos: { cajaId: string; fecha: string; numero: number }) => {
+      // Criterio 57 e: un clic que llega en el mismo paso que "Cerrar sesión", antes de que el botón se pinte desactivado, no registra nada.
+      if (seEstaCerrandoLaSesion()) return;
+      // Dos clics en el mismo paso: el segundo se ignora.
+      if (enCurso.current) return;
+      enCurso.current = true;
+      const { sigue, vigilar } = vigilarLaSesion();
+      const { controlador, terminar } = iniciarDescarga();
+      const dejarDeVigilar = vigilar(() => controlador.abort());
+      const soltar = () => {
+        dejarDeVigilar();
+        terminar();
+      };
+      propias.current.set(controlador, soltar);
+      mutate({ ...datos, controlador, sigue, soltar });
+    },
+    [mutate, vigilarLaSesion, seEstaCerrandoLaSesion],
+  );
+  // El botón también se desactiva mientras se cierra la sesión (criterio 57 e).
+  const cerrandoLaSesion = useIsMutating({ mutationKey: CLAVE_CERRAR_SESION }) > 0;
+  return {
+    descargar,
+    cerrandoLaSesion,
+    isPending: mutacion.isPending,
+    isError: mutacion.isError,
+    error: mutacion.error,
+    variables: mutacion.variables,
+  };
+}
+
+interface DescargaPedida {
+  cajaId: string;
+  fecha: string;
+  numero: number;
+  controlador: AbortController;
+  sigue: () => boolean;
+  soltar: () => void;
 }

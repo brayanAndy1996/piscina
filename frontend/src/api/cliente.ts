@@ -56,12 +56,15 @@ async function solicitar(
   } catch {
     throw new ErrorDeRespuesta('No se pudo contactar al servidor.');
   }
-  if (!estadosAceptados.includes(respuesta.status)) {
-    const error = leerErrorApi(texto);
-    if (error) throw new ErrorDeApi(respuesta.status, error);
-    throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${respuesta.status}).`);
-  }
+  if (!estadosAceptados.includes(respuesta.status)) lanzarErrorDeRespuesta(respuesta.status, texto);
   return { respuesta, texto };
+}
+
+/** El error de una respuesta que no es la esperada: `ErrorDeApi` si el cuerpo cumple `errorApiSchema`, `ErrorDeRespuesta` si no. */
+function lanzarErrorDeRespuesta(estado: number, texto: string): never {
+  const error = leerErrorApi(texto);
+  if (error) throw new ErrorDeApi(estado, error);
+  throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${estado}).`);
 }
 
 function leerErrorApi(texto: string): ErrorApi | null {
@@ -115,6 +118,35 @@ export async function enviarJson<T>(
   return { estado: respuesta.status, datos: validarCuerpo(texto, esquema) };
 }
 
+/**
+ * Pide un archivo (`ruta` debe empezar por `/api`) y devuelve su contenido si la respuesta es 200 con el `tipo` indicado en `Content-Type`.
+ * Los errores son los de `pedirJson`: un error de la API (401, 404, 500…) lanza `ErrorDeApi`; la red caída, un código inesperado o un tipo
+ * distinto del esperado lanzan `ErrorDeRespuesta`. Con `senal`, cancelarla interrumpe la petición (criterio 54 de 006); quien la pasa
+ * decide qué hacer con una descarga cancelada.
+ */
+export async function pedirArchivo(ruta: string, tipo: string, senal?: AbortSignal): Promise<Blob> {
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(ruta, { method: 'GET', credentials: 'same-origin', ...(senal ? { signal: senal } : {}) });
+    if (
+      respuesta.status === 200 &&
+      respuesta.headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase() === tipo
+    ) {
+      return await respuesta.blob();
+    }
+  } catch {
+    throw new ErrorDeRespuesta('No se pudo contactar al servidor.');
+  }
+  if (respuesta.status === 200) throw new ErrorDeRespuesta('La respuesta del servidor no es el archivo esperado.');
+  let texto = '';
+  try {
+    texto = await respuesta.text();
+  } catch {
+    // Sin cuerpo legible: se informa solo el código.
+  }
+  lanzarErrorDeRespuesta(respuesta.status, texto);
+}
+
 /** Envía una petición cuya respuesta correcta no tiene cuerpo (204), por ejemplo `DELETE`. */
 export async function enviarSinRespuesta(metodo: MetodoConCuerpo, ruta: string, cuerpo?: unknown): Promise<void> {
   await solicitar(metodo, ruta, cuerpo, [200, 204]);
@@ -145,7 +177,5 @@ export async function subirArchivo(
     throw new ErrorDeRespuesta('No se pudo contactar al servidor.');
   }
   if (respuesta.status === 204) return;
-  const error = leerErrorApi(texto);
-  if (error) throw new ErrorDeApi(respuesta.status, error);
-  throw new ErrorDeRespuesta(`Respuesta inesperada del servidor (${respuesta.status}).`);
+  lanzarErrorDeRespuesta(respuesta.status, texto);
 }

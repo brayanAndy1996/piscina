@@ -2,7 +2,8 @@
 
 Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-11 (responsable) y DT-1 a DT-6
 (orquestador) de la spec; los valores que el borrador llamaba "provisionales" quedan como definitivos. Lo marcado
-**[006b]** va en el segundo PR (DR-10).
+**[006b]** va en el segundo PR (DR-10). Las rondas adversariales de la 006b suman las secciones 2.12 (ronda 1, DT-7 a
+DT-9), 2.13 (ronda 2, DT-10 a DT-14), 2.14 (ronda 3, DT-15 a DT-17) y 2.15 (ronda 4, DT-18 y DT-19).
 
 ## 1. Módulos afectados
 
@@ -36,14 +37,45 @@ Plan de la [spec](spec.md), aprobada el 22/11/2026 con las decisiones DR-1 a DR-
 
 **[006b]**
 
-- `packages/contratos/src/caja.ts`: `filtroHistorialCajasSchema`, `cajaHistorialSchema`, `respuestaHistorialCajasSchema`.
-- `backend/src/modulos/caja/historial.service.ts` (lista y detalle con el alcance `SU_CAJA`), `pdf/cierre-pdf.ts`
-  (`generarPdfCierre(datos): Promise<Buffer>`, pura respecto de la base) y las rutas `GET` del historial en el
-  controlador.
+- `packages/contratos/src/caja.ts`: `filtroHistorialCajasSchema`, `cajaHistorialSchema`, `respuestaHistorialCajasSchema`
+  (`{ desde, hasta, cajas }`) y `LIMITES_HISTORIAL_CAJAS` (PQ3, PQ4 y PQ13 de la spec).
+- `packages/contratos/src/dinero.ts`: recibe `formatearSoles` (hoy en `frontend/src/lib/dinero.ts`, que pasa a
+  reexportarla), para la web y el PDF (PQ10).
+- `backend/src/modulos/caja/historial.service.ts` (lista, detalle y lectura de los datos del PDF, con el alcance de
+  PQ2), `pdf/cierre-pdf.ts` (`generarPdfCierre(datos): Promise<Buffer>`, pura respecto de la base; `GeneradorPdfCierre`,
+  `GENERADOR_PDF_CIERRE`; PQ8), `pdf/texto-pdf.ts` (`textoParaPdf`, PQ11) y las rutas `GET` del historial en
+  `CajasController`, después de `actual`. `CajaModule` provee `GENERADOR_PDF_CIERRE`; `caja/index.ts` lo reexporta.
+  Desde la ronda adversarial 1 de la 006b (2.12) se suman: `pdf/cola-pdf.ts` (`ColaPdfCierre`, `LIMITES_PDF_CIERRE`),
+  el generador sin bloquear el bucle (por tramos o con un worker) y el middleware que responde 404 a `HEAD` en
+  `/api/cajas`. Desde la ronda adversarial 2 de la 006b (2.13) cambian:
+  - `pdf/cola-pdf.ts`: la señal de aborto y el límite por academia;
+  - `pdf/cierre-pdf.ts`: la señal en `generar` y en `generarPdfCierre`;
+  - `cajas.controller.ts` y `historial.service.ts`: el corte de la conexión y la sesión verificada de nuevo;
+  - `caja.module.ts`: importa `AutenticacionModule`;
+  - `backend/src/modulos/autenticacion/sesion-academia.service.ts`: un método para volver a verificar la sesión.
+
+  Desde la ronda adversarial 3 de la 006b (2.14) cambia `cajas.controller.ts`: la conexión se mira al entrar, se
+  escucha también el socket y una descarga cortada no escribe nada. Desde la ronda adversarial 4 de la 006b (2.15)
+  vuelve a cambiar: la conexión se mira otra vez antes de escribir y en el camino del error.
 - `backend/package.json`: `pdfkit` y `@types/pdfkit`; `scripts/lib/dependencias-backend.mjs`
   (`DEPENDENCIAS_BACKEND_PERMITIDAS`, criterio 127 de 001).
-- `frontend/src/modulos/caja/`: `PaginaHistorialCajas.tsx`, `DetalleCaja.tsx`; ruta `/panel/cajas` y opción "Historial de
-  caja".
+- `frontend/src/modulos/caja/`: `PaginaHistorialCajas.tsx`, `DetalleCaja.tsx`, las llamadas nuevas en `api.ts` (lista,
+  detalle y descarga) y sus consultas en `hooks.ts`; el texto de `DialogoReapertura.tsx` para una caja de un día
+  anterior; rutas `/panel/cajas` y `/panel/cajas/:id` y opción "Historial de caja" (PQ12). Desde la ronda adversarial
+  2 de la 006b (2.13):
+  - `frontend/src/api/cliente.ts`: `pedirArchivo` con una señal opcional;
+  - la descarga del detalle (`hooks.ts` y `DetalleCaja.tsx`) con su `AbortController`;
+  - el registro de descargas en curso que cancela "Cerrar sesión" (`frontend/src/modulos/sesion/` y `LayoutPanel.tsx`).
+
+  Desde la ronda adversarial 3 de la 006b (2.14):
+  - `DetalleCaja.tsx` y `CierresDeLaCaja.tsx`: el contenido se vuelve a montar al cambiar de caja, y la descarga es
+    de su caja y su cierre;
+  - `frontend/src/modulos/sesion/hooks.ts`: "Cerrar sesión" cancela en `onMutate`;
+  - `hooks.ts` de la caja y `frontend/src/lib/descargas-en-curso.ts`: la descarga se registra al pulsar.
+
+  Desde la ronda adversarial 4 de la 006b (2.15):
+  - `frontend/src/modulos/sesion/hooks.ts`: `useCerrarSesionAcademia` con una `mutationKey` exportada;
+  - `hooks.ts` de la caja y `CierresDeLaCaja.tsx`: sin descargas mientras se cierra la sesión.
 
 ## 2. Diseño
 
@@ -260,17 +292,376 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 
 ### 2.11 [006b] Historial y PDF
 
-- **Alcance de la secretaria (DR-9):** `WHERE c.estado = 'ABIERTA' OR c.abierta_por = $yo OR EXISTS (SELECT 1 FROM
-  cierres_caja k WHERE k.academia_id = c.academia_id AND k.caja_id = c.id AND k.cerrado_por = $yo)`. Fuera del alcance,
-  el detalle y el PDF responden el mismo 404 que una caja de otra academia.
-- **PDF:** una transacción corta lee la academia (nombre), la caja, el cierre pedido y sus movimientos (`numero <=
-  movimientos_hasta`); se cierra la transacción; después `generarPdfCierre` arma el documento con `pdfkit` (A4, fuente
-  Helvetica, `info.CreationDate = cerradoEn`, `info.Title`), lo junta en un `Buffer` y se responde. Los textos pasan por
-  una función que reemplaza lo que no es Latin-1 por `?`. Horas en Lima con `@date-fns/tz`. Montos con dos decimales y
-  `S/`.
-- **Pruebas del PDF:** se extrae el texto del `Buffer` (con una utilidad de prueba que lee los flujos del PDF de
-  `pdfkit` sin comprimir en pruebas, o con una dependencia solo de desarrollo, a decidir por el test-writer) y se buscan
-  las cadenas del criterio 42.
+Las reglas exactas están en las precisiones PQ1 a PQ15 de la spec (al final de la sección I); aquí, solo el cómo.
+
+- **Lecturas sin bloqueos:** las tres rutas leen en un `conAcademia` de la academia de la sesión, sin
+  `bloquearActorVigente`, sin `FOR UPDATE` y sin auditoría (PQ1). "Hoy" sale de `RELOJ` en Lima.
+- **Alcance (PQ2, DR-9 y DR-13):** el servicio toma el alcance de `MATRIZ_PERMISOS.VER_REPORTES_FINANCIEROS[rol]`.
+  Con `TODO`, sin condición; con `SU_CAJA`, `AND (c.abierta_por = $yo OR c.estado = 'ABIERTA' OR c.fecha = $hoy OR
+  EXISTS (SELECT 1 FROM cierres_caja k WHERE k.academia_id = c.academia_id AND k.caja_id = c.id AND k.cerrado_por =
+  $yo))` (`c.fecha = $hoy` es PQ2 d, DR-13); con cualquier otro valor, `AND false`. Una sola función arma
+  la condición para la lista, el detalle y el PDF. Fuera del alcance, el detalle y el PDF responden el mismo
+  `noEncontrado()` que una caja de otra academia.
+- **Lista (PQ3, PQ4):** el controlador lee `desde` y `hasta` crudos de la dirección como `estadoCrudo` de
+  `solicitudes.controller.ts` (un arreglo si se repiten o llevan corchetes) y los valida con `filtroHistorialCajasSchema`;
+  el servicio aplica los valores por defecto con `RELOJ` y vuelve a comprobar el rango (con un solo valor, el otro sale
+  del valor por defecto), con días de calendario (`AAAA-MM-DD` a días desde una época, sin `Date` local ni `TZ`). Una
+  sola consulta con `sum(...) FILTER (...)` por caja y el último cierre con `DISTINCT ON` o una subconsulta lateral;
+  montos como `::text` y `resultado` con `calcularDiferencia`.
+- **Detalle (PQ5):** `leerCaja` dentro de la misma transacción que comprueba el alcance.
+- **PDF (PQ6 a PQ11):** el servicio, después del permiso, valida la forma del id (`PATRON_UUID`) y del `numero`
+  (`^[1-9][0-9]{0,4}$` y `<= 32767`) sin tocar la base (si no, `noEncontrado()`); una transacción corta lee la caja (con el alcance), el
+  cierre pedido y sus movimientos (`numero <= movimientos_hasta`, por `numero`), con los nombres; se sale de la
+  transacción; después `GENERADOR_PDF_CIERRE.generar(datos)` arma el documento con `pdfkit` (A4, Helvetica,
+  `info.CreationDate = cerradoEn`, `info.Title = 'Cierre de caja AAAA-MM-DD N'`), lo junta en un `Buffer` completo y
+  recién entonces se escriben las cabeceras (`res.type('application/pdf')`, `Content-Disposition`) y el cuerpo. Si
+  `generar` falla, el error sube antes de escribir nada y el filtro global responde el 500 JSON. Los textos pasan por
+  `textoParaPdf` (NFC y todo lo que no esté en U+0020–U+007E o U+00A0–U+00FF, `?`). Horas en Lima con `@date-fns/tz`;
+  montos con `formatearSoles` (de `packages/contratos`). `DatosPdfCierre` lleva el nombre de la academia
+  (`sesion.academia.nombre`), la caja (fecha, monto inicial, quién abrió y a qué hora), el cierre (la fila completa,
+  con la reapertura y los nombres) y los movimientos; nada de DNI.
+- **Determinismo (PQ9 d):** con `info.CreationDate` fijo, el `/ID` de `pdfkit` sale de la información del documento; si
+  no fuera así en la versión instalada, se fija a partir del id de la caja y el número del cierre.
+- **Pruebas del PDF:** `backend/test/utilidades/pdf.ts` (sin dependencias nuevas) descomprime los flujos con
+  `node:zlib`, extrae las cadenas de `Tj` y `TJ` y las pasa de WinAnsi a Unicode; las pruebas buscan las cadenas de PQ10.
+  El PDF de producción conserva la compresión por defecto de `pdfkit`.
+
+### 2.12 [006b] Ronda adversarial 1: el PDF sin detener la API y `HEAD` (criterios 49 y 50)
+
+**El PDF sin bloquear el bucle de eventos (criterio 49 a y d).** Hoy `generarPdfCierre` dibuja todo el documento de una
+vez en el hilo principal, a unos 0,65 ms por movimiento. La técnica la elige quien implementa, con dos condiciones:
+`generarPdfCierre(datos): Promise<Buffer>`, `GeneradorPdfCierre` y `GENERADOR_PDF_CIERRE` quedan como en PQ8, y salen
+los mismos bytes (PQ9 d). Hay dos técnicas válidas.
+
+- **Por tramos en el hilo principal.**
+  - **Cómo:** `dibujar` pasa a ser asíncrona. Dentro de la tabla, cede el bucle con
+    `await new Promise((r) => setImmediate(r))` cada vez que pasaron unos 10 ms, medidos con `performance.now()`.
+  - **Por qué tramos de 10 ms:** en cada vuelta del bucle corre un tramo de cada generación en curso, que son hasta 2
+    (criterio 49 b). Cada ida y vuelta a la base de otra petición espera, en el peor caso, la suma de esos tramos. Un
+    egreso hace unas 10 a 15 idas y vueltas (sesión, transacción, actor, caja, inserción, auditoría, lectura). Con
+    tramos de 10 ms son unos 300 ms y cumple el segundo del 49 a. Con tramos de 50 ms, o con un número fijo de filas
+    grande, no cumpliría. Por eso conviene medir por tiempo y no por filas.
+  - **Bytes:** las llamadas a `pdfkit` son las mismas y en el mismo orden, así que los bytes no cambian.
+  - **Ventaja:** no toca el build ni las pruebas.
+  - **Límite:** toda la CPU sigue en el hilo principal. Con 2 PDF en curso, las demás peticiones van más lentas, pero
+    no se detienen.
+- **En un `worker_thread`.**
+  - **Reparto del trabajo:** el hilo principal arma todos los textos (`textoParaPdf`, `formatearSoles`, fechas y horas
+    de Lima con `@date-fns/tz`) y le pasa al worker solo cadenas y números. El worker solo llama a `pdfkit` y devuelve
+    el `Buffer`, transferido sin copiar. Con eso, la `TZ` del worker no importa.
+  - **Cuidado con Vitest:** ejecuta las fuentes TypeScript con su propio cargador, y un worker no lo hereda. El archivo
+    del worker tiene que ser JavaScript que Node cargue sin transformar, por ejemplo un `cierre-pdf.worker.cjs` que solo
+    hace `require('pdfkit')`. Si no, el worker no arranca en las pruebas, incluidas las unitarias de `cierre-pdf.test.ts`.
+  - **Cuidado con el build CommonJS:** no hay `import.meta.url`. La ruta del worker se arma con
+    `path.join(__dirname, …)`, y el `.cjs` se copia a `dist/` (con `assets` de `nest-cli.json` o con un paso del build
+    escrito en Node, sin `cp`). Hay que comprobarlo con `npm run build` y arrancando `dist/`, también en la integración
+    continua de Windows.
+  - **Cuántos workers:** como mucho 2, uno por cada turno del criterio 49 b. Si el worker lanza, sale o termina con
+    error, la promesa se rechaza y la descarga responde 500 (PQ9 b).
+  - **Ventaja:** paralelismo real.
+  - **Costo:** un archivo fuera de TypeScript y un paso más en el build.
+
+**Recomendación del especificador:** por tramos medidos por tiempo, porque es el cambio más chico. Si la prueba del 49 a
+no tiene margen en la integración continua de Windows, el worker. La lectura de 5 000 filas y el armado de
+`DatosPdfCierre` también corren en el hilo principal, y cuentan en la medición, pero son milisegundos. Si se notan,
+conviene leer solo las columnas que usa el PDF.
+
+**La cola de generación (criterio 49 b y c).**
+
+- **Dónde vive:** un proveedor de Nest con una sola instancia por proceso, por ejemplo `ColaPdfCierre` en
+  `pdf/cola-pdf.ts`, sin dependencias nuevas. Lleva tres cosas: el número de generaciones en curso, una fila de espera
+  en orden de llegada (promesas con su `resolve`) de como mucho `enEspera` lugares, y un `Map<usuarioId, número>` con lo
+  que cada persona tiene en curso o en espera. La constante `LIMITES_PDF_CIERRE = { simultaneos: 2, enEspera: 8 }` va
+  en el mismo archivo.
+- **Cómo la usa `HistorialService.pdf`:**
+  1. valida la forma del id y del `numero` (404);
+  2. pide el turno con `await cola.turno(usuarioId)`, que lanza `HttpException(429)` y el filtro lo convierte en
+     `DEMASIADAS_SOLICITUDES`;
+  3. dentro de un `try … finally`, lee en su `conAcademia`, sale y llama a `this.generador.generar`;
+  4. en el `finally` libera el turno, también con un 404 o un 500.
+- **El límite envuelve la llamada del servicio,** no el generador real, para que valga también con el generador de las
+  pruebas.
+- **Cliente que cierra la conexión:** era opcional en la ronda 1. Desde la ronda adversarial 2 de la 006b es
+  obligatorio (criterio 51), y se detecta en la respuesta, no en la petición (ver 2.13).
+
+**`HEAD` en las rutas de la caja (criterio 50).**
+
+- **Cómo:** un middleware de Express, instalado después de la protección de las rutas de academia (así, sin sesión
+  responde lo mismo que `PATCH`) y antes de que Nest registre sus rutas.
+- **Qué intercepta:** los `HEAD` cuya ruta coincide, sin distinguir mayúsculas, con `^/api/cajas(?:/.*)?$` (barra
+  final incluida). Responde con `responderError(filtro, noEncontrado(), …)`, el mismo JSON y las mismas cabeceras del
+  404 de siempre.
+- **Comentarios:** el de `CajasController` (PQ15) se actualiza.
+
+### 2.13 [006b] Ronda adversarial 2: descargas abandonadas, límite por academia, sesión después de la espera y la web (criterios 51 a 54)
+
+**La cola (`pdf/cola-pdf.ts`; criterios 51 a y c, y 52).**
+
+- **Constante:** `LIMITES_PDF_CIERRE = { simultaneos: 2, enEspera: 8, porPersona: 2, porAcademia: 4 } as const`.
+  `LIMITE_PDF_POR_PERSONA` se quita o queda como alias. `cola-pdf.test.ts`, que no es protegida, se actualiza.
+- **Firma:** `turno({ usuarioId, academiaId }, senal?)`. Cuenta en dos mapas, `porPersona` y `porAcademia`.
+- **Orden dentro de `turno`:**
+  1. con `senal?.aborted`, rechaza con `AbortError` sin contar nada;
+  2. persona, después academia y después la cola global: 429 sin contar nada;
+  3. suma en los dos mapas;
+  4. con lugar, `enCurso += 1`; si no, entra a la fila un elemento con su estado (`'esperando'`, `'otorgado'` o
+     `'retirado'`), su `otorgar` y su `rechazar`.
+- **Señal que se activa en la fila:** un `senal.addEventListener('abort', …, { once: true })`. Si el elemento sigue
+  `'esperando'`, pasa a `'retirado'`, sale de la fila (`splice` por identidad), descuenta los dos mapas y rechaza con
+  `AbortError`. Si ya está `'otorgado'`, no hace nada: el lugar es de quien llama y lo libera con `LiberarTurno`. Al
+  otorgar o al retirar, se quita el oyente.
+- **Liberar:** `liberar` saca elementos de la fila hasta encontrar uno `'esperando'`, y solo a ese le otorga el lugar.
+  Si no hay ninguno, `enCurso -= 1`. Todo ocurre en el mismo hilo, así que el estado de cada elemento decide la
+  carrera entre otorgar y abortar: un lugar nunca se pierde ni se duplica.
+- **`crearLiberacion(usuarioId, academiaId)`:** descuenta los dos mapas, una sola vez.
+- **`AbortError`:** un `Error` con `name = 'AbortError'`, o `new DOMException(…, 'AbortError')`, igual en la cola y en el
+  generador.
+
+**El corte de la conexión (`cajas.controller.ts` y `historial.service.ts`; criterio 51 b y d).**
+
+- **En `descargarPdf`, antes de llamar al servicio:**
+
+  ```ts
+  const controlador = new AbortController();
+  respuesta.on('close', () => {
+    if (!respuesta.writableFinished) controlador.abort();
+  });
+  ```
+
+  No se usa `solicitud.on('close')`: en Node 22 la petición puede emitir `close` al terminar de leerse, no al cortar.
+- **`HistorialService.pdf(sesion, id, numero, { senal, volverAVerificar })`:**
+  1. la forma del id y del `numero` (404);
+  2. `liberar = await cola.turno({ usuarioId, academiaId }, senal)`;
+  3. dentro de `try … finally`:
+     1. con `senal.aborted`, `descargaAbandonada()`;
+     2. `vigente = await volverAVerificar()` (criterio 53);
+     3. con `senal.aborted`, `descargaAbandonada()`;
+     4. la lectura con `vigente`;
+     5. con `senal.aborted`, `descargaAbandonada()`;
+     6. `generar(datos, senal)`;
+  4. en el `finally`, `liberar()`.
+- **Una descarga abandonada** lanza un error propio, por ejemplo `DescargaAbandonada`, o el `AbortError` que suba de
+  `turno` o de `generar`. El controlador lo atrapa: no escribe nada y anota una línea `info`. No debe llegar al filtro
+  global, que lo registraría como 500.
+
+**El generador real (`pdf/cierre-pdf.ts`; criterio 51 b y c).**
+
+- **Al empezar:** `generarPdfCierre(datos, senal?)` rechaza enseguida si `senal?.aborted`.
+- **Entre tramos:** `Tramos.cederSiToca`, después de ceder, comprueba `senal?.aborted` y lanza el `AbortError`. El
+  `catch` de `dibujar` rechaza la promesa sin llamar a `doc.end()`: el documento queda sin terminar y se descarta, sin
+  archivos.
+- **Bytes:** la comprobación no llama a `pdfkit`, así que sin señal los bytes no cambian.
+
+**La sesión después de la espera (criterio 53).**
+
+- **Cómo se verifica hoy en cada petición:**
+  - `instalarProteccionDeAcademia` llama a `SesionAcademiaService.autenticar(solicitud)`.
+  - `autenticar` recuerda el resultado por petición en un `WeakMap`. Llamarla de nuevo en la misma petición devuelve lo
+    de antes, así que no sirve para volver a comprobar.
+  - `verificarSesion` lee la cookie y verifica el token con `RELOJ`. Después, en `conAcademia(aca)` (que lanza
+    `ACADEMIA_SUSPENDIDA`), lee el usuario y la academia sin bloqueo y exige `ACTIVO` y el `version_token` del token.
+  - El middleware exige después el cambio obligatorio (403 `CAMBIO_DE_CLAVE_OBLIGATORIO`).
+  - `PermisosGuard` exige `puede(rol, permiso)` (403 `SIN_PERMISO`).
+- **Propuesta:**
+  - un método público nuevo en `SesionAcademiaService`, por ejemplo `volverAVerificar(solicitud, permiso):
+    Promise<SesionVerificada>`, que llama a `verificarSesion` sin el `WeakMap` y aplica las otras dos reglas con los
+    mismos errores;
+  - los constructores de esos dos errores se exportan desde donde están, para no repetir los textos;
+  - el controlador pasa al servicio `() => this.sesiones.volverAVerificar(solicitud, 'VER_REPORTES_FINANCIEROS')`;
+  - `CajaModule` importa `AutenticacionModule`, que ya exporta el servicio.
+- **Por qué es una lectura:** corre en su propia transacción corta, sin `FOR SHARE` ni `FOR UPDATE`, y no deja nada
+  `idle in transaction` (PQ9 c).
+- **Qué cambia en la lectura:** usa la sesión que devuelve `volverAVerificar`: su `rol` para `condicionDeAlcance` y su
+  `academia.nombre` para el PDF.
+
+**La web (criterio 54).**
+
+- **`pedirArchivo(ruta, tipo, senal?)`:** pasa `signal` a `fetch`. Un `AbortError` sube como tal, no como "No se pudo
+  contactar al servidor".
+- **Registro de descargas en curso:** un módulo pequeño de la sesión, por ejemplo
+  `frontend/src/modulos/sesion/descargas.ts`, con `registrar(controlador)` (devuelve la función que lo quita) y
+  `cancelarTodas()`.
+- **`useDescargarPdfDelCierre`:** crea un `AbortController` por descarga y lo registra. El efecto de limpieza de
+  `DetalleCaja` aborta las suyas al desmontar.
+- **"Cerrar sesión":** `LayoutPanel` llama a `cancelarTodas()` al pulsar, o lo hace `useCerrarSesionAcademia` en
+  `onMutate`, antes de enviar `DELETE /api/sesion`.
+- **Cambio de identidad:** un efecto observa la consulta de la sesión (`CLAVE_SESION`). Si la identidad deja de ser la
+  de la página, o la consulta da 401, llama a `cancelarTodas()`. `RutaConSesion` ya muestra su aviso.
+- **Antes de `entregarArchivo`:** si `controlador.signal.aborted`, o si la identidad de
+  `cliente.getQueryData(CLAVE_SESION)` no es la de la página, se descarta el `Blob`.
+- **Mensajes:** el error de una descarga cancelada no se muestra.
+
+### 2.14 [006b] Ronda adversarial 3: cortes antes del controlador, cambio de caja y "Cerrar sesión" sin conexión (criterios 55 a 57)
+
+**El corte antes del controlador (`cajas.controller.ts`; criterio 55, DT-15).**
+
+- **Por qué fallaba:** `respuesta.on('close')` se registra recién dentro de `descargarPdf`. Un corte durante el
+  middleware de la sesión o los guards emite `close` antes, y nadie lo oye. En pipelining, la respuesta de la segunda
+  petición no tiene socket (`respuesta.socket === null` hasta que termina la primera) y nunca emite `close`.
+- **Al principio de `descargarPdf`, en un solo paso síncrono:**
+
+  ```ts
+  const controlador = new AbortController();
+  const socket = solicitud.socket;
+  const cortar = () => {
+    if (!respuesta.writableFinished) controlador.abort();
+  };
+  if (conexionCerrada(solicitud, respuesta)) {
+    this.registro.info({ … }, 'Descarga del PDF del cierre abandonada antes de empezar');
+    return; // sin tocar la cola, la base ni la respuesta
+  }
+  respuesta.once('close', cortar);
+  socket.once('close', cortar);
+  try {
+    …
+  } finally {
+    respuesta.off('close', cortar);
+    socket.off('close', cortar);
+  }
+  ```
+
+  - `conexionCerrada`: `respuesta.destroyed || (respuesta.closed && !respuesta.writableFinished) ||
+    socket.destroyed`. `solicitud.destroyed` no se usa solo: en Node 22 puede ser `true` después de leer una petición
+    sin cuerpo (nota de 2.13). Si se suma, el control del 55 f lo vigila.
+  - El `finally` quita los dos oyentes, porque en keep-alive el socket atiende las peticiones siguientes. Sin eso,
+    se acumularían oyentes (`MaxListenersExceededWarning` después de 10) y un corte posterior abortaría una descarga
+    ya terminada.
+- **Nada se escribe con la señal activa (55 d):**
+  - después de `this.historial.pdf`, `if (controlador.signal.aborted) return;`, como hoy;
+  - en el `catch`, con `controlador.signal.aborted`, el controlador no vuelve a lanzar el error. Si es del corte
+    (`esDescargaAbandonada`), anota una línea `info`. Si no lo es (por ejemplo, un generador que ignora la señal y
+    rechaza con un `Error` común), lo anota como error con `errorParaRegistro`, igual que el filtro, pero sin
+    responder. Así no llega al filtro global, que escribiría el JSON.
+  - El 404 de la forma del id y del `numero`, el 429 de la cola y los 401 y 403 de `volverAVerificar` son errores que
+    lanza el servicio: con la señal activa, tampoco se escriben.
+- **El servicio no cambia:** `turno` ya rechaza si la señal está activa al llamarla, y `exigirQueSigaViva` corta en
+  cada paso.
+- **Pruebas:** el caso 1 del 55 f retiene la verificación con `LOCK TABLE usuarios IN ACCESS EXCLUSIVE MODE` desde una
+  conexión del dueño. `verificarSesion` lee `usuarios` con un `SELECT` sin bloqueo, que solo espera ese modo.
+
+**Cambio de caja en el detalle (`DetalleCaja.tsx`; criterio 56, DT-16).**
+
+- `DetalleCaja` monta `<ContenidoDelDetalle key={id} />`, con el `id` de `useParams`. Al cambiar el id:
+  - el contenido anterior se desmonta y corre la limpieza de `useDescargarPdfDelCierre` (54 b);
+  - la mutación de la descarga, los avisos de la reapertura y el diálogo empiezan de cero;
+  - `useRecienPedida` empieza con `yaMostrado` en `false`, y la consulta, con `refetchOnMount: 'always'`, exige la
+    respuesta pedida al entrar (`isFetchedAfterMount`). Mientras tanto, "Cargando la caja…".
+- **`CierresDeLaCaja`:** aunque el remontaje ya lo resuelve, "Preparando el PDF…" y el mensaje de error comparan
+  también `variables.cajaId` con `caja.id`, no solo el número del cierre (56 b). Es una defensa barata si algún día el
+  componente se reutiliza.
+- `useRecienPedida` no cambia: lo comparten configuración (003), planes y clases (004).
+
+**"Cerrar sesión" sin conexión (`sesion/hooks.ts`, `caja/hooks.ts` y `lib/descargas-en-curso.ts`; criterio 57,
+DT-17).**
+
+- **`useCerrarSesionAcademia`:** `cancelarDescargasEnCurso()` pasa de la `mutationFn` a `onMutate`. En
+  `@tanstack/query-core` 5 (`Mutation.execute`), `onMutate` se llama antes de `retryer.start()`, haya conexión o no. Sin
+  un `onMutate` en la `MutationCache` (la app no tiene), se llama en el mismo paso que `mutate`.
+- **La descarga en pausa (57 b):** la descarga se registra al pulsar, no al empezar la `mutationFn`. Por ejemplo:
+  - el `onClick` (o un `descargar(variables)` que expone el hook) llama a `iniciarDescarga()` y pasa el `controlador`
+    en las variables de la mutación;
+  - la `mutationFn` comprueba `controlador.signal.aborted` antes de `useConfirmarSesion` y antes del `fetch`;
+  - la limpieza del desmontaje aborta también las descargas registradas cuya mutación sigue en pausa.
+
+  Quien implementa elige la forma, siempre que los casos del 57 d pasen.
+- **"Cerrando…" y el `DELETE` diferido no cambian:** la mutación sigue con `networkMode: 'online'`.
+
+### 2.15 [006b] Ronda adversarial 4: la conexión antes de escribir y sin descargas mientras se cierra la sesión (criterios 55 g y 57 e)
+
+**La conexión, otra vez antes de escribir (`cajas.controller.ts`; criterio 55 g, DT-18).**
+
+- **Por qué fallaba:** después de `await this.historial.pdf(…)`, el manejador decidía con `controlador.signal.aborted`.
+  Al recibir el fin de la conexión o un RST, Node marca el socket como destruido en la fase de lectura del bucle, pero
+  el `close` (del socket y de la respuesta) llega en la fase de cierre. Si la promesa de `generar` se resuelve en medio
+  (por ejemplo, en un `setImmediate`, o en el último tramo del generador real), la señal todavía no está activa:
+  - el 200 llamaba a `status`, `setHeader` y `end` sobre un socket destruido;
+  - en el `catch`, `if (!controlador.signal.aborted) throw error;` dejaba subir un `Error` común al filtro global, que
+    escribía el 500 y lo registraba como "Error no controlado".
+- **Corrección:** usar `conexionCerrada(solicitud, respuesta)` (la de 2.14) además de la señal, en los dos lugares:
+
+  ```ts
+  const abandonada = (): boolean => controlador.signal.aborted || conexionCerrada(solicitud, respuesta);
+  …
+  const { nombreArchivo, contenido } = await this.historial.pdf(…);
+  if (abandonada()) {
+    this.registro.info(contexto, 'Descarga del PDF del cierre abandonada por el cliente');
+    return;
+  }
+  respuesta.status(200); // … sin ningún `await` entre la comprobación y `end`
+  …
+  } catch (error) {
+    if (!abandonada()) throw error;
+    // info si es del corte (o un 4xx que ya no se escribe); error del manejador con `errorParaRegistro` si no lo es
+  }
+  ```
+
+  - La comprobación y la escritura van en el mismo paso síncrono. Node no destruye el socket en medio de código
+    síncrono, así que no queda ventana.
+  - Opcional: al detectar la conexión cerrada, `controlador.abort()`, para que cualquier oyente de la señal vea lo
+    mismo. No cambia lo observable, porque `historial.pdf` ya terminó.
+  - Lo que ya se respondía antes del manejador, y la definición de `conexionCerrada`, no cambian. _(Ronda
+    adversarial 5: la definición se amplía en 2.16, criterio 55 h.)_
+- **El servicio y la cola no cambian:** el lugar se libera en el `finally` de `HistorialService.pdf`, cuando termina
+  `generar`, como en 2.13.
+- **Pruebas (55 g 4):** el generador determinista revisa `socket.destroyed` con `setImmediate`, que corre en la fase
+  "check", antes de la fase de cierre en que llega `close`. El socket del servidor se obtiene con
+  `servidor.on('request', …)` filtrando por `x-prueba-corte`. La prueba con el generador real y muchos cortes queda
+  fuera de las protegidas (falla solo a veces antes de la corrección); la repite el adversarial en la ronda 5.
+
+**Sin descargas mientras se cierra la sesión (`sesion/hooks.ts`, `caja/hooks.ts` y `CierresDeLaCaja.tsx`; criterio
+57 e, DT-19).**
+
+- **De dónde sale "se está cerrando":** de la propia mutación. `useCerrarSesionAcademia` suma
+  `mutationKey: CLAVE_CERRAR_SESION` (exportada desde `sesion/hooks.ts`, por ejemplo `['sesion', 'cerrar']`). En
+  TanStack Query 5, una mutación en pausa sigue con `status: 'pending'`, así que `useIsMutating({ mutationKey })` y
+  `cliente.isMutating({ mutationKey })` la cuentan. El estado pasa a `pending` en el mismo paso que `mutate`, antes del
+  primer `await` de `execute`.
+- **El botón:** `CierresDeLaCaja` desactiva "Descargar PDF" con `useIsMutating({ mutationKey: CLAVE_CERRAR_SESION }) > 0`
+  (además de `descarga.isPending`).
+- **`descargar` del hook:** si `cliente.isMutating({ mutationKey: CLAVE_CERRAR_SESION }) > 0`, no registra nada ni
+  llama a `mutate` (o registra un controlador ya abortado, que la `mutationFn` descarta sin pedir nada). Así cubre el
+  clic que llega en el mismo paso, antes de que el botón se pinte desactivado.
+- **La `mutationFn` de la descarga:** suma la misma comprobación antes de `useConfirmarSesion`, antes del `fetch` y en
+  la comprobación final, junto con `controlador.signal.aborted` y `sigue()`. Si se está cerrando la sesión, aborta su
+  controlador y lanza `DescargaCanceladaError` (sin mensaje).
+- **Si el `DELETE` falla,** la mutación deja de estar `pending`: el botón se habilita y la descarga vuelve a funcionar
+  (control del 57 e).
+- **Alternativa aceptable:** un indicador en `descargas-en-curso.ts` que se enciende en `onMutate` (donde ya se
+  cancela) y se apaga en `onSettled`. Quien implementa elige, siempre que los casos del 57 e pasen.
+
+### 2.16 [006b] Ronda adversarial 5: un FIN cuenta como conexión cerrada (criterio 55 h)
+
+**`conexionCerrada` ampliada (`cajas.controller.ts`; criterio 55 h, DT-20).**
+
+- **Por qué fallaba:** al leer el FIN del cliente, `socketOnEnd` del servidor HTTP llama a `socket.end()` (con
+  `httpAllowHalfOpen = false`). En el resto de esa fase de lectura, el socket tiene `readableEnded === true` y
+  `writable === false`, pero no `destroyed`; la respuesta no está `destroyed` ni `closed`. La `conexionCerrada` de 2.14
+  devolvía `false`, y si la continuación de la lectura (`COMMIT`) o de `generar` corría en esa fase, la descarga
+  escribía el 200, o dejaba subir el 404 o el 500 al filtro global.
+- **Corrección:** una sola función, usada en los tres lugares que ya la llaman (entrada, antes del 200 y en el
+  `catch`):
+
+  ```ts
+  const conexionCerrada = (solicitud: Request, respuesta: Response): boolean => {
+    const socket = solicitud.socket;
+    return (
+      respuesta.destroyed ||
+      (respuesta.closed && !respuesta.writableFinished) ||
+      socket.destroyed ||
+      socket.readableEnded ||
+      !socket.writable
+    );
+  };
+  ```
+
+  - Nada más cambia: ni la señal ni los oyentes de `close`, ni el servicio, ni la cola.
+  - No se usa `solicitud.readableEnded` ni `solicitud.complete` (son `true` en cualquier `GET` leído).
+  - Opcional, como en 2.15: `controlador.abort()` al detectarla.
+- **Pruebas (55 h 5):** el generador se suscribe a `socket.on('end', …)` del socket del servidor de la petición
+  marcada y resuelve o rechaza dentro del callback. El oyente de la prueba se registra después del `socketOnEnd` del
+  servidor, así que cuando corre, `socket.end()` ya se llamó y el socket todavía no está destruido. La continuación del
+  manejador corre en las microtareas de ese mismo paso. La prueba anota y exige ese estado del socket para no dar un
+  falso verde.
 
 ## 3. Decisiones
 
@@ -289,6 +680,33 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 | Bloqueo consultivo de la academia en apertura y reapertura | Solo los índices únicos | Orden fijo de los 409 y sin 500 en la carrera |
 | `REABRIR_CAJA` en la matriz (DT-1) | Rol comprobado en el servicio | El guard decide y la web usa `puede` |
 | PDF bajo pedido (DT-2) | PDF guardado en `AlmacenArchivos` | Sin archivos ni confirmación incierta; el cierre no cambia |
+| [006b] Generador del PDF detrás del token `GENERADOR_PDF_CIERRE` (PQ8) | Simular la falla con `vi.mock('pdfkit')` | Las pruebas de integración reemplazan el proveedor como ya hacen con `RELOJ`, sin depender de cómo se importa `pdfkit` |
+| [006b] Respuesta de la lista con el rango aplicado (`{ desde, hasta, cajas }`, PQ3) | Solo `{ cajas }` | La web muestra qué fechas se usaron cuando no se mandó ninguna |
+| [006b] Sin paginación en la lista (PQ4) | Paginación o tope de filas | Una caja por día y un rango de como mucho 366 días ya acotan la lista |
+| [006b] Fuera del alcance, 404 y no 403 (PQ1) | 403 `SIN_PERMISO` | No revela que la caja existe, igual que con otra academia |
+| [006b] Extracción del texto del PDF con `node:zlib` en una utilidad de prueba (PQ10) | Una dependencia de desarrollo para leer PDF | Criterio 127 de 001: cada dependencia nueva se justifica; para buscar cadenas basta leer `Tj` y `TJ` |
+| [006b] Acotar el bloqueo y la concurrencia del PDF (criterio 49, DT-7) | Tope de movimientos por caja | Sería una regla de negocio que los documentos no tienen; el límite técnico protege a todas las academias sin cambiar qué se puede registrar |
+| [006b] Por tramos o en un worker, a elección (2.12) | Fijar una técnica en la spec | El criterio 49 se mide desde fuera; las dos cumplen y cada una tiene su costo (build o CPU en el hilo principal) |
+| [006b] 429 `DEMASIADAS_SOLICITUDES` con la cola llena (criterio 49 b) | 503 con un código nuevo | El 429 ya está en el filtro de errores con su mensaje; un 5xx el filtro lo convierte en `ERROR_INTERNO` y lo registra como error del servidor |
+| [006b] Turno antes de la lectura (criterio 49 b) | Leer primero y esperar turno después | La espera no deja una transacción abierta y una cola llena no fuerza a leer miles de filas para responder 429 |
+| [006b] Límite por persona en curso o en espera (criterio 49 c, DT-8) | Ventana de tiempo con `ThrottlerStorage` | Una ventana no impide diez descargas a la vez y rompería las pruebas protegidas de PQ6 (más de diez descargas seguidas de una persona) |
+| [006b] `HEAD` → 404 con un middleware antes de las rutas (criterio 50) | `@Head()` en el controlador | Con `@Head()` pasaría por el guard: el `ENTRENADOR` recibiría 403 en vez del 404 de `PATCH`, y habría que repetirlo en cada ruta |
+| [006b] Sacar de la fila y abortar la generación cuando el cliente corta (criterio 51, DT-10) | Dejar que termine | El PDF se generaba para nadie y la persona recibía 429 por su propio cupo |
+| [006b] `AbortSignal` como segundo parámetro opcional de `generar` (criterio 51 c) | Un objeto de opciones como segundo parámetro, obligatorio | Los generadores de las pruebas de PQ9 y del 49 reciben solo `datos` y siguen valiendo |
+| [006b] Detectar el corte con `respuesta.on('close')` y `writableFinished` | `solicitud.on('close')` | En Node 22, la petición puede emitir `close` al terminar de leerse, no al cortar |
+| [006b] Estado por elemento de la fila (`esperando`, `otorgado`, `retirado`) | Quitar el elemento solo con `splice` | Decide sin ambigüedad la carrera entre otorgar el turno y abortar |
+| [006b] Límite de 4 por academia, después del de persona y antes de la cola (criterio 52, DT-11) | Solo el límite por persona | Un `ADMIN` puede crear varias cuentas y llenar la cola de la instancia |
+| [006b] Volver a verificar con la verificación de cada petición, sin su recuerdo (criterio 53, DT-12) | `bloquearActorVigente` (`FOR SHARE`) en la lectura, o copiar las comprobaciones | Las lecturas no bloquean (PQ1), y una copia se desviaría de 002 |
+| [006b] La web cancela la descarga y además comprueba antes de entregar (criterio 54, DT-13) | Solo el desmontaje de la página | `DELETE /api/sesion` tarda, y el PDF podía llegar antes de navegar |
+| [006b] Mirar la conexión al entrar al manejador y escuchar también el `close` del socket (criterio 55, DT-15) | Solo `respuesta.on('close')`, o registrarlo en un middleware | El `close` de la respuesta puede pasar antes del controlador y no existe en una respuesta de pipelining sin socket; un middleware repartiría la lógica del corte y el pipelining igual necesitaría el socket |
+| [006b] Con la señal activa, el controlador no deja llegar ningún error al filtro global (criterio 55 d) | Dejar que el filtro responda el 404, el 429 o el 500 | El filtro escribiría el JSON en una conexión cerrada |
+| [006b] `key={id}` en el contenido del detalle (criterio 56, DT-16) | Un efecto que observe el id, o cambiar `useRecienPedida` | El remontaje reinicia todo el estado de la página de una vez; `useRecienPedida` es compartida con 003 y 004 |
+| [006b] Cancelar en el `onMutate` de "Cerrar sesión" (criterio 57, DT-17) | `networkMode: 'always'`, o cancelar en el `onClick` de `LayoutPanel` | `onMutate` corre aunque la mutación quede en pausa; `always` enviaría el `DELETE` sin conexión y mostraría un error; el `onClick` obliga a cada lugar que cierre sesión a recordarlo |
+| [006b] Mirar la conexión con `conexionCerrada` antes de escribir y en el `catch`, no solo la señal (criterio 55 g, DT-18) | Activar la señal también con `end` o `error` del socket, o filtrar en el filtro global | Los eventos pueden llegar después de que la generación termine; la comprobación síncrona antes de escribir cierra la ventana sin depender del orden, y el filtro global no ve el 200 |
+| [006b] Prueba determinista del 55 g con un generador que termina al ver el socket destruido | Solo la prueba con el generador real y muchos cortes | Con el error, la del generador real falla solo a veces (4 de 150) y tarda minutos; no sirve para confirmar el rojo |
+| [006b] "Descargar PDF" desactivado y sin descargas nuevas mientras "Cerrar sesión" está pendiente, con el estado de la propia mutación (criterio 57 e, DT-19) | Solo desactivar el botón, o un indicador propio en `descargas-en-curso.ts` | Un clic en el mismo paso se colaría con solo el botón; el indicador duplica un estado que TanStack Query ya tiene (queda como alternativa aceptable) |
+| [006b] `conexionCerrada` suma `socket.readableEnded` o `!socket.writable` (criterio 55 h, DT-20) | Activar la señal con el `'end'` del socket, o mirar `solicitud.readableEnded` | El `'end'` puede llegar después del `COMMIT` en la misma fase; la lectura de la petición termina en todo `GET` y daría falsos positivos; con `httpAllowHalfOpen = false` el estado del socket no los da |
+| [006b] Prueba determinista del 55 h con un generador que termina dentro del `'end'` del socket | Un proxy de PostgreSQL que retiene el `COMMIT` | Abre la misma ventana sin infraestructura de red en la suite |
 | `metodo_pago` creado aquí | Que lo cree la 007 | Los movimientos lo necesitan ya; la 007 lo reutiliza |
 | `pago_id` sin llave foránea hasta la 007 | Crear `pagos` vacía | Cada historia crea sus tablas (D-17) |
 
@@ -314,8 +732,42 @@ por ser `SECURITY INVOKER` y fijar solo `search_path`.
 - **Montos en la web.** `restarMontos` en céntimos con `bigint`; prohibido `Number` sobre montos (lo revisa el revisor).
 - **[006b] `pdfkit` y sus dependencias** (`fontkit`, `linebreak`…): JavaScript puro; la integración continua en Windows
   lo instala igual. Hay que revisar que ninguna esté en la lista negra del criterio 129 de 001.
-- **[006b] PDF grande:** una caja con cientos de movimientos genera varias páginas en memoria; para el volumen de una
-  academia es poco. Aceptado.
+- **[006b] PDF grande:** al principio se aceptaba, pero la ronda adversarial 1 de la 006b mostró que una caja de 20 000
+  movimientos es alcanzable por la API y que su PDF congelaba el proceso. Queda resuelto con el criterio 49: un PDF así
+  tarda segundos y espera su turno, pero no detiene a nadie. El documento sigue armándose en memoria; con 2
+  generaciones a la vez, son unos pocos MB.
+- **[006b] Prueba con tiempos (criterio 49 a):** mide milisegundos contra una base real y puede salir inestable en la
+  integración continua de Windows. Los umbrales (200 ms del bucle y 1 000 ms del egreso) son de la spec: no se suben sin
+  cambiarla. Si fallan por poco, se cambia la técnica (2.12), no la prueba. El tester la ejecuta varias veces seguidas
+  antes de darla por buena.
+- **[006b] Nombres de hoy en el PDF de un cierre viejo** (riesgo aceptado de la spec): sin migración no hay dónde
+  guardar los nombres del momento del cierre.
+- **[006b] Pruebas que cortan la conexión (criterio 51):**
+  - Dependen de que el cliente de la prueba cierre de verdad el socket al abortar. Con `fetch` (undici) lo hace. Si en
+    Windows la conexión se reutilizara, se usa `node:http` con `destroy()`.
+  - La prueba con el generador real y 20 000 movimientos mide tiempos; el tester la repite varias veces seguidas, como
+    la del 49 a.
+- **[006b] La carrera entre otorgar el turno y abortar (criterio 51 c):** es lo más fácil de equivocar en la cola. La
+  cubren las unitarias protegidas, en los dos órdenes, y la comprobación final de que `estado` vuelve a cero.
+- **[006b] `CajaModule` importa `AutenticacionModule` (criterio 53):** hay que comprobar que no se forma un ciclo de
+  módulos. Hoy `AutenticacionModule` solo importa `SeguridadModule` y `AuditoriaModule`.
+- **[006b] Pruebas de cortes y pipelining (criterio 55):**
+  - El caso 1 es el determinista: retiene la verificación con un bloqueo de tabla y espera a verlo en
+    `pg_stat_activity`. El caso 2 (20 cortes inmediatos) depende del orden de los eventos de red; si el código es
+    correcto, pasa siempre.
+  - El pipelining depende de que Node lea la segunda petición mientras la primera espera. Lo hace: el servidor emite
+    `request` para cada petición y encola la respuesta. Si en Windows se comportara distinto, el tester lo anota antes
+    de tocar la prueba.
+  - El `LOCK TABLE … ACCESS EXCLUSIVE` retiene cualquier lectura de `usuarios` de la app mientras dura. La prueba lo
+    suelta siempre en un `finally`.
+- **[006b] `onMutate` y la versión de TanStack Query (criterio 57):** si una versión futura dejara de llamar a
+  `onMutate` antes de la pausa, la prueba protegida del 57 lo detecta.
+- **[006b] El generador determinista del 55 g:** depende de que `setImmediate` corra antes de la fase en que Node
+  emite `close`, como hace el bucle de eventos de libuv en Node 22, también en Windows. La ronda 4 lo reprodujo con
+  `destroy()` y con `resetAndDestroy()`. Si con alguna de las dos el `close` llegara antes (y el caso ya pasara con el
+  código de `ea02809`), el tester lo anota antes de tocar la prueba.
+- **[006b] `isMutating` y las mutaciones en pausa (criterio 57 e):** si una versión futura de TanStack Query dejara de
+  contar como `pending` una mutación en pausa, la prueba protegida del 57 e lo detecta.
 
 ## 6. Desviaciones aceptadas (006a)
 

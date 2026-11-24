@@ -1,63 +1,16 @@
-import { randomBytes, randomInt } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
-import { SUPERADMIN_E2E } from '../datos-e2e';
+import { randomBytes } from 'node:crypto';
+import { expect, test } from '@playwright/test';
+import {
+  crearAcademiaConAdministrador,
+  dniInventado,
+  ingresarYCambiarClave,
+  verificarSinDesplazamientoHorizontal,
+} from '../ayudas-caja';
 
 // Historia 006a, criterio 38: la caja del día de punta a punta. El superadmin crea una academia y su administrador; el administrador entra,
 // cambia su contraseña, abre la caja con S/ 100, registra un egreso de S/ 15.50, cierra con S/ 80 (faltante de S/ 4.50) con su
 // observación y ve el resultado; después la reabre con un motivo. Cada corrida crea su propia academia y su propio DNI: no depende de la
 // semilla ni de lo que dejaron corridas anteriores (en la base de pruebas no hay caja de ninguna otra academia que pueda estorbar).
-
-function dniInventado(): string {
-  return String(randomInt(30_000_000, 99_999_999));
-}
-
-async function crearAcademiaConAdministrador(page: Page, nombreCorto: string, nombreAcademia: string, dni: string) {
-  await page.goto('/plataforma/ingresar');
-  await page.getByLabel('Correo').fill(SUPERADMIN_E2E.correo);
-  await page.getByLabel('Contraseña').fill(SUPERADMIN_E2E.clave);
-  await page.getByRole('button', { name: 'Ingresar' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Academias' })).toBeVisible();
-
-  await page.getByRole('button', { name: 'Nueva academia' }).click();
-  await page.getByLabel('Nombre', { exact: true }).fill(nombreAcademia);
-  await page.getByLabel('Nombre corto').fill(nombreCorto);
-  await page.getByRole('button', { name: 'Crear academia' }).click();
-  await expect(page.getByRole('listitem').filter({ hasText: nombreCorto })).toContainText(nombreAcademia);
-
-  await page.getByRole('button', { name: `Administradores de ${nombreAcademia}`, exact: true }).click();
-  const lista = page.getByRole('dialog', { name: `Administradores de ${nombreAcademia}` });
-  await lista.getByRole('button', { name: 'Nuevo administrador' }).click();
-  await page.getByLabel('DNI').fill(dni);
-  await page.getByLabel('Nombres').fill('Rosa');
-  await page.getByLabel('Apellidos').fill('Quispe Mamani');
-  await page.getByRole('button', { name: 'Crear administrador' }).click();
-  await expect(lista).toContainText(dni);
-  await lista.getByRole('button', { name: 'Cerrar', exact: true }).click();
-  await page.getByRole('button', { name: 'Cerrar sesión' }).click();
-  await expect(page).toHaveURL(/\/plataforma\/ingresar$/);
-}
-
-/** La recepción trabaja en PC, pero la caja también se mira desde el celular (RNF-01): a 360 px nada debe desbordar la pantalla. */
-async function verificarSinDesplazamientoHorizontal(page: Page) {
-  const tamanoOriginal = page.viewportSize();
-  await page.setViewportSize({ width: 360, height: 780 });
-  const ancho = await page.evaluate(() => ({ contenido: document.documentElement.scrollWidth, ventana: innerWidth }));
-  expect(ancho.contenido).toBeLessThanOrEqual(ancho.ventana);
-  if (tamanoOriginal) await page.setViewportSize(tamanoOriginal);
-}
-
-async function ingresarYCambiarClave(page: Page, nombreCorto: string, dni: string, claveNueva: string) {
-  await page.goto(`/a/${nombreCorto}/ingresar`);
-  await page.getByLabel('DNI').fill(dni);
-  await page.getByLabel('Contraseña').fill(dni);
-  await page.getByRole('button', { name: 'Ingresar' }).click();
-  await expect(page).toHaveURL(/\/cambiar-clave$/);
-  await page.getByLabel('Contraseña actual').fill(dni);
-  await page.getByLabel('Contraseña nueva', { exact: true }).fill(claveNueva);
-  await page.getByLabel('Confirma la contraseña nueva').fill(claveNueva);
-  await page.getByRole('button', { name: 'Guardar contraseña nueva' }).click();
-  await expect(page).toHaveURL(/\/panel$/);
-}
 
 test('el administrador abre la caja, registra un egreso, cierra con un faltante y su observación, ve el resultado y la reabre', async ({
   page,

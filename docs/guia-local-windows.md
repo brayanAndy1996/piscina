@@ -312,6 +312,22 @@ npm run dev
 - La 006a no trae paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta.
 - Si `npm run db:preparar` se detiene, lee el mensaje que muestra y vuelve a ejecutarlo.
 
+## Después de traer la historia 006b
+
+Si ya tenías el proyecto con la historia 006a, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+npm ci
+docker compose up -d
+npm run dev
+```
+
+- `npm ci` instala `pdfkit`, la dependencia nueva que arma el PDF del cierre (y `@types/pdfkit`, para desarrollo).
+- La 006b no trae migraciones ni variables nuevas: `npm run db:preparar`, `npm run db:migrar` y `npm run env:completar` no
+  hacen falta, y la semilla no cambia.
+- Si `npm ci` se detiene, lee el mensaje que muestra y vuelve a ejecutarlo.
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -676,11 +692,44 @@ Cada apertura, egreso, cierre y reapertura queda en la auditoría de la academia
 Fase 3.
 
 La caja de ejemplo de `delfines` (2 de noviembre de 2026) no aparece en **Caja**: la pantalla solo muestra la caja de hoy o
-la que siga abierta. Su historial y su PDF llegan con la 006b. Todavía no hay cobros: la caja tiene el monto inicial y los
-egresos, y los cobros llegan con la 007.
+la que siga abierta. Su historial y su PDF están en «Probar el historial y el PDF del cierre». Todavía no hay cobros: la
+caja tiene el monto inicial y los egresos, y los cobros llegan con la 007.
 
 Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`. La prueba
 de navegador de la caja corre con `npm run e2e`.
+
+## Probar el historial y el PDF del cierre
+
+El historial de caja (historia 006b) lo usan el administrador y la secretaria. Con `npm run dev` encendido:
+
+1. Abre **http://localhost:5173/a/delfines/ingresar** y entra como el administrador (`10000001`) o como la secretaria
+   (`10000002`), de la tabla de "Entrar como usuario de una academia".
+2. En el inicio del panel, pulsa **Historial de caja** (`/panel/cajas`). Si dejas las fechas vacías, la lista muestra los
+   últimos 31 días hasta hoy.
+3. Para ver la **caja de ejemplo**, en **Desde** escribe **01/11/2026** y pulsa **Filtrar**. Los campos son de fecha: en
+   Chrome o en Edge, escribe el día, el mes y el año. Con el rango por defecto, la caja del 2 de noviembre queda fuera a
+   partir del 3 de diciembre de 2026, por eso hay que filtrar.
+4. La lista muestra **Caja del 02/11/2026**, con la etiqueta **Cerrada**, el **Monto inicial** de S/ 100.00, los
+   **Egresos** de S/ 15.50, el **Efectivo contado** de S/ 85.00 y la **Diferencia**, que es un sobrante de S/ 0.50. La
+   abrió la secretaria de ejemplo.
+5. Pulsa **Caja del 02/11/2026** para ver el detalle, de solo lectura. Muestra el resumen, los movimientos (el egreso
+   "Egreso: Compra de útiles de limpieza", con el comprobante "Boleta B001-123") y el **Cierre 1**, con la observación
+   "Sobró medio sol del vuelto de la compra".
+6. En el **Cierre 1**, pulsa **Descargar PDF**. El botón dice "Preparando el PDF…" mientras se arma, y el navegador baja
+   `cierre-caja-2026-11-02-1.pdf`. Ábrelo y revisa:
+   - el nombre de la academia, "Cierre de caja", "Caja del 02/11/2026" y "Cierre 1";
+   - la apertura, a las 09:00, con el monto inicial de S/ 100.00;
+   - el egreso de las 10:30, y los totales: el esperado en efectivo de **S/ 84.50**, lo declarado de **S/ 85.00** y la
+     diferencia de **S/ 0.50 (Sobrante)**;
+   - la observación, y quién cerró la caja, el 02/11/2026 a las 18:00.
+7. Si entras como la **secretaria**, solo ves las cajas que abriste o cerraste, la abierta y la de hoy. La caja de ejemplo
+   sí la ves, porque la abrió y la cerró ella. Un enlace a una caja que no te corresponde muestra "No se encontró la caja".
+8. Como **administrador**, en el detalle de una caja cerrada puedes pulsar **Reabrir caja** y escribir el motivo. Si
+   pruebas esto con la caja de ejemplo, vuelve a contar el efectivo y a cerrarla al terminar: la semilla no la restaura.
+9. Si al descargar aparece "Hay muchas descargas de PDF en curso. Espera un momento e inténtalo de nuevo.", espera unos segundos
+   y vuelve a pulsar **Descargar PDF**. La API arma pocos PDF a la vez.
+
+La prueba de navegador del historial (`e2e/pruebas/caja-historial.spec.ts`) corre con `npm run e2e`.
 
 ## Día a día
 

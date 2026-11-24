@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import type { CambiarClave, RespuestaSesionAcademia, RolUsuario } from '@aquagestion/contratos';
+import {
+  type CambiarClave,
+  type Permiso,
+  puede,
+  type RespuestaSesionAcademia,
+  type RolUsuario,
+} from '@aquagestion/contratos';
 import type { Request } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 import { ErrorNegocio } from '../../comun/errores';
@@ -26,6 +32,7 @@ import { AuditoriaService } from '../auditoria';
 import { estaBloqueado, evaluarIntentoFallido } from '../academias/dominio/bloqueo';
 import { leerConfiguracion } from '../configuracion/lectura';
 import { bloquearActorVigente, noAutenticado } from './actor-vigente';
+import { cambioDeClaveObligatorio, sinPermiso } from './errores-de-acceso';
 import { duracionSesionSegundos } from './dominio/duracion-sesion';
 import { minutosRestantes, reglasBloqueoDe } from './dominio/reglas-bloqueo';
 import { type SesionVerificada, TIPO_TOKEN_ACADEMIA } from './tipos';
@@ -193,6 +200,20 @@ export class SesionAcademiaService {
       this.autenticadas.set(solicitud, promesa);
     }
     return promesa;
+  }
+
+  /**
+   * Vuelve a comprobar la sesión de una petición que ya empezó (spec 006b, criterio 53), por ejemplo después de esperar un turno largo. Hace
+   * lo mismo que una petición nueva con la misma cookie, en el mismo orden y con los mismos errores: la sesión sin el recuerdo por petición de
+   * `autenticar` (401 `NO_AUTENTICADO`, 403 `ACADEMIA_SUSPENDIDA`), el cambio de contraseña pendiente (403 `CAMBIO_DE_CLAVE_OBLIGATORIO`, la regla
+   * del middleware de las rutas de academia) y el permiso del rol vigente (403 `SIN_PERMISO`, la regla de `PermisosGuard`). Es una lectura:
+   * no bloquea ninguna fila, no escribe ni audita. Devuelve la sesión recién leída, con el rol y el nombre de la academia vigentes.
+   */
+  async volverAVerificar(solicitud: Request, permiso: Permiso): Promise<SesionVerificada> {
+    const sesion = await this.verificarSesion(solicitud);
+    if (sesion.usuario.debeCambiarClave) throw cambioDeClaveObligatorio();
+    if (!puede(sesion.usuario.rol, permiso)) throw sinPermiso();
+    return sesion;
   }
 
   /**

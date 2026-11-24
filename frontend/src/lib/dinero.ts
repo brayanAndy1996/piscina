@@ -20,10 +20,5 @@ export function sonMismoMonto(a: string, b: string): boolean {
   return normalA === null || normalB === null ? a === b : normalA === normalB;
 }
 
-/** `"120.00"` como `S/ 120.00`, con coma de millares (`S/ 1,200.00`). Si no es un monto, se muestra tal cual. */
-export function formatearSoles(monto: string): string {
-  const normal = normalizarMonto(monto);
-  if (normal === null) return `S/ ${monto}`;
-  const [entera = '0', decimales = '00'] = normal.split('.');
-  return `S/ ${entera.replace(/\B(?=(?:[0-9]{3})+(?![0-9]))/g, ',')}.${decimales}`;
-}
+/** `"120.00"` como `S/ 120.00`, con coma de millares (`S/ 1,200.00`). Vive en los contratos: la usan también el PDF del cierre y la API (PQ10 de 006). */
+export { formatearSoles } from '@aquagestion/contratos';

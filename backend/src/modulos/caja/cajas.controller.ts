@@ -1,9 +1,11 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
+import type { Socket } from 'node:net';
+import { Body, Controller, Get, HttpCode, HttpException, Param, Post, Req, Res } from '@nestjs/common';
 import {
   type AbrirCaja,
   abrirCajaSchema,
   type CerrarCaja,
   cerrarCajaSchema,
+  filtroHistorialCajasSchema,
   type ReabrirCaja,
   reabrirCajaSchema,
   type RegistrarEgreso,
@@ -11,31 +13,178 @@ import {
   type RespuestaCaja,
   type RespuestaCajaActual,
   type RespuestaEgreso,
+  type RespuestaHistorialCajas,
 } from '@aquagestion/contratos';
 import type { Request, Response } from 'express';
+import { PinoLogger } from 'nestjs-pino';
+import { parametroCrudo } from '../../comun/http/parametro-crudo';
 import { ValidarCon } from '../../comun/validacion';
+import { errorParaRegistro } from '../../infraestructura/prisma';
 import { Permiso } from '../autenticacion/permiso.decorator';
 import type { SesionVerificada } from '../autenticacion/tipos';
+import { SesionAcademiaService } from '../autenticacion/sesion-academia.service';
 import { SesionActual } from '../autenticacion/usuario-actual.decorator';
 import { CajasService } from './cajas.service';
+import { HistorialService } from './historial.service';
+import { esErrorDeAborto } from './pdf/aborto';
+
+/**
+ * `true` si la conexión de una descarga ya se cerró (criterios 55 a y 55 h, DT-20): la respuesta se cerró sin terminar de enviarse, o el socket de
+ * la petición está destruido, ya terminó su lectura (leyó el FIN del cliente) o ya no admite escritura. Con `httpAllowHalfOpen = false`, Node
+ * responde a un FIN con `socket.end()`, así que una descarga viva nunca está en ese estado. No se mira la lectura de la petición
+ * (`solicitud.readableEnded`, `solicitud.complete`: son `true` en cualquier `GET` ya leído) ni `solicitud.destroyed` solo: en Node 22 puede ser
+ * `true` después de leer una petición sin cuerpo (plan 2.13). La condición es sobre el socket.
+ */
+function conexionCerrada(solicitud: Request, respuesta: Response): boolean {
+  const socket = solicitud.socket as Socket | null;
+  return (
+    respuesta.destroyed ||
+    (respuesta.closed && !respuesta.writableFinished) ||
+    socket?.destroyed === true ||
+    socket?.readableEnded === true ||
+    socket?.writable === false
+  );
+}
 
 /**
  * La caja del día (spec 006a, HU-25 a HU-27). La academia sale siempre de la sesión: ninguna ruta la recibe en la dirección, la consulta o el
  * cuerpo, y los esquemas son estrictos. Abrir, cerrar y registrar egresos: administrador y secretaria (`ABRIR_CERRAR_CAJA`, sección 2.1);
  * reabrir un cierre, solo el administrador (`REABRIR_CAJA`, DT-1). El Superadmin no tiene ruta aquí (D-29).
  *
- * Orden de las comprobaciones (el de 002): sesión → academia activa → cambio obligatorio → permiso → cuerpo → operación. No hay rutas para
- * cambiar ni borrar un movimiento ni un cierre (criterio 23): esas direcciones responden 404.
+ * Orden de las comprobaciones (el de 002): sesión → academia activa → cambio obligatorio → permiso → cuerpo (o consulta) → operación. No hay
+ * rutas para cambiar ni borrar un movimiento ni un cierre (criterio 23, PQ15): esas direcciones responden 404, igual que cualquier método que no
+ * sea `GET` sobre las rutas de lectura. Eso incluye `HEAD` (criterio 50): Express lo atendería con el manejador del `GET`, así que un middleware
+ * (`instalarHeadSinRutasDeCaja`, instalado en `configurarApp` antes de las rutas de Nest) lo responde con el 404 de siempre, también al
+ * `ENTRENADOR` y al `ALUMNO`; no hay ningún `@Head()` aquí. Las tres lecturas del historial (006b) pasan por `HistorialService`.
  */
 @Controller('cajas')
 export class CajasController {
-  constructor(private readonly servicio: CajasService) {}
+  private readonly validarConsultaDelHistorial = new ValidarCon(filtroHistorialCajasSchema);
 
-  /** Declarada antes de cualquier ruta con `:id` (la de 006b: `GET /api/cajas/{id}`). Los parámetros de consulta se ignoran. */
+  constructor(
+    private readonly servicio: CajasService,
+    private readonly historial: HistorialService,
+    private readonly sesiones: SesionAcademiaService,
+    private readonly registro: PinoLogger,
+  ) {
+    this.registro.setContext(CajasController.name);
+  }
+
+  /**
+   * `GET /api/cajas?desde=&hasta=` (006b, criterio 40): el historial de cajas con el alcance del rol (`VER_REPORTES_FINANCIEROS`: el
+   * administrador todas, la secretaria las suyas y la de hoy, DR-9 y DR-13). Solo se leen `desde` y `hasta`; los demás parámetros (también
+   * `?academiaId=`) se ignoran. Es una lectura: sin bloqueos, sin escritura y sin auditoría.
+   */
+  @Get()
+  @Permiso('VER_REPORTES_FINANCIEROS')
+  listar(@SesionActual() sesion: SesionVerificada, @Req() solicitud: Request): Promise<RespuestaHistorialCajas> {
+    const consulta = this.validarConsultaDelHistorial.transform({
+      desde: parametroCrudo(solicitud, 'desde'),
+      hasta: parametroCrudo(solicitud, 'hasta'),
+    });
+    return this.historial.listar(sesion, consulta);
+  }
+
+  /** Declarada antes de cualquier ruta con `:id` (`GET /api/cajas/{id}`, 006b). Los parámetros de consulta se ignoran. */
   @Get('actual')
   @Permiso('ABRIR_CERRAR_CAJA')
   actual(@SesionActual() sesion: SesionVerificada): Promise<RespuestaCajaActual> {
     return this.servicio.actual(sesion.usuario.academiaId);
+  }
+
+  /**
+   * `GET /api/cajas/{id}` (006b, criterio 41): el detalle de una caja con sus movimientos y cierres, igual que `/actual` para la misma caja.
+   * Un id que no es UUID, que no existe, de otra academia o fuera del alcance de la secretaria responde el mismo 404 (PQ1), después del permiso.
+   * Declarada después de `actual`.
+   */
+  @Get(':id')
+  @Permiso('VER_REPORTES_FINANCIEROS')
+  detalle(@SesionActual() sesion: SesionVerificada, @Param('id') id: string): Promise<RespuestaCaja> {
+    return this.historial.detalle(sesion, id);
+  }
+
+  /**
+   * `GET /api/cajas/{id}/cierres/{numero}/pdf` (006b, criterios 42, 43 y 49 a 53): el PDF de un cierre, armado bajo pedido y fuera de la transacción
+   * de lectura. El `id` y el `numero` no pasan por pipes: todo lo que no se puede mostrar es el mismo 404 (PQ1, PQ6). Con la cola de generación
+   * llena, o con 2 descargas de la misma persona o 4 de la misma academia en curso o en espera, responde 429 `DEMASIADAS_SOLICITUDES` (criterios
+   * 49 b y c, y 52; lo decide `HistorialService`). Cuando le toca el turno, la sesión se vuelve a comprobar con `volverAVerificar` (criterio 53).
+   * Las cabeceras se escriben con el `Buffer` ya completo (PQ7): si el generador falla, el error sube antes de escribir nada y el filtro global
+   * responde el 500 JSON. Solo `GET`: `HEAD` responde 404 (criterio 50).
+   *
+   * Si el cliente corta la conexión antes de que la respuesta termine de enviarse (criterio 51), la respuesta emite `close` sin `writableFinished`
+   * y se activa la señal que el servicio pasa a la cola y al generador. Esa descarga no escribe nada, no audita y no se registra como un 500: a lo
+   * sumo, una línea `info`. Se mira la respuesta y no la petición: en Node 22 la petición puede emitir `close` al terminar de leerse.
+   *
+   * Criterio 55 (DT-15): al entrar se comprueba si la conexión ya está cerrada (un corte durante el middleware o los guards ya pasó) y, en el
+   * mismo paso síncrono, se escucha también el `close` del socket, que avisa a una petición en pipelining. Los oyentes se quitan en `finally`.
+   *
+   * Criterio 55 g (DT-18): `close` llega después de que Node destruye el socket, así que antes de escribir (el 200) y en el camino del error se
+   * vuelve a mirar la conexión, además de la señal, sin un `await` entre la comprobación y la escritura. Si está cerrada, no se escribe nada,
+   * el error no llega al filtro global y se activa la señal.
+   *
+   * Criterio 55 h (DT-20): un FIN del cliente cuenta como corte desde que Node lo lee. `conexionCerrada` también da `true` si el socket ya
+   * terminó su lectura o ya no admite escritura (`readableEnded` o `!writable`), aunque todavía no esté destruido. Esa definición vale al
+   * entrar, antes del 200 y en el `catch`.
+   */
+  @Get(':id/cierres/:numero/pdf')
+  @Permiso('VER_REPORTES_FINANCIEROS')
+  async descargarPdf(
+    @SesionActual() sesion: SesionVerificada,
+    @Param('id') id: string,
+    @Param('numero') numero: string,
+    @Req() solicitud: Request,
+    @Res() respuesta: Response,
+  ): Promise<void> {
+    // Lo primero y en un solo paso síncrono (criterio 55, DT-15): mirar si la conexión ya se cerró e instalar los oyentes. Sin un `await` en
+    // medio, un corte no se pierde. El del socket avisa también a una petición en pipelining, cuya respuesta todavía no tiene socket.
+    const controlador = new AbortController();
+    const socket = solicitud.socket as Socket | null;
+    const contexto = { usuarioId: sesion.usuario.id, academiaId: sesion.usuario.academiaId };
+    if (conexionCerrada(solicitud, respuesta)) {
+      this.registro.info(contexto, 'Descarga del PDF del cierre abandonada antes de empezar');
+      return;
+    }
+    const abandonada = (): boolean => controlador.signal.aborted || conexionCerrada(solicitud, respuesta);
+    const cortar = (): void => {
+      if (!respuesta.writableFinished) controlador.abort();
+    };
+    respuesta.once('close', cortar);
+    socket?.once('close', cortar);
+    try {
+      const { nombreArchivo, contenido } = await this.historial.pdf(sesion, id, numero, {
+        senal: controlador.signal,
+        volverAVerificar: () => this.sesiones.volverAVerificar(solicitud, 'VER_REPORTES_FINANCIEROS'),
+      });
+      // Criterio 55 g (DT-18): la señal se activa con `close`, que llega después de que Node destruye el socket. Se vuelve a mirar la conexión y,
+      // sin ningún `await` entre la comprobación y `end`, se escribe: Node no destruye el socket en medio de código síncrono.
+      if (abandonada()) {
+        controlador.abort();
+        this.registro.info(contexto, 'Descarga del PDF del cierre abandonada por el cliente');
+        return;
+      }
+      respuesta.status(200);
+      respuesta.setHeader('Content-Type', 'application/pdf');
+      respuesta.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+      respuesta.setHeader('Content-Length', String(contenido.length));
+      respuesta.end(contenido);
+    } catch (error) {
+      // Con la conexión cerrada nunca se escribe en la respuesta, tampoco un JSON de error (criterios 55 d y 55 g): el error no llega al filtro
+      // global. Se mira la conexión además de la señal, que puede activarse más tarde.
+      if (!abandonada()) throw error;
+      controlador.abort();
+      if (esErrorDeAborto(error) || (error instanceof HttpException && error.getStatus() < 500)) {
+        this.registro.info(contexto, 'Descarga del PDF del cierre abandonada por el cliente');
+      } else {
+        this.registro.error(
+          { ...contexto, err: errorParaRegistro(error) },
+          'Error al generar el PDF de una descarga abandonada',
+        );
+      }
+    } finally {
+      // En keep-alive el socket atiende las peticiones siguientes: el oyente no puede quedarse ni acumularse (criterio 55 c).
+      respuesta.off('close', cortar);
+      socket?.off('close', cortar);
+    }
   }
 
   /** 201 con la caja nueva; 200 con la caja ya creada si repite la clave (doble clic o reintento, criterio 16). */

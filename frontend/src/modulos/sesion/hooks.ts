@@ -1,13 +1,20 @@
 import type { RespuestaSesionAcademia, UsuarioSesion } from '@aquagestion/contratos';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { matchQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { esErrorDeApi } from '../../api/cliente';
+import { cancelarDescargasEnCurso } from '../../lib/descargas-en-curso';
 import { useIdDeVisita } from '../../lib/visita';
 import * as api from './api';
 import { useUsuario } from './contexto';
 
 export const CLAVE_SESION = ['sesion'] as const;
 const CLAVE_ACADEMIA_PUBLICA = 'academia-publica';
+
+/**
+ * Criterio 57 e de 006 (DT-19): la clave de la mutación de "Cerrar sesión". "Se está cerrando la sesión" es que haya una mutación con esta
+ * clave en `pending` (también en pausa sin conexión): lo usan `useIsMutating` (botones) y `cliente.isMutating` (antes de pedir o entregar).
+ */
+export const CLAVE_CERRAR_SESION = ['sesion', 'cerrar'] as const;
 
 export const RUTA_CAMBIAR_CLAVE = '/cambiar-clave';
 
@@ -80,6 +87,43 @@ export function esErrorDeCambioDeSesion(error: unknown): boolean {
   return error instanceof SesionCambiadaError || error instanceof CambioDeClavePendienteError;
 }
 
+/** Una respuesta que significa "la sesión ya no vale": 401, academia suspendida o cambio de contraseña pendiente. */
+function esErrorDeSesion(error: unknown): boolean {
+  return (
+    esErrorDeApi(error, 401) ||
+    esErrorDeApi(error, 403, 'ACADEMIA_SUSPENDIDA') ||
+    esErrorDeApi(error, 403, 'CAMBIO_DE_CLAVE_OBLIGATORIO')
+  );
+}
+
+/**
+ * Criterio 54 de 006: lo que la web sabe de la sesión, para una acción larga (como preparar un PDF) que no debe entregar nada si, mientras
+ * tanto, la sesión se perdió o es de otra persona o academia. `sigue()` lo dice con lo que hay ahora en la memoria de la página;
+ * `vigilar(alPerder)` avisa en cuanto la sesión de la memoria deja de ser la de la página, y devuelve cómo dejar de vigilar. Las dos usan
+ * la identidad de la página en el momento de llamar a `iniciar()`. Solo se usa dentro de `RutaConSesion`.
+ */
+export function useVigilanteDeLaSesion(): () => {
+  sigue: () => boolean;
+  vigilar: (alPerder: () => void) => () => void;
+} {
+  const cliente = useQueryClient();
+  const mostrada = useUsuario();
+  return useCallback(() => {
+    const identidadDeLaPagina = claveDeIdentidad(mostrada);
+    const sigue = () => {
+      const estado = cliente.getQueryState<RespuestaSesionAcademia>(CLAVE_SESION);
+      if (esErrorDeSesion(estado?.error)) return false;
+      const usuario = estado?.data?.usuario;
+      return usuario !== undefined && claveDeIdentidad(usuario) === identidadDeLaPagina;
+    };
+    const vigilar = (alPerder: () => void) =>
+      cliente.getQueryCache().subscribe((evento) => {
+        if (matchQuery({ queryKey: CLAVE_SESION }, evento.query) && !sigue()) alPerder();
+      });
+    return { sigue, vigilar };
+  }, [cliente, mostrada]);
+}
+
 export interface OpcionesConfirmarSesion {
   /** Solo para la propia acción de cambiar la contraseña desde `/cambiar-clave`. */
   permitirCambioPendiente?: boolean;
@@ -140,7 +184,14 @@ export function useIniciarSesionAcademia(nombreCorto: string) {
 export function useCerrarSesionAcademia() {
   const cliente = useQueryClient();
   return useMutation({
-    mutationFn: api.cerrarSesion,
+    mutationKey: CLAVE_CERRAR_SESION,
+    // Criterio 54 de 006: una descarga en camino no debe llegar a la persona siguiente; se cancela al pulsar, aunque `DELETE` tarde o falle.
+    // Criterio 57 (DT-17): va en `onMutate` y no en la `mutationFn`, porque `onMutate` corre en el mismo paso que `mutate` aunque la
+    // mutación quede en pausa por falta de conexión (con `networkMode: 'online'`, la `mutationFn` no corre hasta que vuelva).
+    onMutate: () => {
+      cancelarDescargasEnCurso();
+    },
+    mutationFn: () => api.cerrarSesion(),
     onSuccess: () => {
       cliente.clear();
     },
@@ -159,15 +210,6 @@ export function useCambiarClave() {
       cliente.setQueryData(CLAVE_SESION, datos);
     },
   });
-}
-
-/** Una respuesta que significa "la sesión ya no vale": 401, academia suspendida o cambio de contraseña pendiente. */
-function esErrorDeSesion(error: unknown): boolean {
-  return (
-    esErrorDeApi(error, 401) ||
-    esErrorDeApi(error, 403, 'ACADEMIA_SUSPENDIDA') ||
-    esErrorDeApi(error, 403, 'CAMBIO_DE_CLAVE_OBLIGATORIO')
-  );
 }
 
 /**
