@@ -1,5 +1,6 @@
 import type { FiltroEstadoSolicitudes } from '@aquagestion/contratos';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useClavesCaja } from '../caja/hooks';
 import { useClavesClases } from '../clases/hooks';
 import { useUsuario } from '../sesion/contexto';
 import { useConfirmarSesion } from '../sesion/hooks';
@@ -44,5 +45,53 @@ export function useCancelarSolicitud() {
         cliente.invalidateQueries({ queryKey: clavesClases.ocupacion }),
       ]);
     },
+  });
+}
+
+/**
+ * Lo que cambia con un cobro o un ajuste: las listas de solicitudes, la ocupación de las clases (el cupo pasa de reservado a ocupado) y la
+ * caja (el cobro entra a su efectivo). Se vuelve a pedir pase lo que pase: un 409 significa que lo que se veía ya no es lo que hay.
+ */
+function useRefrescarTrasUnPago() {
+  const cliente = useQueryClient();
+  const claves = useClavesSolicitudes();
+  const clavesClases = useClavesClases();
+  const clavesCaja = useClavesCaja();
+  return () =>
+    Promise.all([
+      cliente.invalidateQueries({ queryKey: claves.todas }),
+      cliente.invalidateQueries({ queryKey: clavesClases.ocupacion }),
+      cliente.invalidateQueries({ queryKey: clavesCaja.actual }),
+      cliente.invalidateQueries({ queryKey: clavesCaja.historialTodos }),
+      cliente.invalidateQueries({ queryKey: clavesCaja.detalleTodos }),
+    ]);
+}
+
+/**
+ * Cobra una solicitud en efectivo (HU-07, criterios 13 a 19 de 007). Antes confirma que la sesión sigue siendo la de la página. La clave de
+ * idempotencia la pone quien llama y no cambia entre intentos: un doble clic o un reintento no cobra dos veces (criterio 17).
+ */
+export function useCobrarEnEfectivo() {
+  const confirmarSesion = useConfirmarSesion();
+  const refrescar = useRefrescarTrasUnPago();
+  return useMutation({
+    mutationFn: async (entrada: Parameters<typeof api.cobrarEnEfectivo>[0]) => {
+      await confirmarSesion();
+      return api.cobrarEnEfectivo(entrada);
+    },
+    onSettled: refrescar,
+  });
+}
+
+/** Ajusta el monto de una solicitud sin pagar (RN-25, HU-34, criterio 11). Solo `ADMIN`: la API vuelve a comprobarlo. */
+export function useAjustarMonto() {
+  const confirmarSesion = useConfirmarSesion();
+  const refrescar = useRefrescarTrasUnPago();
+  return useMutation({
+    mutationFn: async (entrada: Parameters<typeof api.ajustarMonto>[0]) => {
+      await confirmarSesion();
+      return api.ajustarMonto(entrada);
+    },
+    onSettled: refrescar,
   });
 }

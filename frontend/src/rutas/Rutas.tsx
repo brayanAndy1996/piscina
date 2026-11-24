@@ -7,6 +7,7 @@ import { PaginaConfiguracion } from '../modulos/configuracion/PaginaConfiguracio
 import { Inicio } from '../modulos/inicio/Inicio';
 import { PaginaInscripcion } from '../modulos/inscripcion/PaginaInscripcion';
 import { PaginaPanel } from '../modulos/panel/PaginaPanel';
+import { PaginaTicket } from '../modulos/pagos/PaginaTicket';
 import { PaginaPlanes } from '../modulos/planes/PaginaPlanes';
 import { PaginaAcademias } from '../modulos/plataforma/PaginaAcademias';
 import { PaginaIngresar } from '../modulos/plataforma/PaginaIngresar';
@@ -40,6 +41,7 @@ export function Rutas() {
         <Route path="/panel/planes" element={<PaginaPlanes />} />
         <Route path="/panel/clases" element={<PaginaClases />} />
         <Route path="/panel/solicitudes" element={<PaginaSolicitudes />} />
+        <Route path="/panel/pagos/:id/ticket" element={<PaginaTicket />} />
         <Route path="/panel/caja" element={<PaginaCaja />} />
         <Route path="/panel/cajas" element={<PaginaHistorialCajas />} />
         <Route path="/panel/cajas/:id" element={<DetalleCaja />} />

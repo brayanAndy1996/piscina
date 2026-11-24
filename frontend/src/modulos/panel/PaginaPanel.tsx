@@ -22,13 +22,15 @@ const OPCIONES: readonly Opcion[] = [
   {
     permiso: 'REGISTRAR_INSCRIPCION_Y_COBRO',
     texto: 'Solicitudes de inscripción',
-    descripcion: 'Mira las solicitudes que enviaron los clientes y cancela las que ya no van a seguir.',
+    descripcion:
+      'Cobra en efectivo a quien paga en recepción, ajusta el monto, imprime el ticket y cancela las solicitudes que ya no van a seguir.',
     ruta: () => '/panel/solicitudes',
   },
   {
     permiso: 'REGISTRAR_INSCRIPCION_Y_COBRO',
     texto: 'Nueva inscripción',
-    descripcion: 'Abre el formulario público para inscribir a un cliente en recepción. Se abre en otra pestaña.',
+    descripcion:
+      'Abre el formulario para inscribir a un cliente en recepción (sin los límites por conexión). Se abre en otra pestaña.',
     externa: true,
     ruta: (nombreCorto) => `/a/${encodeURIComponent(nombreCorto)}/inscripcion`,
   },
