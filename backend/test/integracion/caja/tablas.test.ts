@@ -1,4 +1,6 @@
 // spec: 006-caja (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterios 1, 3 y 5 y DT-2): las llaves de `movimientos_caja` suman `academia_id,pago_id->pagos(academia_id,id)`
+// y el título de la prueba deja de decir que `pago_id` no tiene llave. No se quitó ni se cambió nada más.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { conTransaccionRevertida, ejecutarComo } from '../../utilidades/base-datos';
 import { exigirTablasDeCaja, TABLAS_006, type Tabla006 } from '../../utilidades/caja';
@@ -301,6 +303,7 @@ describe('criterio 1: claves, índices y llaves foráneas', () => {
       [
         'academia_id,alumno_id->alumnos(academia_id,id)',
         'academia_id,caja_id->cajas(academia_id,id)',
+        'academia_id,pago_id->pagos(academia_id,id)',
         'academia_id,registrado_por->usuarios(academia_id,id)',
       ],
     ],
@@ -313,7 +316,7 @@ describe('criterio 1: claves, índices y llaves foráneas', () => {
       ],
     ],
   ] as const)(
-    'criterio 1: %s: toda referencia es una llave foránea compuesta (academia_id, …) hacia (academia_id, id); pago_id no tiene llave (la agrega la 007)',
+    'criterio 1: %s: toda referencia es una llave foránea compuesta (academia_id, …) hacia (academia_id, id); pago_id tiene la suya hacia pagos (la agrega la 007)',
     async (tabla, esperadas) => {
       expect(await llavesDe(tabla)).toEqual([...esperadas].sort());
     },

@@ -1,4 +1,8 @@
 // spec: 006-caja (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterios 1, 3 y 5 y «Pruebas protegidas anteriores que amplía la 007a»): la función local `ingresar` inserta el pago `CONFIRMADO`
+// del ingreso en la misma transacción, después de `registrarIngresoEnCaja` (si lanza, no se inserta nada; si devuelve `repetido`, el pago ya existía). CAMBIO
+// APROBADO POR EL ORQUESTADOR (no solo suma, DT-19): la prueba del criterio 24 b «un pagoId de otra academia no cuenta» espera ahora que el ingreso en A con el
+// `pagoId` de un pago de B falle al confirmar con 23503 y no deje nada en A (conserva la intención: un pago de otra academia nunca cuenta como de A).
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { codigoDeErrorDeBase } from '../../../src/infraestructura/prisma';
@@ -40,6 +44,7 @@ import {
   type MetodoPago,
   type ModuloCaja,
 } from '../../utilidades/caja';
+import { insertarPagoDeSoporteEnTransaccion } from '../../utilidades/pagos';
 import { abrirRetenedor, conLimite, esperarEspera, observar } from '../../utilidades/planes-clases';
 import { AHORA_PRUEBAS } from '../../utilidades/usuarios';
 
@@ -90,14 +95,40 @@ describe('interfaz de la caja para la 007 (criterios 20 d, 24 y 25)', () => {
     return caja;
   };
 
-  /** Registra un ingreso dentro de `conAcademia(A)` con `registrarIngresoEnCaja` y devuelve el resultado o el error. */
+  /**
+   * `registrarIngresoEnCaja` y, después, el pago `CONFIRMADO` del ingreso en la misma transacción (la base lo exige desde la 007). Si el ingreso
+   * ya estaba registrado (`repetido`), el pago ya existe y no se inserta otro; `conPago: false` no lo inserta (para probar la llave hacia `pagos`).
+   */
+  async function ingresoConSuPago(
+    tx: Parameters<ModuloCaja['registrarIngresoEnCaja']>[0],
+    ingreso: Parameters<ModuloCaja['registrarIngresoEnCaja']>[1],
+    ahora: Date,
+    conPago = true,
+  ) {
+    const registrado = await modulo.registrarIngresoEnCaja(tx, ingreso, ahora);
+    if (conPago && !registrado.repetido) {
+      await insertarPagoDeSoporteEnTransaccion(tx, {
+        pagoId: ingreso.pagoId,
+        alumnoId: ingreso.alumnoId,
+        metodo: ingreso.metodo,
+        monto: ingreso.monto.toFixed(2),
+        concepto: ingreso.concepto,
+        usuarioId: ingreso.usuarioId,
+        registradoEn: registrado.registradoEn,
+      });
+    }
+    return registrado;
+  }
+
+  /** Registra un ingreso dentro de `conAcademia(A)` con `registrarIngresoEnCaja` (y su pago) y devuelve el resultado o el error. */
   async function ingresar(
     ingreso = ingresoDeEjemplo(alumno.id, e.secretariaA.id),
     ahora: Date = AHORA_PRUEBAS,
     academiaId: string = e.A.id,
+    conPago = true,
   ) {
     const baseDatos = await ctx.baseDatos();
-    return intentar(baseDatos.conAcademia(academiaId, (tx) => modulo.registrarIngresoEnCaja(tx, ingreso, ahora)));
+    return intentar(baseDatos.conAcademia(academiaId, (tx) => ingresoConSuPago(tx, ingreso, ahora, conPago)));
   }
 
   describe('criterio 24 a: la caja abierta', () => {
@@ -145,7 +176,7 @@ describe('interfaz de la caja para la 007 (criterios 20 d, 24 y 25)', () => {
         const baseDatos = await ctx.baseDatos();
         const pendiente = intentar(
           baseDatos.conAcademia(e.A.id, (tx) =>
-            modulo.registrarIngresoEnCaja(tx, ingresoDeEjemplo(alumno.id, e.secretariaA.id), AHORA_PRUEBAS),
+            ingresoConSuPago(tx, ingresoDeEjemplo(alumno.id, e.secretariaA.id), AHORA_PRUEBAS),
           ),
         );
         const observada = observar(pendiente);
@@ -376,17 +407,26 @@ describe('interfaz de la caja para la 007 (criterios 20 d, 24 y 25)', () => {
       expect(await leerMovimientos(e.A.id)).toHaveLength(1);
     });
 
-    it('criterio 24 b: un pagoId de otra academia no cuenta: la misma UUID registra su ingreso en A', async () => {
+    it('criterio 24 b (DT-19 de 007): un pagoId de otra academia no cuenta como de A: el ingreso en A con el pagoId de un pago de B falla al confirmar con 23503 y no deja nada en A', async () => {
       await conCaja();
       const cajaB = await crearCajaDePrueba(e.B.id, e.secretariaB.id);
       const alumnoB = await crearAlumnoDeCaja(e.B.id);
       const pagoId = randomUUID();
       await crearIngresoDePrueba(e.B.id, cajaB.id, e.secretariaB.id, alumnoB.id, { pago_id: pagoId });
+      const antes = await instantaneaDeCaja(e.A.id);
 
-      const resultado = await ingresar(ingresoDeEjemplo(alumno.id, e.secretariaA.id, { pagoId }));
+      const resultado = await ingresar(
+        ingresoDeEjemplo(alumno.id, e.secretariaA.id, { pagoId }),
+        AHORA_PRUEBAS,
+        e.A.id,
+        false,
+      );
 
-      expect(resultado.ok && resultado.valor.repetido).toBe(false);
-      expect(await leerMovimientos(e.A.id)).toHaveLength(1);
+      expect(resultado.ok).toBe(false);
+      if (!resultado.ok) expect(codigoDeErrorDeBase(resultado.error)).toBe('23503');
+      expect(await instantaneaDeCaja(e.A.id)).toBe(antes);
+      expect(await leerMovimientos(e.A.id)).toHaveLength(0);
+      expect(await leerMovimientos(e.B.id)).toHaveLength(1);
     });
   });
 

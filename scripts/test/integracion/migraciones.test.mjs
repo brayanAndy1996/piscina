@@ -15,7 +15,7 @@ const servidor = servidorDePruebas();
 // Tablas de `public` después de aplicar todas las migraciones (la 000 no creaba ninguna; la 001 crea cinco, la 002, `usuarios`, la 004,
 // `planes` y `clases` y la 005, siete: `alumnos`, `apoderados`, `fichas_medicas`, `consentimientos`, `solicitudes_inscripcion`,
 // `matriculas` y `matricula_clases`) y la 006, tres: `cajas`, `movimientos_caja` y `cierres_caja`. Cada historia con tablas nuevas agrega
-// las suyas aquí.
+// las suyas aquí. Actualizada por la 007 (spec 007-pagos, criterio 1): suma `pagos`.
 const TABLAS_DESPUES_DE_MIGRAR = [
   '_prisma_migrations',
   'academias',
@@ -32,6 +32,7 @@ const TABLAS_DESPUES_DE_MIGRAR = [
   'matricula_clases',
   'matriculas',
   'movimientos_caja',
+  'pagos',
   'planes',
   'solicitudes_inscripcion',
   'superadmins',

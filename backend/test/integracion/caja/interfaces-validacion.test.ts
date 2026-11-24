@@ -1,4 +1,6 @@
 // spec: 006-caja (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterios 1 y 5 y «Pruebas protegidas anteriores que amplía la 007a»): la función local `ingresar` inserta el pago `CONFIRMADO`
+// del ingreso en la misma transacción, después de `registrarIngresoEnCaja` (si lanza, no se inserta nada). No se quitó ni se cambió nada más.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { codigoDeErrorDeBase } from '../../../src/infraestructura/prisma';
@@ -25,6 +27,7 @@ import {
   leerMovimientos,
   type ModuloCaja,
 } from '../../utilidades/caja';
+import { insertarPagoDeSoporteEnTransaccion } from '../../utilidades/pagos';
 import { AHORA_PRUEBAS } from '../../utilidades/usuarios';
 
 // Criterio 48 (crítico, HU-26, RN-17, RN-22; ronda adversarial 1): las interfaces de la caja que usarán la 007 y la 019 no confían en que quien llama
@@ -86,7 +89,24 @@ describe('interfaces de la caja: validación de las entradas (criterio 48)', () 
   }
   async function ingresar(ingreso: IngresoEnCajaPrueba, ahora: Date = AHORA_PRUEBAS) {
     const baseDatos = await ctx.baseDatos();
-    return intentar(baseDatos.conAcademia(e.A.id, (tx) => modulo.registrarIngresoEnCaja(tx, ingreso, ahora)));
+    return intentar(
+      baseDatos.conAcademia(e.A.id, async (tx) => {
+        const registrado = await modulo.registrarIngresoEnCaja(tx, ingreso, ahora);
+        // Desde la 007 el ingreso necesita su pago CONFIRMADO en la misma transacción (criterio 5), después de `registrarIngresoEnCaja`.
+        if (!registrado.repetido) {
+          await insertarPagoDeSoporteEnTransaccion(tx, {
+            pagoId: ingreso.pagoId,
+            alumnoId: ingreso.alumnoId,
+            metodo: ingreso.metodo,
+            monto: ingreso.monto.toFixed(2),
+            concepto: ingreso.concepto,
+            usuarioId: ingreso.usuarioId,
+            registradoEn: registrado.registradoEn,
+          });
+        }
+        return registrado;
+      }),
+    );
   }
   /** Un ingreso con campos que el tipo no admite (la prueba lo fuerza como lo haría quien llama sin validar). */
   const ingresoInvalido = (sobre: Record<string, unknown>): IngresoEnCajaPrueba => ({

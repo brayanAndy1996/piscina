@@ -1,4 +1,7 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterio 2 y «Pruebas protegidas anteriores que amplía la 007a»): la lista exacta suma `pagos` (SELECT, INSERT y
+// UPDATE solo de `estado`, `verificado_por`, `verificado_en`, `motivo_rechazo`, `numero_ticket` y `actualizado_en`), el UPDATE de `alumnos.estado` y
+// `alumnos.usuario_id` y el de `matriculas.monto_ajustado` y `matriculas.motivo_ajuste`. No se quitó ni se cambió nada de lo anterior.
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -92,6 +95,8 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
     'nivel',
     'foto_clave',
     'actualizado_en',
+    'estado',
+    'usuario_id',
   ].map((c) => efectivo('alumnos', c, 'UPDATE')),
   efectivo('apoderados', null, 'SELECT'),
   efectivo('apoderados', null, 'INSERT'),
@@ -118,7 +123,9 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
   ...['estado', 'actualizado_en'].map((c) => efectivo('solicitudes_inscripcion', c, 'UPDATE')),
   efectivo('matriculas', null, 'SELECT'),
   efectivo('matriculas', null, 'INSERT'),
-  ...['estado', 'reserva_vence_en', 'actualizado_en'].map((c) => efectivo('matriculas', c, 'UPDATE')),
+  ...['estado', 'reserva_vence_en', 'actualizado_en', 'monto_ajustado', 'motivo_ajuste'].map((c) =>
+    efectivo('matriculas', c, 'UPDATE'),
+  ),
   efectivo('matricula_clases', null, 'SELECT'),
   efectivo('matricula_clases', null, 'INSERT'),
   // Historia 006, criterio 2: la lista exacta suma los privilegios de las tres tablas de la caja (no se quita nada de lo anterior).
@@ -131,6 +138,13 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
   efectivo('cierres_caja', null, 'SELECT'),
   efectivo('cierres_caja', null, 'INSERT'),
   ...['reabierto_por', 'reabierto_en', 'motivo_reapertura'].map((c) => efectivo('cierres_caja', c, 'UPDATE')),
+  // Historia 007, criterio 2: la lista exacta suma `pagos` (sin DELETE; el monto, el método, el número de operación, el comprobante, la fecha de
+  // operación, la matrícula y el alumno de un pago no cambian).
+  efectivo('pagos', null, 'SELECT'),
+  efectivo('pagos', null, 'INSERT'),
+  ...['estado', 'verificado_por', 'verificado_en', 'motivo_rechazo', 'numero_ticket', 'actualizado_en'].map((c) =>
+    efectivo('pagos', c, 'UPDATE'),
+  ),
 ];
 
 async function cargarDeLaApi(): Promise<Modulo> {

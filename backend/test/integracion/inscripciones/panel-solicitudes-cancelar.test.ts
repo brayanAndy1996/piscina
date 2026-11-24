@@ -1,4 +1,6 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterio 29 y «Pruebas protegidas anteriores que amplía la 007a»): `CLAVES_DEL_ELEMENTO` suma `ajuste` y `pago`.
+// No se quitó ni se cambió nada más.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ejecutarComo } from '../../utilidades/base-datos';
 import { leerAuditoriaDeAcademia } from '../../utilidades/datos';
@@ -50,6 +52,7 @@ import {
 const ACCION = 'SOLICITUD_INSCRIPCION_CANCELADA';
 const MOTIVO = 'Pidió que la cancelen por teléfono';
 const CLAVES_DEL_ELEMENTO = [
+  'ajuste',
   'apellidos',
   'clases',
   'clasesTotales',
@@ -62,6 +65,7 @@ const CLAVES_DEL_ELEMENTO = [
   'mes',
   'monto',
   'nombres',
+  'pago',
   'plan',
   'reservaVenceEn',
   'telefono',

@@ -1,4 +1,7 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterio 7 y «Pruebas protegidas anteriores que amplía la 007a»): el tipo `estado_solicitud` suma `CONFIRMADA`,
+// `solicitudes_inscripcion` suma la columna `registrada_por` (uuid, nula) y su llave compuesta a `usuarios`, y `matriculas` suma el único
+// `(academia_id, id, alumno_id)` que piden las llaves de `pagos`. No se quitó ni se cambió nada más.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { conTransaccionRevertida, ejecutarComo } from '../../utilidades/base-datos';
 import { exigirTablasDeInscripcion, TABLAS_005, type Tabla005 } from '../../utilidades/inscripciones';
@@ -192,6 +195,7 @@ describe('criterio 1: columnas de cada tabla', () => {
       clave_idempotencia: { tipo: /^uuid$/, obligatoria: true },
       estado: { tipo: /estado_solicitud$/, obligatoria: true, porDefecto: /'PENDIENTE_PAGO'/ },
       ip_origen: { tipo: /^inet$/, obligatoria: false },
+      registrada_por: { tipo: /^uuid$/, obligatoria: false },
       ...FECHAS,
     });
   });
@@ -249,7 +253,7 @@ describe('criterio 1: tipos enumerados', () => {
 
   it.each([
     ['estado_alumno', ['ALUMNO_ACTIVO', 'ALUMNO_VENCIDO', 'CLIENTE', 'INACTIVO']],
-    ['estado_solicitud', ['CANCELADA', 'PENDIENTE_PAGO', 'VENCIDA']],
+    ['estado_solicitud', ['CANCELADA', 'CONFIRMADA', 'PENDIENTE_PAGO', 'VENCIDA']],
     ['estado_matricula', ['CANCELADA', 'FINALIZADA', 'RESERVADA', 'VIGENTE']],
     ['tipo_consentimiento', ['DATOS_PERSONALES', 'DESLINDE', 'IMAGEN']],
     ['otorgante_consentimiento', ['APODERADO', 'TITULAR']],
@@ -348,6 +352,10 @@ describe('criterio 1: claves, índices y llaves foráneas', () => {
     expect(indices.map((i) => i.columnas.join(','))).toContain('academia_id,anio,mes,estado');
   });
 
+  it('criterio 1 (007): matriculas suma el único (academia_id, id, alumno_id) para la llave compuesta de pagos', async () => {
+    expect(unicosDe(await indicesDe('matriculas'))).toContain('academia_id,id,alumno_id');
+  });
+
   it('criterio 1: matricula_clases: índice (academia_id, clase_id) para contar la ocupación', async () => {
     expect((await indicesDe('matricula_clases')).map((i) => i.columnas.join(','))).toContain('academia_id,clase_id');
   });
@@ -370,7 +378,10 @@ describe('criterio 1: claves, índices y llaves foráneas', () => {
         'academia_id,solicitud_id->solicitudes_inscripcion(academia_id,id)',
       ],
     ],
-    ['solicitudes_inscripcion', ['academia_id,alumno_id->alumnos(academia_id,id)']],
+    [
+      'solicitudes_inscripcion',
+      ['academia_id,alumno_id->alumnos(academia_id,id)', 'academia_id,registrada_por->usuarios(academia_id,id)'],
+    ],
     [
       'matriculas',
       [

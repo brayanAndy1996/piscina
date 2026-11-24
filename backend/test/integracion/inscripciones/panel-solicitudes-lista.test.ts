@@ -1,4 +1,9 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterio 29 y «Pruebas protegidas anteriores que amplía la 007a»): `CLAVES_DEL_ELEMENTO` suma `ajuste` y `pago`
+// (null en las solicitudes sin ajuste ni pago) y el elemento exacto de la prueba de valores los suma como `null`. CAMBIO APROBADO POR EL ORQUESTADOR (no
+// solo suma, DT-17): la prueba «el monto es el ajustado si lo hay» escribía `monto_ajustado = 99.5` como dueño y esperaba `'99.50'`; con el criterio
+// 29 el `monto` es el total a cobrar, que redondea hacia arriba una sola vez (D-03). Pasa a un ajuste en soles enteros (`99` → `'99.00'`, que conserva
+// la intención) y suma el caso `99.5` escrito como dueño → `'100.00'`.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ejecutarComo } from '../../utilidades/base-datos';
 import {
@@ -44,6 +49,7 @@ import {
 // solicitudes de otra academia, tampoco con `?academiaId=`. La lectura no audita.
 
 const CLAVES_DEL_ELEMENTO = [
+  'ajuste',
   'apellidos',
   'clases',
   'clasesTotales',
@@ -56,6 +62,7 @@ const CLAVES_DEL_ELEMENTO = [
   'mes',
   'monto',
   'nombres',
+  'pago',
   'plan',
   'reservaVenceEn',
   'telefono',
@@ -330,6 +337,8 @@ describe('lista de solicitudes del panel (criterio 38)', () => {
         mes: '2026-11',
         clasesTotales: 12,
         monto: '120.00',
+        ajuste: null,
+        pago: null,
       });
     });
 
@@ -346,14 +355,26 @@ describe('lista de solicitudes del panel (criterio 38)', () => {
     it('criterio 38: el monto es el ajustado si lo hay, y si no el calculado, siempre con dos decimales', async () => {
       await ejecutarComo(
         'propietario',
+        "UPDATE matriculas SET monto_ajustado = 99, motivo_ajuste = 'Descuento de la academia' WHERE academia_id = $1::uuid AND solicitud_id = $2::uuid",
+        [e.A.id, activaVieja.solicitudId],
+        { academiaId: e.A.id },
+      );
+      const porId = new Map(solicitudes(await lista()).map((s) => [s['id'] as string, s]));
+
+      expect(porId.get(activaVieja.solicitudId)?.['monto']).toBe('99.00');
+      expect(porId.get(activaNueva.solicitudId)?.['monto']).toBe('120.00');
+    });
+
+    it('criterio 38 y 29 (DT-17): un ajuste con céntimos escrito como dueño (99.5) se muestra como el total a cobrar, redondeado hacia arriba una sola vez: 100.00', async () => {
+      await ejecutarComo(
+        'propietario',
         "UPDATE matriculas SET monto_ajustado = 99.5, motivo_ajuste = 'Descuento de la academia' WHERE academia_id = $1::uuid AND solicitud_id = $2::uuid",
         [e.A.id, activaVieja.solicitudId],
         { academiaId: e.A.id },
       );
       const porId = new Map(solicitudes(await lista()).map((s) => [s['id'] as string, s]));
 
-      expect(porId.get(activaVieja.solicitudId)?.['monto']).toBe('99.50');
-      expect(porId.get(activaNueva.solicitudId)?.['monto']).toBe('120.00');
+      expect(porId.get(activaVieja.solicitudId)?.['monto']).toBe('100.00');
     });
 
     it('criterio 38: menorDeEdad sale de la fecha de nacimiento y de la fecha de hoy en Lima (el día del cumpleaños número 18 ya es mayor), aunque el apoderado siga guardado', async () => {

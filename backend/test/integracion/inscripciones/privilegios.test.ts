@@ -1,4 +1,9 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterio 2 y DT-18): `UPDATE_EXACTO` suma `estado` y `usuario_id` en `alumnos`, y `monto_ajustado` y
+// `motivo_ajuste` en `matriculas` (la confirmación del pago y el ajuste del administrador los necesitan). CAMBIO APROBADO POR EL ORQUESTADOR (no
+// solo suma, DT-18): se quitan los tres intentos que esperaban 42501 en `alumnos.estado`, `alumnos.usuario_id` y `matriculas.monto_ajustado`, y «el
+// estado» del título de la prueba de `alumnos`. El DNI, la `academia_id`, el `id` y `creado_en` siguen prohibidos y comprobados; el nuevo
+// `UPDATE_EXACTO` sigue fijando los privilegios exactos.
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { crearAcademiaDePrueba } from '../../utilidades/academias';
@@ -34,15 +39,17 @@ const UPDATE_EXACTO: Record<Tabla005, string[]> = {
     'apellidos',
     'correo',
     'direccion',
+    'estado',
     'fecha_nacimiento',
     'foto_clave',
     'grado_colegio',
     'nivel',
     'nombres',
     'telefono',
+    'usuario_id',
   ],
   solicitudes_inscripcion: ['actualizado_en', 'estado'],
-  matriculas: ['actualizado_en', 'estado', 'reserva_vence_en'],
+  matriculas: ['actualizado_en', 'estado', 'monto_ajustado', 'motivo_ajuste', 'reserva_vence_en'],
   consentimientos: [],
   matricula_clases: [],
   apoderados: ['actualizado_en', 'apellidos', 'correo', 'dni', 'nombres', 'parentesco', 'telefono'],
@@ -128,13 +135,11 @@ describe('criterio 2: lo que el rol de la app puede y no puede escribir', () => 
   const comoApp = (sql: string, parametros: unknown[] = []) =>
     ejecutarComo('app', sql, parametros, { academiaId: A.id });
 
-  it('criterio 2: no puede cambiar el DNI, la academia_id, el id, el estado ni creado_en de un alumno, ni borrarlo (42501)', async () => {
+  it('criterio 2: no puede cambiar el DNI, la academia_id, el id ni creado_en de un alumno, ni borrarlo (42501)', async () => {
     const intentos: [string, string, unknown[]][] = [
       ['dni', "UPDATE alumnos SET dni = '99999999' WHERE id = $1::uuid", [cliente.alumnoId]],
       ['academia_id', 'UPDATE alumnos SET academia_id = $2::uuid WHERE id = $1::uuid', [cliente.alumnoId, B.id]],
       ['id', 'UPDATE alumnos SET id = gen_random_uuid() WHERE id = $1::uuid', [cliente.alumnoId]],
-      ['estado', "UPDATE alumnos SET estado = 'ALUMNO_ACTIVO' WHERE id = $1::uuid", [cliente.alumnoId]],
-      ['usuario_id', 'UPDATE alumnos SET usuario_id = gen_random_uuid() WHERE id = $1::uuid', [cliente.alumnoId]],
       ['creado_en', 'UPDATE alumnos SET creado_en = now() WHERE id = $1::uuid', [cliente.alumnoId]],
       ['DELETE', 'DELETE FROM alumnos WHERE id = $1::uuid', [cliente.alumnoId]],
       ['TRUNCATE', 'TRUNCATE alumnos', []],
@@ -185,7 +190,6 @@ describe('criterio 2: lo que el rol de la app puede y no puede escribir', () => 
     const intentos: [string, string, unknown[]][] = [
       ['precio_plan', 'UPDATE matriculas SET precio_plan = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['monto_calculado', 'UPDATE matriculas SET monto_calculado = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
-      ['monto_ajustado', 'UPDATE matriculas SET monto_ajustado = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['clases_totales', 'UPDATE matriculas SET clases_totales = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['clases_usadas', 'UPDATE matriculas SET clases_usadas = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['anio', 'UPDATE matriculas SET anio = 2027 WHERE id = $1::uuid', [cliente.matriculaId]],
