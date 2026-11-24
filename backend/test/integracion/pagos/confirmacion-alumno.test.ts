@@ -111,10 +111,10 @@ describe('paso de cliente a alumno al confirmar el cobro (criterios 20, 21 y 23)
       await cobrar(dos, cookies.admin);
 
       const filas = await leerAuditoriaDeAcademia(e.A.id, 'USUARIO_CREADO');
-      expect(filas.map((f) => [f.actor_tipo, f.actor_id])).toEqual([
-        ['USUARIO', e.secretariaA.id],
-        ['USUARIO', e.adminA.id],
-      ]);
+      // Con el reloj fijo las dos filas comparten `fecha_hora`: la spec no garantiza su orden, así que se compara sin depender de él.
+      expect(filas.map((f) => `${f.actor_tipo}:${f.actor_id}`).sort()).toEqual(
+        [`USUARIO:${e.secretariaA.id}`, `USUARIO:${e.adminA.id}`].sort(),
+      );
     });
 
     it('criterio 20 b, c y d: el alumno pasa a ALUMNO_ACTIVO con su cuenta, la matrícula a VIGENTE sin vencimiento y la solicitud a CONFIRMADA', async () => {

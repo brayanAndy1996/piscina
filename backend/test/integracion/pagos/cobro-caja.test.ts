@@ -24,7 +24,7 @@ import {
   leerSolicitudes,
 } from '../../utilidades/inscripciones';
 import { leerPagos } from '../../utilidades/pagos';
-import { cookieDeUsuario, leerUsuarios } from '../../utilidades/usuarios';
+import { cookieDeUsuario, instantaneaDeUsuarios } from '../../utilidades/usuarios';
 
 // Criterio 14 (crítico, RN-17, D-04, DR-2 de 006; «cobrar con la caja de otro día» de `CLAUDE.md`): el cobro en efectivo solo se acepta con la caja de hoy abierta. Sin caja
 // abierta responde 409 `SIN_CAJA_ABIERTA` («Abre la caja antes de cobrar»); con la caja abierta de un día anterior, 409 `CAJA_DE_OTRO_DIA` con `detalles: { cajaId, fecha }`; con
@@ -66,7 +66,8 @@ describe('el cobro solo con la caja de hoy abierta (criterio 14)', () => {
     expect((await leerAlumnos(e.A.id)).every((a) => a.estado === 'CLIENTE' && a.usuario_id === null)).toBe(true);
     expect((await leerSolicitudes(e.A.id)).every((s) => s.estado === 'PENDIENTE_PAGO')).toBe(true);
     expect((await leerMatriculas(e.A.id)).every((m) => m.estado === 'RESERVADA')).toBe(true);
-    expect(await leerUsuarios(e.A.id)).toHaveLength(6);
+    // Las cuentas de la academia no cambian: se compara con las de antes del cobro, no con un número fijo.
+    expect(await instantaneaDeUsuarios(e.A.id)).toBe((JSON.parse(antes) as { usuarios: string }).usuarios);
   }
 
   it('criterio 14: sin ninguna caja responde 409 SIN_CAJA_ABIERTA («Abre la caja antes de cobrar») y no queda nada', async () => {

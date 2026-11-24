@@ -1,4 +1,5 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterio 2 y «Pruebas protegidas anteriores que amplía la 007a»): la lista exacta de `PRIVILEGIOS_APP` suma `pagos` (SELECT, INSERT y UPDATE solo de `estado`, `verificado_por`, `verificado_en`, `motivo_rechazo`, `numero_ticket` y `actualizado_en`), `alumnos.estado`, `alumnos.usuario_id`, `matriculas.monto_ajustado` y `matriculas.motivo_ajuste`. No se quitó ni se cambió nada de lo anterior.
 // Pruebas unitarias de la ronda 3 del ataque sobre `scripts/lib/rol-app.mjs` (solo modulos `node:*`) y las sentencias del hook de
 // sesion:
 //  - Criterio 103, precision P-19: `problemasDeConfiguracionApp({ rolconfig, bases })` con `rolconfig: string[] | null` (de
@@ -181,6 +182,9 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       'alumnos|nivel|UPDATE',
       'alumnos|foto_clave|UPDATE',
       'alumnos|actualizado_en|UPDATE',
+      // Historia 007, criterio 2: la confirmación del pago pasa al alumno a `ALUMNO_ACTIVO` con su cuenta.
+      'alumnos|estado|UPDATE',
+      'alumnos|usuario_id|UPDATE',
       'apoderados|*|SELECT',
       'apoderados|*|INSERT',
       'apoderados|*|DELETE',
@@ -212,6 +216,9 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       'matriculas|estado|UPDATE',
       'matriculas|reserva_vence_en|UPDATE',
       'matriculas|actualizado_en|UPDATE',
+      // Historia 007, criterio 2: el ajuste del monto por el administrador.
+      'matriculas|monto_ajustado|UPDATE',
+      'matriculas|motivo_ajuste|UPDATE',
       'matricula_clases|*|SELECT',
       'matricula_clases|*|INSERT',
       // Historia 006, criterio 2: se suman los privilegios de las tres tablas de la caja (no se quita nada de lo anterior).
@@ -227,6 +234,15 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       'cierres_caja|reabierto_por|UPDATE',
       'cierres_caja|reabierto_en|UPDATE',
       'cierres_caja|motivo_reapertura|UPDATE',
+      // Historia 007, criterio 2: `pagos` (sin DELETE; solo cambian al resolverse el estado, quién y cuándo, el motivo y el ticket).
+      'pagos|*|SELECT',
+      'pagos|*|INSERT',
+      'pagos|estado|UPDATE',
+      'pagos|verificado_por|UPDATE',
+      'pagos|verificado_en|UPDATE',
+      'pagos|motivo_rechazo|UPDATE',
+      'pagos|numero_ticket|UPDATE',
+      'pagos|actualizado_en|UPDATE',
     ];
     expect([...PRIVILEGIOS_APP].map(clave).sort()).toEqual([...esperada].sort());
   });

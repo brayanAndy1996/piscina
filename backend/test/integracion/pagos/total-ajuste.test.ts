@@ -266,9 +266,12 @@ describe('total a cobrar y ajuste del administrador (criterios 10 y 11)', () => 
       });
       const filas = await leerAuditoriaDeAcademia(e.A.id, ACCION);
       expect(filas).toHaveLength(2);
-      expect(filas[1]?.datos_antes).toEqual({ montoAjustado: '35.00', total: '35.00' });
-      expect(filas[1]?.datos_despues).toEqual({ montoAjustado: '30.00', total: '30.00' });
-      expect(filas[1]?.motivo).toBe('Otro descuento');
+      // Con el reloj fijo las dos filas comparten `fecha_hora`: la spec no garantiza su orden, así que se busca la del segundo ajuste por su motivo.
+      const segundo = filas.filter((f) => f.motivo === 'Otro descuento');
+      expect(segundo).toHaveLength(1);
+      expect(segundo[0]?.datos_antes).toEqual({ montoAjustado: '35.00', total: '35.00' });
+      expect(segundo[0]?.datos_despues).toEqual({ montoAjustado: '30.00', total: '30.00' });
+      expect(filas.filter((f) => f.motivo === MOTIVO)).toHaveLength(1);
     });
 
     it('criterio 11: el mismo monto y el mismo motivo que ya tiene responden 200 sin escribir ni auditar', async () => {

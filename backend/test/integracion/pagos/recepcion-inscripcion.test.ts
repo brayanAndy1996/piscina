@@ -8,6 +8,7 @@ import {
   codigoDeRespuesta,
   cookiesDePagos,
   crearEscenarioDePagos,
+  detallesDeRespuesta,
   type EscenarioPagos,
   partesDeLaAcademia,
 } from '../../utilidades/escenario-pagos';
@@ -240,14 +241,16 @@ describe('la inscripción desde recepción (criterio 34)', () => {
       expect([repetido.status, codigoDeRespuesta(repetido)]).toEqual([409, 'DNI_YA_REGISTRADO']);
     });
 
-    it('criterio 34: la misma clave de idempotencia con el mismo cuerpo desde recepción responde lo mismo que en la 005 (no crea otra solicitud)', async () => {
+    it('criterio 34: la misma clave de idempotencia con el mismo cuerpo desde recepción responde lo mismo que en la 005 (409 SOLICITUD_YA_REGISTRADA con el código; no crea otra solicitud)', async () => {
       const cuerpo = await cuerpoInscripcion(e);
 
       const primera = await enviar(cuerpo, cookies.secretaria);
       const segunda = await enviar(cuerpo, cookies.secretaria);
 
       expect(primera.status, primera.texto).toBe(201);
-      expect(segunda.status, segunda.texto).toBeLessThan(300);
+      // Criterio 23 de la 005: el reintento responde 409 SOLICITUD_YA_REGISTRADA con `detalles.codigo` (el código de la solicitud, nunca el token).
+      expect([segunda.status, codigoDeRespuesta(segunda)], segunda.texto).toEqual([409, 'SOLICITUD_YA_REGISTRADA']);
+      expect(detallesDeRespuesta(segunda)).toEqual({ codigo: solicitudDe(primera).codigo });
       expect(await contarFilasDeInscripciones(e.A.id)).toMatchObject({ solicitudes_inscripcion: 1, alumnos: 1 });
     });
 
