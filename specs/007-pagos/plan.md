@@ -5,7 +5,9 @@ historias. Lo marcado **[007b]** va en el segundo PR.
 
 ## Módulos afectados
 
-- `backend/prisma/migrations/<marca>_estado_solicitud_confirmada/` y `<marca>_pagos/` (007a), y `schema.prisma`.
+- `backend/prisma/migrations/<marca>_estado_solicitud_confirmada/` y `<marca>_pagos/` (007a), y `schema.prisma`. Desde la
+  ronda adversarial 1 de la 007a, `<marca>_pagos_movimiento_confirmado/` (criterio 58).
+- `backend/src/modulos/auditoria/id-ordenado.ts` (ronda adversarial 1 de la 007a, criterio 59).
 - `backend/src/modulos/pagos/` (nuevo):
   - `pagos.module.ts`, `pagos.controller.ts` (ticket; **[007b]** bandeja, comprobante, aprobación y rechazo),
     `cobros.service.ts` (cobro en efectivo y ajuste), **[007b]** `verificacion.service.ts`, **[007b]**
@@ -230,6 +232,113 @@ Decisiones técnicas tomadas al escribir las pruebas protegidas de la 007a. No c
   ampliadas quedan en rojo hasta la migración de `pagos` (lista en la spec, «Pruebas protegidas anteriores que amplía
   la 007a»).
 
+## Ronda adversarial 1 de la 007a (criterios 58 y 59)
+
+### El trigger del criterio 5 no da por buena una transacción por no ver la fila (criterio 58)
+
+**La falla.** `movimientos_caja_con_pago_confirmado` devolvía `NULL` cuando su `SELECT` no encontraba el pago, y
+dejaba la decisión a la llave diferida `movimientos_caja_academia_id_pago_id_fkey`. Pero la llave no ve lo mismo:
+
+- las comprobaciones de las llaves foráneas de PostgreSQL no pasan por la RLS;
+- con `SET CONSTRAINTS pagos_confirmado_con_movimiento IMMEDIATE`, el trigger corre antes de que exista el pago y la
+  llave, que sigue diferida, lo encuentra al `COMMIT`.
+
+Además, `pagos_confirmado_con_movimiento` salía con `NEW.estado <> 'CONFIRMADO'`, así que nadie revisaba un pago
+pendiente con movimiento.
+
+**Diseño (migración nueva `<marca>_pagos_movimiento_confirmado`):**
+
+1. **Comprobación cerrada por defecto.** Las dos funciones rechazan con `23514` (`CONSTRAINT =
+   'pagos_confirmado_con_movimiento'`) cuando no encuentran la fila relacionada. Nunca devuelven `NULL` por no verla.
+   Esto cubre el modo `IMMEDIATE` (criterio 58 b) y el cambio del contexto de la academia (58 c), porque con otro
+   contexto la RLS esconde la fila.
+2. **Leen el estado actual, no el de la fila del evento.** En un trigger diferido, `NEW` es la fila del momento del
+   evento. Cada función vuelve a leer, por `id`, la fila que disparó el trigger y la relacionada:
+   - si la fila del evento ya no existe (un `DELETE` posterior en la misma transacción), no hay nada que comprobar desde
+     ella;
+   - si existe, se comprueba con sus valores actuales.
+
+   Así, el orden de las escrituras no importa (58 a) y el resultado es el mismo con cualquier secuencia que termine
+   igual.
+3. **`pagos`:** `AFTER INSERT OR UPDATE`, como ahora:
+   - con el pago `CONFIRMADO`, exige exactamente un movimiento `INGRESO` igual (criterio 5);
+   - con otro estado, exige que no haya ningún movimiento con su `pago_id` (58).
+
+   Si la RLS esconde el movimiento, la segunda comprobación no lo ve, pero el trigger del movimiento rechaza por el
+   punto 1. El invariante lo cubren los dos triggers juntos.
+4. **`movimientos_caja`:** `AFTER INSERT OR UPDATE OR DELETE`, diferido y con el mismo nombre (58 d):
+   - con `NEW.pago_id` no nulo, el pago tiene que existir, estar `CONFIRMADO` y coincidir;
+   - en `UPDATE` y `DELETE` con `OLD.pago_id` no nulo, si ese pago sigue existiendo y está `CONFIRMADO`, tiene que
+     seguir teniendo exactamente un movimiento `INGRESO` igual.
+
+   El de `pagos` no se dispara cuando solo cambia el movimiento, así que esta segunda comprobación va aquí.
+5. **Contexto de la academia, opcional como defensa extra.** Cada función puede comparar la `academia_id` de la fila con
+   `app_academia_actual()` y rechazar con `23514` si no coincide o no hay contexto. El punto 1 ya basta para los casos de
+   la ronda. Si se agrega, las utilidades de pruebas que escriben como dueño ya fijan `app.academia_id`.
+6. **Lo que no cambia:**
+   - las dos funciones siguen `SECURITY INVOKER`, con `search_path = pg_catalog, public` y `REVOKE ALL … FROM PUBLIC`
+     (criterio 124 de 001);
+   - se reemplazan con `CREATE OR REPLACE FUNCTION` y los mismos nombres, para que las listas de funciones de las
+     pruebas de catálogo de 001 no cambien;
+   - el trigger de `movimientos_caja` se borra y se vuelve a crear con el mismo nombre (`CREATE OR REPLACE TRIGGER` no
+     sirve para triggers de restricción).
+7. **El `23503` del criterio 3 se mantiene.** En el modo diferido, al `COMMIT`, PostgreSQL dispara los triggers de un
+   mismo evento en el orden de sus nombres. La llave (`RI_ConstraintTrigger_…`) va antes que
+   `pagos_confirmado_con_movimiento`, así que un `pago_id` que no existe sigue dando `23503`. La prueba protegida del
+   criterio 3 no cambia y tiene que seguir pasando.
+
+| Decisión | Alternativa descartada | Motivo |
+| --- | --- | --- |
+| Migración nueva con `CREATE OR REPLACE` | Editar `<marca>_pagos` | La migración puede estar aplicada en bases de desarrollo; Prisma detecta el cambio de su suma y obliga a rehacer la base |
+| Rechazar cuando no se ve la fila | Leer sin RLS (`SECURITY DEFINER` o `row_security`) | Las tablas tienen la RLS forzada y la 001 no admite funciones `SECURITY DEFINER` nuevas; cerrar por defecto basta y no abre lecturas entre academias |
+| Trigger de `movimientos_caja` también en `UPDATE` y `DELETE` | Solo `INSERT` | El dueño puede romper el invariante del criterio 5 por ahí (T20 de la spec, provisional) |
+
+**Precisiones de las pruebas (criterio 58):**
+
+- Se prueba como `app` y como `propietario`, con `ejecutarTransaccion` de `backend/test/utilidades/pagos.ts`. Los pagos
+  pendientes o rechazados de Yape o transferencia se escriben como dueño cuando la app no puede (criterio 4 c y 6).
+- **58 b:** la primera sentencia de la transacción es `SET CONSTRAINTS pagos_confirmado_con_movimiento IMMEDIATE`. La
+  prueba acepta el `23514` en el `INSERT` del movimiento o en el `COMMIT`. Con `ALL IMMEDIATE`, acepta `23514` o `23503`.
+- **58 c:** el `set_config` va justo antes del `COMMIT`, con `''` y con la academia B. Se comprueba, con otra conexión
+  y el contexto de A, que no quedó ni el pago ni el movimiento.
+- **58 d:** como dueño, sobre un pago `CONFIRMADO` con su movimiento ya guardados. Cada caso va en su propia transacción.
+  Después se comprueba que el pago y su movimiento siguen iguales.
+- **58 e:** son controles: tienen que pasar antes y después de la corrección.
+
+### El generador de ids de la auditoría valida antes de tocar su estado (criterio 59)
+
+**La falla.** `Math.max(NaN, ultimoMilisegundo)` da `NaN`, `NaN === ultimoMilisegundo` es falso, el contador vuelve a 0 y
+`ultimoMilisegundo` queda en `NaN` para siempre. Desde ahí, todas las ids salen con `NaN` en el texto.
+
+**Diseño:**
+
+1. Validar la entrada antes de leer el estado:
+   - `fechaHora instanceof Date`;
+   - `Number.isFinite(t)`, con `t = fechaHora.getTime()`;
+   - `t >= 0` y `t <= 2 ** 48 - 1`.
+
+   Si no se cumple, `throw new RangeError(…)`. El mensaje no lleva la fecha.
+2. Calcular el milisegundo y el contador nuevos en variables locales, incluido el desborde del contador al milisegundo
+   siguiente. Si ese milisegundo pasa de `2 ** 48 - 1`, `RangeError` (criterio 59 c).
+3. Solo entonces asignar `ultimoMilisegundo` y `contador`, y armar el texto.
+4. `insercion.ts` no cambia: el `RangeError` sale antes de ejecutar el `INSERT` y revierte la transacción de quien
+   audita.
+
+**Precisiones de las pruebas (criterio 59):** prueba unitaria protegida en
+`backend/src/modulos/auditoria/id-ordenado.test.ts`, junto a `ip.test.ts`. El estado es del módulo, así que cada caso que
+necesite un generador limpio lo importa de nuevo con `vi.resetModules()` y un `import()` dinámico. La comparación «mayor
+como texto» es la de `<` entre cadenas: las ids tienen hexadecimales en minúscula y ancho fijo. Casos:
+
+- `new Date(NaN)`, `new Date(-1)`, `new Date(2 ** 48)`, `'2026-11-24'` y `0` (estos dos, con
+  `as unknown as Date`);
+- una id válida antes y varias después de cada rechazo;
+- 5000 llamadas con la misma fecha;
+- una fecha anterior a la última;
+- en un módulo recién importado, 4097 llamadas con `new Date(2 ** 48 - 1)`: las 4096 primeras devuelven ids válidas
+  y crecientes, y la 4097.ª lanza `RangeError`. Una llamada más, con esa fecha o con una anterior, vuelve a lanzar:
+  el estado quedó en el máximo y no hay un id mayor que dar (criterio 59 c). Este caso va en su propio módulo
+  importado, para no afectar a los demás.
+
 ## Migraciones
 
 - `<marca>_estado_solicitud_confirmada` (007a): un valor de enum, sin datos.
@@ -238,12 +347,17 @@ Decisiones técnicas tomadas al escribir las pruebas protegidas de la 007a. No c
   (la semilla de la 006 solo tiene un egreso), así que la llave se agrega sin limpiar datos. Si alguna base de
   desarrollo tuviera ingresos de pruebas manuales, la migración fallaría: se documenta en la guía de Windows
   («Problemas frecuentes»: rehacer la base de desarrollo).
+- `<marca>_pagos_movimiento_confirmado` (007a, ronda adversarial 1, criterio 58): solo funciones y el trigger de
+  `movimientos_caja`. Sin datos. Si una base de desarrollo tuviera un movimiento que rompe el invariante, la migración
+  no falla: el trigger solo revisa escrituras nuevas.
 - **[007b]** sin migración.
 
 ## Riesgos
 
 - **Trigger diferido y RLS:** el trigger corre al `COMMIT` con el contexto de la transacción (`set_config(…, true)` sigue
-  vigente hasta el final). Se prueba como app y como dueño (criterio 5).
+  vigente hasta el final). Se prueba como app y como dueño (criterio 5). La ronda adversarial 1 mostró que ese contexto
+  se puede cambiar antes del `COMMIT` y que el modo se puede pasar a `IMMEDIATE`. Por eso las funciones rechazan cuando
+  no ven la fila relacionada (criterio 58).
 - **Pruebas protegidas anteriores:** la tabla nueva, los privilegios, la llave y el trigger de `pago_id` y las claves
   nuevas del panel rompen pruebas de 001, 002, 005 y 006. Se amplían solo sumando en el commit de pruebas protegidas de
   la 007a, según la lista de la spec («Decisiones», «Pruebas protegidas anteriores que amplía la 007a»), con la

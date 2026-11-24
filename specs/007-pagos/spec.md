@@ -32,10 +32,20 @@
   DT-16), en «Decisiones». Los valores que el borrador llamaba «provisionales» quedan como definitivos; ningún criterio
   cambió de intención. En curso: la 007a (pruebas protegidas). El orquestador decidió además T17 a T19 (DT-17 a DT-19,
   24/11/2026): tres pruebas protegidas anteriores (de 005 y 006) que cambian sin ser solo una suma.
+- **Ronda adversarial 1 de la 007a (24/11/2026):** dos fallas, que el orquestador convirtió en los criterios 58 y 59,
+  críticos y de la 007a, sin cambios de negocio:
+  - **Criterio 58 (amplía el 5):** la comprobación de `movimientos_caja` daba por buena la transacción cuando no veía el
+    pago (`RETURN NULL` y la decisión a la llave diferida), y la de `pagos` solo miraba los pagos que quedan
+    `CONFIRMADO`. Al `COMMIT` quedaba un `INGRESO` con el `pago_id` de un pago `PENDIENTE_VERIFICACION`: (A) con
+    `SET CONSTRAINTS pagos_confirmado_con_movimiento IMMEDIATE`, el movimiento primero con un `pago_id` que aún no
+    existía y después el pago pendiente; (B) en el orden normal, cambiando `app.academia_id` (a `''` o a la academia B)
+    antes del `COMMIT`. Pasaba como app y como dueño de las tablas.
+  - **Criterio 59:** `idDeAuditoriaOrdenado` con una fecha inválida (`NaN`) dejaba el generador dañado para todo el
+    proceso: las ids siguientes salían `00000000-0NaN-7000-…` y toda inserción en auditoría habría fallado.
 - **División (DR-14):** dos entregas desde esta carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR (ver «División en 007a y 007b»):
   - **007a · Cobro en recepción y cuenta del alumno** (primero): criterios 1 a 35 y 54 a 57, salvo las partes marcadas
-    **[007b]**.
+    **[007b]**, más 58 y 59 (ronda adversarial 1 de la 007a).
   - **007b · Yape y transferencia** (siguiente PR): criterios 36 a 53, más las partes marcadas **[007b]** de 28 a 32, 51,
     54, 55 y 57.
 
@@ -54,9 +64,12 @@ nunca se cobra dos veces la misma matrícula y nunca se acepta dos veces el mism
 
 Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los criterios marcados _(crítico)_:
 
-- **Tablas, invariantes y aislamiento en la base (1 a 7):** los pagos son dinero de cada academia (D-23). La base
-  impide un pago confirmado sin su movimiento de caja, dos pagos abiertos de la misma matrícula, un número de operación
-  repetido y cualquier cambio de un pago ya resuelto, también si la API fallara.
+- **Tablas, invariantes y aislamiento en la base (1 a 7 y 58):** los pagos son dinero de cada academia (D-23). La base
+  impide un pago confirmado sin su movimiento de caja, un movimiento de caja de un pago que no está confirmado, dos
+  pagos abiertos de la misma matrícula, un número de operación repetido y cualquier cambio de un pago ya resuelto,
+  también si la API fallara.
+- **Ids de la auditoría (59):** la auditoría de caja y de pagos es ruta crítica (RN-22, RNF-06); un generador dañado
+  dejaría sin auditar, y por eso sin poder escribir, todas las operaciones del proceso.
 - **Permisos y aislamiento en la API (8 y 9):** solo el administrador y la secretaria cobran y verifican; solo el
   administrador ajusta montos; un id de otra academia se comporta como inexistente.
 - **Cálculo del cobro (10 a 12):** el total sale de lo guardado en la matrícula con el orden de D-03 (ajuste y redondeo
@@ -91,7 +104,7 @@ archivos nuevos. Los commits de pruebas protegidas llevan la historia sin letra 
 
 | Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- |
-| **007a** · cobro en recepción y cuenta del alumno | 1 a 24, 26 (aislamiento y permiso), 28 a 35 (sin sus partes [007b]) | 25, 26 (contenido), 27, 54 y 56 (partes de la 007a) | 57 (parte de la 007a) |
+| **007a** · cobro en recepción y cuenta del alumno | 1 a 24, 26 (aislamiento y permiso), 28 a 35 (sin sus partes [007b]), 58 y 59 (ronda adversarial 1) | 25, 26 (contenido), 27, 54 y 56 (partes de la 007a) | 57 (parte de la 007a) |
 | **007b** · Yape y transferencia | 36 a 52, más las partes [007b] de 28 a 32 y 51 | 53, 55 y las partes [007b] de 54 y 56 | 57 (parte de la 007b) |
 
 **Cómo se resuelven las dependencias:**
@@ -183,7 +196,9 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
    (`DEFERRABLE INITIALLY DEFERRED`) en `pagos` y en `movimientos_caja`: una transacción, como app o como dueño, que deja
    un pago `CONFIRMADO` sin movimiento, con un movimiento de otro monto o método, o un movimiento con el `pago_id` de un
    pago pendiente o rechazado, falla en el `COMMIT` con `23514` y no queda nada. Dentro de la transacción, el orden de
-   las escrituras es libre. _(crítico)_ (D-04, RN-17; «no queda un pago confirmado sin su movimiento» de la 006)
+   las escrituras es libre. Lo precisa el criterio 58 (ronda adversarial 1 de la 007a): cualquier orden, el modo
+   `IMMEDIATE`, un cambio del contexto de la academia y las escrituras del dueño sobre el movimiento. _(crítico)_ (D-04,
+   RN-17; «no queda un pago confirmado sin su movimiento» de la 006)
 6. **Un pago resuelto no cambia.** Un trigger `BEFORE UPDATE` en `pagos` solo admite pasar de `PENDIENTE_VERIFICACION` a
    `CONFIRMADO` o a `RECHAZADO`, una vez. Falla con `23514`, como app y como dueño: aprobar un `RECHAZADO`, rechazar un
    `CONFIRMADO`, volver a `PENDIENTE_VERIFICACION`, y cambiar cualquier columna de un pago resuelto (también
@@ -576,6 +591,78 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     `docs/arquitectura.md` documenta las tablas, las reglas para las historias siguientes, las rutas y los riesgos; el
     `README.md` y la guía de uso, el cobro, la bandeja y el ajuste. _(revisor)_
 
+### M. Ronda adversarial 1 de la 007a
+
+58. **Ningún movimiento de caja con un pago que no está confirmado, en ningún orden ni contexto.** _(007a, ronda
+    adversarial 1; amplía el criterio 5.)_ Al confirmar una transacción, como app o como dueño de las tablas:
+    - todo movimiento de caja con `pago_id` exige que ese pago exista en la misma academia que el movimiento, esté
+      `CONFIRMADO` y coincida con él como pide el criterio 5 (movimiento `INGRESO` del mismo alumno, método, monto y
+      concepto);
+    - un pago que tiene un movimiento de caja no puede quedar en un estado distinto de `CONFIRMADO`.
+
+    Si no se cumple, la transacción falla con `23514` y no queda nada de ella: ni el pago, ni el movimiento, ni ninguna
+    otra escritura. Una comprobación que no puede ver el pago o el movimiento relacionado rechaza la transacción; nunca
+    la da por buena por no verlo. Casos:
+    - a) **Cualquier orden de las escrituras.** Un pago `PENDIENTE_VERIFICACION` (Yape o transferencia) y un movimiento
+      con su `pago_id`, en la misma transacción, con el pago primero y con el movimiento primero, fallan. También falla
+      si el pago se inserta pendiente, se inserta el movimiento y el pago pasa a `RECHAZADO` antes del `COMMIT`. Y
+      falla un movimiento con el `pago_id` de un pago `PENDIENTE_VERIFICACION` o `RECHAZADO` ya guardado en una
+      transacción anterior.
+    - b) **Con el modo `IMMEDIATE`.** Con `SET CONSTRAINTS pagos_confirmado_con_movimiento IMMEDIATE`, la comprobación se
+      hace al final de cada sentencia y no se salta porque la fila relacionada todavía no exista. Reproducción de la
+      ronda: primero el movimiento con un `pago_id` que todavía no existe y después el pago pendiente con ese id. La
+      transacción falla con `23514`, en el `INSERT` del movimiento o en el `COMMIT`, y no queda nada. Con
+      `SET CONSTRAINTS ALL IMMEDIATE` también falla, con `23514` o con el `23503` de la llave del criterio 3. En este
+      modo falla también el orden del cobro en efectivo (el movimiento antes que su pago). Es aceptable: la API nunca
+      cambia el modo de las restricciones.
+    - c) **Aunque cambie el contexto de la academia.** El pago pendiente y su movimiento en el orden normal y, antes del
+      `COMMIT`, `set_config('app.academia_id', '', true)` o `set_config('app.academia_id', '<id de B>', true)`. La
+      transacción falla con `23514` y no queda nada. Lo mismo con un pago `CONFIRMADO` y un movimiento que no coincide
+      (otro monto o método).
+    - d) **Escrituras del dueño sobre el movimiento.** La app no tiene `UPDATE` ni `DELETE` en `movimientos_caja`
+      (criterio 2 de 006). El dueño de las tablas sí, y estas escrituras fallan con `23514` al `COMMIT` y no dejan nada:
+      - un `UPDATE` del movimiento de un pago `CONFIRMADO` que cambia su `pago_id` (a nulo o a un pago pendiente), su
+        tipo, alumno, método, monto o concepto;
+      - un `DELETE` de ese movimiento.
+
+      Las dos dejarían un pago `CONFIRMADO` sin su movimiento igual o un movimiento sin su pago `CONFIRMADO` igual.
+      _(Precisión del especificador: es el mismo invariante del criterio 5.)_
+    - e) **Controles, que se siguen aceptando:**
+      - un pago `CONFIRMADO` con su movimiento correcto, en los dos órdenes y con el contexto sin cambios (criterio 5);
+      - un pago pendiente que pasa a `CONFIRMADO` en la misma transacción que inserta su movimiento (la aprobación de
+        la 007b);
+      - un egreso sin `pago_id`;
+      - el cobro en efectivo por la API (criterio 13).
+
+      Un movimiento con un `pago_id` que no existe al `COMMIT`, en el modo diferido, sigue fallando con `23503`
+      (criterio 3).
+
+    _(crítico)_ (D-04, RN-17, D-23; criterios 3 y 5)
+59. **El id ordenado de la auditoría no se daña con una fecha no válida.** _(007a, ronda adversarial 1.)_
+    `idDeAuditoriaOrdenado(fechaHora)` (`backend/src/modulos/auditoria/id-ordenado.ts`) genera ids UUID versión 7: los
+    milisegundos de `fechaHora`, un contador que no retrocede dentro del proceso y el resto al azar.
+    - a) **Rechazo sin daño.** Una fecha no válida es:
+      - un valor que no es un `Date`;
+      - un `Date` cuyo `getTime()` es `NaN`;
+      - un instante anterior a `1970-01-01T00:00:00.000Z`;
+      - un instante cuyo número de milisegundos no cabe en 48 bits, es decir, desde `+010889-08-02T05:31:50.656Z`.
+
+      Con una fecha no válida, el generador lanza `RangeError`, no devuelve un id y no cambia su estado (el último
+      milisegundo y el contador).
+    - b) **Las llamadas siguientes no se ven afectadas.** Después de una o varias llamadas rechazadas por a, cada
+      llamada con una fecha válida devuelve un id que cumple `^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`.
+      Ese id es distinto de todos los anteriores del proceso y mayor, como texto, que cada uno de ellos, también que los
+      emitidos antes del rechazo. Se cumple también con la misma fecha repetida más de 4096 veces seguidas (el contador
+      desborda al milisegundo siguiente) y con una fecha anterior a la última usada (un reloj que retrocede).
+    - c) **Nunca un id fuera del formato.** Si el contador desborda en el último milisegundo representable (2^48 − 1),
+      el generador lanza `RangeError` sin cambiar su estado; no devuelve un id con un desborde. Desde ahí, toda llamada
+      lanza `RangeError`, porque no queda un id mayor que dar. No es un daño del estado: solo se llega con fechas del
+      año 10889.
+
+    Como consecuencia, una operación cuya auditoría recibiera una fecha no válida falla antes de escribir y su
+    transacción se revierte, y las operaciones siguientes del proceso auditan con normalidad. _(crítico)_ (RN-22,
+    RNF-06; auditoría de `CLAUDE.md`)
+
 ## Casos límite
 
 - **Cobro a las 23:59:59.999 del último día con la caja de ese día:** se acepta; a las 00:00 del día siguiente responde
@@ -611,6 +698,10 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
 - **Inscripción desde recepción con muchas solicitudes seguidas:** no cuentan en los límites por conexión (criterios 33
   y 34); los clientes que usan el wifi de la academia sí cuentan entre ellos.
 - **Secretaria desactivada mientras inscribe desde recepción:** 401 sin escribir (criterio 34 a).
+- **Escrituras directas en la base que cambian el modo de las restricciones o el contexto de la academia antes del
+  `COMMIT`:** no dejan un movimiento de caja de un pago sin confirmar (criterio 58).
+- **Un reloj que devuelve una fecha no válida:** la operación falla sin escribir y la auditoría de las siguientes sigue
+  funcionando (criterio 59).
 
 ## Reglas de negocio aplicables
 
@@ -773,6 +864,11 @@ de tocar el código).
   - `solicitudes_inscripcion`: `registrada_por uuid null` con llave compuesta a `usuarios` (solo `INSERT`).
   - Privilegios del criterio 2. `PRIVILEGIOS_APP`, `scripts/lib/rol-app.mjs` y `TABLAS_DESPUES_DE_MIGRAR` se amplían en
     el mismo cambio.
+- **`<marca>_pagos_movimiento_confirmado` (007a, ronda adversarial 1, criterio 58):** una tercera migración, después de
+  `<marca>_pagos`. Reemplaza (`CREATE OR REPLACE FUNCTION`, con los mismos nombres) las dos funciones del trigger
+  `pagos_confirmado_con_movimiento` y vuelve a crear su trigger en `movimientos_caja` como `AFTER INSERT OR UPDATE OR
+  DELETE`, con el mismo nombre, diferido. No cambia tablas, columnas, índices, políticas ni privilegios. No se edita
+  la migración `<marca>_pagos`, que puede estar aplicada en bases de desarrollo (ver plan).
 - **[007b]** Sin migración: la configuración es clave y valor (003); las claves nuevas del criterio 53 van en
   `CLAVES_CONFIGURACION`.
 
@@ -829,6 +925,11 @@ sumando (DT-17 a DT-19), está en «Decisiones», «Pruebas protegidas anteriore
   de pruebas protegidas de la 007a, solo para crear el pago `CONFIRMADO` de ese `pagoId` en la misma transacción que
   inserta el movimiento (como dueño de las tablas, por el criterio 5), de preferencia dentro de las utilidades
   compartidas, sin cambiar lo que comprueban. Lo aprueba el orquestador antes del commit.
+- **006, escrituras del dueño en `movimientos_caja` (criterio 58 d):** un `UPDATE` o un `DELETE` directo, como dueño,
+  de un movimiento con `pago_id` falla si deja roto el invariante del criterio 5. Los egresos y los movimientos sin
+  `pago_id` no cambian, y `TRUNCATE` (la limpieza de las pruebas) no dispara el trigger.
+- **002, auditoría (criterio 59):** `idDeAuditoriaOrdenado`, que la 007a introdujo para todas las filas de auditoría,
+  rechaza una fecha no válida con `RangeError` sin cambiar su estado. Las operaciones con fechas válidas no cambian.
 - **006, regla «Después de la caja solo se insertan filas y auditoría»:** se precisa: después de la caja también se
   actualizan filas que la misma transacción ya bloqueó (el pago, el alumno, la solicitud y la matrícula), porque no
   esperan a nadie.
@@ -1133,6 +1234,14 @@ lista, el test-writer no la toca: la informa al orquestador, y el especificador 
 Ninguna. Las preguntas del borrador (P1 a P14 y T1 a T16) quedaron resueltas el 24/11/2026, y T17 a T19, encontradas
 al preparar la lista de «Pruebas protegidas anteriores que amplía la 007a», el mismo día. El texto completo de cada una,
 con lo decidido y la alternativa descartada, está en «Decisiones».
+
+Abierta desde la ronda adversarial 1 de la 007a (técnica, para el orquestador; no bloquea):
+
+- **T20 · ¿El criterio 58 d entra en esta ronda?** La ronda encontró los casos de 58 a, b y c. El especificador sumó 58
+  d (`UPDATE` y `DELETE` del dueño sobre un movimiento con pago) porque rompen el mismo invariante del criterio 5 y el
+  trigger actual solo mira el `INSERT` en `movimientos_caja`. **Propuesta:** dejarlo; el costo es que el trigger de
+  `movimientos_caja` también corra en `UPDATE` y `DELETE`, que la app no puede hacer. **Valor provisional:** incluido.
+  Si el orquestador lo quita, se borra 58 d y su parte de T47 y T49 antes del commit de las pruebas protegidas.
 
 ### Resueltas (24/11/2026)
 
