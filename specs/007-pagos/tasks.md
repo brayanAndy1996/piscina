@@ -80,10 +80,10 @@ precisiones de las pruebas en el plan, «Ronda adversarial 1 de la 007a»):
   modo `IMMEDIATE` y con un cambio de `app.academia_id` antes del `COMMIT`, como app y como dueño.
 - **Criterio 59:** una fecha no válida dañaba el generador de ids de la auditoría para todo el proceso.
 
-Estas tareas van antes de T27. T20 de la spec (58 d) queda con su valor provisional, incluido, salvo que el orquestador
-decida otra cosa antes de T47.
+Estas tareas van antes de T27. T20 de la spec (58 d) quedó con su valor provisional, incluido (entró en las pruebas de
+T47 y en la migración de T49).
 
-- [ ] T47 · test-writer · Escribir las pruebas protegidas en rojo, desde la spec y los contratos públicos, sin mirar la
+- [x] T47 · test-writer · Escribir las pruebas protegidas en rojo, desde la spec y los contratos públicos, sin mirar la
       implementación y con la marca `// spec: 007-pagos (pruebas protegidas)`:
       - **Criterio 58**, en `backend/test/integracion/pagos/confirmado-con-movimiento-ronda1.test.ts`, como `app` y
         como `propietario`:
@@ -101,8 +101,8 @@ decida otra cosa antes de T47.
         `vi.resetModules()` para los casos que necesitan un generador limpio.
 
       Commit: «Pruebas protegidas (007): 007a, ataque ronda 1: movimiento de caja solo con pago confirmado e ids de la
-      auditoría (en rojo)» (criterios 58, 59)
-- [ ] T48 · tester · Confirmar que T47 falla por la razón esperada y no por sintaxis, importaciones ni configuración:
+      auditoría (en rojo)» (criterios 58, 59) _(hecho: commit 544717b)_
+- [x] T48 · tester · Confirmar que T47 falla por la razón esperada y no por sintaxis, importaciones ni configuración:
       - **58 b, c y d:** la transacción se confirma sin error y queda el movimiento del pago pendiente; en d, el
         `UPDATE` o el `DELETE` se confirman;
       - **59:** después de `new Date(NaN)` no hay `RangeError` y las ids siguientes no cumplen el formato.
@@ -110,12 +110,15 @@ decida otra cosa antes de T47.
       Los casos de 58 a y los controles de 58 e pueden pasar ya: se confirma que pasan y que no son la razón del rojo.
       Las pruebas protegidas anteriores siguen pasando, en especial `confirmado-con-movimiento.test.ts` y la del
       criterio 3, y `git diff --cached --stat` solo muestra archivos de prueba. El orquestador hace el commit con el
-      título de T47 (criterios 58, 59).
-- [ ] T49 · backend · Migración `<marca>_pagos_movimiento_confirmado`: las funciones del trigger rechazan si no ven la
+      título de T47 (criterios 58, 59). _(hecho: rojo confirmado por la razón esperada)_
+- [x] T49 · backend · Migración `<marca>_pagos_movimiento_confirmado`: las funciones del trigger rechazan si no ven la
       fila, leen el estado actual, `pagos` revisa también los pagos no confirmados, y el trigger de `movimientos_caja`
       pasa a `AFTER INSERT OR UPDATE OR DELETE`. Mismos nombres, `SECURITY INVOKER`, `search_path` fijo y `REVOKE`. Sin
       editar `<marca>_pagos` (plan, «Ronda adversarial 1 de la 007a») (criterio 58)
-- [ ] T50 · backend · `idDeAuditoriaOrdenado`: validar la fecha y calcular el estado nuevo en variables locales antes
+      _(hecho en `20261124190000_pagos_movimiento_confirmado`; suma el trigger por sentencia
+      `movimientos_caja_no_cambian`, que rechaza todo `UPDATE` o `DELETE` porque la RLS sin políticas de `UPDATE` ni
+      `DELETE` dejaba sin correr el trigger por fila; ver la corrección en el plan y la precisión de 58 d)_
+- [x] T50 · backend · `idDeAuditoriaOrdenado`: validar la fecha y calcular el estado nuevo en variables locales antes
       de asignarlo; `RangeError` sin la fecha en el mensaje (criterio 59)
 - [ ] T51 · tester · Correr en verde las pruebas protegidas de T47 y todas las anteriores, y la suite completa, el lint
       y los tipos (criterios 58, 59)

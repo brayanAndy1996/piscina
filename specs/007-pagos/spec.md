@@ -620,13 +620,21 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
       transacción falla con `23514` y no queda nada. Lo mismo con un pago `CONFIRMADO` y un movimiento que no coincide
       (otro monto o método).
     - d) **Escrituras del dueño sobre el movimiento.** La app no tiene `UPDATE` ni `DELETE` en `movimientos_caja`
-      (criterio 2 de 006). El dueño de las tablas sí, y estas escrituras fallan con `23514` al `COMMIT` y no dejan nada:
+      (criterio 2 de 006) y sigue recibiendo `42501` por privilegio. El dueño de las tablas sí los tiene, y estas
+      escrituras fallan con `23514` y no dejan nada:
       - un `UPDATE` del movimiento de un pago `CONFIRMADO` que cambia su `pago_id` (a nulo o a un pago pendiente), su
         tipo, alumno, método, monto o concepto;
       - un `DELETE` de ese movimiento.
 
       Las dos dejarían un pago `CONFIRMADO` sin su movimiento igual o un movimiento sin su pago `CONFIRMADO` igual.
       _(Precisión del especificador: es el mismo invariante del criterio 5.)_
+
+      _(Precisión de la implementación de T49, 24/11/2026.)_ El rechazo es más amplio que esos dos casos: **todo**
+      `UPDATE` o `DELETE` del dueño sobre `movimientos_caja` falla con `23514` (`CONSTRAINT =
+      'pagos_confirmado_con_movimiento'`), sea cual sea el movimiento (con o sin `pago_id`, ingreso o egreso, de un pago
+      en cualquier estado) y aunque la sentencia no alcance ninguna fila. Falla en la misma sentencia, no al `COMMIT`.
+      Es coherente con DR-5 de 006: los movimientos no cambian ni se borran. `TRUNCATE` queda fuera, como en la 006: no
+      se rechaza, porque lo usa la limpieza de las pruebas (`limpiarBase` de 001).
     - e) **Controles, que se siguen aceptando:**
       - un pago `CONFIRMADO` con su movimiento correcto, en los dos órdenes y con el contexto sin cambios (criterio 5);
       - un pago pendiente que pasa a `CONFIRMADO` en la misma transacción que inserta su movimiento (la aprobación de
@@ -867,8 +875,11 @@ de tocar el código).
 - **`<marca>_pagos_movimiento_confirmado` (007a, ronda adversarial 1, criterio 58):** una tercera migración, después de
   `<marca>_pagos`. Reemplaza (`CREATE OR REPLACE FUNCTION`, con los mismos nombres) las dos funciones del trigger
   `pagos_confirmado_con_movimiento` y vuelve a crear su trigger en `movimientos_caja` como `AFTER INSERT OR UPDATE OR
-  DELETE`, con el mismo nombre, diferido. No cambia tablas, columnas, índices, políticas ni privilegios. No se edita
-  la migración `<marca>_pagos`, que puede estar aplicada en bases de desarrollo (ver plan).
+  DELETE`, con el mismo nombre, diferido. Suma en `movimientos_caja` el trigger `movimientos_caja_no_cambian`, `BEFORE
+  UPDATE OR DELETE FOR EACH STATEMENT`, con la misma función, que rechaza con `23514` todo `UPDATE` o `DELETE`
+  (criterio 58 d). No cambia tablas, columnas, índices, políticas ni privilegios. No se edita la migración
+  `<marca>_pagos`, que puede estar aplicada en bases de desarrollo (ver plan). Archivo:
+  `backend/prisma/migrations/20261124190000_pagos_movimiento_confirmado/migration.sql`.
 - **[007b]** Sin migración: la configuración es clave y valor (003); las claves nuevas del criterio 53 van en
   `CLAVES_CONFIGURACION`.
 
@@ -925,9 +936,11 @@ sumando (DT-17 a DT-19), está en «Decisiones», «Pruebas protegidas anteriore
   de pruebas protegidas de la 007a, solo para crear el pago `CONFIRMADO` de ese `pagoId` en la misma transacción que
   inserta el movimiento (como dueño de las tablas, por el criterio 5), de preferencia dentro de las utilidades
   compartidas, sin cambiar lo que comprueban. Lo aprueba el orquestador antes del commit.
-- **006, escrituras del dueño en `movimientos_caja` (criterio 58 d):** un `UPDATE` o un `DELETE` directo, como dueño,
-  de un movimiento con `pago_id` falla si deja roto el invariante del criterio 5. Los egresos y los movimientos sin
-  `pago_id` no cambian, y `TRUNCATE` (la limpieza de las pruebas) no dispara el trigger.
+- **006, escrituras del dueño en `movimientos_caja` (criterio 58 d):** todo `UPDATE` o `DELETE` directo, como dueño,
+  falla con `23514`, también sobre egresos y movimientos sin `pago_id` (DR-5 de 006: los movimientos no cambian). La
+  app sigue con su `42501` por privilegio. `TRUNCATE` (la limpieza de las pruebas) no dispara el trigger. Las
+  políticas de RLS de `movimientos_caja` siguen siendo solo de `SELECT` e `INSERT`, como exigen las pruebas protegidas
+  de la 006 (`caja/tablas.test.ts`, `aislamiento/forma-politicas`).
 - **002, auditoría (criterio 59):** `idDeAuditoriaOrdenado`, que la 007a introdujo para todas las filas de auditoría,
   rechaza una fecha no válida con `RangeError` sin cambiar su estado. Las operaciones con fechas válidas no cambian.
 - **006, regla «Después de la caja solo se insertan filas y auditoría»:** se precisa: después de la caja también se
@@ -1242,6 +1255,8 @@ Abierta desde la ronda adversarial 1 de la 007a (técnica, para el orquestador; 
   trigger actual solo mira el `INSERT` en `movimientos_caja`. **Propuesta:** dejarlo; el costo es que el trigger de
   `movimientos_caja` también corra en `UPDATE` y `DELETE`, que la app no puede hacer. **Valor provisional:** incluido.
   Si el orquestador lo quita, se borra 58 d y su parte de T47 y T49 antes del commit de las pruebas protegidas.
+  _(24/11/2026: quedó incluido; entró en las pruebas protegidas de T47 (commit 544717b) y en la migración de T49, con el
+  rechazo ampliado a todo `UPDATE` o `DELETE` que precisa 58 d.)_
 
 ### Resueltas (24/11/2026)
 

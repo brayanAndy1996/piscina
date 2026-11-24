@@ -272,6 +272,23 @@ pendiente con movimiento.
      seguir teniendo exactamente un movimiento `INGRESO` igual.
 
    El de `pagos` no se dispara cuando solo cambia el movimiento, así que esta segunda comprobación va aquí.
+
+   **Corrección al implementar T49 (24/11/2026).** Este punto suponía mal: `movimientos_caja` tiene la RLS activada y
+   forzada con políticas solo de `SELECT` e `INSERT` (006). Sin política de `UPDATE` ni de `DELETE`, un `UPDATE` o un
+   `DELETE` del dueño no alcanza ninguna fila, termina sin error con 0 filas y el trigger por fila nunca corre. 58 d
+   quedaba sin cubrir. Lo implementado:
+   - un segundo trigger en `movimientos_caja`, `movimientos_caja_no_cambian`, `BEFORE UPDATE OR DELETE FOR EACH
+     STATEMENT`, con la misma función `movimientos_caja_con_pago_confirmado()`. Con `TG_LEVEL = 'STATEMENT'` la función
+     rechaza de entrada con `23514` (`CONSTRAINT = 'pagos_confirmado_con_movimiento'`). Un trigger por sentencia corre
+     aunque la sentencia no alcance ninguna fila, así que el rechazo no depende de la RLS;
+   - el rechazo es incondicional: todo `UPDATE` o `DELETE` sobre `movimientos_caja`, con o sin `pago_id`, ingreso o
+     egreso. Es coherente con DR-5 de 006 («los movimientos no cambian»). Falla en la sentencia, no al `COMMIT`;
+   - el trigger por fila sigue siendo `AFTER INSERT OR UPDATE OR DELETE` y la revisión de `OLD.pago_id` queda como
+     defensa en profundidad, por si algún día se agregan políticas de `UPDATE` o `DELETE` o se quita el trigger por
+     sentencia;
+   - la app sigue recibiendo `42501`: PostgreSQL comprueba el privilegio antes de disparar los triggers;
+   - `TRUNCATE` del dueño no se cubre: no dispara triggers de `UPDATE` ni `DELETE` y lo usa la limpieza de las pruebas
+     (`limpiarBase` de 001). Es el mismo alcance que en la 006.
 5. **Contexto de la academia, opcional como defensa extra.** Cada función puede comparar la `academia_id` de la fila con
    `app_academia_actual()` y rechazar con `23514` si no coincide o no hay contexto. El punto 1 ya basta para los casos de
    la ronda. Si se agrega, las utilidades de pruebas que escriben como dueño ya fijan `app.academia_id`.
@@ -292,6 +309,9 @@ pendiente con movimiento.
 | Migración nueva con `CREATE OR REPLACE` | Editar `<marca>_pagos` | La migración puede estar aplicada en bases de desarrollo; Prisma detecta el cambio de su suma y obliga a rehacer la base |
 | Rechazar cuando no se ve la fila | Leer sin RLS (`SECURITY DEFINER` o `row_security`) | Las tablas tienen la RLS forzada y la 001 no admite funciones `SECURITY DEFINER` nuevas; cerrar por defecto basta y no abre lecturas entre academias |
 | Trigger de `movimientos_caja` también en `UPDATE` y `DELETE` | Solo `INSERT` | El dueño puede romper el invariante del criterio 5 por ahí (T20 de la spec, provisional) |
+| Trigger por sentencia `movimientos_caja_no_cambian` (`BEFORE UPDATE OR DELETE FOR EACH STATEMENT`) que rechaza todo `UPDATE` o `DELETE` | Agregar a `movimientos_caja` políticas de RLS de `UPDATE` y `DELETE` para que el trigger por fila alcance las filas | Las pruebas protegidas de la 006 (`caja/tablas.test.ts`, `aislamiento/forma-politicas`) exigen que `movimientos_caja` tenga solo políticas de `SELECT` e `INSERT`; cambiarlas no es solo sumar. Además, una política de `UPDATE` o `DELETE` abriría una vía de escritura que DR-5 de 006 cierra, y el trigger por sentencia corre aunque la RLS no deje ver ninguna fila |
+| Rechazo incondicional de `UPDATE` y `DELETE` | Rechazar solo los que rompen el invariante del criterio 5 | Un trigger por sentencia no ve las filas (sin políticas, la sentencia no alcanza ninguna); los movimientos no cambian (DR-5 de 006), así que no hay escritura legítima que se pierda |
+| `TRUNCATE` sin trigger | Un trigger `BEFORE TRUNCATE` | Lo usa la limpieza de las pruebas (`limpiarBase` de 001); la app no tiene el privilegio; mismo alcance que la 006 |
 
 **Precisiones de las pruebas (criterio 58):**
 
@@ -302,7 +322,8 @@ pendiente con movimiento.
 - **58 c:** el `set_config` va justo antes del `COMMIT`, con `''` y con la academia B. Se comprueba, con otra conexión
   y el contexto de A, que no quedó ni el pago ni el movimiento.
 - **58 d:** como dueño, sobre un pago `CONFIRMADO` con su movimiento ya guardados. Cada caso va en su propia transacción.
-  Después se comprueba que el pago y su movimiento siguen iguales.
+  Después se comprueba que el pago y su movimiento siguen iguales. El `23514` sale en la sentencia (trigger por
+  sentencia); la prueba lo acepta en la sentencia o en el `COMMIT`.
 - **58 e:** son controles: tienen que pasar antes y después de la corrección.
 
 ### El generador de ids de la auditoría valida antes de tocar su estado (criterio 59)
@@ -347,8 +368,9 @@ como texto» es la de `<` entre cadenas: las ids tienen hexadecimales en minúsc
   (la semilla de la 006 solo tiene un egreso), así que la llave se agrega sin limpiar datos. Si alguna base de
   desarrollo tuviera ingresos de pruebas manuales, la migración fallaría: se documenta en la guía de Windows
   («Problemas frecuentes»: rehacer la base de desarrollo).
-- `<marca>_pagos_movimiento_confirmado` (007a, ronda adversarial 1, criterio 58): solo funciones y el trigger de
-  `movimientos_caja`. Sin datos. Si una base de desarrollo tuviera un movimiento que rompe el invariante, la migración
+- `<marca>_pagos_movimiento_confirmado` (007a, ronda adversarial 1, criterio 58;
+  `20261124190000_pagos_movimiento_confirmado`): solo funciones, el trigger por fila de `movimientos_caja` y el
+  trigger por sentencia `movimientos_caja_no_cambian`. Sin datos. Si una base de desarrollo tuviera un movimiento que rompe el invariante, la migración
   no falla: el trigger solo revisa escrituras nuevas.
 - **[007b]** sin migración.
 
