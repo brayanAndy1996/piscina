@@ -42,6 +42,11 @@
     antes del `COMMIT`. Pasaba como app y como dueño de las tablas.
   - **Criterio 59:** `idDeAuditoriaOrdenado` con una fecha inválida (`NaN`) dejaba el generador dañado para todo el
     proceso: las ids siguientes salían `00000000-0NaN-7000-…` y toda inserción en auditoría habría fallado.
+- **Alineación con la revisión de la 007a (24/11/2026):** el revisor aceptó cinco desviaciones de la implementación y
+  la spec y el plan las recogen, sin cambiar reglas de negocio: `montoMostrado` con `montoCotizadoSchema` (criterio 16);
+  el total sin ajuste es el `monto_calculado` guardado (definición «Total a cobrar» e «Interfaces del backend»); las
+  firmas reales de `confirmarPagoEnTransaccion` y `bloquearFilasDelCobro` («Interfaces del backend»); la respuesta del
+  cobro en `solicitudes.ts` («Esquemas compartidos»); y el ajuste de ejemplo de la semilla sin auditoría (criterio 57).
 - **División (DR-14):** dos entregas desde esta carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR (ver «División en 007a y 007b»):
   - **007a · Cobro en recepción y cuenta del alumno** (primero): criterios 1 a 35 y 54 a 57, salvo las partes marcadas
@@ -129,10 +134,16 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
 - **Pago abierto:** un pago en estado `PENDIENTE_VERIFICACION` o `CONFIRMADO`. **Pago resuelto:** `CONFIRMADO` o
   `RECHAZADO`.
 - **Último pago de una matrícula:** el de `registrado_en` más reciente (y, a igual instante, el de mayor `id`).
-- **Total a cobrar de una matrícula:** `calcularTotal({ base: baseProporcional(precio_plan, clases_por_mes_plan,
-  clases_totales), montoAjustado })` con lo guardado en la matrícula (`matriculas/dominio/cobro.ts`), donde
-  `montoAjustado` es `monto_ajustado` si no es nulo. Nunca se lee del plan (HU-19). Sin ajuste es igual a
-  `monto_calculado`.
+- **Total a cobrar de una matrícula:** sale siempre de lo guardado en la matrícula, nunca del plan (HU-19):
+  - **sin ajuste** (`monto_ajustado` nulo), es el `monto_calculado` guardado en la matrícula, el valor que se le cotizó
+    al cliente al inscribirse. No se vuelve a calcular con el plan ni con `precio_plan`;
+  - **con ajuste**, es `calcularTotal({ base: baseProporcional(precio_plan, clases_por_mes_plan, clases_totales),
+    montoAjustado: monto_ajustado })` con lo guardado en la matrícula (`matriculas/dominio/cobro.ts`), que redondea hacia
+    arriba al sol entero una sola vez (D-03).
+
+  Lo calcula `totalACobrar` («Interfaces del backend»), que recibe el `monto_calculado` siempre. _(Alineación con la
+  revisión de la 007a: antes decía «`calcularTotal` con la base proporcional, que sin ajuste es igual a
+  `monto_calculado`»; el valor es el mismo por construcción, y ahora la fuente es la columna guardada.)_
 - **Estado visible de una solicitud** (amplía PB2 de 005; la misma regla en la API, en SQL y en la web), en este orden:
   1. si la fila está `VENCIDA`, `CANCELADA` o `CONFIRMADA`, ese;
   2. si su matrícula tiene un pago `PENDIENTE_VERIFICACION`, `EN_VERIFICACION` **[007b]**;
@@ -229,8 +240,8 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
 
 ### C. Total a cobrar y ajuste del administrador
 
-10. **El total sale de la matrícula.** El total a cobrar (definición) se calcula con `calcularTotal` y lo guardado en la
-    matrícula, y es un entero de soles. Pruebas: una matrícula de S/ 100 de 12 clases con 5 totales sin ajuste cobra
+10. **El total sale de la matrícula.** El total a cobrar (definición) sale de lo guardado en la matrícula (sin ajuste,
+    su `monto_calculado`; con ajuste, `calcularTotal`), y es un entero de soles. Pruebas: una matrícula de S/ 100 de 12 clases con 5 totales sin ajuste cobra
     S/ 42 (igual a `monto_calculado`); con `monto_ajustado` 35, S/ 35; si después del envío el administrador cambia el
     precio del plan a S/ 200, el total sigue siendo S/ 42 (HU-19); una matrícula de S/ 210 de 12 con 5 cobra S/ 88. El
     monto del pago, el del movimiento de caja, el de la vista de seguimiento, el del panel y el del ticket son ese total.
@@ -282,9 +293,13 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     (`VENCIDA` o `CANCELADA`; la persona se vuelve a inscribir, DR-10). Los casos con `EN_VERIFICACION`
     (`PAGO_EN_VERIFICACION`) y `PAGO_RECHAZADO` se prueban en la 007b; la 007a prueba `PENDIENTE_PAGO`, `CONFIRMADA`,
     `VENCIDA` y `CANCELADA`. _(crítico)_ (RN-28, D-05, DR-1 y DR-12 de 005)
-16. **El monto que se ve es el que se cobra.** `montoMostrado` (`montoSchema`) es el total que la web mostró a quien
-    cobra. Si no es igual al total a cobrar al momento de cobrar (`"42"` y `"42.00"` son iguales), responde 409
-    `MONTO_CAMBIO` con `detalles: { total }`, sin escribir. _(crítico)_ (D-03, HU-34)
+16. **El monto que se ve es el que se cobra.** `montoMostrado` (`montoCotizadoSchema`: texto mayor que 0, con hasta dos
+    decimales y como mucho `"100000.00"`) es el total que la web mostró a quien cobra. El tope es el de `montoCotizadoSchema`
+    y no el de `montoSchema` (`"99999.99"`) porque el total de un mes completo de un plan de S/ 99 999.99 es S/ 100 000.00,
+    que el `CHECK` de `pagos` admite (criterio 4 a); con `montoSchema` ese cobro no se podría enviar. Un `montoMostrado`
+    fuera de ese esquema responde 400. Si no es igual al total a cobrar al momento de cobrar (`"42"` y `"42.00"` son
+    iguales), responde 409 `MONTO_CAMBIO` con `detalles: { total }`, sin escribir. _(Alineación con la revisión de la
+    007a: antes decía `montoSchema`.)_ _(crítico)_ (D-03, HU-34)
 17. **Doble clic y reintento.** Con un cobro ya registrado con la clave K, otro con la misma clave para la misma
     solicitud y el mismo `montoMostrado` responde 200 con el mismo `{ pago, solicitud }`, sin otro pago, otro movimiento,
     otro usuario ni otra auditoría, aunque la caja ya esté cerrada o sea de otro día (la clave se mira antes que el estado
@@ -588,6 +603,10 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     un ajuste de monto con motivo en una solicitud de ejemplo; **[007b]** un pago Yape pendiente de verificación con un
     comprobante de ejemplo inventado (una imagen generada, sin datos reales) y los datos de pago de ejemplo de la
     academia. No se siembran pagos confirmados (exigirían un movimiento en una caja abierta). `tiburones` queda sin pagos.
+    El ajuste de ejemplo no escribe auditoría (`MATRICULA_MONTO_AJUSTADO`), como el resto de los datos de ejemplo de la
+    semilla, que tampoco la escriben; la auditoría es de las operaciones hechas por la API. Una prueba no protegida de la
+    semilla (T24) comprueba el ajuste y que repetir la semilla no lo duplica ni lo pisa. _(Alineación con la revisión
+    de la 007a.)_
     `docs/arquitectura.md` documenta las tablas, las reglas para las historias siguientes, las rutas y los riesgos; el
     `README.md` y la guía de uso, el cobro, la bandeja y el ajuste. _(revisor)_
 
@@ -777,13 +796,18 @@ con la reserva vigente no cuenta el cupo (criterio 18 a). `SIN_CUPO` en el cobro
 ### Esquemas compartidos (`packages/contratos/src/`)
 
 - `pagos.ts` (nuevo): `ESTADOS_PAGO`, `numeroOperacionSchema` y `normalizarNumeroOperacion` (función pura que usan la API,
-  la web y las pruebas), `cobrarEnEfectivoSchema` (`{ claveIdempotencia, montoMostrado }`), `ajustarMontoSchema`
+  la web y las pruebas), `cobrarEnEfectivoSchema` (`{ claveIdempotencia, montoMostrado }`, con `montoMostrado` de
+  `montoCotizadoSchema`, criterio 16), `ajustarMontoSchema`
   (`{ montoAjustado, motivo }`), `pagoSchema` (`{ id, estado, metodo, concepto, monto, registradoEn, verificadoEn,
   numeroOperacion, fechaOperacion, motivoRechazo, numeroTicket }`), `ticketSchema`, **[007b]** `datosComprobanteSchema`,
   `CABECERA_DATOS_PAGO = 'X-Pago-Datos'`, `pagoPendienteSchema`, `rechazarPagoSchema` (`{ motivo }`) y
   `COMPROBANTE_LADO_GUARDADO = 2000`.
 - `solicitudes.ts`: `ESTADOS_SOLICITUD` y `vistaSolicitudSchema` suman los estados del criterio 28;
-  `solicitudPanelSchema` suma `ajuste` y `pago`; `FILTROS_ESTADO_SOLICITUDES` suma `CONFIRMADAS`.
+  `solicitudPanelSchema` suma `ajuste` y `pago`; `FILTROS_ESTADO_SOLICITUDES` suma `CONFIRMADAS`. También va aquí, junto
+  a `respuestaSolicitudPanelSchema`, el esquema de la respuesta del cobro en efectivo (`{ pago: pagoSchema, solicitud:
+  solicitudPanelSchema }`, estricto, criterio 13), y no en `pagos.ts`: `solicitudes.ts` ya importa de `pagos.ts`
+  (`estadoPagoSchema`), y al revés sería una importación circular. La web lo importa de los contratos en lugar de
+  definirlo en `frontend/src/modulos/solicitudes/api.ts`. _(Alineación con la revisión de la 007a.)_
 - `permisos.ts`: `AJUSTAR_MONTO_COBRO`.
 - **[007b]** `configuracion.ts`: las claves de los datos de pago (criterio 53); `academiaPublica` del seguimiento suma
   `datosDePago`.
@@ -794,24 +818,58 @@ con la reserva vigente no cuenta el cupo (criterio 18 a). `SIN_CUPO` en el cobro
 // backend/src/modulos/pagos/confirmacion.ts (sin Nest; reexportada en pagos/index.ts). La 007b (aprobación), la 010
 // (renovación) y la 016 (clase particular) la reutilizan para confirmar un pago dentro de su transacción.
 // Precondiciones: quien llama ya llamó a bloquearActorVigente, tomó el bloqueo consultivo del DNI, bloqueó el alumno, la
-// solicitud, la matrícula y el pago (en ese orden) y, si mueve cupo, las clases. Registra el ingreso en caja (bloquea la
-// caja al final), asigna el número de ticket, deja el pago CONFIRMADO y, si el alumno es CLIENTE, crea su cuenta con
-// crearEnTransaccion y lo pasa a ALUMNO_ACTIVO. Lanza ErrorNegocio 409 SIN_CAJA_ABIERTA, CAJA_DE_OTRO_DIA o
-// DNI_DEL_PERSONAL (la transacción completa se revierte).
-function confirmarPagoEnTransaccion(tx: TransaccionAcademia, entrada: {
-  pagoId: string; alumnoId: string; matriculaId: string; solicitudId: string | null;
-  claveHash: string | null;          // la del DNI, calculada antes de la transacción; null si el alumno ya tiene cuenta
-  actor: { id: string };            // el actor ya bloqueado
-  ip: string | null;
-}, ahora: Date): Promise<{ numeroTicket: number; usuarioCreado: boolean }>;
+// solicitud, la matrícula y los pagos (bloquearFilasDelCobro) y, si mueve cupo, las clases, y ya decidió los 409 que van
+// antes de la caja. En orden: si el alumno es CLIENTE, comprueba que ningún usuario de la academia tenga su DNI
+// (DNI_DEL_PERSONAL, antes de la caja); registra el ingreso en caja (bloquea la caja al final); asigna el número de
+// ticket; deja el pago CONFIRMADO (INSERT si viene `nuevo`, el efectivo; UPDATE del pago pendiente si no, la 007b); si
+// el alumno es CLIENTE, crea su cuenta con usuarios.crearEnTransaccion y lo pasa a ALUMNO_ACTIVO; pasa la matrícula a
+// VIGENTE y la solicitud, si hay, a CONFIRMADA; y audita PAGO_REGISTRADO (con `nuevo`) o PAGO_APROBADO (sin él). Lanza
+// ErrorNegocio 409 SIN_CAJA_ABIERTA, CAJA_DE_OTRO_DIA o DNI_DEL_PERSONAL (la transacción completa se revierte).
+function confirmarPagoEnTransaccion(
+  tx: TransaccionAcademia,
+  usuarios: Pick<UsuariosService, 'crearEnTransaccion'>, // CreadorDeCuentas
+  entrada: {
+    pagoId: string; alumnoId: string; matriculaId: string; solicitudId: string | null;
+    concepto: ConceptoIngreso;        // INSCRIPCION en la 007; MENSUALIDAD en la 010
+    metodo: MetodoPago;               // EFECTIVO, YAPE o TRANSFERENCIA: el del movimiento y el del pago
+    monto: Decimal;                   // el total a cobrar: lo que entra a la caja y lo que guarda el pago
+    claveHash: string | null;         // la del DNI, calculada antes de la transacción; null si el alumno ya tiene cuenta
+    actor: { id: string };            // el actor ya bloqueado: quien cobra o verifica
+    ip: string | null;
+    nuevo?: { claveIdempotencia: string }; // solo si el pago se crea al confirmar (efectivo); sin él, el pago ya existe pendiente
+  },
+  ahora: Date,
+): Promise<{ numeroTicket: number; usuarioCreado: boolean }>;
+
+// backend/src/modulos/pagos/bloqueos.ts (sin Nest). Dos pasos, porque el bloqueo consultivo necesita el DNI antes de
+// bloquear filas:
+// 1. leerDniDeLaSolicitud: lectura sin bloqueos (en la lectura corta previa, para el hash, o en la misma transacción
+//    antes de bloquear, como el ajuste). null si la solicitud no existe en la academia o el id no es UUID (404).
+function leerDniDeLaSolicitud(tx: TransaccionAcademia, solicitudId: string):
+  Promise<{ alumnoId: string; dni: string; esCliente: boolean } | null>;
+// 2. bloquearFilasDelCobro: con el DNI ya leído, toma el consultivo 'inscripcion-dni:' || academia || ':' || dni y bloquea
+//    FOR UPDATE el alumno (y comprueba que su DNI sea el leído), la solicitud, su matrícula y sus pagos, en ese orden.
+//    Devuelve las filas (pagos del último al primero) y los ids de las clases sin bloquear; null si algo no coincide (404).
+//    No bloquea las clases ni la caja.
+function bloquearFilasDelCobro(tx: TransaccionAcademia, entrada: { solicitudId: string; alumnoId: string; dni: string }):
+  Promise<FilasDelCobro | null>;
+// La variante por pagoId (la aprobación y el rechazo) es de la 007b: tendrá que leer el DNI desde el pago (pago →
+// alumno) antes de bloquear, en el mismo orden.
 
 // backend/src/modulos/pagos/dominio/numero-operacion.ts (pura; la misma de packages/contratos).
 function normalizarNumeroOperacion(escrito: string): string | null; // null si no cumple ^[0-9A-Z]{1,30}$ tras normalizar
 
-// backend/src/modulos/pagos/dominio/total.ts (pura).
+// backend/src/modulos/pagos/dominio/total.ts (pura). Sin ajuste, montoCalculado (el valor cotizado al cliente); con
+// ajuste, calcularTotal({ base: baseProporcional(precioPlan, clasesPorMesPlan, clasesTotales), montoAjustado }). Entero
+// de soles. montoCalculado es obligatorio.
 function totalACobrar(matricula: { precioPlan: Decimal; clasesPorMesPlan: number; clasesTotales: number;
-  montoAjustado: Decimal | null }): Decimal; // calcularTotal con baseProporcional; entero de soles
+  montoCalculado: Decimal; montoAjustado: Decimal | null }): Decimal;
 ```
+
+_(Alineación con la revisión de la 007a: las firmas de `confirmarPagoEnTransaccion`, `bloquearFilasDelCobro` y
+`totalACobrar` son las implementadas; antes decían `confirmarPagoEnTransaccion(tx, entrada, ahora)` sin `concepto`,
+`metodo`, `monto` ni `nuevo`, `bloquearFilasDelCobro(tx, { solicitudId | pagoId })` y `totalACobrar` sin
+`montoCalculado`.)_
 
 ### Auditoría
 

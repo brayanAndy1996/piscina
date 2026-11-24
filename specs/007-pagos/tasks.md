@@ -14,60 +14,78 @@ el segundo PR, con la 007a ya unida a `main`.
 
 ## 007a · Cobro en recepción y cuenta del alumno
 
+Estado (24/11/2026): pruebas protegidas en rojo (fe9542b), servidor y contratos (ecee212), pantallas (75354ec), ronda
+adversarial 1 cerrada (pruebas 544717b, corrección b3230fa) y ronda 2 en curso (pruebas en rojo, e80d5ae). Quedan
+abiertas la revisión (T27), la verificación completa (T28) y el cierre con la documentación (T29). La spec y el plan se
+alinearon con las desviaciones que aceptó el revisor («Alineación con la revisión de la 007a» en la spec); T24 sigue
+abierta hasta que exista la prueba no protegida de la semilla.
+
 ### Pruebas protegidas (antes del código)
 
-- [ ] T1 · test-writer · Catálogo, privilegios, RLS, llaves (también la diferida), `CHECK`, índices y triggers de `pagos`;
+- [x] T1 · test-writer · Catálogo, privilegios, RLS, llaves (también la diferida), `CHECK`, índices y triggers de `pagos`;
   `CONFIRMADA` y `registrada_por` (criterios 1 a 7)
-- [ ] T2 · test-writer · Ampliar las pruebas protegidas anteriores de la lista «Pruebas protegidas anteriores que amplía
+- [x] T2 · test-writer · Ampliar las pruebas protegidas anteriores de la lista «Pruebas protegidas anteriores que amplía
   la 007a» (spec, «Decisiones»): 001 (listas exactas), 002 (matriz de 26 filas, DT-12), 005 (tablas, privilegios y
   claves del elemento del panel) y 006 (llave de `pago_id` y pago `CONFIRMADO` en la misma transacción que su ingreso,
   dentro de las utilidades), solo sumando y con la línea «Actualizada por la 007» en el encabezado; y los tres
   cambios aprobados por el orquestador que no son solo una suma (DT-17 a DT-19). Lo revisa el orquestador con `git diff` antes del commit (Impacto)
-- [ ] T3 · test-writer · Permisos y aislamiento de las rutas de la 007a; actor vigente (criterios 8 y 9)
-- [ ] T4 · test-writer · Total a cobrar, ajuste y ajuste frente a cobro (criterios 10 a 12)
-- [ ] T5 · test-writer · Cobro en efectivo: correcto, caja, estados, monto, idempotencia, cupo con la reserva que vence,
+- [x] T3 · test-writer · Permisos y aislamiento de las rutas de la 007a; actor vigente (criterios 8 y 9)
+- [x] T4 · test-writer · Total a cobrar, ajuste y ajuste frente a cobro (criterios 10 a 12)
+- [x] T5 · test-writer · Cobro en efectivo: correcto, caja, estados, monto, idempotencia, cupo con la reserva que vence,
   interbloqueos (criterios 13 a 19)
-- [ ] T6 · test-writer · Paso de cliente a alumno, ingreso con DNI y cambio obligatorio, DNI del personal, registro
+- [x] T6 · test-writer · Paso de cliente a alumno, ingreso con DNI y cambio obligatorio, DNI del personal, registro
   técnico sin DNI ni clave, seguimiento confirmado (criterios 20 a 24)
-- [ ] T7 · test-writer · Aislamiento y permiso del ticket (criterio 26, parte crítica)
-- [ ] T8 · test-writer · Estados nuevos de la 007a en la vista, el panel, la cancelación, la foto y el envío (criterios 28
+- [x] T7 · test-writer · Aislamiento y permiso del ticket (criterio 26, parte crítica)
+- [x] T8 · test-writer · Estados nuevos de la 007a en la vista, el panel, la cancelación, la foto y el envío (criterios 28
   a 32, sin las partes [007b])
-- [ ] T9 · test-writer · Recepción sin los límites por conexión: middleware, envío con actor, `registrada_por`, foto
+- [x] T9 · test-writer · Recepción sin los límites por conexión: middleware, envío con actor, `registrada_por`, foto
   (criterios 33 a 35)
-- [ ] T10 · test-writer · Correo `PAGO_CONFIRMADO` después de confirmar, destinatarios y fallos (criterio 51 a)
-- [ ] T11 · tester · Confirmar que T1 y T3 a T10 fallan por la razón esperada (y que las ampliadas en T2, y las de
+- [x] T10 · test-writer · Correo `PAGO_CONFIRMADO` después de confirmar, destinatarios y fallos (criterio 51 a)
+- [x] T11 · tester · Confirmar que T1 y T3 a T10 fallan por la razón esperada (y que las ampliadas en T2, y las de
   `backend/test/integracion/caja/` que usan sus utilidades sin haber sido editadas, fallan solo por lo que suma la
   007a: la tabla `pagos` que todavía no existe; lista en la spec); commit «Pruebas protegidas (007): 007a, … (en rojo)» (tres dígitos y sin letra en el paréntesis;
-  la entrega va después)
+  la entrega va después) _(hecho: commit fe9542b)_
 
 ### Implementación
 
-- [ ] T12 · backend · Migraciones `<marca>_estado_solicitud_confirmada` y `<marca>_pagos`; `schema.prisma`;
+- [x] T12 · backend · Migraciones `<marca>_estado_solicitud_confirmada` y `<marca>_pagos`; `schema.prisma`;
   `PRIVILEGIOS_APP`, `rol-app.mjs`, `TABLAS_DESPUES_DE_MIGRAR`; utilidades de pruebas (criterios 1 a 7)
-- [ ] T13 · backend · Contratos: `pagos.ts`, `solicitudes.ts` (estados, vistas, panel, filtro), `permisos.ts`
-  (criterios 8, 28 y 29)
-- [ ] T14 · backend · Módulo `pagos/`: `totalACobrar`, `bloquearFilasDelCobro`, `confirmarPagoEnTransaccion`, errores
-  (criterios 10, 19, 20, 21, 25)
-- [ ] T15 · backend · Cobro en efectivo y ajuste del monto, con sus rutas (criterios 11 a 18, 22 a)
-- [ ] T16 · backend · `crearPersonal` con el consultivo del DNI y la comprobación de alumnos (criterio 22 b y c)
-- [ ] T17 · backend · Estado visible, seguimiento, lista y cancelación del panel, foto y envío con los estados nuevos
-  (criterios 24, 28 a 32)
-- [ ] T18 · backend · Sesión de recepción en el middleware de `/api/a` y en el envío (criterios 33 a 35)
-- [ ] T19 · backend · Ticket: número y `GET /api/pagos/{id}/ticket` (criterios 25 y 26)
-- [ ] T20 · backend · Plantilla y envío del correo `PAGO_CONFIRMADO` (criterio 51 a)
-- [ ] T21 · frontend · Panel de solicitudes: estados, total, ajuste, «Cobrar en efectivo» con el aviso de la caja,
-  «Ajustar monto» (criterio 54, partes de la 007a)
-- [ ] T22 · frontend · Página imprimible del ticket y opción en el inicio (criterios 27 y 56, parte del ticket)
-- [ ] T23 · frontend · Seguimiento de una solicitud confirmada (criterios 24 y 28)
-- [ ] T24 · backend · Semilla: un ajuste de ejemplo (criterio 57, parte de la 007a)
+  _(hecho: ecee212)_
+- [x] T13 · backend · Contratos: `pagos.ts`, `solicitudes.ts` (estados, vistas, panel, filtro), `permisos.ts`
+  (criterios 8, 28 y 29) _(hecho: ecee212. Alineación con la revisión: `montoMostrado` con `montoCotizadoSchema`,
+  criterio 16; la respuesta del cobro `{ pago, solicitud }` en `solicitudes.ts`, en curso en el backend)_
+- [x] T14 · backend · Módulo `pagos/`: `totalACobrar`, `bloquearFilasDelCobro`, `confirmarPagoEnTransaccion`, errores
+  (criterios 10, 19, 20, 21, 25) _(hecho: ecee212. Alineación con la revisión: firmas reales en «Interfaces del
+  backend»; `totalACobrar` con `montoCalculado` obligatorio, en curso en el backend; `dominio/estado-pago.ts`
+  eliminado por no usarse)_
+- [x] T15 · backend · Cobro en efectivo y ajuste del monto, con sus rutas (criterios 11 a 18, 22 a) _(hecho: ecee212)_
+- [x] T16 · backend · `crearPersonal` con el consultivo del DNI y la comprobación de alumnos (criterio 22 b y c)
+  _(hecho: ecee212)_
+- [x] T17 · backend · Estado visible, seguimiento, lista y cancelación del panel, foto y envío con los estados nuevos
+  (criterios 24, 28 a 32) _(hecho: ecee212; los valores por defecto de las ramas de la 007b quedan como nota en el
+  plan, «Notas para la 007b»)_
+- [x] T18 · backend · Sesión de recepción en el middleware de `/api/a` y en el envío (criterios 33 a 35)
+  _(hecho: ecee212)_
+- [x] T19 · backend · Ticket: número y `GET /api/pagos/{id}/ticket` (criterios 25 y 26) _(hecho: ecee212)_
+- [x] T20 · backend · Plantilla y envío del correo `PAGO_CONFIRMADO` (criterio 51 a) _(hecho: ecee212)_
+- [x] T21 · frontend · Panel de solicitudes: estados, total, ajuste, «Cobrar en efectivo» con el aviso de la caja,
+  «Ajustar monto» (criterio 54, partes de la 007a) _(hecho: 75354ec)_
+- [x] T22 · frontend · Página imprimible del ticket y opción en el inicio (criterios 27 y 56, parte del ticket)
+  _(hecho: 75354ec)_
+- [x] T23 · frontend · Seguimiento de una solicitud confirmada (criterios 24 y 28) _(hecho: 75354ec)_
+- [ ] T24 · backend · Semilla: un ajuste de ejemplo, sin auditoría como el resto de los datos de ejemplo, con una prueba
+  no protegida de la semilla (criterio 57, parte de la 007a) _(el ajuste está desde ecee212; falta la prueba no
+  protegida de la semilla que pidió el revisor)_
 
 ### Ataque, revisión y cierre
 
-- [ ] T25 · adversarial · Ataque de la 007a (criterios críticos de la 007a; foco en caja de otro día, doble clic, último
+- [x] T25 · adversarial · Ataque de la 007a (criterios críticos de la 007a; foco en caja de otro día, doble clic, último
   cupo con la reserva que vence, DNI del personal, sesión de recepción falsificada o de otra academia, aislamiento)
-- [ ] T26 · especificador · Criterios nuevos de cada falla, con su origen
+  _(ronda 1 hecha: dos fallas, criterios 58 y 59; la ronda 2 es T53)_
+- [x] T26 · especificador · Criterios nuevos de cada falla, con su origen
       _(ronda 1, 24/11/2026: dos fallas, criterios 58 y 59, y la pregunta técnica T20; ver más abajo)_
 - [ ] T27 · revisor · Comparar con la spec y las convenciones; `git diff` de las pruebas protegidas
+      _(en curso: el revisor aceptó cinco desviaciones, ya alineadas en la spec y el plan)_
 - [ ] T28 · tester · Suite completa, lint y tipos
 - [ ] T29 · documentador · `docs/arquitectura.md`, `README.md`, guía de uso, `specs/backlog.md`; commit (criterio 57)
 
@@ -119,10 +137,11 @@ T47 y en la migración de T49).
       `movimientos_caja_no_cambian`, que rechaza todo `UPDATE` o `DELETE` porque la RLS sin políticas de `UPDATE` ni
       `DELETE` dejaba sin correr el trigger por fila; ver la corrección en el plan y la precisión de 58 d)_
 - [x] T50 · backend · `idDeAuditoriaOrdenado`: validar la fecha y calcular el estado nuevo en variables locales antes
-      de asignarlo; `RangeError` sin la fecha en el mensaje (criterio 59)
-- [ ] T51 · tester · Correr en verde las pruebas protegidas de T47 y todas las anteriores, y la suite completa, el lint
-      y los tipos (criterios 58, 59)
-- [ ] T52 · orquestador · Revisar con `git diff` desde el commit de T47 que T49 y T50 no tocaron pruebas protegidas
+      de asignarlo; `RangeError` sin la fecha en el mensaje (criterio 59) _(hecho: commit b3230fa, con T49)_
+- [x] T51 · tester · Correr en verde las pruebas protegidas de T47 y todas las anteriores, y la suite completa, el lint
+      y los tipos (criterios 58, 59) _(ronda 1 cerrada con b3230fa; la verificación completa final de la 007a es T28)_
+- [x] T52 · orquestador · Revisar con `git diff` desde el commit de T47 que T49 y T50 no tocaron pruebas protegidas
+      _(ronda 1 cerrada con b3230fa)_
 - [ ] T53 · adversarial · Ronda 2 sobre todo lo de la 007a, en especial los criterios 58 y 59:
       - otras formas de saltarse los triggers diferidos (`SET CONSTRAINTS`, cambios de contexto, `UPDATE` y `DELETE`
         del dueño, varias escrituras sobre la misma fila en una transacción);
@@ -130,6 +149,7 @@ T47 y en la migración de T49).
       - lo que no se atacó en la ronda 1.
 
       Si hay fallas, se repite el ciclo (especificador, test-writer en rojo, corrección) hasta una ronda sin fallas.
+      _(en curso: pruebas protegidas de la ronda 2 en rojo, commit e80d5ae, «falsos Date en el id de la auditoría»)_
 
 ## 007b · Yape y transferencia **[007b]**
 
@@ -150,9 +170,12 @@ T47 y en la migración de T49).
 - [ ] T35 · backend · Regla `comprobante`, lector binario, `RUTAS_REDACTADAS`, servicio y ruta pública del comprobante
   (criterios 36 a 44)
 - [ ] T36 · backend · Bandeja, comprobante y `HEAD` 404 en `/api/pagos` (criterios 45 y 46)
-- [ ] T37 · backend · Aprobación con `confirmarPagoEnTransaccion` y rechazo con el cupo y el correo (criterios 47 a 52)
+- [ ] T37 · backend · Aprobación con `confirmarPagoEnTransaccion` (sin `nuevo`) y la variante de `bloquearFilasDelCobro`
+  por `pagoId`, que lee el DNI desde el pago; rechazo con el cupo y el correo (criterios 47 a 52; plan, «Notas para la
+  007b»). Si hacen falta las transiciones como función pura, recrear `dominio/estado-pago.ts` con su prueba
 - [ ] T38 · backend · Estados `EN_VERIFICACION` y `PAGO_RECHAZADO` en el seguimiento, el panel, la cancelación, la foto y
-  el cobro en efectivo y el ajuste del monto (partes [007b] de 11, 15, 18, 28 a 32)
+  el cobro en efectivo y el ajuste del monto (partes [007b] de 11, 15, 18, 28 a 32). Revisar los valores por defecto de
+  `seguimiento.service.ts` (líneas 176, 179, 190 y 192; plan, «Notas para la 007b»)
 - [ ] T39 · frontend · Seguimiento: estados, datos de pago y formulario del comprobante (criterios 53 y 55)
 - [ ] T40 · frontend · Bandeja `/panel/pagos` y configuración de los datos de pago (criterios 53 y 56)
 - [ ] T41 · backend · Semilla: Yape pendiente con comprobante de ejemplo y datos de pago (criterio 57, parte de la 007b)
@@ -169,9 +192,9 @@ T47 y en la migración de T49).
 
 ## Solo ruta crítica
 
-- [ ] Pruebas escritas por test-writer y confirmadas en rojo (007a)
-- [ ] Pruebas en verde tras la implementación (007a)
-- [ ] Ataque adversarial sin fallas abiertas (007a)
+- [x] Pruebas escritas por test-writer y confirmadas en rojo (007a) _(fe9542b; rondas: 544717b y e80d5ae)_
+- [ ] Pruebas en verde tras la implementación (007a) _(pendiente: las de la ronda 2 siguen en rojo)_
+- [ ] Ataque adversarial sin fallas abiertas (007a) _(ronda 2 en curso)_
 - [ ] Pruebas escritas por test-writer y confirmadas en rojo (007b)
 - [ ] Pruebas en verde tras la implementación (007b)
 - [ ] Ataque adversarial sin fallas abiertas (007b)

@@ -12,11 +12,14 @@ historias. Lo marcado **[007b]** va en el segundo PR.
   - `pagos.module.ts`, `pagos.controller.ts` (ticket; **[007b]** bandeja, comprobante, aprobación y rechazo),
     `cobros.service.ts` (cobro en efectivo y ajuste), **[007b]** `verificacion.service.ts`, **[007b]**
     `comprobante.service.ts` (subida pública) y su controlador público.
-  - `confirmacion.ts` (sin Nest): `confirmarPagoEnTransaccion` (criterio 20).
-  - `bloqueos.ts` (sin Nest): `bloquearFilasDelCobro(tx, { solicitudId | pagoId })`, que toma el consultivo del DNI y
-    las filas en el orden de la regla y devuelve lo bloqueado.
-  - `dominio/total.ts` (`totalACobrar`), `dominio/numero-operacion.ts` (reexporta la de contratos) y
-    `dominio/estado-pago.ts` (transiciones permitidas, puras).
+  - `confirmacion.ts` (sin Nest): `confirmarPagoEnTransaccion(tx, usuarios, entrada, ahora)` (criterio 20).
+  - `bloqueos.ts` (sin Nest): `leerDniDeLaSolicitud(tx, solicitudId)` (lectura sin bloqueos) y
+    `bloquearFilasDelCobro(tx, { solicitudId, alumnoId, dni })`, que con el DNI ya leído toma el consultivo del DNI y
+    las filas en el orden de la regla y devuelve lo bloqueado. **[007b]** la variante por `pagoId`.
+  - `dominio/total.ts` (`totalACobrar`) y `dominio/numero-operacion.ts` (reexporta la de contratos).
+    `dominio/estado-pago.ts` no está en la 007a: se eliminó por no usarse (el trigger `pagos_transiciones` y las
+    decisiones de los servicios cubren las transiciones); la 007b lo recrea con su prueba si lo necesita («Notas para
+    la 007b»).
   - `errores.ts`, `index.ts`.
 - `backend/src/modulos/inscripciones/`: `estado-visible.ts` (reglas nuevas, también en SQL), `seguimiento.service.ts`
   (vistas nuevas), `solicitudes.service.ts` (lista con `ajuste` y `pago`, filtro `CONFIRMADAS`, cancelación con pagos),
@@ -32,7 +35,9 @@ historias. Lo marcado **[007b]** va en el segundo PR.
 - `backend/src/infraestructura/correo/enviador-correo.ts`: plantillas `PAGO_CONFIRMADO` y **[007b]** `PAGO_RECHAZADO`.
 - `backend/src/infraestructura/registro/opciones-registro.ts` **[007b]**: `x-pago-datos` en `RUTAS_REDACTADAS`.
 - `backend/src/crear-app.ts` **[007b]**: la ruta del comprobante en `noLeerCuerpoEn`, con el lector binario de la foto.
-- `packages/contratos/src/`: `pagos.ts` (nuevo), `solicitudes.ts`, `permisos.ts`, **[007b]** `configuracion.ts`.
+- `packages/contratos/src/`: `pagos.ts` (nuevo; `cobrarEnEfectivoSchema` con `montoCotizadoSchema`), `solicitudes.ts`
+  (también el esquema de la respuesta del cobro, junto a `respuestaSolicitudPanelSchema`), `permisos.ts`, **[007b]**
+  `configuracion.ts`.
 - `scripts/lib/rol-app.mjs`, `backend/test/utilidades/` (crear pagos como dueño junto con su movimiento).
 - `frontend/src/modulos/solicitudes/` (cobro, ajuste, estados), `frontend/src/modulos/pagos/` (ticket; **[007b]**
   bandeja), `frontend/src/modulos/seguimiento/` (estados; **[007b]** formulario del comprobante y datos de pago),
@@ -63,31 +68,48 @@ historias. Lo marcado **[007b]** va en el segundo PR.
 
 ### Total a cobrar
 
-`totalACobrar(matricula)` = `calcularTotal({ base: baseProporcional(precioPlan, clasesPorMesPlan, clasesTotales),
-montoAjustado })`. Se usa en el cobro, la subida del comprobante, la lista del panel (en SQL se lee lo necesario y el
-total se calcula en TypeScript), la vista de seguimiento y el ticket. Con `monto_ajustado` en soles enteros (DR-11), el
-total es el ajuste.
+`totalACobrar({ precioPlan, clasesPorMesPlan, clasesTotales, montoCalculado, montoAjustado })`:
+
+- **sin ajuste**, el `monto_calculado` guardado en la matrícula (el valor cotizado al cliente al inscribirse), sin
+  recalcular con el plan. En el código pasa por `calcularTotal({ base: baseProporcional(montoCalculado, 1, 1) })`, que
+  lo deja igual (la 005 lo guarda ya redondeado al sol entero; uno con céntimos escrito como dueño se redondearía hacia
+  arriba);
+- **con ajuste**, `calcularTotal({ base: baseProporcional(precioPlan, clasesPorMesPlan, clasesTotales), montoAjustado
+  })`. Con `monto_ajustado` en soles enteros (DR-11), el total es el ajuste; uno con céntimos escrito como dueño se
+  redondea hacia arriba (DT-17).
+
+`montoCalculado` es obligatorio en la entrada, para que ningún llamador caiga sin querer en el recálculo. Se usa en el
+cobro, la subida del comprobante, la lista del panel (en SQL se lee lo necesario y el total se calcula en TypeScript),
+la vista de seguimiento y el ticket.
+
+| Decisión | Alternativa descartada | Motivo |
+| --- | --- | --- |
+| Sin ajuste, el total es `monto_calculado` (alineación con la revisión de la 007a) | Recalcular con `baseProporcional` y lo guardado | Es lo que se cotizó al cliente; los dos dan lo mismo por construcción, pero la columna guardada es la fuente única |
 
 ### Cobro en efectivo (criterios 13 a 19)
 
-1. **Antes de la transacción:** una lectura corta (`conAcademia`, sin bloqueos) trae el DNI del alumno de la solicitud
-   (o 404). Se calcula `claveHash = hashearClave(dni)` (argon2, decenas de milisegundos). Si el alumno ya tiene cuenta
-   (no debería, por el estado), la confirmación no la usa.
+1. **Antes de la transacción:** una lectura corta (`conAcademia`, sin bloqueos) con `leerDniDeLaSolicitud` trae el
+   alumno y el DNI de la solicitud (o 404). Se calcula `claveHash = hashearClave(dni)` (argon2, decenas de
+   milisegundos) si el alumno es `CLIENTE`. Si el alumno ya tiene cuenta (no debería, por el estado), la confirmación
+   no la usa.
 2. **Transacción** (`conAcademia`):
    1. `bloquearActorVigente(tx, actor)` (`FOR SHARE`).
-   2. `bloquearFilasDelCobro`: `pg_advisory_xact_lock(hashtextextended('inscripcion-dni:' || academia || ':' || dni, 0))`
-      → `alumnos` `FOR UPDATE` (y se comprueba que su DNI sea el leído; si no, 404) → la solicitud `FOR UPDATE` → su
-      matrícula `FOR UPDATE` → sus pagos `FOR UPDATE` → `bloquearClasesParaCupo(tx, claseIds)` en una llamada.
+   2. `bloquearFilasDelCobro(tx, { solicitudId, alumnoId, dni })`, con el alumno y el DNI de la lectura corta:
+      `pg_advisory_xact_lock(hashtextextended('inscripcion-dni:' || academia || ':' || dni, 0))` → `alumnos` `FOR UPDATE`
+      (y se comprueba que su DNI sea el leído; si no, 404) → la solicitud `FOR UPDATE` → su matrícula `FOR UPDATE` → sus
+      pagos `FOR UPDATE`. Después, `bloquearClasesParaCupo(tx, claseIds)` en una llamada.
    3. `const ahora = this.reloj.ahora()` **después** de bloquear las clases (DT-10). Toda decisión de la transacción usa
       este instante: estado visible, vigencia de la reserva, cupo, caja del día y `registrado_en`.
    4. Decisiones en el orden del contrato: clave de idempotencia (200 con lo registrado, o 409 `CLAVE_YA_USADA`), estado
-      visible, `MONTO_CAMBIO` con `totalACobrar`, cupo y el DNI del personal (`SELECT EXISTS` en `usuarios`, sin
-      bloqueo). El estado visible se calcula con `ahora`: si la reserva de una `PENDIENTE_PAGO` venció mientras el cobro
+      visible, `MONTO_CAMBIO` con `totalACobrar` y cupo. El DNI del personal (`SELECT EXISTS` en `usuarios`, sin
+      bloqueo) lo decide `confirmarPagoEnTransaccion` en su primer paso, antes de la caja. El estado visible se calcula con `ahora`: si la reserva de una `PENDIENTE_PAGO` venció mientras el cobro
       esperaba las clases, la solicitud ya es `VENCIDA` y responde 409 `SOLICITUD_NO_COBRABLE` antes de llegar al cupo
       (criterio 18 b). Cupo: con `PENDIENTE_PAGO` la reserva es vigente en `ahora` y no se cuenta (criterio 18 a); solo
       con `PAGO_RECHAZADO` **[007b]** (matrícula `CANCELADA`) se cuenta con `contarOcupacion` sin esta matrícula y debe
       quedar lugar en todas sus clases, o 409 `SIN_CUPO` (criterio 18 c).
-   5. Escrituras: `INSERT` del pago `CONFIRMADO` (con un `id` generado en la API) → `confirmarPagoEnTransaccion`.
+   5. Escrituras: `confirmarPagoEnTransaccion(tx, usuarios, { pagoId, alumnoId, matriculaId, solicitudId, concepto:
+      'INSCRIPCION', metodo: 'EFECTIVO', monto: total, claveHash, actor, ip, nuevo: { claveIdempotencia } }, ahora)`,
+      con un `pagoId` generado en la API. Con `nuevo`, la confirmación inserta el pago ya `CONFIRMADO`.
 3. **Después de confirmar:** el correo `PAGO_CONFIRMADO` con `enviarSinEsperar` (criterio 51 a). La respuesta lee el
    elemento del panel con la misma `tx` antes de cerrar.
 4. **Errores de unicidad** (dos cobros con claves distintas que llegaran a la vez a pesar del bloqueo de las filas, o
@@ -97,36 +119,45 @@ total es el ajuste.
 
 ### `confirmarPagoEnTransaccion` (criterio 20)
 
+Firma: `confirmarPagoEnTransaccion(tx, usuarios, entrada, ahora)` (`backend/src/modulos/pagos/confirmacion.ts`).
+`usuarios` es `Pick<UsuariosService, 'crearEnTransaccion'>` (`CreadorDeCuentas`), para no depender de Nest. `entrada`
+lleva `pagoId`, `alumnoId`, `matriculaId`, `solicitudId`, `concepto`, `metodo`, `monto` (el total a cobrar),
+`claveHash`, `actor`, `ip` y, solo si el pago se crea al confirmar (el efectivo), `nuevo: { claveIdempotencia }`. La
+firma completa está en la spec («Interfaces del backend»).
+
 Recibe la `tx` con todo ya bloqueado hasta las clases. En orden:
 
-1. `registrarIngresoEnCaja(tx, { concepto, metodo, monto, alumnoId, pagoId, usuarioId: actor.id, ip }, ahora)`: bloquea
+1. Si el alumno es `CLIENTE` sin cuenta: `SELECT EXISTS` de un usuario de la academia con su DNI, sin bloqueo; si lo hay,
+   409 `DNI_DEL_PERSONAL` sin escribir (va antes de la caja, como en el orden de errores del contrato).
+2. `registrarIngresoEnCaja(tx, { concepto, metodo, monto, alumnoId, pagoId, usuarioId: actor.id, ip }, ahora)`: bloquea
    la caja al final y lanza `SIN_CAJA_ABIERTA` o `CAJA_DE_OTRO_DIA`.
-2. `numero_ticket` = `coalesce(max(numero_ticket), 0) + 1` de la academia (seguro con la caja bloqueada: toda
+3. `numero_ticket` = `coalesce(max(numero_ticket), 0) + 1` de la academia (seguro con la caja bloqueada: toda
    confirmación pasa por ella; el índice único es el respaldo, DT-13).
-3. El pago queda `CONFIRMADO` y completo:
-   - **efectivo:** `INSERT` del pago ya `CONFIRMADO`, con `verificado_por`, `verificado_en` y `numero_ticket`. Va después
-     del movimiento porque el `CHECK` del criterio 4 exige el ticket en un `CONFIRMADO` y el efectivo no puede nacer
-     pendiente (criterio 4 c);
-   - **aprobación [007b]:** `UPDATE` del pago pendiente (estado, `verificado_por`, `verificado_en`, `numero_ticket`).
+4. El pago queda `CONFIRMADO` y completo:
+   - **efectivo (con `nuevo`):** `INSERT` del pago ya `CONFIRMADO`, con `verificado_por`, `verificado_en`,
+     `numero_ticket` y la clave de idempotencia. Va después del movimiento porque el `CHECK` del criterio 4 exige el
+     ticket en un `CONFIRMADO` y el efectivo no puede nacer pendiente (criterio 4 c);
+   - **aprobación [007b] (sin `nuevo`):** `UPDATE` del pago pendiente (estado, `verificado_por`, `verificado_en`,
+     `numero_ticket`).
 
    Por eso la llave `movimientos_caja (academia_id, pago_id) → pagos (academia_id, id)` se declara `DEFERRABLE INITIALLY
    DEFERRED`: el movimiento del efectivo apunta a un pago que se inserta un instante después en la misma transacción. La
    llave y el trigger del criterio 5 se comprueban al `COMMIT`; si el pago no llega a existir o no queda `CONFIRMADO`, la
    transacción completa falla.
-4. Si el alumno está en `CLIENTE`: `usuarios.crearEnTransaccion(tx, { dni, nombres, apellidos, rol: 'ALUMNO',
+5. Si el alumno está en `CLIENTE`: `usuarios.crearEnTransaccion(tx, { dni, nombres, apellidos, rol: 'ALUMNO',
    claveHash }, { tipo: 'USUARIO', id: actor.id }, ip)` (su `ON CONFLICT` da `DNI_EN_USO`, que se traduce a
    `DNI_DEL_PERSONAL`) → `UPDATE alumnos SET estado = 'ALUMNO_ACTIVO', usuario_id`.
-5. `UPDATE matriculas SET estado = 'VIGENTE', reserva_vence_en = NULL`; `UPDATE solicitudes_inscripcion SET estado =
+6. `UPDATE matriculas SET estado = 'VIGENTE', reserva_vence_en = NULL`; `UPDATE solicitudes_inscripcion SET estado =
    'CONFIRMADA'` (si tiene solicitud).
-6. Auditoría del pago (`PAGO_REGISTRADO` o `PAGO_APROBADO`).
+7. Auditoría del pago (`PAGO_REGISTRADO` con `nuevo`, `PAGO_APROBADO` sin él).
 
-Todas las actualizaciones del paso 3 en adelante son de filas que la transacción ya bloqueó: no esperan a nadie aunque
+Todas las actualizaciones del paso 4 en adelante son de filas que la transacción ya bloqueó: no esperan a nadie aunque
 vayan después de la caja (precisión de la regla de la 006, en «Impacto»).
 
 ### Ajuste del monto (criterios 11 y 12)
 
-Transacción: actor → `bloquearFilasDelCobro` (sin el hash: el DNI para el consultivo se lee en la misma transacción
-antes, sin bloqueo, porque no cambia) → estado visible con `ahora` → `UPDATE matriculas SET monto_ajustado,
+Transacción: actor → `leerDniDeLaSolicitud` (en la misma transacción, sin bloqueo y sin hash: el DNI no cambia) →
+`bloquearFilasDelCobro(tx, { solicitudId, alumnoId, dni })` → estado visible con `ahora` → `UPDATE matriculas SET monto_ajustado,
 motivo_ajuste` → auditoría. No bloquea clases (no mueve cupo). Al tomar las mismas filas que el cobro, ajuste y cobro se
 ordenan (criterio 12).
 
@@ -176,9 +207,10 @@ relectura con `FOR SHARE` y `esperaMaximaDeBloqueoMs` si la confirmación es inc
 - **Bandeja:** una consulta con `JOIN` a la matrícula, la solicitud y el alumno; `mesTerminado` con `hoyEnLima`.
 - **Comprobante:** lectura corta del pago (método y clave) → `AlmacenArchivos.leer` fuera de la transacción → respuesta
   con las cabeceras del criterio 46.
-- **Aprobación:** lectura corta (DNI y hash) → transacción: actor → `bloquearFilasDelCobro({ pagoId })` (sin clases) →
-  decisiones (200 si ya `CONFIRMADO`; 409 si `RECHAZADO`) → `confirmarPagoEnTransaccion`. El hash se calcula aunque el
-  pago termine en 200 (no se sabe antes); es aceptable.
+- **Aprobación:** lectura corta (el alumno y el DNI leídos desde el pago, y el hash) → transacción: actor → la variante
+  de `bloquearFilasDelCobro` por `pagoId` (sin clases; ver «Notas para la 007b») → decisiones (200 si ya `CONFIRMADO`;
+  409 si `RECHAZADO`) → `confirmarPagoEnTransaccion(tx, usuarios, { …, metodo: el del pago, monto: el del pago, sin
+  nuevo }, ahora)`. El hash se calcula aunque el pago termine en 200 (no se sabe antes); es aceptable.
 - **Rechazo:** transacción: actor → filas → `bloquearClasesParaCupo` → `UPDATE pagos` (`RECHAZADO`) → `UPDATE
   matriculas` (`CANCELADA`, `reserva_vence_en = NULL`) → auditoría → después de confirmar, el correo `PAGO_RECHAZADO`.
 - **`HEAD`:** `instalarHeadSinRutasDeCaja` pasa a recibir una lista de prefijos (`/api/cajas`, `/api/pagos`).
@@ -193,6 +225,36 @@ relectura con `FOR SHARE` y `esperaMaximaDeBloqueoMs` si la confirmación es inc
   desmontar), diálogos de aprobar y rechazar con su clave en el estado del diálogo.
 - **[007b]** Seguimiento: formulario del comprobante (reutiliza `CampoFoto` para elegir y previsualizar), estados
   nuevos y datos de pago.
+- La respuesta del cobro (`{ pago, solicitud }`) se valida con el esquema de `packages/contratos/src/solicitudes.ts`
+  (spec, «Esquemas compartidos»), no con uno propio de la web.
+
+### Semilla (007a, criterio 57)
+
+En `delfines`, un ajuste de monto con motivo en una solicitud de ejemplo, escrito directamente en la matrícula
+(`monto_ajustado` y `motivo_ajuste`) sin pasar por la API. No escribe `MATRICULA_MONTO_AJUSTADO` en la auditoría, como
+el resto de los datos de ejemplo: la auditoría registra operaciones de personas por la API. Repetir la semilla no lo
+duplica ni pisa un ajuste editado. Lo comprueba una prueba no protegida de la semilla (T24).
+
+## Notas para la 007b (de la revisión de la 007a, 24/11/2026)
+
+- **Valores por defecto sin pruebas en el seguimiento.** `backend/src/modulos/inscripciones/seguimiento.service.ts`
+  arma las vistas con valores de reserva cuando falta el último pago:
+  - en la rama `CONFIRMADA` (líneas 176 y 179): `metodo: fila.pago_metodo ?? 'EFECTIVO'` y
+    `numeroTicket: fila.pago_numero_ticket ?? 0`. En la 007a una solicitud `CONFIRMADA` siempre tiene su pago en
+    efectivo, así que no se llega al valor por defecto; con la aprobación de la 007b el método puede ser `YAPE` o
+    `TRANSFERENCIA`;
+  - en la rama `EN_VERIFICACION` (líneas 190 y 192): `metodo: fila.pago_metodo ?? 'YAPE'` y
+    `fechaOperacion: fila.pago_fecha_operacion ?? ''`. Es una rama de la 007b, todavía sin pruebas.
+
+  Al implementar la 007b se revisan: ninguna vista debe mostrar un método, una fecha o un ticket inventados.
+  Propuesta: que esas ramas solo se alcancen con el pago presente (si falta, error del servidor en lugar de un valor
+  por defecto), con pruebas de cada estado.
+- **`dominio/estado-pago.ts`.** Se eliminó en la 007a porque nada lo usaba. Si la aprobación y el rechazo de la 007b
+  necesitan las transiciones permitidas como función pura, la 007b lo recrea junto con su prueba unitaria.
+- **`bloquearFilasDelCobro` por `pagoId`.** La 007a solo tiene la variante por solicitud, que recibe el DNI ya leído. La
+  aprobación y el rechazo necesitan una variante por `pagoId` que lea antes, sin bloqueos, el alumno y el DNI desde el
+  pago (pago → alumno) y bloquee en el mismo orden (consultivo del DNI → alumno → solicitud, si hay → matrícula →
+  pagos).
 
 ## Decisiones
 
