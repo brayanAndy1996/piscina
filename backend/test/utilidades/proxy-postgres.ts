@@ -35,7 +35,9 @@ const CODIGO_GSSENC = 80877104;
 const CODIGO_CANCELAR = 80877102;
 
 /** Un `UPDATE` de `alumnos` que menciona `foto_clave` (con o sin esquema ni comillas). */
-const ACTUALIZA_FOTO = /\bUPDATE\s+(?:ONLY\s+)?(?:"?public"?\.)?"?alumnos"?\b[\s\S]*\bfoto_clave\b/i;
+export const ACTUALIZA_FOTO = /\bUPDATE\s+(?:ONLY\s+)?(?:"?public"?\.)?"?alumnos"?\b[\s\S]*\bfoto_clave\b/i;
+/** Un `INSERT` en `pagos` (la transacción de la subida del comprobante de la 007b), con o sin esquema ni comillas. */
+export const INSERTA_PAGO = /\bINSERT\s+INTO\s+(?:"?public"?\.)?"?pagos"?\b/i;
 const ES_COMMIT = /(?:^|;)\s*(?:COMMIT|END)(?:\s+(?:WORK|TRANSACTION))?\s*(?:;|$)/i;
 const ES_ROLLBACK = /(?:^|;)\s*(?:ROLLBACK|ABORT)(?:\s+(?:WORK|TRANSACTION))?\s*(?:;|$)/i;
 const ES_BEGIN = /^\s*(?:BEGIN|START\s+TRANSACTION)\b/i;
@@ -196,7 +198,7 @@ class Puente {
     if (sql !== undefined) {
       // Una transacción nueva o un `ROLLBACK` quitan la marca; el `UPDATE` de la foto la pone.
       if (ES_BEGIN.test(sql) || ES_ROLLBACK.test(sql)) this.marcada = false;
-      else if (ACTUALIZA_FOTO.test(sql)) this.marcada = true;
+      else if (this.proxy.marca.test(sql)) this.marcada = true;
       if (tipo !== 'B' && ES_COMMIT.test(sql)) {
         const modo = this.marcada ? this.proxy.tomarModo() : null;
         this.marcada = false;
@@ -302,14 +304,19 @@ export class ProxyPostgres {
   private constructor(
     private readonly destino: { host: string; port: number },
     private readonly urlOriginal: URL,
+    /** La sentencia que marca la transacción que se corta (por defecto, el `UPDATE` de `alumnos.foto_clave` de la 005b). */
+    readonly marca: RegExp = ACTUALIZA_FOTO,
   ) {
     this.servidor = net.createServer((cliente) => this.alConectar(cliente));
   }
 
-  /** Levanta el proxy hacia el servidor de `urlDestino` (por ejemplo `DATABASE_URL_APP`). */
-  static async iniciar(urlDestino: string): Promise<ProxyPostgres> {
+  /**
+   * Levanta el proxy hacia el servidor de `urlDestino` (por ejemplo `DATABASE_URL_APP`). `opciones.marca` (007b) cambia la sentencia que
+   * marca la transacción que se corta; sin ella, el comportamiento es el de la 005b (el `UPDATE` de `alumnos` con `foto_clave`).
+   */
+  static async iniciar(urlDestino: string, opciones: { marca?: RegExp } = {}): Promise<ProxyPostgres> {
     const url = new URL(urlDestino);
-    const proxy = new ProxyPostgres({ host: url.hostname, port: Number(url.port || 5432) }, url);
+    const proxy = new ProxyPostgres({ host: url.hostname, port: Number(url.port || 5432) }, url, opciones.marca);
     await new Promise<void>((resolver, rechazar) => {
       proxy.servidor.once('error', rechazar);
       proxy.servidor.listen(0, '127.0.0.1', () => {

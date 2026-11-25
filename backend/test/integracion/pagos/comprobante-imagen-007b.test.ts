@@ -39,7 +39,7 @@ import {
   TEXTO_DE_RUTA_EN_EL_ERROR,
   TEXTO_MARCADO,
 } from '../../utilidades/inscripciones-005b';
-import { conUrlDeAppEnElProxy, type ModoDeCorte, ProxyPostgres } from '../../utilidades/proxy-postgres';
+import { conUrlDeAppEnElProxy, INSERTA_PAGO, type ModoDeCorte, ProxyPostgres } from '../../utilidades/proxy-postgres';
 import { leerPagos } from '../../utilidades/pagos';
 
 // Criterio 40 (crítico, HU-08, RNF-09; criterios 35 a 37, 61 y 64 de 005; regla «Archivos»): la imagen del comprobante pasa las mismas comprobaciones de la foto (firma del tipo declarado, decodificable con `sharp`, lados de 100 a
@@ -444,7 +444,7 @@ describe('confirmación incierta de la subida del comprobante (criterio 40; crit
   };
 
   beforeAll(async () => {
-    const proxy = await ProxyPostgres.iniciar(urlAppPruebas());
+    const proxy = await ProxyPostgres.iniciar(urlAppPruebas(), { marca: INSERTA_PAGO });
     let fallos: AlmacenDeFallosDePrueba | undefined;
     let ctx: AppConAlmacen | undefined;
     try {
