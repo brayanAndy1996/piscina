@@ -4,6 +4,7 @@
 // solo suma, DT-18): se quitan los tres intentos que esperaban 42501 en `alumnos.estado`, `alumnos.usuario_id` y `matriculas.monto_ajustado`, y «el
 // estado» del título de la prueba de `alumnos`. El DNI, la `academia_id`, el `id` y `creado_en` siguen prohibidos y comprobados; el nuevo
 // `UPDATE_EXACTO` sigue fijando los privilegios exactos.
+// Actualizada por la 008 (spec 008-carnet-qr, criterio 1): `UPDATE_EXACTO` suma `qr_token`, `qr_generado_en` y `qr_clave_idempotencia` en `alumnos`. No se quitó ni se cambió nada más.
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { crearAcademiaDePrueba } from '../../utilidades/academias';
@@ -45,6 +46,9 @@ const UPDATE_EXACTO: Record<Tabla005, string[]> = {
     'grado_colegio',
     'nivel',
     'nombres',
+    'qr_clave_idempotencia',
+    'qr_generado_en',
+    'qr_token',
     'telefono',
     'usuario_id',
   ],

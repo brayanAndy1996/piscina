@@ -1,5 +1,6 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
 // Actualizada por la 007 (spec 007-pagos, criterio 2 y «Pruebas protegidas anteriores que amplía la 007a»): la lista exacta de `PRIVILEGIOS_APP` suma `pagos` (SELECT, INSERT y UPDATE solo de `estado`, `verificado_por`, `verificado_en`, `motivo_rechazo`, `numero_ticket` y `actualizado_en`), `alumnos.estado`, `alumnos.usuario_id`, `matriculas.monto_ajustado` y `matriculas.motivo_ajuste`. No se quitó ni se cambió nada de lo anterior.
+// Actualizada por la 008 (spec 008-carnet-qr, criterio 1): la lista exacta suma `alumnos.qr_token`, `alumnos.qr_generado_en` y `alumnos.qr_clave_idempotencia` (UPDATE). No se quitó ni se cambió nada más.
 // Pruebas unitarias de la ronda 3 del ataque sobre `scripts/lib/rol-app.mjs` (solo modulos `node:*`) y las sentencias del hook de
 // sesion:
 //  - Criterio 103, precision P-19: `problemasDeConfiguracionApp({ rolconfig, bases })` con `rolconfig: string[] | null` (de
@@ -185,6 +186,10 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       // Historia 007, criterio 2: la confirmación del pago pasa al alumno a `ALUMNO_ACTIVO` con su cuenta.
       'alumnos|estado|UPDATE',
       'alumnos|usuario_id|UPDATE',
+      // Historia 008, criterio 1: el QR del carnet (token, fecha y clave de idempotencia de la regeneración).
+      'alumnos|qr_token|UPDATE',
+      'alumnos|qr_generado_en|UPDATE',
+      'alumnos|qr_clave_idempotencia|UPDATE',
       'apoderados|*|SELECT',
       'apoderados|*|INSERT',
       'apoderados|*|DELETE',
