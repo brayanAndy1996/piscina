@@ -6,11 +6,16 @@ const ULTIMO_MILISEGUNDO = 2 ** 48 - 1;
 const MAXIMO_CONTADOR = 0xfff;
 
 /**
- * El `getTime` de `Date.prototype`, guardado al cargar el módulo: comprueba la ranura interna del valor sin consultar su prototipo ni sus propiedades,
- * y un reemplazo posterior de `Date.prototype.getTime` en el proceso no cambia la decisión.
+ * El `getTime` de `Date.prototype` ya ligado a `call`, guardado al cargar el módulo: comprueba la ranura interna del valor sin consultar su prototipo ni sus propiedades.
+ * `Number.isSafeInteger` y `Math.max` también se guardan al cargar.
+ *
+ * Es endurecimiento, no una defensa: el código del mismo proceso que modifica objetos nativos (`Function.prototype.call`, `Date.prototype`, `Number`, `Math`)
+ * después de cargar el módulo está fuera del modelo de amenaza. Lo que sí cubre es que un reemplazo posterior no cambie la decisión por descuido.
  */
-// eslint-disable-next-line @typescript-eslint/unbound-method -- se usa siempre con `.call(valor)`
-const leerInstante = Date.prototype.getTime;
+// eslint-disable-next-line @typescript-eslint/unbound-method -- ligado a `call` y llamado siempre como `leerInstante(valor)`
+const leerInstante: (fecha: Date) => number = Function.prototype.call.bind(Date.prototype.getTime);
+const esEnteroSeguro = Number.isSafeInteger;
+const maximo = Math.max;
 
 let ultimoMilisegundo = 0;
 let contador = 0;
@@ -31,18 +36,19 @@ let contador = 0;
  */
 export function idDeAuditoriaOrdenado(fechaHora: Date): string {
   // Se valida antes de tocar el estado: una fecha no válida no cambia ni el último milisegundo ni el contador.
-  // La única operación sobre el valor es `leerInstante.call`: cualquier error (primitivo, objeto sin la ranura, `Proxy`, revocado o no) es un valor que no es un Date.
+  // La única operación sobre el valor es `leerInstante(fechaHora)`: cualquier error (primitivo, objeto sin la ranura, `Proxy`, revocado o no) es un valor que no es un Date.
   let instante: number;
   try {
-    instante = leerInstante.call(fechaHora);
+    instante = leerInstante(fechaHora);
   } catch {
     throw new RangeError('La fecha de la auditoría no es un Date.');
   }
-  if (!Number.isSafeInteger(instante) || instante < 0 || instante > ULTIMO_MILISEGUNDO) {
+  // En positivo: un NaN no cumple ninguna comparación y se rechaza siempre.
+  if (!(esEnteroSeguro(instante) && instante >= 0 && instante <= ULTIMO_MILISEGUNDO)) {
     throw new RangeError('La fecha de la auditoría está fuera del rango que cabe en un id.');
   }
   // El estado nuevo se calcula en variables locales y se asigna solo al final, cuando ya no puede fallar.
-  let milisegundo = Math.max(instante, ultimoMilisegundo);
+  let milisegundo = maximo(instante, ultimoMilisegundo);
   let siguienteContador: number;
   if (milisegundo === ultimoMilisegundo) {
     siguienteContador = contador + 1;

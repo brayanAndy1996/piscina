@@ -16,8 +16,10 @@ el segundo PR, con la 007a ya unida a `main`.
 
 Estado (24/11/2026): pruebas protegidas en rojo (fe9542b), servidor y contratos (ecee212), pantallas (75354ec), ronda
 adversarial 1 cerrada (pruebas 544717b, corrección b3230fa), ronda 2 corregida (pruebas e80d5ae) y ronda 3 con dos
-fallas del criterio 59, precisado como 59 d (25/11/2026; T54 a T60). Quedan abiertas la ronda 3 y la 4, la revisión
-(T27), la verificación completa (T28) y el cierre con la documentación (T29). La spec y el plan se
+fallas del criterio 59, precisado como 59 d (25/11/2026; T54 a T60), cerrada (pruebas 820cd22, corrección 65aa1f0).
+La ronda 4 (25/11/2026) quedó sin fallas dentro del modelo de amenaza (criterio 59 e): el ataque adversarial de la 007a
+está cerrado. Quedan abiertas la revisión (T27), la verificación completa (T28) y el cierre con la documentación (T29).
+La spec y el plan se
 alinearon con las desviaciones que aceptó el revisor («Alineación con la revisión de la 007a» en la spec); T24 sigue
 abierta hasta que exista la prueba no protegida de la semilla.
 
@@ -151,7 +153,7 @@ T47 y en la migración de T49).
 
       Si hay fallas, se repite el ciclo (especificador, test-writer en rojo, corrección) hasta una ronda sin fallas.
       _(ronda 2: falsos `Date` en el id de la auditoría, pruebas protegidas e80d5ae, corregida. Ronda 3: dos fallas
-      del criterio 59, ver más abajo; la ronda 4 es T60)_
+      del criterio 59, ver más abajo, cerrada con 65aa1f0. Ronda 4 (T60): sin fallas dentro del modelo de amenaza)_
 
 ### Ataque adversarial de la 007a, ronda 3 (25/11/2026)
 
@@ -169,7 +171,7 @@ Estas tareas van antes de T27.
 - [x] T54 · especificador · Precisión 59 d en `spec.md` (origen: ronda adversarial 3 de la 007a), diseño y
       precisiones de las pruebas en el plan; nota para la 007b sobre el pago `CONFIRMADO` en la vista del seguimiento
       (plan, «Notas para la 007b») (criterio 59)
-- [ ] T55 · test-writer · Escribir la prueba protegida en rojo en
+- [x] T55 · test-writer · Escribir la prueba protegida en rojo en
       `backend/src/modulos/auditoria/id-ordenado-ronda3.test.ts`, desde la spec y la firma pública, sin mirar la
       implementación y con la marca `// spec: 007-pagos (pruebas protegidas)`: los `Proxy` (revocado, con
       `getPrototypeOf` que lanza, con `get`, `has` y `getOwnPropertyDescriptor` que lanzan, sin trampas, de un falso
@@ -178,8 +180,8 @@ Estas tareas van antes de T27.
       milisegundos de la ranura; los de `vm` y prototipo `null` con instante no válido lanzan `RangeError`; en todos,
       ids válidas, distintas y crecientes antes y después (plan, «Precisiones de las pruebas (criterio 59 d)»). Sin
       editar `id-ordenado.test.ts`. Commit: «Pruebas protegidas (007): 007a, ataque ronda 3: un Date se reconoce por su
-      ranura y no por instanceof (en rojo)» (criterio 59 a, b y d)
-- [ ] T56 · tester · Confirmar que T55 falla por la razón esperada y no por sintaxis, importaciones ni configuración:
+      ranura y no por instanceof (en rojo)» (criterio 59 a, b y d) _(hecho: commit 820cd22)_
+- [x] T56 · tester · Confirmar que T55 falla por la razón esperada y no por sintaxis, importaciones ni configuración:
       - los `Proxy` revocado y con `getPrototypeOf` que lanza dan `TypeError` o el `Error` de la trampa, no
         `RangeError`;
       - el `Date` de `vm` y los de prototipo cambiado lanzan `RangeError` en lugar de devolver una id.
@@ -187,17 +189,27 @@ Estas tareas van antes de T27.
       Los demás casos (otros `Proxy`, primitivos, subclase, `getTime` propio, instantes no válidos) pueden pasar ya: se
       confirma que pasan y que no son la razón del rojo. `id-ordenado.test.ts` (rondas 1 y 2) sigue en verde y `git
       diff --cached --stat` solo muestra el archivo nuevo. El orquestador hace el commit con el título de T55
-- [ ] T57 · backend · `idDeAuditoriaOrdenado`: quitar `instanceof Date`; leer el instante solo con el `getTime` de
+      _(hecho: rojo confirmado por la razón esperada; commit 820cd22)_
+- [x] T57 · backend · `idDeAuditoriaOrdenado`: quitar `instanceof Date`; leer el instante solo con el `getTime` de
       `Date.prototype` capturado al cargar el módulo, con `.call` dentro del `try`, y `RangeError` sin la causa ni la
       fecha si lanza; actualizar el comentario de la función. Sin tocar las pruebas protegidas (criterio 59 d; plan,
-      «Rondas adversariales 2 y 3 de la 007a»)
-- [ ] T58 · tester · Correr en verde T55, `id-ordenado.test.ts` y todas las pruebas protegidas anteriores, y la suite
-      completa, el lint y los tipos (criterio 59)
-- [ ] T59 · orquestador · Revisar con `git diff` desde el commit de T55 que T57 no tocó pruebas protegidas
-- [ ] T60 · adversarial · Ronda 4 sobre todo lo de la 007a, con foco en el criterio 59 d (otros valores exóticos:
+      «Rondas adversariales 2 y 3 de la 007a») _(hecho: commit 65aa1f0)_
+- [x] T58 · tester · Correr en verde T55, `id-ordenado.test.ts` y todas las pruebas protegidas anteriores, y la suite
+      completa, el lint y los tipos (criterio 59) _(hecho con 65aa1f0; la verificación completa final de la 007a es
+      T28)_
+- [x] T59 · orquestador · Revisar con `git diff` desde el commit de T55 que T57 no tocó pruebas protegidas
+      _(hecho con 65aa1f0)_
+- [x] T60 · adversarial · Ronda 4 sobre todo lo de la 007a, con foco en el criterio 59 d (otros valores exóticos:
       `Proxy` anidados, `Date` congelados o sellados, subclases con `Symbol.species` o `getTime` sobrescrito,
       `Date.prototype.getTime` reemplazado en el proceso después de cargar el módulo) y en lo que no se atacó en las
       rondas 1 a 3. Si hay fallas, se repite el ciclo hasta una ronda sin fallas
+      _(hecho, 25/11/2026: sin fallas dentro del modelo de amenaza; 9105 ids correctas con las entradas de 59 a a d.
+      Las dos fallas que exigen modificar objetos nativos del proceso quedaron fuera del modelo de amenaza (criterio
+      59 e), con el endurecimiento de T61, sin prueba protegida nueva)_
+- [ ] T61 · backend · Endurecimiento de la ronda 4, sin prueba protegida nueva: `Function.prototype.call.bind(
+      Date.prototype.getTime)` al cargar el módulo, `Number.isSafeInteger` guardado y la comprobación del rango en
+      positivo para que un `NaN` se rechace siempre; comentario «endurecimiento, no garantía». Las pruebas protegidas
+      del criterio 59 siguen en verde (criterio 59 e; plan, «Ronda adversarial 4 de la 007a»)
 
 ## 007b · Yape y transferencia **[007b]**
 
@@ -240,10 +252,11 @@ Estas tareas van antes de T27.
 
 ## Solo ruta crítica
 
-- [x] Pruebas escritas por test-writer y confirmadas en rojo (007a) _(fe9542b; rondas: 544717b y e80d5ae; ronda 3
-  pendiente, T55)_
-- [ ] Pruebas en verde tras la implementación (007a) _(pendiente: la ronda 3, T57 y T58)_
-- [ ] Ataque adversarial sin fallas abiertas (007a) _(ronda 3 con dos fallas; ronda 4 en T60)_
+- [x] Pruebas escritas por test-writer y confirmadas en rojo (007a) _(fe9542b; rondas: 544717b, e80d5ae y 820cd22)_
+- [x] Pruebas en verde tras la implementación (007a) _(ronda 3 en verde con 65aa1f0; la verificación completa final
+  es T28)_
+- [x] Ataque adversarial sin fallas abiertas (007a) _(ronda 4, 25/11/2026: sin fallas dentro del modelo de amenaza,
+  criterio 59 e)_
 - [ ] Pruebas escritas por test-writer y confirmadas en rojo (007b)
 - [ ] Pruebas en verde tras la implementación (007b)
 - [ ] Ataque adversarial sin fallas abiertas (007b)
