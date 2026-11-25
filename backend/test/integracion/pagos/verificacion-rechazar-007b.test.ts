@@ -85,7 +85,7 @@ describe('rechazar un comprobante de Yape o transferencia (criterios 49, 50 y 52
     await ctx?.cerrarTodo();
   });
 
-  const MOTIVO = 'La imagen no se lee, sube otra foto del comprobante';
+  const MOTIVO = 'La imagen no se lee, sube otra foto más nítida';
   const rechazar = (pagoId: string, motivo: unknown = MOTIVO, cookie = cookies.secretaria) =>
     ctx.http.post(rutaRechazo(pagoId), { motivo }, { cookie });
   const snapshot = () => instantaneaConArchivos(ctx, e);
