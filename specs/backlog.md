@@ -21,8 +21,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 006b | Historial y PDF del cierre de caja | Sí | ✅ |
 | 007a | Cobro en recepción y cuenta del alumno | Sí | ✅ |
 | 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ✅ |
-| 008a | Carnet digital y QR | En parte | 🟨 |
-| 008b | Foto desde el panel y cámara | En parte | ⬜ |
+| 008a | Carnet digital y QR | En parte | ✅ |
+| 008b | Foto desde el panel y cámara | En parte | 🟨 |
 | 009 | Asistencia y faltas | Sí | ⬜ |
 | 010 | Mensualidades y renovación | En parte | ⬜ |
 | 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
@@ -237,7 +237,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
   - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-5 y DT-1 a DT-13 de 008), en
-    [`specs/008-carnet-qr/`](008-carnet-qr/spec.md). Dos entregas: 008a (criterios 1 a 21), lista para unir (25/11/2026, una ronda adversarial sin críticas ni altas), y 008b (22 a 29).
+    [`specs/008-carnet-qr/`](008-carnet-qr/spec.md). Dos entregas: 008a (criterios 1 a 21), unida a main el 25/11/2026, [PR #16](https://github.com/brayanAndy1996/piscina/pull/16), tras una ronda adversarial sin críticas ni altas; 008b (22 a 29), lista para unir (25/11/2026, una ronda adversarial sin críticas ni altas).
   - **Deuda de la 008a** (las medias y las bajas no abren ronda, D-31; el detalle de la ronda 1 está en [`rondas.md`](008-carnet-qr/rondas.md)):
     - **R1-1** (ronda 1, baja): un cuerpo mal formado responde 400 o 413 en lugar de 403 al rol cuya celda de `VER_CARNET` tiene otro alcance: un `ALUMNO` en `POST /api/alumnos/buscar` y en `GET /api/alumnos/{id}/carnet[/pdf]` con cuerpo, y la secretaria o el administrador en `GET /api/mi-carnet[/pdf]` con cuerpo. `PermisosGuard` lanza el error de cuerpo guardado antes de `exigirAlcanceDelCarnet`. No da acceso a nada.
     - **REV-1** (de la revisión, menor): las pruebas unitarias `backend/src/modulos/alumnos/pdf/carnet-pdf.test.ts` y `backend/src/modulos/alumnos/dominio/token-qr.test.ts` cubren parte de los criterios críticos 12 y 3 sin la marca de pruebas protegidas; la cobertura crítica está en la integración protegida.
@@ -253,7 +253,20 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     registrado, sin el token de seguimiento) y tomarla con la cámara de la PC de recepción. En la 005b la foto solo se
     sube en el paso del formulario (también cuando la secretaria abre "Nueva inscripción", eligiendo un archivo) o desde
     el enlace de seguimiento. Debe usar el mismo proceso de los criterios 35 a 37 de 005: recodificación sin metadatos,
-    `AlmacenArchivos` con clave del servidor y borrado de la anterior después de confirmar.
+    `AlmacenArchivos` con clave del servidor y borrado de la anterior después de confirmar. **Cumplido por la 008b** (criterios 22 a 28 de `specs/008-carnet-qr/spec.md`).
+  - **Deuda de la 008b** (ronda 1, 25/11/2026; las medias y las bajas no abren ronda, D-31; el detalle está en [`rondas.md`](008-carnet-qr/rondas.md)):
+    - **R1-1** (media): un cuerpo troceado que nunca termina no recibe el 413 mientras el cliente sigue enviando, porque `express.raw` hace `dump` antes de `next(err)`. También pasa en la foto pública y en el comprobante, que no piden sesión; viene de la 005b. **A resolver antes de producción (límite en el proxy o `requestTimeout`).**
+    - **R1-2** (media): los rechazos 401 y 403 (sin sesión, cambio de clave pendiente, academia suspendida) no cierran la conexión, y el servidor sigue recibiendo el cuerpo. **A resolver antes de producción (límite en el proxy o `requestTimeout`).**
+    - **R1-3** (baja): con `Expect: 100-continue`, Node envía «100 Continue» antes del 401 o el 403.
+    - **R1-4** (baja): en la web, con StrictMode en desarrollo y los permisos resueltos en orden inverso, la cámara puede quedar encendida en `CapturaCamara.tsx`.
+    - **Menores de la revisión** (T23):
+      - la línea que lee el tipo de la imagen (`tipoDeMedio(...) === 'image/png' ? 'image/png' : 'image/jpeg'`) está repetida en 4 controladores: `alumnos`, `seguimiento`, `solicitudes` y `pagos/comprobante`;
+      - `FotoAlumnoService` y `FotoPanelService` repiten la preparación de la subida;
+      - `comun/http/cuerpo-imagen.ts` importa un tipo de `modulos/autenticacion`;
+      - la cámara sigue encendida durante la subida;
+      - el JPEG de la cámara no pasa por la validación de 5 MB de la web;
+      - el título del diálogo («Agregar foto» o «Cambiar foto») cambia mientras el botón dice «Guardando…»;
+      - la tarjeta de solicitud siempre dice «Agregar foto», porque la lista no trae `fotoCargada`.
 - **009 · Asistencia y faltas.** QR y manual, validaciones, una por día, solo mientras dura la clase, puntual o
   tarde, descuento de clase, registro de faltas por tarea programada (HU-14, HU-15, RN-14 a RN-16, D-08, D-11,
   D-16).
@@ -318,3 +331,4 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   pasa de 60 a 90 minutos (`timeout-minutes: 90`), aprobado por Bryan el 25/11/2026. En el PR #13 la suite tardó 51 de
   los 60 minutos. En este entorno la suite tardó 40 minutos. Queda pendiente repartir la integración en trabajos paralelos
   (D-31), en su propio PR: ese es el arreglo de fondo, y los 90 minutos son provisionales.
+- **Pruebas de integración: una base por proceso.** Las pruebas de integración comparten una sola base de datos y chocan si dos procesos corren a la vez. En la revisión de la 008b, 10 pruebas de `verificacion-aprobar-007b.test.ts` fallaron en la suite completa por eso; repetido solo, ese archivo pasa 26 de 26. Conviene una base por proceso.

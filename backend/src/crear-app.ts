@@ -36,11 +36,12 @@ export async function configurarApp<T extends INestApplication>(app: T): Promise
   instalarHeadSinRutasDeCaja(express, PREFIJO_API, PREFIJOS_SIN_HEAD);
   // Después de los de los prefijos: sin sesión, 401 antes de mirar el cuerpo; el tipo de contenido se rechaza antes de
   // leerlo y el lector JSON es el único (criterios 74 y 75).
-  // La foto de la solicitud (`PUT /api/a/{nombreCorto}/solicitudes/foto`, 005b) y el comprobante de pago (`…/solicitudes/comprobante`, 007b)
-  // tienen su propio lector binario, que decide el tipo, la codificación y el tamaño antes de buscar la academia; va después de los límites
-  // por conexión (que cuentan antes de leer el cuerpo) y antes del lector JSON, que no las toca.
+  // La foto de la solicitud (`PUT /api/a/{nombreCorto}/solicitudes/foto`, 005b), el comprobante de pago (`…/solicitudes/comprobante`, 007b) y,
+  // desde la 008b, la foto del panel (`PUT /api/alumnos/{id}/foto` y `PUT /api/solicitudes/{id}/foto`, con sesión) tienen su propio lector
+  // binario, que decide el tipo, la codificación y el tamaño antes de buscar la academia (en las del panel, tras la sesión y solo si el rol
+  // tiene el permiso); va después de los límites por conexión (que cuentan antes de leer el cuerpo) y antes del lector JSON, que no las toca.
   instalarLectorDeImagen(express, PREFIJO_API);
-  // `DELETE /api/sesion` no lee el cuerpo: cierra la sesión con cualquier cuerpo (criterio 54). Tampoco la foto ni el comprobante, que ya lo leyó el suyo.
+  // `DELETE /api/sesion` no lee el cuerpo: cierra la sesión con cualquier cuerpo (criterio 54). Tampoco las fotos ni el comprobante, que ya lo leyó el suyo.
   instalarLectorDeCuerpos(
     express,
     PREFIJO_API,

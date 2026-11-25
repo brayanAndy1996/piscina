@@ -373,6 +373,19 @@ npm run dev
 - `npm ci` instala la dependencia `qrcode` (y sus tipos) en el backend y en la web. No hay variables nuevas, así que `npm run env:completar` no hace falta.
 - La semilla no cambia: repetir `npm run db:preparar` no duplica nada ni cambia los QR que ya existen (ver "Probar el carnet y el QR").
 
+## Después de traer la historia 008b
+
+Si ya tenías el proyecto con la historia 008a, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+npm run dev
+```
+
+- La 008b no tiene migraciones, paquetes ni variables nuevos: `npm ci`, `npm run db:preparar` y `npm run env:completar` no hacen falta, y la semilla no cambia.
+- `npm run dev` necesita PostgreSQL encendido. Si Docker Desktop estaba apagado, enciéndelo y ejecuta `docker compose up -d` antes (ver "Día a día").
+- La cámara solo funciona en `localhost` o con HTTPS. En tu PC, abre la web con `http://localhost:5173` para usarla. Desde otro equipo o desde el celular, con la IP de la PC (por ejemplo, `http://192.168.x.x:5173`), el navegador no deja usarla: en ese caso, usa **Elegir un archivo**.
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -900,6 +913,24 @@ El carnet (historia 008a) tiene dos vistas: **Mi carnet**, para el alumno, y **A
 - La semilla no crea ningún alumno con carnet: los clientes de ejemplo son `CLIENTE` hasta que pagan, y el carnet aparece cuando se confirma su solicitud (**AQ-SM0001** o **AQ-SM0003**). Repetir `npm run db:preparar` no cambia los QR que ya existen.
 
 Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
+
+## Probar la foto desde el panel
+
+La foto de un alumno se pone o se cambia en su carnet, y la de una solicitud, en su tarjeta (historia 008b). Para la foto del carnet necesitas un alumno con carnet: si todavía no lo tienes, sigue los pasos de "Probar el carnet y el QR" hasta que aparezca **Mendoza Salas, Valeria Andrea**. Con `npm run dev` encendido, entra como el administrador (`10000001`) o la secretaria (`10000002`) en **http://localhost:5173/a/delfines/ingresar**.
+
+**La foto desde el carnet**
+
+1. En el inicio del panel, pulsa **Alumnos y carnets**, busca `20000001` y pulsa la tarjeta. Como la semilla no trae foto, el botón del carnet dice **Agregar foto**.
+2. Pulsa **Agregar foto**. En el diálogo, la opción **Elegir un archivo** ya está marcada: pulsa **Elegir una foto** y elige un JPG o un PNG de tu PC. Verás una vista previa; si pesa más de 5 MB o no es JPG ni PNG, la página lo avisa antes de subirlo. Pulsa **Guardar foto**. Al terminar, el carnet muestra la foto y el botón dice **Cambiar foto**.
+3. Pulsa **Cambiar foto** y luego **Usar la cámara**. Acepta el permiso que pide el navegador y pulsa **Tomar foto**: la imagen se congela. **Volver a tomar** la descarta, y **Usar esta foto** la guarda. Para cerrar el diálogo sin cambiar nada, pulsa **Volver**; la cámara se apaga al cerrar.
+4. Si niegas el permiso, o la PC no tiene cámara, la web dice «No se pudo usar la cámara. Revisa el permiso del navegador o elige un archivo.» Usa **Elegir un archivo** en su lugar.
+
+**La foto desde una solicitud**
+
+5. Entra en **Solicitudes de inscripción** (`/panel/solicitudes`). En una tarjeta del filtro **Activas** (por ejemplo, la de **AQ-SM0003**, si su Yape sigue en revisión) o del filtro **Confirmadas**, pulsa **Agregar foto**. Se abre el mismo diálogo que en el paso 2.
+6. Las solicitudes **Vencidas** y **Canceladas** no tienen el botón. Si una cambia mientras tienes el diálogo abierto, la web lo dice y actualiza la lista.
+7. El botón dice **Agregar foto** aunque la solicitud ya tenga foto: por ahora, la lista no trae ese dato (deuda de la 008b en `specs/backlog.md`).
+8. Cada cambio queda en la auditoría de la academia, con quién lo hizo, cuándo y si fue desde el carnet o desde la solicitud. La foto se guarda en la carpeta de `ALMACEN_DIRECTORIO` (ver "Dónde se guardan las fotos" más arriba).
 
 ## Día a día
 

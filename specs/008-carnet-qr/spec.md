@@ -21,7 +21,7 @@
   crítico de la 005b). La maqueta del carnet y del PDF, la cámara y las pantallas no son críticas.
 - **Estado:** aprobada por Bryan el 25/11/2026, con la propuesta de cada pregunta de negocio (P1 a P5, que son DR-1 a
   DR-5 de esta spec, en «Resueltas») y con las técnicas aceptadas por el orquestador tal como se propusieron (DT-1 a
-  DT-13, en «Decisiones»). En curso: la 008a.
+  DT-13, en «Decisiones»; DT-14 a DT-17 son de la 008b, tomadas por el orquestador el 25/11/2026). 008a unida a `main` (PR #16); 008b lista para unir (25/11/2026).
 - **División (D-31, aceptada por el orquestador el 25/11/2026):** dos entregas desde esta carpeta, cada una con sus pruebas protegidas, su ataque y su
   PR (ver «División en 008a y 008b»):
   - **008a · Carnet y QR** (primero): criterios 1 a 21.
@@ -435,7 +435,7 @@ el token, el contenido del QR, la imagen ni la clave del archivo.
 
 ## Decisiones
 
-Técnicas: DT-1 a DT-13, aceptadas por el orquestador el 25/11/2026 tal como se propusieron. Las decisiones del
+Técnicas: DT-1 a DT-13, aceptadas por el orquestador el 25/11/2026 tal como se propusieron; DT-14 a DT-17 (008b) las tomó el orquestador el 25/11/2026. Las decisiones del
 responsable (DR-1 a DR-5) están en «Resueltas».
 
 - **DT-1. Token en claro en `alumnos.qr_token`.** Descartado: guardar solo su SHA-256 (como el token de seguimiento),
@@ -477,6 +477,14 @@ responsable (DR-1 a DR-5) están en «Resueltas».
   `FINALIZADA`. La 010 podrá cambiarla cuando existan las renovaciones.
 - **DT-13. Una foto que no se puede leer se muestra como «Foto pendiente»** con un `warn`, en lugar de un 500 que
   dejaría sin carnet al alumno.
+- **DT-14 [008b]. La cancelación de la 005b bloquea `alumnos` antes que la solicitud**, para cumplir el criterio 26 c.
+  Es coherente con el orden de bloqueos de la 007 (orquestador, 25/11/2026).
+- **DT-15 [008b]. `origen` de `ALUMNO_FOTO_ACTUALIZADA` va dentro de `datosDespues`**, porque la tabla `auditoria` no
+  tiene esa columna (orquestador, 25/11/2026).
+- **DT-16 [008b]. `reemplazarFotoDelAlumno` recibe `confirmar(tx)`**, que bloquea, lee «ahora» después de los bloqueos y
+  devuelve `{ anterior, ahora }`. Viene de la revisión (orquestador, 25/11/2026).
+- **DT-17 [008b]. La lectura previa de la ruta del panel usa `LEFT JOIN LATERAL` a la matrícula**, para que una solicitud
+  vieja sin matrícula responda 409 y no 404 (orquestador, 25/11/2026).
 
 ## Preguntas abiertas
 

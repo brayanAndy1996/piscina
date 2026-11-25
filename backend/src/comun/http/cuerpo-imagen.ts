@@ -1,7 +1,8 @@
 import { HttpException } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { FOTO_TAMANO_MAXIMO, FOTO_TIPOS } from '@aquagestion/contratos';
+import { FOTO_TAMANO_MAXIMO, FOTO_TIPOS, puede } from '@aquagestion/contratos';
 import express, { type NextFunction, type Request, type Response } from 'express';
+import type { SolicitudDeAcademia } from '../../modulos/autenticacion/tipos';
 import { ErrorNegocio } from '../errores';
 import { FiltroErrores } from '../filtros/filtro-errores';
 import { responderError } from '../filtros/responder-error';
@@ -11,6 +12,12 @@ const RUTA_DE_LA_FOTO = /^\/a\/[^/]+\/solicitudes\/foto\/?$/i;
 
 /** `PUT /api/a/{nombreCorto}/solicitudes/comprobante` (007b, criterio 36), con las mismas reglas de dirección que la foto. */
 const RUTA_DEL_COMPROBANTE = /^\/a\/[^/]+\/solicitudes\/comprobante\/?$/i;
+
+/** `PUT /api/alumnos/{id}/foto` (008b, criterio 22): la foto de un alumno desde el panel. El `{id}` es cualquier segmento: lo valida el servicio. */
+const RUTA_FOTO_ALUMNO_PANEL = /^\/alumnos\/[^/]+\/foto\/?$/i;
+
+/** `PUT /api/solicitudes/{id}/foto` (008b, criterio 23): la foto de la solicitud desde el panel. */
+const RUTA_FOTO_SOLICITUD_PANEL = /^\/solicitudes\/[^/]+\/foto\/?$/i;
 
 /** El mismo mensaje para todo `IMAGEN_NO_VALIDA`: nada distingue por qué se rechazó una imagen (criterio 34). */
 export const MENSAJE_IMAGEN_NO_VALIDA = 'La imagen no es válida. Sube una foto en JPEG o PNG de buen tamaño.';
@@ -30,9 +37,24 @@ export function esSubidaDeComprobante(metodo: string, rutaBajoElPrefijo: string)
   return metodo === 'PUT' && RUTA_DEL_COMPROBANTE.test(rutaBajoElPrefijo);
 }
 
-/** ¿Es una subida de imagen de una persona sin sesión (la foto o el comprobante)? Las dos usan el lector binario y no el lector JSON. */
+/** ¿Es la subida de la foto de un alumno o de una solicitud desde el panel (008b)? Son rutas con sesión: `rutaBajoElPrefijo` es la ruta sin `/api`. */
+export function esSubidaDeFotoDelPanel(metodo: string, rutaBajoElPrefijo: string): boolean {
+  return (
+    metodo === 'PUT' &&
+    (RUTA_FOTO_ALUMNO_PANEL.test(rutaBajoElPrefijo) || RUTA_FOTO_SOLICITUD_PANEL.test(rutaBajoElPrefijo))
+  );
+}
+
+/**
+ * ¿Es una subida de imagen (la foto o el comprobante de la solicitud, públicos, o la foto del panel)? Todas usan el lector binario y no el lector
+ * JSON.
+ */
 export function esSubidaDeImagen(metodo: string, rutaBajoElPrefijo: string): boolean {
-  return esSubidaDeFoto(metodo, rutaBajoElPrefijo) || esSubidaDeComprobante(metodo, rutaBajoElPrefijo);
+  return (
+    esSubidaDeFoto(metodo, rutaBajoElPrefijo) ||
+    esSubidaDeComprobante(metodo, rutaBajoElPrefijo) ||
+    esSubidaDeFotoDelPanel(metodo, rutaBajoElPrefijo)
+  );
 }
 
 /** El tipo de medio de `Content-Type`: lo que va antes del `;`, recortado y en minúsculas (los parámetros se ignoran). */
@@ -54,8 +76,10 @@ function largoDeclarado(solicitud: Request): number | null {
 
 /**
  * Lector binario de la foto de la solicitud y del comprobante de pago (spec 005b, criterio 34 b y c; PB3, PB4; 007b, criterio 37), fuera del
- * lector JSON. Solo actúa en `PUT /api/a/{nombreCorto}/solicitudes/foto` y `PUT /api/a/{nombreCorto}/solicitudes/comprobante` (los mismos tipos y
- * el mismo tamaño máximo); se instala después de los límites por conexión (criterio 33, que cuentan antes de leer el
+ * lector JSON. Actúa en `PUT /api/a/{nombreCorto}/solicitudes/foto` y `PUT /api/a/{nombreCorto}/solicitudes/comprobante` (los mismos tipos y
+ * el mismo tamaño máximo) y, desde la 008b, en `PUT /api/alumnos/{id}/foto` y `PUT /api/solicitudes/{id}/foto`, que tienen sesión: ahí el
+ * lector comprueba antes el permiso `REGISTRAR_INSCRIPCION_Y_COBRO` con la sesión que dejó el middleware y, sin él, no lee el cuerpo
+ * (criterio 24 d). Se instala después de los límites por conexión (criterio 33, que cuentan antes de leer el
  * cuerpo) y antes del lector JSON, que deja esa ruta sin tocar (`noLeerCuerpoEn` de `crear-app.ts`). En este orden, la primera
  * comprobación que falla decide la respuesta, siempre antes de buscar la academia:
  *
@@ -83,6 +107,18 @@ export function instalarLectorDeImagen(app: NestExpressApplication, prefijoApi: 
     if (!esSubidaDeImagen(solicitud.method, solicitud.path)) {
       siguiente();
       return;
+    }
+    // La foto del panel tiene sesión: el middleware de las rutas de academia ya corrió (401, academia suspendida y cambio de contraseña
+    // pendiente respondieron sin leer el cuerpo) y dejó la sesión. Sin el permiso, el cuerpo tampoco se lee: pasa para que el guard responda
+    // el 403 `SIN_PERMISO` (con la conexión cerrada, para no seguir recibiendo un cuerpo que no se va a usar). Sin sesión (el middleware no se
+    // instaló), igual: el guard responde 401 (008b, criterio 24 a y d).
+    if (esSubidaDeFotoDelPanel(solicitud.method, solicitud.path)) {
+      const sesion = (solicitud as SolicitudDeAcademia).sesionAcademia;
+      if (!sesion || !puede(sesion.usuario.rol, 'REGISTRAR_INSCRIPCION_Y_COBRO')) {
+        respuesta.setHeader('Connection', 'close');
+        siguiente();
+        return;
+      }
     }
     if (
       !tipos.includes(tipoDeMedio(solicitud.headers['content-type'])) ||

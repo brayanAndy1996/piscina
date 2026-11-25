@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Req, Res } from '@nestjs/common';
 import {
   buscarAlumnosSchema,
   type Carnet,
@@ -7,6 +7,7 @@ import {
   type ResultadoBusquedaAlumnos,
 } from '@aquagestion/contratos';
 import type { Request, Response } from 'express';
+import { tipoDeMedio } from '../../comun/http/cuerpo-imagen';
 import { ValidarCon } from '../../comun/validacion';
 import { Permiso } from '../autenticacion/permiso.decorator';
 import type { SesionVerificada } from '../autenticacion/tipos';
@@ -14,6 +15,7 @@ import { SesionActual } from '../autenticacion/usuario-actual.decorator';
 import { exigirAlcanceDelCarnet } from './alcance';
 import { BusquedaService } from './busqueda.service';
 import { CarnetService } from './carnet.service';
+import { FotoAlumnoService } from './foto-alumno.service';
 import { responderConPdf } from './pdf/responder-pdf';
 
 /**
@@ -30,6 +32,7 @@ export class AlumnosController {
   constructor(
     private readonly carnets: CarnetService,
     private readonly busqueda: BusquedaService,
+    private readonly foto: FotoAlumnoService,
   ) {}
 
   /**
@@ -73,5 +76,25 @@ export class AlumnosController {
     @Req() solicitud: Request,
   ): Promise<Carnet> {
     return this.carnets.regenerar(sesion, id, datos, solicitud.ip ?? null);
+  }
+
+  /**
+   * La foto del alumno desde el panel (008b, criterios 22 y 24 a 27): 204 sin cuerpo. El tipo, la codificación y el tamaño ya los decidió el lector
+   * binario (`cuerpo-imagen.ts`), que solo lee el cuerpo si la sesión tiene el permiso; el `{id}`, el alumno y la imagen los comprueba
+   * `FotoAlumnoService`, en ese orden.
+   */
+  @Put(':id/foto')
+  @HttpCode(204)
+  @Permiso('REGISTRAR_INSCRIPCION_Y_COBRO')
+  async subirFoto(
+    @SesionActual() sesion: SesionVerificada,
+    @Param('id') id: string,
+    @Req() solicitud: Request,
+  ): Promise<void> {
+    const cuerpo: unknown = solicitud.body;
+    const imagen = Buffer.isBuffer(cuerpo) ? cuerpo : Buffer.alloc(0);
+    // El lector binario ya comprobó que el tipo es uno de `FOTO_TIPOS`.
+    const tipo = tipoDeMedio(solicitud.headers['content-type']) === 'image/png' ? 'image/png' : 'image/jpeg';
+    await this.foto.subir(sesion, id, imagen, tipo, solicitud.ip ?? null);
   }
 }

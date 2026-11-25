@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditoriaModule } from '../auditoria';
+import { FotoPanelService } from './foto-panel.service';
 import { FotoService } from './foto.service';
 import { InscripcionPublicaController } from './inscripcion-publica.controller';
 import { InscripcionesService } from './inscripciones.service';
@@ -15,7 +16,7 @@ import { SolicitudesService } from './solicitudes.service';
 @Module({
   imports: [AuditoriaModule],
   controllers: [InscripcionPublicaController, SeguimientoController, SolicitudesController],
-  providers: [InscripcionesService, SeguimientoService, FotoService, SolicitudesService],
+  providers: [InscripcionesService, SeguimientoService, FotoService, FotoPanelService, SolicitudesService],
   exports: [InscripcionesService, SeguimientoService, FotoService, SolicitudesService],
 })
 export class InscripcionesModule {}

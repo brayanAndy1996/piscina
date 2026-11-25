@@ -10,11 +10,12 @@ import { VistaCarnet } from '../carnet/VistaCarnet';
 import { useUsuario } from '../sesion/contexto';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
+import { DialogoFoto } from '../foto/DialogoFoto';
 import { DialogoRegenerarQr } from './DialogoRegenerarQr';
 
 /**
  * `/panel/alumnos/{id}`: el carnet de un alumno para el personal (HU-13, criterio 19 de 008), con «Descargar PDF» y, para quien puede cobrar
- * (`REGISTRAR_INSCRIPCION_Y_COBRO`), «Regenerar QR». `ADMIN` y `SECRETARIA`.
+ * (`REGISTRAR_INSCRIPCION_Y_COBRO`), «Regenerar QR» y «Cambiar foto» o «Agregar foto» (archivo o cámara, criterio 28 de 008b). `ADMIN` y `SECRETARIA`.
  */
 export function PaginaCarnetAlumno() {
   return (
@@ -30,6 +31,7 @@ function ContenidoCarnetAlumno() {
   const consulta = useCarnetDelAlumno(id);
   useAlPerderSesion(consulta.error);
   const [dialogo, setDialogo] = useState(false);
+  const [dialogoFoto, setDialogoFoto] = useState(false);
   const [hecho, setHecho] = useState<string | null>(null);
   const carnet = consulta.data;
   const puedeRegenerar = puede(usuario.rol, 'REGISTRAR_INSCRIPCION_Y_COBRO');
@@ -58,20 +60,44 @@ function ContenidoCarnetAlumno() {
               <>
                 <BotonDescargarPdf alumnoId={carnet.alumno.id} />
                 {puedeRegenerar ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHecho(null);
-                      setDialogo(true);
-                    }}
-                    className={ESTILO_BOTON.secundario}
-                  >
-                    Regenerar QR
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHecho(null);
+                        setDialogoFoto(true);
+                      }}
+                      className={ESTILO_BOTON.secundario}
+                    >
+                      {carnet.foto ? 'Cambiar foto' : 'Agregar foto'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHecho(null);
+                        setDialogo(true);
+                      }}
+                      className={ESTILO_BOTON.secundario}
+                    >
+                      Regenerar QR
+                    </button>
+                  </>
                 ) : null}
               </>
             }
           />
+          {dialogoFoto ? (
+            <DialogoFoto
+              titulo={carnet.foto ? 'Cambiar foto' : 'Agregar foto'}
+              destino={{ tipo: 'alumno', id: carnet.alumno.id }}
+              nombre={`${carnet.alumno.nombres} ${carnet.alumno.apellidos}`}
+              alCerrar={() => setDialogoFoto(false)}
+              alGuardar={() => {
+                setDialogoFoto(false);
+                setHecho('Se guardó la foto del alumno.');
+              }}
+            />
+          ) : null}
           {dialogo ? (
             <DialogoRegenerarQr
               alumnoId={carnet.alumno.id}

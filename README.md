@@ -286,6 +286,15 @@ La historia 007 (la 007a y la 007b) está en [`specs/007-pagos/`](specs/007-pago
 - **Datos de ejemplo:** la semilla no cambia. El carnet aparece cuando se confirma una solicitud de ejemplo: `AQ-SM0001` (cobro en efectivo) o `AQ-SM0003` (aprobación de su Yape).
 - **Cómo probarlo en tu PC:** con `npm run dev` encendido, el paso a paso está en la guía, en «Probar el carnet y el QR».
 
+**008b · Foto desde el panel y cámara** está construida y pasó las pruebas protegidas, el E2E, el lint, los tipos y el build. La suite completa la corre la integración continua del PR, que falta para unirse a `main`. Trae:
+
+- **Foto desde el carnet** (`/panel/alumnos/{id}`, para el administrador y la secretaria): el botón dice **Agregar foto** si el alumno no tiene foto, y **Cambiar foto** si ya tiene una. El diálogo ofrece **Elegir un archivo** (un JPG o un PNG, con su vista previa; si pesa más de 5 MB, la página lo avisa antes de subirlo) o **Usar la cámara**. Con la cámara, **Tomar foto** la congela, **Volver a tomar** la descarta y **Usar esta foto** la guarda.
+- **Foto desde una solicitud** (`/panel/solicitudes`): en las tarjetas activas y confirmadas, **Agregar foto** abre el mismo diálogo. Las vencidas y las canceladas no tienen el botón. Por ahora, el botón dice «Agregar foto» aunque la solicitud ya tenga foto (deuda de la 008b).
+- **La cámara** necesita el permiso del navegador y un contexto seguro: `localhost` o HTTPS. Al cerrar el diálogo, al cambiar de opción o al salir de la página, la cámara se apaga. Sin permiso o sin cámara, la web dice «No se pudo usar la cámara. Revisa el permiso del navegador o elige un archivo.»
+- **Lo que se guarda:** la foto se recodifica como JPEG sin metadatos (EXIF, GPS, XMP y los demás) y se guarda en la carpeta de la academia dentro de `ALMACEN_DIRECTORIO`; la foto anterior se borra después de confirmar. Cada cambio queda en la auditoría de la academia, con quién lo hizo, cuándo y si fue desde el carnet o desde la solicitud.
+- **Lo que todavía no trae:** la lectura del QR en la entrada (009) y la asistencia del alumno en su panel (011). Las deudas de la 008b (dos medias, que se resuelven antes de producción; dos bajas, y los menores de la revisión) están en `specs/backlog.md`.
+- **Cómo probarlo en tu PC:** con `npm run dev` encendido, el paso a paso está en la guía, en «Probar la foto desde el panel».
+
 La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-carnet-qr/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
 
@@ -339,6 +348,8 @@ Si ya tenías la historia 006b y traes la 007a, ejecuta `npm run db:preparar`: l
 Si ya tenías la historia 007a y traes la 007b, ejecuta `npm run db:preparar`: la 007b no tiene migraciones, paquetes ni variables nuevos, y la semilla agrega a `delfines` un Yape pendiente de verificación de ejemplo, sus datos de pago y su comprobante de ejemplo, que se guarda en `ALMACEN_DIRECTORIO`. `npm ci` no hace falta. Los pasos están en la guía, en "Después de traer la historia 007b".
 
 Si ya tenías la historia 007b y traes la 008a, ejecuta `npm ci` y `npm run db:preparar`: la 008a agrega a `alumnos` las columnas del token del QR, con su migración (que da un QR a los alumnos que ya existían), y la dependencia `qrcode`, que `npm ci` instala. La semilla no cambia. Los pasos están en la guía, en "Después de traer la historia 008a".
+
+Si ya tenías la historia 008a y traes la 008b, `git pull` y `npm run dev` bastan: la 008b no tiene migraciones, paquetes ni variables nuevos, y la semilla no cambia. Los pasos están en la guía, en "Después de traer la historia 008b".
 
 ## Comandos principales
 
@@ -419,7 +430,7 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 - [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, cómo
-  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día, el historial de caja con su PDF, y el cobro en efectivo con su ticket y su ajuste de monto, el pago por Yape o transferencia, y el carnet con su QR.
+  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día, el historial de caja con su PDF, y el cobro en efectivo con su ticket y su ajuste de monto, el pago por Yape o transferencia, el carnet con su QR, y la foto desde el panel y con la cámara.
 
 ## Forma de trabajo
 
