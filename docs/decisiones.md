@@ -38,6 +38,7 @@ Estados: ✅ aprobada · ⏳ pendiente de confirmar. No quedan dudas abiertas.
 | D-28 | El DNI es único por academia | ✅ | 10/11/2026 |
 | D-29 | Rol Superadmin; sin cobro de suscripción en el MVP | ✅ | 10/11/2026 |
 | D-30 | Lista de historias y estructura de carpetas | ✅ | 10/11/2026 |
+| D-31 | Método más económico en tiempo y tokens | ✅ | 25/11/2026 |
 
 ---
 
@@ -351,3 +352,55 @@ especificación de `001`). El resto de la decisión no cambia.
 
 **Decisión:** el orden de desarrollo está en [`specs/backlog.md`](../specs/backlog.md) y la estructura de carpetas,
 en [`docs/arquitectura.md`](arquitectura.md).
+
+## D-31. Método más económico en tiempo y tokens
+
+**Contexto:** hasta la 007a, la mayor parte del costo no estaba en programar sino en especificaciones muy largas
+(la de la 001 llegó a 6 722 líneas y cada subagente la vuelve a leer), en rondas adversariales que seguían cuando ya
+solo quedaban detalles menores (6 rondas en la 006b, 4 en la 007a) y en correr la suite completa, de unos 40 minutos,
+varias veces por historia.
+
+**Decisión:** desde la 007b, y para todas las historias siguientes:
+
+1. **Tope de rondas adversariales y filtro por gravedad.**
+   - Como máximo **3 rondas de ataque por entrega** (por ejemplo, la 007b).
+   - En la misma entrega se corrigen solo las fallas de gravedad **crítica** o **alta**: las que cuestan dinero,
+     mezclan datos entre academias o entre alumnos, dejan hacer algo a quien no tiene permiso, rompen el aforo o la
+     caja, o duplican una escritura que debe ser idempotente.
+   - Las fallas de gravedad **media** o **baja** no abren otra ronda: quedan anotadas como deuda en las notas de la
+     historia en `specs/backlog.md`, con su número y su origen, igual que ya se hizo con el DT-14 de la 006.
+   - Si la tercera ronda todavía encuentra una falla crítica o alta, se corrige y el orquestador pregunta al
+     responsable si hace falta una cuarta ronda.
+   - El adversarial ataca lo nuevo de la entrega y cómo se conecta con lo existente; no vuelve a atacar historias ya
+     unidas a `main`.
+2. **Especificaciones más cortas.**
+   - `spec.md` tiene solo los criterios vigentes, sin la historia de cada ronda. Se busca que no pase de unas
+     **800 líneas** por entrega.
+   - El registro de cada ronda adversarial (qué se atacó, qué se encontró, qué se decidió) va en un archivo aparte,
+     `specs/NNN-nombre/rondas.md`, que leen solo el especificador y el adversarial.
+   - El orquestador pasa a cada subagente los criterios y las secciones de su tarea, no la especificación entera,
+     salvo al revisor y al adversarial.
+   - Las especificaciones ya escritas no se reescriben: la regla vale para lo que se agregue desde ahora.
+3. **Pruebas por partes mientras se trabaja.**
+   - Durante la implementación y entre rondas se ejecutan solo las pruebas de lo tocado (por proyecto de Vitest o por
+     archivo), más el lint y los tipos de lo cambiado.
+   - La suite completa se ejecuta **una vez por entrega**, en la revisión (paso 7), además de la que corre la
+     integración continua.
+   - Pendiente aparte: repartir las pruebas de integración de la integración continua en varios trabajos en paralelo
+     para bajar su duración. Es un cambio de código y entra en su propio PR.
+4. **Menos pasos sin valor propio.**
+   - En la revisión, el revisor y el tester se lanzan a la vez, no uno después del otro.
+   - Los commits intermedios (pruebas en rojo, implementación, correcciones de cada ronda) los hace el subagente que
+     hizo el trabajo. El documentador entra solo al cierre, para marcar las tareas, actualizar la documentación y hacer
+     el último commit.
+5. **Trabajo en paralelo, con cuidado.**
+   - Mientras se implementa una historia, otra conversación puede especificar una historia que no dependa de ella.
+   - Solo una conversación a la vez edita `specs/backlog.md`, `docs/arquitectura.md`, `docs/decisiones.md` y
+     `CLAUDE.md`: la del orquestador de la historia en curso, salvo que el responsable indique otra cosa.
+6. **Una sola tanda de preguntas por historia.**
+   - Las preguntas de negocio van al responsable en una sola tanda, cada una con su propuesta.
+   - Las decisiones técnicas menores las toma el orquestador y quedan anotadas como DT en la especificación.
+
+**Lo que no cambia:** las pruebas protegidas escritas antes de implementar, el ataque adversarial sobre la ruta
+crítica, las pruebas de integración contra un PostgreSQL real y la aprobación del responsable antes de escribir
+código y antes de unir a `main`.

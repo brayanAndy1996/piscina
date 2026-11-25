@@ -51,25 +51,41 @@ Los subagentes no lanzan otros subagentes: toda la coordinación pasa por el orq
 
 1. **Especificación.** `especificador` escribe `specs/NNN-nombre/spec.md`, `plan.md` y `tasks.md` a partir de
    `specs/_plantillas/`, enlazando los requerimientos (HU, RN) y las decisiones (D-XX) que cubre.
-2. **Aprobación.** El orquestador muestra un resumen con las preguntas abiertas y su propuesta para cada una, y
-   espera la aprobación antes de que se escriba código.
+2. **Aprobación.** El orquestador muestra un resumen con las preguntas abiertas y su propuesta para cada una, en
+   una sola tanda, y espera la aprobación antes de que se escriba código. Las decisiones técnicas menores las toma
+   el orquestador y quedan anotadas como DT.
 3. **Clasificación.** Se marca en `spec.md` qué criterios son de **ruta crítica** (lista abajo).
 4. **Solo ruta crítica, pruebas primero.** `test-writer` escribe las pruebas protegidas desde la especificación y
    los contratos públicos, sin mirar la implementación. `tester` confirma que fallan por la razón esperada.
    Commit: "Pruebas protegidas (NNN): … (en rojo)".
 5. **Implementación.** `backend` y/o `frontend` implementan hasta que las pruebas pasen, sin modificar, borrar ni
-   debilitar las pruebas protegidas.
+   debilitar las pruebas protegidas. Mientras trabajan ejecutan solo las pruebas de lo tocado y hacen el commit de
+   su parte.
 6. **Solo ruta crítica, ataque.** `adversarial` recibe la especificación y el código, no el razonamiento de quien
-   implementó. Por cada falla: el especificador agrega el criterio a `spec.md`, `test-writer` escribe la prueba
-   protegida en rojo, se corrige y se vuelve a atacar. Las rondas siguen hasta que no haya fallas.
-7. **Revisión.** `revisor` compara con la especificación y estas convenciones; `tester` ejecuta toda la suite, el
-   lint y la verificación de tipos. Antes, el orquestador revisa con `git diff` que ningún commit de
-   implementación haya tocado las pruebas protegidas.
-8. **Cierre.** `documentador` hace el commit, marca las tareas y actualiza la documentación. El orquestador hace
+   implementó, y ataca lo nuevo de la entrega. Por cada falla **crítica o alta**: el especificador agrega el
+   criterio a `spec.md` y anota la ronda en `rondas.md`, `test-writer` escribe la prueba protegida en rojo, se
+   corrige y se vuelve a atacar. Las fallas **media o baja** no abren otra ronda: quedan como deuda en las notas
+   de la historia en `specs/backlog.md`. **Como máximo 3 rondas por entrega**; si la tercera aún encuentra una
+   falla crítica o alta, se corrige y se pregunta al responsable si hace falta una cuarta (D-31).
+7. **Revisión.** `revisor` y `tester` se lanzan a la vez. `revisor` compara con la especificación y estas
+   convenciones; `tester` ejecuta la suite completa (la única vez en la entrega), el lint y la verificación de
+   tipos. Antes, el orquestador revisa con `git diff` que ningún commit de implementación haya tocado las
+   pruebas protegidas.
+8. **Cierre.** `documentador` hace el último commit, marca las tareas y actualiza la documentación. El orquestador hace
    push, abre el PR hacia `main` y pide al responsable unirlo.
 
 Las historias no críticas se saltan los pasos 4 y 6 y llevan solo las pruebas que el desarrollador considere
 necesarias.
+
+**Economía de tiempo y tokens (D-31):**
+
+- `spec.md` tiene solo los criterios vigentes y no pasa de unas 800 líneas por entrega; si crece más, la historia
+  se parte. El detalle de cada ronda adversarial va en `specs/NNN-nombre/rondas.md`.
+- A cada subagente se le pasan los criterios y las secciones de su tarea, no la especificación entera; la leen
+  completa el especificador, el adversarial y el revisor.
+- Solo una conversación a la vez edita `specs/backlog.md`, `docs/arquitectura.md`, `docs/decisiones.md` y
+  `CLAUDE.md`. Otra conversación puede especificar en paralelo una historia que no dependa de la que está en
+  curso.
 
 ## Ruta crítica
 

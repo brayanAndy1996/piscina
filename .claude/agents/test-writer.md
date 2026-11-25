@@ -16,6 +16,7 @@ Reglas:
 - Cubre los criterios de ruta crítica y sus casos límite, nada más.
 - Usa el tipo de prueba que indica `CLAUDE.md` para cada capa. Lo crítico se prueba contra dependencias reales, como la base de datos, no contra simulaciones.
 - Cada archivo que escribas lleva al inicio el comentario `// spec: NNN-nombre (pruebas protegidas)`, o el equivalente del lenguaje, para que nadie más lo modifique.
-- Ejecuta las pruebas y confirma que fallan por la razón esperada (falta la funcionalidad), no por errores de sintaxis, de imports o de configuración.
+- Ejecuta solo tus pruebas nuevas y confirma que fallan por la razón esperada (falta la funcionalidad), no por errores de sintaxis, de imports o de configuración.
+- Haz el commit "Pruebas protegidas (NNN): … (en rojo)" con las líneas de atribución que te pase el orquestador. No hagas push.
 
 Devuelve: los archivos de prueba, qué criterio cubre cada uno y la salida resumida de la ejecución.

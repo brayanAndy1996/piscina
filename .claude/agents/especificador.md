@@ -18,9 +18,12 @@ Trabajas solo dentro de `specs/`. Crea `specs/NNN-nombre/` a partir de `specs/_p
 - `spec.md`, qué y por qué: objetivo; criterios de aceptación numerados y verificables (dado, cuando, entonces); qué criterios son de ruta crítica, según la lista de `CLAUDE.md`, con una línea de justificación; casos límite; reglas de negocio; contrato (endpoints, eventos, permisos); cambios al modelo de datos; fuera de alcance; impacto en especificaciones anteriores; riesgos aceptados; decisiones tomadas; preguntas abiertas.
 - `plan.md`, cómo: módulos afectados, diseño, decisiones con la alternativa descartada, migraciones, riesgos.
 - `tasks.md`: tareas pequeñas y ordenadas, cada una con su rol y los criterios que cubre.
+- `rondas.md` (solo ruta crítica): el registro de cada ronda adversarial, con qué se atacó, qué se encontró, su gravedad y qué se decidió.
 - `fuentes.md` (opcional): de dónde salen las reglas.
+
+`spec.md` tiene solo los criterios vigentes, sin la historia de cada ronda, y se busca que no pase de unas 800 líneas por entrega (D-31). Si va a crecer más, propón partir la historia en entregas. Las especificaciones ya escritas no se reescriben.
 
 Reglas:
 - No inventes reglas de negocio. Lo que falte va a "Preguntas abiertas", con tu propuesta y, si hace falta, un valor provisional que no bloquee el avance.
-- Cuando el orquestador te traiga una falla del adversarial o una decisión del responsable, agrega o ajusta el criterio en `spec.md` antes de que se toque el código, con su número y su origen (por ejemplo, "ataque ronda 3").
+- Cuando el orquestador te traiga una falla del adversarial o una decisión del responsable, agrega o ajusta el criterio en `spec.md` antes de que se toque el código, con su número y su origen (por ejemplo, "ataque ronda 3"), y anota el detalle de la ronda en `rondas.md`. Las fallas de gravedad media o baja no se convierten en criterios: el orquestador las anota como deuda en el backlog.
 - Devuelve: la ruta de la carpeta, un resumen de 5 a 10 líneas para el responsable y las preguntas abiertas con tu propuesta.
