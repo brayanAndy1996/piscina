@@ -18,7 +18,7 @@ Estado (24/11/2026): pruebas protegidas en rojo (fe9542b), servidor y contratos 
 adversarial 1 cerrada (pruebas 544717b, corrección b3230fa), ronda 2 corregida (pruebas e80d5ae) y ronda 3 con dos
 fallas del criterio 59, precisado como 59 d (25/11/2026; T54 a T60), cerrada (pruebas 820cd22, corrección 65aa1f0).
 La ronda 4 (25/11/2026) quedó sin fallas dentro del modelo de amenaza (criterio 59 e): el ataque adversarial de la 007a
-está cerrado. Quedan abiertas la verificación completa (T28) y el commit y el PR de la 007a; la revisión (T27) y la documentación (T29) están hechas (25/11/2026).
+está cerrado. La verificación completa (T28) está hecha; queda el PR de la 007a; la revisión (T27) y la documentación (T29) están hechas (25/11/2026).
 La spec y el plan se
 alinearon con las desviaciones que aceptó el revisor («Alineación con la revisión de la 007a» en la spec).
 
@@ -88,7 +88,7 @@ alinearon con las desviaciones que aceptó el revisor («Alineación con la revi
       _(ronda 1, 24/11/2026: dos fallas, criterios 58 y 59, y la pregunta técnica T20; ver más abajo)_
 - [x] T27 · revisor · Comparar con la spec y las convenciones; `git diff` de las pruebas protegidas
       _(hecha, 25/11/2026: revisor y correcciones en 24d139f; las cinco desviaciones que aceptó quedaron alineadas en la spec y el plan, en e4f9dea)_
-- [ ] T28 · tester · Suite completa, lint y tipos
+- [x] T28 · tester · Suite completa, lint y tipos _(8b63c03: 15832 pasan, 0 fallan, 95 omitidas por plataforma o privilegios; E2E 6 de 6)_
 - [x] T29 · documentador · `docs/arquitectura.md`, `README.md`, guía de uso, `specs/backlog.md`; commit (criterio 57)
       _(hecha, 25/11/2026: `docs/arquitectura.md`, `README.md` y la guía de uso, que está en `docs/guia-local-windows.md`; `specs/backlog.md` no cambia, lo marca el orquestador al unir. El commit lo hace el orquestador)_
 
