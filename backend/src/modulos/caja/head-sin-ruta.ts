@@ -4,11 +4,21 @@ import { FiltroErrores } from '../../comun/filtros/filtro-errores';
 import { responderError } from '../../comun/filtros/responder-error';
 import { noEncontrado } from './errores';
 
-/** Toda dirección de la caja bajo `/api`: `/cajas` y lo que cuelga de ella, con o sin barra final, sin distinguir mayúsculas (como el enrutador). */
-const RUTA_DE_CAJA = /^\/cajas(?:\/.*)?$/i;
+/** Las direcciones bajo `/api` sin `HEAD`: la caja (006) y los pagos (007b, DT-9 de 006). */
+export const PREFIJOS_SIN_HEAD: readonly string[] = ['/cajas', '/pagos'];
 
 /**
- * `HEAD` no existe en las rutas de la caja (spec 006b, criterio 50; amplía el criterio 23 y PQ15; DT-9). Express atiende un `HEAD` con el
+ * Cada prefijo y lo que cuelga de él, con o sin barra final, sin distinguir mayúsculas (como el enrutador). Los caracteres especiales de las
+ * expresiones regulares del prefijo se escapan.
+ */
+function patronDeLosPrefijos(prefijos: readonly string[]): RegExp {
+  const alternativas = prefijos.map((prefijo) => prefijo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return new RegExp(`^(?:${alternativas})(?:/.*)?$`, 'i');
+}
+
+/**
+ * `HEAD` no existe en las rutas de la caja ni en las de los pagos (spec 006b, criterio 50; amplía el criterio 23 y PQ15; DT-9; 007b, criterio
+ * 46: `/api/pagos`, con el comprobante y la bandeja). Express atiende un `HEAD` con el
  * manejador del `GET` de la misma dirección: sin esto, `HEAD /api/cajas/{id}/cierres/{numero}/pdf` generaría el PDF y las otras tres lecturas
  * de la caja (`/api/cajas`, `/api/cajas/actual` y `/api/cajas/{id}`) se ejecutarían sin sus cabeceras de descarga ni su cuerpo.
  *
@@ -19,11 +29,16 @@ const RUTA_DE_CAJA = /^\/cajas(?:\/.*)?$/i;
  * el mismo JSON y las mismas cabeceras (`no-store`) del 404 de siempre, sin cuerpo (un `HEAD` nunca lo tiene) y sin tocar el servicio, la base,
  * el generador del PDF ni la auditoría.
  */
-export function instalarHeadSinRutasDeCaja(app: NestExpressApplication, prefijoApi: string): void {
+export function instalarHeadSinRutasDeCaja(
+  app: NestExpressApplication,
+  prefijoApi: string,
+  prefijos: readonly string[] = PREFIJOS_SIN_HEAD,
+): void {
   const filtro = app.get(FiltroErrores, { strict: false });
+  const rutaSinHead = patronDeLosPrefijos(prefijos);
 
   app.use(`/${prefijoApi}`, (solicitud: Request, respuesta: Response, siguiente: NextFunction) => {
-    if (solicitud.method === 'HEAD' && RUTA_DE_CAJA.test(solicitud.path)) {
+    if (solicitud.method === 'HEAD' && rutaSinHead.test(solicitud.path)) {
       responderError(filtro, noEncontrado(), solicitud, respuesta, siguiente);
       return;
     }

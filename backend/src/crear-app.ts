@@ -5,13 +5,13 @@ import type { Request, Response } from 'express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule, type OpcionesApp } from './app.module';
-import { esSubidaDeFoto, instalarLectorDeImagen } from './comun/http/cuerpo-imagen';
+import { esSubidaDeImagen, instalarLectorDeImagen } from './comun/http/cuerpo-imagen';
 import { instalarLectorDeCuerpos } from './comun/http/cuerpos';
 import { ERROR_NO_ENCONTRADO } from './comun/filtros/filtro-errores';
 import type { Entorno } from './infraestructura/entorno';
 import { instalarProteccionDePrefijos } from './modulos/academias';
 import { esCierreDeSesion, instalarProteccionDeAcademia } from './modulos/autenticacion';
-import { instalarHeadSinRutasDeCaja } from './modulos/caja';
+import { instalarHeadSinRutasDeCaja, PREFIJOS_SIN_HEAD } from './modulos/caja';
 
 /** Prefijo de toda la API: la web ocupa `/` y la API `/api` en el mismo dominio (D-25). */
 export const PREFIJO_API = 'api';
@@ -31,19 +31,20 @@ export async function configurarApp<T extends INestApplication>(app: T): Promise
   instalarProteccionDePrefijos(express, PREFIJO_API);
   // Las rutas de academia (todo `/api/*` salvo salud, plataforma y `/a`): sesión, academia activa y cambio obligatorio (spec 002).
   instalarProteccionDeAcademia(express, PREFIJO_API);
-  // `HEAD` no existe en las rutas de la caja (spec 006b, criterio 50): 404 como `PATCH`, para cualquier rol, antes de las rutas de Nest.
-  instalarHeadSinRutasDeCaja(express, PREFIJO_API);
+  // `HEAD` no existe en las rutas de la caja (spec 006b, criterio 50) ni en las de los pagos (007b, criterio 46): 404 como `PATCH`, para
+  // cualquier rol, antes de las rutas de Nest.
+  instalarHeadSinRutasDeCaja(express, PREFIJO_API, PREFIJOS_SIN_HEAD);
   // Después de los de los prefijos: sin sesión, 401 antes de mirar el cuerpo; el tipo de contenido se rechaza antes de
   // leerlo y el lector JSON es el único (criterios 74 y 75).
-  // La foto de la solicitud (`PUT /api/a/{nombreCorto}/solicitudes/foto`, 005b) tiene su propio lector binario, que decide el tipo, la
-  // codificación y el tamaño antes de buscar la academia; va después de los límites por conexión (que cuentan antes de leer el cuerpo)
-  // y antes del lector JSON, que no la toca.
+  // La foto de la solicitud (`PUT /api/a/{nombreCorto}/solicitudes/foto`, 005b) y el comprobante de pago (`…/solicitudes/comprobante`, 007b)
+  // tienen su propio lector binario, que decide el tipo, la codificación y el tamaño antes de buscar la academia; va después de los límites
+  // por conexión (que cuentan antes de leer el cuerpo) y antes del lector JSON, que no las toca.
   instalarLectorDeImagen(express, PREFIJO_API);
-  // `DELETE /api/sesion` no lee el cuerpo: cierra la sesión con cualquier cuerpo (criterio 54). Tampoco la foto, que ya lo leyó el suyo.
+  // `DELETE /api/sesion` no lee el cuerpo: cierra la sesión con cualquier cuerpo (criterio 54). Tampoco la foto ni el comprobante, que ya lo leyó el suyo.
   instalarLectorDeCuerpos(
     express,
     PREFIJO_API,
-    (solicitud, ruta) => esCierreDeSesion(solicitud.method, ruta) || esSubidaDeFoto(solicitud.method, ruta),
+    (solicitud, ruta) => esCierreDeSesion(solicitud.method, ruta) || esSubidaDeImagen(solicitud.method, ruta),
   );
   express.enableShutdownHooks();
   await express.init();

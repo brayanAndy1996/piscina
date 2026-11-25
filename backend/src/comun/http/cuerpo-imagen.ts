@@ -9,6 +9,9 @@ import { responderError } from '../filtros/responder-error';
 /** `PUT /api/a/{nombreCorto}/solicitudes/foto`, con o sin barra final y sin distinguir mayúsculas (como el enrutador de Express). */
 const RUTA_DE_LA_FOTO = /^\/a\/[^/]+\/solicitudes\/foto\/?$/i;
 
+/** `PUT /api/a/{nombreCorto}/solicitudes/comprobante` (007b, criterio 36), con las mismas reglas de dirección que la foto. */
+const RUTA_DEL_COMPROBANTE = /^\/a\/[^/]+\/solicitudes\/comprobante\/?$/i;
+
 /** El mismo mensaje para todo `IMAGEN_NO_VALIDA`: nada distingue por qué se rechazó una imagen (criterio 34). */
 export const MENSAJE_IMAGEN_NO_VALIDA = 'La imagen no es válida. Sube una foto en JPEG o PNG de buen tamaño.';
 
@@ -20,6 +23,16 @@ export function imagenNoValida(): ErrorNegocio {
 /** ¿Es la subida de la foto de la solicitud? `rutaBajoElPrefijo` es la ruta sin `/api` (`/a/delfines/solicitudes/foto`). */
 export function esSubidaDeFoto(metodo: string, rutaBajoElPrefijo: string): boolean {
   return metodo === 'PUT' && RUTA_DE_LA_FOTO.test(rutaBajoElPrefijo);
+}
+
+/** ¿Es la subida del comprobante de pago de la solicitud (007b)? `rutaBajoElPrefijo` es la ruta sin `/api`. */
+export function esSubidaDeComprobante(metodo: string, rutaBajoElPrefijo: string): boolean {
+  return metodo === 'PUT' && RUTA_DEL_COMPROBANTE.test(rutaBajoElPrefijo);
+}
+
+/** ¿Es una subida de imagen de una persona sin sesión (la foto o el comprobante)? Las dos usan el lector binario y no el lector JSON. */
+export function esSubidaDeImagen(metodo: string, rutaBajoElPrefijo: string): boolean {
+  return esSubidaDeFoto(metodo, rutaBajoElPrefijo) || esSubidaDeComprobante(metodo, rutaBajoElPrefijo);
 }
 
 /** El tipo de medio de `Content-Type`: lo que va antes del `;`, recortado y en minúsculas (los parámetros se ignoran). */
@@ -40,8 +53,9 @@ function largoDeclarado(solicitud: Request): number | null {
 }
 
 /**
- * Lector binario de la foto de la solicitud, fuera del lector JSON (spec 005b, criterio 34 b y c; PB3, PB4). Solo actúa en
- * `PUT /api/a/{nombreCorto}/solicitudes/foto`; se instala después de los límites por conexión (criterio 33, que cuentan antes de leer el
+ * Lector binario de la foto de la solicitud y del comprobante de pago (spec 005b, criterio 34 b y c; PB3, PB4; 007b, criterio 37), fuera del
+ * lector JSON. Solo actúa en `PUT /api/a/{nombreCorto}/solicitudes/foto` y `PUT /api/a/{nombreCorto}/solicitudes/comprobante` (los mismos tipos y
+ * el mismo tamaño máximo); se instala después de los límites por conexión (criterio 33, que cuentan antes de leer el
  * cuerpo) y antes del lector JSON, que deja esa ruta sin tocar (`noLeerCuerpoEn` de `crear-app.ts`). En este orden, la primera
  * comprobación que falla decide la respuesta, siempre antes de buscar la academia:
  *
@@ -66,7 +80,7 @@ export function instalarLectorDeImagen(app: NestExpressApplication, prefijoApi: 
 
   app.use(`/${prefijoApi}`, (solicitud: Request, respuesta: Response, siguiente: NextFunction) => {
     // Montado en `/api`: `path` ya es la ruta sin el prefijo.
-    if (!esSubidaDeFoto(solicitud.method, solicitud.path)) {
+    if (!esSubidaDeImagen(solicitud.method, solicitud.path)) {
       siguiente();
       return;
     }

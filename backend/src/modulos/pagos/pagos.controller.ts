@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, NotImplementedException, Param, Post, Req, Res } from '@nestjs/common';
 import {
   ajustarMontoSchema,
   type AjustarMonto,
   cobrarEnEfectivoSchema,
   type CobrarEnEfectivo,
   type RespuestaCobro,
+  type RespuestaPagosPendientes,
   type RespuestaSolicitudPanel,
   type RespuestaTicket,
 } from '@aquagestion/contratos';
@@ -15,6 +16,7 @@ import type { SesionVerificada } from '../autenticacion/tipos';
 import { SesionActual } from '../autenticacion/usuario-actual.decorator';
 import { CobrosService } from './cobros.service';
 import { TicketService } from './ticket.service';
+import { VerificacionService } from './verificacion.service';
 
 /**
  * Cobro en efectivo, ajuste del monto y ticket (spec 007a). La academia sale siempre de la sesión: ninguna ruta la recibe en la dirección, la
@@ -28,6 +30,7 @@ export class PagosController {
   constructor(
     private readonly cobros: CobrosService,
     private readonly tickets: TicketService,
+    private readonly verificacion: VerificacionService,
   ) {}
 
   /** 201 con el pago nuevo; 200 con el mismo `{ pago, solicitud }` si repite la clave (doble clic o reintento, criterio 17). */
@@ -61,5 +64,55 @@ export class PagosController {
   @Permiso('REGISTRAR_INSCRIPCION_Y_COBRO')
   ticket(@SesionActual() sesion: SesionVerificada, @Param('id') id: string): Promise<RespuestaTicket> {
     return this.tickets.leer(sesion.usuario.academiaId, id);
+  }
+
+  // -------------------------------------------------------------------------------------------------------------------------------
+  // 007b: la bandeja de verificación y el comprobante. Solo `ADMIN` y `SECRETARIA` (`VERIFICAR_PAGOS`, sección 2.1).
+  // -------------------------------------------------------------------------------------------------------------------------------
+
+  /** `GET /api/pagos/pendientes`: la bandeja (criterio 45). Una lectura: no bloquea, no escribe y no audita. */
+  @Get('pagos/pendientes')
+  @Permiso('VERIFICAR_PAGOS')
+  pendientes(@SesionActual() sesion: SesionVerificada): Promise<RespuestaPagosPendientes> {
+    return this.verificacion.listarPendientes(sesion.usuario.academiaId);
+  }
+
+  /**
+   * `GET /api/pagos/{id}/comprobante`: la imagen guardada (criterio 46). Va en la respuesta como JPEG con las cabeceras de una imagen que no
+   * se guarda en ninguna caché ni se interpreta como otra cosa. Un id inválido o ajeno responde el 404 de siempre.
+   */
+  @Get('pagos/:id/comprobante')
+  @Permiso('VERIFICAR_PAGOS')
+  async comprobante(
+    @SesionActual() sesion: SesionVerificada,
+    @Param('id') id: string,
+    @Res() respuesta: Response,
+  ): Promise<void> {
+    const imagen = await this.verificacion.leerComprobante(sesion.usuario.academiaId, id);
+    respuesta.setHeader('Content-Type', 'image/jpeg');
+    respuesta.setHeader('Cache-Control', 'no-store');
+    respuesta.setHeader('X-Content-Type-Options', 'nosniff');
+    respuesta.setHeader('Content-Disposition', 'inline');
+    respuesta.setHeader('Content-Length', String(imagen.length));
+    respuesta.status(200).end(imagen);
+  }
+
+  /**
+   * `POST /api/pagos/{id}/aprobacion` (criterio 47). **Todavía sin implementar (T37 de la 007):** valida el permiso y responde 501. La ruta existe
+   * para que las rutas de la 007b estén registradas; T37 le suma el cuerpo, el `{id}` y el servicio.
+   */
+  @Post('pagos/:id/aprobacion')
+  @HttpCode(200)
+  @Permiso('VERIFICAR_PAGOS')
+  aprobar(): never {
+    throw new NotImplementedException();
+  }
+
+  /** `POST /api/pagos/{id}/rechazo` (criterio 49). **Todavía sin implementar (T37 de la 007):** valida el permiso y responde 501. */
+  @Post('pagos/:id/rechazo')
+  @HttpCode(200)
+  @Permiso('VERIFICAR_PAGOS')
+  rechazar(): never {
+    throw new NotImplementedException();
   }
 }

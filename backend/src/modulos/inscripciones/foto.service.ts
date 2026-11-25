@@ -1,17 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  type EstadoSolicitud,
-  FOTO_LADO_GUARDADO,
-  FOTO_LADO_MAXIMO,
-  FOTO_LADO_MINIMO,
-  FOTO_PIXELES_MAXIMOS,
-  type FotoTipo,
-  PATRON_TOKEN,
-} from '@aquagestion/contratos';
+import { type EstadoSolicitud, FOTO_LADO_GUARDADO, type FotoTipo, PATRON_TOKEN } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
-import sharp from 'sharp';
 import { ErrorNegocio } from '../../comun/errores';
+import { recodificarImagen } from '../../comun/http/recodificar-imagen';
 import { ALMACEN_ARCHIVOS, type AlmacenArchivos } from '../../infraestructura/almacen-archivos';
 import { tipoDeError } from '../../infraestructura/correo';
 import {
@@ -23,17 +15,9 @@ import {
 } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { hashDeToken } from './dominio/codigos';
-import { imagenNoValida, solicitudNoEditable, solicitudNoEncontrada } from './errores';
+import { solicitudNoEditable, solicitudNoEncontrada } from './errores';
 import { estadoVisible, unirUltimoPago } from './estado-visible';
 
-// `sharp` guarda en memoria las últimas operaciones por defecto: en un servidor que recibe fotos de desconocidos no sirve de nada.
-sharp.cache(false);
-
-/** Las firmas de los primeros bytes: lo que dice ser el archivo tiene que coincidir con el tipo que declara el cliente (criterio 34 g). */
-const FIRMA_JPEG = Buffer.from([0xff, 0xd8, 0xff]);
-const FIRMA_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const FORMATO_DE_SHARP: Readonly<Record<FotoTipo, string>> = { 'image/jpeg': 'jpeg', 'image/png': 'png' };
-const CALIDAD_JPEG = 85;
 /** Lo máximo que espera la relectura de `resolverConfirmacionIncierta` a que termine la transacción de confirmación (criterio 64). */
 const FOTO_ESPERA_RELECTURA_MS = 5000;
 
@@ -102,7 +86,7 @@ export class FotoService {
     });
 
     // Imagen (g), fuera de toda transacción.
-    const jpeg = await this.recodificar(cuerpo, tipo);
+    const jpeg = await recodificarImagen(cuerpo, tipo, FOTO_LADO_GUARDADO);
 
     const clave = `academias/${academia.id}/alumnos/${previa.alumno_id}/foto-${randomUUID()}.jpg`;
     const guardado = await Promise.resolve()
@@ -275,38 +259,6 @@ export class FotoService {
     await tx.cliente.$executeRaw`
       UPDATE alumnos SET foto_clave = ${clave}, actualizado_en = ${ahora}::timestamptz
        WHERE academia_id = ${tx.academiaId}::uuid AND id = ${alumnoId}::uuid`;
-  }
-
-  /**
-   * Valida la imagen y la vuelve a codificar (criterios 34 g y 35): firma coherente con el tipo declarado, que `sharp` la decodifique
-   * (también una cortada), lados de 100 a 8000 píxeles y como mucho 40 megapíxeles, tal como vienen en el archivo (antes de la
-   * orientación). Sale un JPEG de como mucho 800 píxeles de lado mayor (sin agrandar), con la orientación aplicada y sin metadatos
-   * (`sharp` no copia ninguno si no se le pide). Cualquier fallo, de lo que sea, es el mismo 400 `IMAGEN_NO_VALIDA`.
-   */
-  private async recodificar(cuerpo: Buffer, tipo: FotoTipo): Promise<Buffer> {
-    const firma = tipo === 'image/jpeg' ? FIRMA_JPEG : FIRMA_PNG;
-    if (cuerpo.length < firma.length || !cuerpo.subarray(0, firma.length).equals(firma)) throw imagenNoValida();
-    try {
-      const imagen = sharp(cuerpo, { limitInputPixels: FOTO_PIXELES_MAXIMOS, failOn: 'error' });
-      const { format, width, height } = await imagen.metadata();
-      if (format !== FORMATO_DE_SHARP[tipo] || width === undefined || height === undefined) throw imagenNoValida();
-      if (
-        Math.min(width, height) < FOTO_LADO_MINIMO ||
-        Math.max(width, height) > FOTO_LADO_MAXIMO ||
-        width * height > FOTO_PIXELES_MAXIMOS
-      ) {
-        throw imagenNoValida();
-      }
-      return await imagen
-        .rotate()
-        .resize({ width: FOTO_LADO_GUARDADO, height: FOTO_LADO_GUARDADO, fit: 'inside', withoutEnlargement: true })
-        .flatten({ background: '#ffffff' })
-        .toColourspace('srgb')
-        .jpeg({ quality: CALIDAD_JPEG, mozjpeg: true })
-        .toBuffer();
-    } catch {
-      throw imagenNoValida();
-    }
   }
 
   /** Borra un archivo después de confirmar (o tras un fallo): un borrado que falla deja un aviso con el tipo del error y nada más. */

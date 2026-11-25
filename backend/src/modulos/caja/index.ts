@@ -13,7 +13,7 @@
 //   textoParaPdf(texto)              deja un texto de usuario seguro para la fuente estándar (solo Latin-1, sin cambiar la estructura del PDF).
 export { CajaModule } from './caja.module';
 export { CajasService } from './cajas.service';
-export { instalarHeadSinRutasDeCaja } from './head-sin-ruta';
+export { instalarHeadSinRutasDeCaja, PREFIJOS_SIN_HEAD } from './head-sin-ruta';
 export {
   type ConceptoIngreso,
   type EgresoEnCaja,

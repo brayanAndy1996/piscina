@@ -21,9 +21,9 @@ import type { SesionVerificada } from '../autenticacion/tipos';
 import { bloquearClasesParaCupo } from '../clases';
 import { estadoVisible } from '../inscripciones/estado-visible';
 import { leerElementosDelPanel } from '../inscripciones/panel-solicitudes';
-import { contarOcupacion } from '../matriculas';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { bloquearFilasDelCobro, type FilasDelCobro, leerDniDeLaSolicitud } from './bloqueos';
+import { exigirCupoDeLaMatricula } from './cupo';
 import { confirmarPagoEnTransaccion } from './confirmacion';
 import { totalACobrar } from './dominio/total';
 import {
@@ -31,7 +31,6 @@ import {
   montoCambioDelCobro,
   noEncontrado,
   pagoEnVerificacion,
-  sinCupo,
   solicitudNoAjustable,
   solicitudNoCobrable,
   solicitudYaPagada,
@@ -221,7 +220,7 @@ export class CobrosService {
     if (!montosIguales(datos.montoMostrado, total)) throw montoCambioDelCobro(aTextoMonto(total));
 
     // 8. El cupo (criterio 18): con la reserva vigente el cupo ya es suyo y no se cuenta (a); tras un rechazo (007b) vuelve a pedirlo (c).
-    if (estado === 'PAGO_RECHAZADO') await this.exigirCupo(tx, filas, ahora);
+    if (estado === 'PAGO_RECHAZADO') await exigirCupoDeLaMatricula(tx, filas, ahora);
 
     // 9. El pago: el DNI del personal y la caja, al final, los decide la confirmación.
     const pagoId = randomUUID();
@@ -248,21 +247,6 @@ export class CobrosService {
       creado: true,
       aviso: await this.destinatariosDelAviso(tx, filas, ahora),
     };
-  }
-
-  /** Cada clase de la matrícula debe tener lugar para esta matrícula (que no ocupa cupo mientras está cancelada). Con las clases ya bloqueadas. */
-  private async exigirCupo(tx: TransaccionAcademia, filas: FilasDelCobro, ahora: Date): Promise<void> {
-    const clases = await tx.cliente.$queryRaw<{ id: string; aforo: number }[]>`
-      SELECT id::text AS id, aforo::int AS aforo FROM clases
-       WHERE academia_id = ${tx.academiaId}::uuid AND id = ANY(${[...filas.claseIds]}::uuid[])`;
-    const ocupacion = await contarOcupacion(
-      tx,
-      filas.claseIds,
-      { anio: filas.matricula.anio, mes: filas.matricula.mes },
-      ahora,
-    );
-    const llenas = clases.filter((clase) => (ocupacion.get(clase.id) ?? 0) >= clase.aforo).map((clase) => clase.id);
-    if (llenas.length > 0) throw sinCupo(filas.claseIds.filter((id) => llenas.includes(id)));
   }
 
   private async respuestaDe(
