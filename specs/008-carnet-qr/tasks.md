@@ -6,7 +6,8 @@ entrega, en la revisión (D-31).
 
 ## 008a · Carnet y QR
 
-- [ ] T0 · orquestador · Aprobación de Bryan (P1 a P5) y aceptación de DT-1 a DT-13; ajustar el spec con lo decidido.
+- [x] T0 · orquestador · Aprobación de Bryan (P1 a P5, que son DR-1 a DR-5, 25/11/2026) y aceptación de DT-1 a DT-13;
+      spec ajustado con lo decidido.
 - [ ] T1 · test-writer · Pruebas protegidas en rojo de los criterios críticos de la 008a, desde el spec y los contratos
       públicos (`carnet.ts`, rutas, columnas): modelo e invariantes como app y como dueño (1); token al confirmar en
       efectivo y en la aprobación, reversión y reintentos (2); forma, azar y funciones del contenido (3); permisos,

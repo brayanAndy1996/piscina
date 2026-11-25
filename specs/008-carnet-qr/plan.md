@@ -1,7 +1,8 @@
 # 008 · Plan técnico
 
-Entregas: **008a** (carnet y QR, criterios 1 a 21) y **[008b]** (foto desde el panel y cámara, criterios 22 a 29). Las
-decisiones técnicas DT-1 a DT-13 están en `spec.md`, «Decisiones»; aquí va cómo se construyen.
+Entregas: **008a** (carnet y QR, criterios 1 a 21) y **[008b]** (foto desde el panel y cámara, criterios 22 a 29).
+Spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-5, en `spec.md`, «Resueltas»). Las decisiones técnicas DT-1 a DT-13,
+aceptadas por el orquestador, están en `spec.md`, «Decisiones»; aquí va cómo se construyen.
 
 ## Módulos afectados
 
@@ -85,7 +86,7 @@ decisiones técnicas DT-1 a DT-13 están en `spec.md`, «Decisiones»; aquí va 
      responder (falla cerrada si sobra un campo).
 - PDF: el mismo `leer` y después `GENERADOR_PDF_CARNET.generar({ carnet, contenidoQr, fechaDatos })`.
   `generarPdfCarnet` usa `pdfkit` (A4, Helvetica), `qrcode.toBuffer(contenido, { ...OPCIONES_QR, type: 'png' })` y la
-  foto JPEG tal cual (ya recodificada). Tarjeta de 85,6 × 54 mm (P1 provisional) con borde punteado. Metadatos: `Title:
+  foto JPEG tal cual (ya recodificada). Tarjeta de 85,6 × 54 mm (DR-1) con borde punteado. Metadatos: `Title:
   'Carnet'`, sin `Author`. `info.CreationDate` = «ahora». Todo texto de datos con `textoParaPdf`; los nombres largos se
   cortan con `heightOfString` y «…».
 - Cabeceras del PDF: las de la 006b, con `filename="carnet.pdf"` y `Content-Length`.

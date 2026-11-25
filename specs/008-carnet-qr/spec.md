@@ -19,8 +19,10 @@
   sensibles (DNI y foto, a menudo de menores; el alumno ve solo su carnet; el entrenador y el Superadmin, ninguno),
   aislamiento entre academias (carnet, búsqueda, PDF, foto y token) y archivos (la foto desde el panel sigue el proceso
   crítico de la 005b). La maqueta del carnet y del PDF, la cámara y las pantallas no son críticas.
-- **Estado:** borrador (25/11/2026), pendiente de la aprobación de Bryan.
-- **División propuesta (D-31):** dos entregas desde esta carpeta, cada una con sus pruebas protegidas, su ataque y su
+- **Estado:** aprobada por Bryan el 25/11/2026, con la propuesta de cada pregunta de negocio (P1 a P5, que son DR-1 a
+  DR-5 de esta spec, en «Resueltas») y con las técnicas aceptadas por el orquestador tal como se propusieron (DT-1 a
+  DT-13, en «Decisiones»). En curso: la 008a.
+- **División (D-31, aceptada por el orquestador el 25/11/2026):** dos entregas desde esta carpeta, cada una con sus pruebas protegidas, su ataque y su
   PR (ver «División en 008a y 008b»):
   - **008a · Carnet y QR** (primero): criterios 1 a 21.
   - **008b · Foto desde el panel y cámara** (siguiente PR, con la 008a unida): criterios 22 a 29.
@@ -153,9 +155,9 @@ La 008a no depende de la 008b: muestra «Foto pendiente» o la foto que ya se su
     `GET /api/mi-carnet/pdf` (los del criterio 6) responden 200 con `Content-Type: application/pdf`,
     `Content-Disposition: attachment; filename="carnet.pdf"` y `Cache-Control: no-store`. El nombre del archivo y los
     metadatos del PDF (`Title`, `Author`, `Subject`, `Keywords`) no llevan nombres, DNI ni token. El contenido es el
-    mismo de `carnetSchema` con la maqueta de P1 y P2 (valores provisionales en «Preguntas abiertas»): nombre de la
-    academia, foto o «Foto pendiente», nombres y apellidos, DNI, nivel, plan, horario, vigencia, QR y «Datos al
-    dd/mm/aaaa» (fecha de Lima). Todo texto que sale de los datos pasa por `textoParaPdf` (006b). Los datos se leen en
+    mismo de `carnetSchema`, en una hoja A4 con la tarjeta de 85,6 × 54 mm y línea de corte (DR-1), con todos los datos
+    de HU-13 al día de la descarga (DR-2): nombre de la academia, foto o «Foto pendiente», nombres y apellidos, DNI
+    completo (DR-3), nivel, plan, horario, vigencia, QR y «Datos al dd/mm/aaaa» (fecha de Lima). Todo texto que sale de los datos pasa por `textoParaPdf` (006b). Los datos se leen en
     una transacción corta que termina antes de dibujar; si el generador falla, 500 `ERROR_INTERNO` y nada cambia. Las
     rutas de PDF de una academia nunca devuelven el carnet de otra (criterio 5). _(crítico en permisos, errores y
     aislamiento; el dibujo es prueba obligatoria)_ (HU-13)
@@ -173,7 +175,7 @@ La 008a no depende de la 008b: muestra «Foto pendiente» o la foto que ya se su
     `qr_clave_idempotencia` y `actualizado_en`, y la auditoría `CARNET_QR_REGENERADO` (entidad `alumno`, `entidadId`
     el id del alumno, actor `USUARIO`, `motivo`, IP, `datosAntes: { qrGeneradoEn }` y `datosDespues: { qrGeneradoEn }`,
     con `null` si no tenía QR). Responde 200 con `carnetSchema`. Después de confirmar, ninguna fila de ninguna academia
-    tiene el token anterior; `GET …/carnet`, `GET /api/mi-carnet` y los PDF dan el nuevo. Sin correo (pendiente de P5).
+    tiene el token anterior; `GET …/carnet`, `GET /api/mi-carnet` y los PDF dan el nuevo. Sin correo (DR-5).
     _(crítico)_ (8.6, RNF-06)
 14. **Regenerar es idempotente.** Con la misma `claveIdempotencia` que la última regeneración de ese alumno, responde
     200 con el carnet actual sin cambiar el token ni auditar (un doble clic no deja inservible el carnet recién
@@ -365,7 +367,7 @@ Errores: 401 `NO_AUTENTICADO`, 403 `SIN_PERMISO`, 403 `CAMBIO_DE_CLAVE_OBLIGATOR
 **Auditoría:** `CARNET_QR_REGENERADO` (criterio 13) y **[008b]** `ALUMNO_FOTO_ACTUALIZADA` (criterio 27). Ninguna lleva
 el token, el contenido del QR, la imagen ni la clave del archivo.
 
-**Eventos y correos:** ninguno (P5).
+**Eventos y correos:** ninguno (DR-5).
 
 **Interfaces del backend** (`backend/src/modulos/alumnos/index.ts`):
 
@@ -419,7 +421,7 @@ el token, el contenido del QR, la imagen ni la clave del archivo.
 - **El token se guarda en claro** (DT-1): quien lea la base de una academia puede ver los tokens. Se acepta porque el
   carnet necesita volver a mostrar el mismo QR, la RLS y los privilegios limitan quién lo lee, y un token solo sirve en
   la asistencia de recepción, donde la secretaria ve la foto del alumno (11.4). Mitiga: regenerar.
-- **Un carnet impreso con plan, horario o vigencia viejos** (si se aprueba P2 como se propone): el QR sigue sirviendo y
+- **Un carnet impreso con plan, horario o vigencia viejos** (DR-2): el QR sigue sirviendo y
   la asistencia decide con los datos de hoy; el PDF dice «Datos al …».
 - **Captura del QR del celular compartida:** el mismo QR fijo (RN-06); el QR dinámico es de la Fase 4. Mitiga: la foto
   en la asistencia (11.4) y regenerar.
@@ -428,12 +430,13 @@ el token, el contenido del QR, la imagen ni la clave del archivo.
 - **La lista de la búsqueda muestra DNI** al personal: igual que el panel de solicitudes; no pasa por la dirección.
 - **[008b] La foto del panel no tiene límite de subidas:** la usan personas con sesión de recepción; queda en auditoría.
 - **[008b] Un archivo sin referencia** si falla un borrado o la relectura (el mismo riesgo de la 005b).
-- **El DNI físico se revisa al entregar el carnet sin una marca en el sistema** (DR-3 de 007), salvo que P4 decida otra
-  cosa.
+- **El DNI físico se revisa al entregar el carnet sin una marca en el sistema** (DR-3 de 007; DR-4 de esta
+  spec).
 
 ## Decisiones
 
-Técnicas, propuestas para que las acepte el orquestador:
+Técnicas: DT-1 a DT-13, aceptadas por el orquestador el 25/11/2026 tal como se propusieron. Las decisiones del
+responsable (DR-1 a DR-5) están en «Resueltas».
 
 - **DT-1. Token en claro en `alumnos.qr_token`.** Descartado: guardar solo su SHA-256 (como el token de seguimiento),
   porque el carnet tiene que volver a mostrar el mismo QR; y un token derivado con HMAC de un secreto del servidor,
@@ -477,24 +480,27 @@ Técnicas, propuestas para que las acepte el orquestador:
 
 ## Preguntas abiertas
 
-Para Bryan, en una sola tanda. Cada una tiene un valor provisional que no bloquea el avance.
+Ninguna. Las cinco preguntas de negocio (P1 a P5) quedaron resueltas: ver «Resueltas».
 
-- **P1. Formato del carnet físico (PDF).** ¿Cómo se imprime? **Propuesta (a):** una hoja A4 con la tarjeta del tamaño
-  de una tarjeta bancaria (85,6 × 54 mm) y una línea punteada para recortarla y enmicarla, en cualquier impresora.
-  Alternativas: (b) una página del tamaño exacto de la tarjeta, para una impresora de tarjetas de PVC; (c) las dos
-  opciones. _Provisional: (a)._
-- **P2. Datos que cambian en el carnet impreso.** El plan, el horario y la vigencia cambian cada mes (y el nivel, con
-  las evaluaciones). **Propuesta (a):** el PDF lleva todo lo que pide HU-13 tal como está el día de la descarga, con
-  «Datos al dd/mm/aaaa»; el QR sigue sirviendo aunque esos datos cambien, así que no hace falta reimprimir cada mes.
-  Alternativa: (b) el carnet impreso lleva solo lo estable (academia, foto, nombre, DNI y QR), y el plan, el horario y
-  la vigencia se ven en la pantalla. _Provisional: (a)._
-- **P3. DNI en el carnet.** HU-13 lo pide, pero el ticket se quedó sin DNI (DR-4 de 007), y un carnet impreso perdido de
-  un menor muestra su nombre, su foto y su DNI. **Propuesta (a):** DNI completo en la pantalla y en el PDF, como dice
-  HU-13. Alternativa: (b) completo en la pantalla y solo los últimos 4 dígitos en el PDF. _Provisional: (a)._
-- **P4. Marca «DNI comprobado» (DR-3 de 007).** Con Yape, la cuenta se crea sin ver el DNI físico, y se aceptó revisarlo
-  al entregar el carnet. **Propuesta (a):** no se agrega una marca en esta historia; la secretaria lo revisa al entregar
-  el carnet, sin registrarlo. Alternativa: (b) un botón «DNI comprobado» en el carnet del panel, con quién y cuándo en la
-  auditoría, y un aviso «DNI sin comprobar» mientras no se marque. _Provisional: (a)._
-- **P5. Aviso al regenerar el QR.** **Propuesta (a):** sin correo; el alumno ve el QR nuevo en su panel y el carnet
-  impreso anterior deja de servir. Alternativa: (b) un correo al alumno (y a su apoderado, si es menor) que avisa que su
-  QR cambió, sin el QR. _Provisional: (a)._
+## Resueltas
+
+Decisiones del responsable. Bryan aprobó la propuesta de cada pregunta el 25/11/2026.
+
+- **DR-1 (pregunta P1). Formato del carnet físico (PDF).** **Decidido (la propuesta):** una hoja A4 con la tarjeta del
+  tamaño de una tarjeta bancaria (85,6 × 54 mm) y una línea punteada para recortarla y enmicarla, en cualquier
+  impresora. Alternativas descartadas: (b) una página del tamaño exacto de la tarjeta, para una impresora de tarjetas de
+  PVC; (c) las dos opciones. _(008a; criterio 11.)_
+- **DR-2 (pregunta P2). Datos que cambian en el carnet impreso.** **Decidido (la propuesta):** el PDF lleva todo lo que
+  pide HU-13 tal como está el día de la descarga, con «Datos al dd/mm/aaaa»; el QR sigue sirviendo aunque el plan, el
+  horario, la vigencia o el nivel cambien, así que no hace falta reimprimir cada mes. Alternativa descartada: (b) el
+  carnet impreso solo con lo estable (academia, foto, nombre, DNI y QR). _(008a; criterio 11 y «Riesgos aceptados».)_
+- **DR-3 (pregunta P3). DNI en el carnet.** **Decidido (la propuesta):** DNI completo en la pantalla y en el PDF, como
+  dice HU-13. Alternativa descartada: (b) completo en la pantalla y solo los últimos 4 dígitos en el PDF. _(008a;
+  criterios 7 y 11.)_
+- **DR-4 (pregunta P4). Marca «DNI comprobado» (DR-3 de 007).** **Decidido (la propuesta):** no se agrega una marca en
+  esta historia; la secretaria revisa el DNI físico al entregar el carnet, sin registrarlo. Alternativa descartada: (b)
+  un botón «DNI comprobado» con quién y cuándo en la auditoría, y un aviso mientras no se marque. _(«Riesgos
+  aceptados».)_
+- **DR-5 (pregunta P5). Aviso al regenerar el QR.** **Decidido (la propuesta):** sin correo; el alumno ve el QR nuevo en
+  su panel y el carnet impreso anterior deja de servir. Alternativa descartada: (b) un correo al alumno (y a su
+  apoderado, si es menor), sin el QR. _(008a; criterio 13.)_

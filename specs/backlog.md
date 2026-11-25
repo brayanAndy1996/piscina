@@ -21,7 +21,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 006b | Historial y PDF del cierre de caja | Sí | ✅ |
 | 007a | Cobro en recepción y cuenta del alumno | Sí | ✅ |
 | 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ✅ |
-| 008 | Carnet digital con QR | En parte | ⬜ |
+| 008a | Carnet digital y QR | En parte | 🟨 |
+| 008b | Foto desde el panel y cámara | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
 | 010 | Mensualidades y renovación | En parte | ⬜ |
 | 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
@@ -235,6 +236,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     avisar "Abre la caja antes de cobrar" sin decidir con ella. La caja de un día anterior no admite cobros (DR-2 de 006).
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
+  - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-5 y DT-1 a DT-13 de 008), en
+    [`specs/008-carnet-qr/`](008-carnet-qr/spec.md). Dos entregas: 008a (criterios 1 a 21), en curso, y 008b (22 a 29).
   - **Desde 005b (DR-21 de 005, antes B5):** agregar la foto después desde el panel (a una solicitud o un alumno ya
     registrado, sin el token de seguimiento) y tomarla con la cámara de la PC de recepción. En la 005b la foto solo se
     sube en el paso del formulario (también cuando la secretaria abre "Nueva inscripción", eligiendo un archivo) o desde
