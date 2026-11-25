@@ -19,7 +19,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 005b | Foto de la inscripción y panel de solicitudes | Sí | ✅ |
 | 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | ✅ |
 | 006b | Historial y PDF del cierre de caja | Sí | ✅ |
-| 007a | Cobro en recepción y cuenta del alumno | Sí | 🟨 |
+| 007a | Cobro en recepción y cuenta del alumno | Sí | ✅ |
 | 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ⬜ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
@@ -167,7 +167,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Estado: spec aprobada por Bryan el 24/11/2026 (DR-1 a DR-14 de 007, todas con la propuesta; DT-1 a DT-16 de 007,
     aceptadas por el orquestador), en [`specs/007-pagos/`](007-pagos/spec.md). Por DR-14 se entrega en dos PR desde esa
     misma carpeta, los dos de ruta crítica:
-    - **007a · cobro en recepción y cuenta del alumno** (en curso): criterios 1 a 35 y 54 a 57 sin las partes [007b]
+    - **007a · cobro en recepción y cuenta del alumno** (unida a `main` el 25/11/2026, PR #13, tras cuatro rondas adversariales que sumaron los criterios 58 y 59): criterios 1 a 35 y 54 a 57 sin las partes [007b]
       (tabla `pagos` completa con sus invariantes, cobro en efectivo con la caja de hoy, ajuste del monto por el
       administrador, paso de cliente a alumno con su cuenta, ticket imprimible, estado `CONFIRMADA`, recepción sin los
       límites por conexión, correo de pago confirmado).
