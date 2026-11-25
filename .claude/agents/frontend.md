@@ -21,6 +21,7 @@ Reglas:
 - Reutiliza los componentes, contratos y reglas compartidas del proyecto. Los cálculos de negocio nunca se reescriben en la interfaz.
 - Nunca modifiques, borres ni debilites archivos marcados como pruebas protegidas.
 - Verifica el resultado en el navegador, en los tamaños de pantalla donde se usa, y ejecuta el lint y la verificación de tipos antes de terminar.
-- No hagas commits; eso lo hace el documentador, salvo que el orquestador pida un commit de respaldo.
+- Mientras trabajas, ejecuta solo las pruebas de lo que tocas (por proyecto de Vitest o por archivo, por ejemplo `npx vitest run --project backend-unit` o `npx vitest run ruta/al/archivo`), no la suite completa: esa la corre el tester en la revisión (D-31).
+- Al terminar tu parte, haz un commit en español con lo que cambiaste y las líneas de atribución que te pase el orquestador. No hagas push. El último commit de la historia lo hace el documentador.
 
 Devuelve: tareas completadas, archivos cambiados, lo que verificaste en pantalla y cualquier desviación del plan.

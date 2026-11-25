@@ -77,11 +77,12 @@ Si el proyecto lo justifica, se pueden agregar roles; por ejemplo, un `movil` pa
      │                    │   └─────► backend / frontend implementan ─► tester (VERDE)
      │                    │                │
      │                    │   ¿crítica?    ▼
-     │                    │   └─ sí ─► adversarial ataca ─► ¿falla? ─ sí ─► spec + prueba nueva en ROJO
-     │                    │                                    │              └─► se vuelve a implementar
-     │                    │                                    no
+     │                    │   └─ sí ─► adversarial ataca ─► ¿crítica o alta? ─ sí ─► spec + prueba en ROJO
+     │                    │             (máx. 3 rondas)        │                      └─► se corrige y se
+     │                    │                                    │                          vuelve a atacar
+     │                    │                                    no (media o baja: deuda en el backlog)
      │                    │                                    ▼
-     │                    │            revisor + tester (suite, lint, tipos)
+     │                    │            revisor + tester a la vez (suite completa, lint, tipos)
      │                    │                                    ▼
      │                    │            documentador: commit y documentación
      │  pide unir a main  │
@@ -98,19 +99,28 @@ Si el proyecto lo justifica, se pueden agregar roles; por ejemplo, un `movil` pa
    y los contratos públicos, sin mirar la implementación. Cada archivo lleva una marca de protección. El
    tester confirma que fallan **por la razón esperada** (falta la funcionalidad), no por un error de
    sintaxis o de configuración. Se hace un commit "Pruebas protegidas (…) (en rojo)".
-5. **Implementación.** Backend y frontend implementan las tareas hasta que todo pasa.
-6. **Ataque (solo ruta crítica).** El adversarial ataca. Por cada falla reproducible:
-   1. el especificador agrega el criterio nuevo a `spec.md`;
-   2. el test-writer escribe la prueba protegida, que falla;
-   3. se corrige;
-   4. se vuelve a atacar.
+5. **Implementación.** Backend y frontend implementan las tareas hasta que todo pasa. Mientras
+   trabajan, ejecutan solo las pruebas de lo que tocan (por proyecto de Vitest o por archivo), más el
+   lint y los tipos de lo cambiado, y hacen el commit de su parte.
+6. **Ataque (solo ruta crítica).** El adversarial ataca lo nuevo de la entrega y cómo se conecta con lo
+   existente. Clasifica cada falla reproducible por gravedad (crítica, alta, media o baja).
+   - **Crítica o alta** (cuesta dinero, mezcla datos entre academias o alumnos, salta un permiso, rompe
+     el aforo o la caja, duplica una escritura idempotente):
+     1. el especificador agrega el criterio nuevo a `spec.md` y anota la ronda en `rondas.md`;
+     2. el test-writer escribe la prueba protegida, que falla;
+     3. se corrige, ejecutando solo las pruebas de lo tocado;
+     4. se vuelve a atacar.
+   - **Media o baja:** no abre otra ronda. Queda anotada como deuda en las notas de la historia en
+     `specs/backlog.md`.
 
-   **Las rondas siguen hasta que el adversarial no encuentra fallas** (en el proyecto de origen, una
-   sección necesitó nueve rondas).
-7. **Revisión.** El revisor compara con la especificación y las convenciones, y confirma con `git diff`
-   que nadie tocó las pruebas protegidas. El tester ejecuta toda la suite, el lint y los tipos.
-8. **Cierre.** El documentador hace el commit final, marca las tareas y actualiza la documentación. El
-   orquestador pide al responsable unir a la rama principal.
+   **Como máximo 3 rondas por entrega (D-31).** Si la tercera todavía encuentra una falla crítica o
+   alta, se corrige y el orquestador pregunta al responsable si hace falta una cuarta.
+7. **Revisión.** El orquestador lanza a la vez al revisor y al tester. El revisor compara con la
+   especificación y las convenciones, y confirma con `git diff` que nadie tocó las pruebas protegidas.
+   El tester ejecuta la suite completa, el lint y los tipos: es la única ejecución completa de la
+   entrega, además de la integración continua.
+8. **Cierre.** El documentador marca las tareas, actualiza la documentación y hace el último commit.
+   El orquestador pide al responsable unir a la rama principal.
 
 ## 4. La ruta crítica
 
@@ -172,11 +182,19 @@ Cada historia vive en `specs/NNN-nombre/` con tres archivos, más uno opcional:
   migraciones y riesgos.
 - **`tasks.md`: tareas pequeñas y ordenadas**, cada una con su rol y los criterios que cubre, más las
   casillas de la ruta crítica (rojo, verde, ataque sin fallas).
+- **`rondas.md` (solo ruta crítica):** el registro de cada ronda adversarial: qué se atacó, qué se
+  encontró, con qué gravedad y qué se decidió. Lo leen el especificador y el adversarial.
 - **`fuentes.md` (opcional):** de dónde salen las reglas: documentos, normas, conversaciones con
   expertos.
 
+**La especificación es corta (D-31).** `spec.md` tiene solo los criterios vigentes, sin la historia de
+cada ronda, y se busca que no pase de unas 800 líneas por entrega. Si crece más, la historia se parte en
+entregas. El orquestador pasa a cada subagente los criterios y las secciones de su tarea; la
+especificación entera la leen el especificador, el adversarial y el revisor.
+
 **La especificación es un documento vivo.** Cada ronda adversarial y cada decisión del responsable la
-actualizan antes de tocar el código. Lo que diga el código y no diga la especificación se considera un
+actualizan antes de tocar el código: el criterio nuevo va en `spec.md` y el detalle de la ronda, en
+`rondas.md`. Lo que diga el código y no diga la especificación se considera un
 error.
 
 **Las dudas de un experto** (contador, abogado, especialista del dominio) quedan como preguntas abiertas
@@ -221,6 +239,18 @@ con un valor provisional, para que no bloqueen el avance.
   lo crítico.
 - **El adversarial encuentra cosas.** No te detengas en la primera ronda limpia de una zona; ataca
   todas las áreas de la lista.
+- **Pero sus rondas tienen rendimiento decreciente.** En AquaGestión, las últimas rondas de la 006b y
+  la 007a encontraban detalles de gravedad media (un FIN de TCP, qué cuenta como `Date` en un id de
+  auditoría) a un costo de especificación, prueba, corrección y nuevo ataque cada vez. Por eso hay un
+  tope de rondas y un filtro por gravedad (D-31): lo menor va a la deuda, no a otra ronda.
+- **Las especificaciones largas cuestan en cada lectura.** Cada subagente vuelve a leer la
+  especificación; una de varios miles de líneas, leída por seis agentes en cada ronda, es el mayor
+  gasto de tokens. Criterios vigentes en `spec.md`, historia en `rondas.md`.
+- **La suite completa se corre una vez.** Con decenas de miles de pruebas contra una base real, correrla
+  entera en cada paso cuesta horas; durante el trabajo bastan las pruebas de lo tocado.
+- **Una sola conversación edita los documentos compartidos.** Se pueden especificar historias
+  independientes en paralelo, pero `specs/backlog.md`, `docs/arquitectura.md`, `docs/decisiones.md` y
+  `CLAUDE.md` los edita una conversación a la vez, para no generar conflictos.
 
 ## 10. Cómo adoptarlo en un proyecto nuevo
 

@@ -7,7 +7,7 @@ model: claude-haiku-5-5
 effort: max
 color: pink
 ---
-Eres el documentador. Cierras cada fase y cada historia.
+Eres el documentador. Cierras cada historia. Los commits intermedios (pruebas en rojo, implementación, correcciones de cada ronda) los hace quien hizo el trabajo (D-31); tú haces el último.
 
 Pasos:
 1. Marca como completadas las tareas de `specs/NNN-nombre/tasks.md` que el orquestador te indique.
