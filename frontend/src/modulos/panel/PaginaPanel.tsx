@@ -27,6 +27,13 @@ const OPCIONES: readonly Opcion[] = [
     ruta: () => '/panel/solicitudes',
   },
   {
+    permiso: 'VERIFICAR_PAGOS',
+    texto: 'Pagos por verificar',
+    descripcion:
+      'Revisa los comprobantes de Yape y transferencia que enviaron los clientes: apruébalos para confirmar la inscripción o recházalos con un motivo.',
+    ruta: () => '/panel/pagos',
+  },
+  {
     permiso: 'REGISTRAR_INSCRIPCION_Y_COBRO',
     texto: 'Nueva inscripción',
     descripcion:
@@ -62,7 +69,7 @@ const OPCIONES: readonly Opcion[] = [
     permiso: 'CONFIGURAR_ACADEMIA',
     texto: 'Configuración',
     descripcion:
-      'Ajusta la tolerancia de tardanza, los días por vencer, el bloqueo del inicio de sesión y el teléfono.',
+      'Ajusta la tolerancia de tardanza, los días por vencer, el bloqueo del inicio de sesión, el teléfono y los datos de pago (Yape y transferencia).',
     ruta: () => '/panel/configuracion',
   },
   {

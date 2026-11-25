@@ -2,7 +2,7 @@ import { NOMBRE_DIA, NOMBRE_NIVEL, type RespuestaConsultaSolicitud } from '@aqua
 import { Link, useParams } from 'react-router';
 import { formatearSoles } from '../../lib/dinero';
 import { ESTADO_EN_PALABRAS } from '../../lib/estado-solicitud';
-import { formatearFechaHora, formatearMes } from '../../lib/fechas';
+import { formatearFecha, formatearFechaCalendario, formatearFechaHora, formatearMes } from '../../lib/fechas';
 import { Insignia } from '../../componentes/ui';
 import { frasePorTelefono } from '../../componentes/Telefono';
 import { ETIQUETA_METODO } from '../caja/montos';
@@ -17,8 +17,8 @@ function Explicacion({ respuesta }: { respuesta: RespuestaConsultaSolicitud }) {
         <p>
           Tu cupo está reservado
           {solicitud.reservaVenceEn ? ` hasta el ${formatearFechaHora(solicitud.reservaVenceEn)} (hora de Lima)` : ''}.
-          Paga {formatearSoles(solicitud.monto)} en recepción antes de esa hora para confirmar tu inscripción; si no, el
-          cupo se libera.{ayuda}
+          Paga {formatearSoles(solicitud.monto)} en recepción, o con Yape o transferencia desde esta página, antes de
+          esa hora para confirmar tu inscripción; si no, el cupo se libera.{ayuda}
         </p>
       );
     case 'VENCIDA':
@@ -54,7 +54,8 @@ function Explicacion({ respuesta }: { respuesta: RespuestaConsultaSolicitud }) {
     case 'PAGO_RECHAZADO':
       return (
         <p>
-          No pudimos confirmar tu pago. Motivo: {solicitud.rechazo.motivo}.{ayuda}
+          No pudimos confirmar tu pago. Motivo: {solicitud.rechazo.motivo}. Puedes enviar otro comprobante o pagar en
+          recepción hasta el {formatearFecha(solicitud.pagableHasta)}.{ayuda}
         </p>
       );
   }
@@ -72,6 +73,7 @@ export function VistaSeguimiento({ respuesta }: { respuesta: RespuestaConsultaSo
   const completa = solicitud.estado === 'PENDIENTE_PAGO' ? solicitud : null;
   const nombre = 'nombres' in solicitud ? solicitud.nombres : null;
   const pagoConfirmado = solicitud.estado === 'CONFIRMADA' ? solicitud.pago : null;
+  const pagoEnRevision = solicitud.estado === 'EN_VERIFICACION' ? solicitud.pago : null;
   return (
     <article
       aria-label="Tu solicitud"
@@ -118,6 +120,16 @@ export function VistaSeguimiento({ respuesta }: { respuesta: RespuestaConsultaSo
             <dd className="text-slate-900 mb-2 sm:mb-0">
               {ETIQUETA_METODO[pagoConfirmado.metodo]}, confirmado el {formatearFechaHora(pagoConfirmado.confirmadoEn)}{' '}
               (ticket N.º {pagoConfirmado.numeroTicket})
+            </dd>
+          </>
+        ) : null}
+        {pagoEnRevision ? (
+          <>
+            <dt className="font-medium text-slate-600 sm:text-slate-800">Comprobante</dt>
+            <dd className="text-slate-900 mb-2 sm:mb-0">
+              {ETIQUETA_METODO[pagoEnRevision.metodo]} por {formatearSoles(pagoEnRevision.monto)}, operación del{' '}
+              {formatearFechaCalendario(pagoEnRevision.fechaOperacion)}, enviado el{' '}
+              {formatearFechaHora(pagoEnRevision.enviadoEn)}
             </dd>
           </>
         ) : null}

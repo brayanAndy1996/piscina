@@ -179,6 +179,7 @@ describe('menú y permiso (criterio 26)', () => {
     const enlaces = within(screen.getByRole('navigation', { name: 'Opciones' })).getAllByRole('link');
     expect(enlaces.map((enlace) => enlace.getAttribute('href'))).toEqual([
       '/panel/solicitudes',
+      '/panel/pagos',
       '/a/delfines/inscripcion',
       '/panel/caja',
       '/panel/cajas',
