@@ -60,3 +60,34 @@ export function dniDelPersonal(): ErrorNegocio {
     'Ya existe un usuario de la academia con el DNI de esta persona. Consulta con el administrador.',
   );
 }
+
+export { solicitudNoEditable, solicitudNoEncontrada } from '../inscripciones/errores';
+
+/** 409 de la subida del comprobante (007b, criterio 38): el monto declarado no es el total a cobrar. `total` es el total actual, con dos decimales. */
+export function montoDistinto(total: string): ErrorNegocio {
+  return new ErrorNegocio(
+    409,
+    'MONTO_DISTINTO',
+    'El monto del comprobante no es el total a pagar. Revisa el monto y vuelve a enviarlo.',
+    { total },
+  );
+}
+
+/** 409 (007b, criterio 39): ya hay un pago abierto con ese número de operación y ese método. Sin `detalles`: no dice de quién es. */
+export function numeroOperacionYaUsado(): ErrorNegocio {
+  return new ErrorNegocio(
+    409,
+    'NUMERO_OPERACION_YA_USADO',
+    'Ese número de operación ya se registró. Revisa el número o acércate a recepción.',
+  );
+}
+
+/** 409 (007b, criterios 48 y 49): el pago ya se confirmó (aprobado o cobrado en efectivo): ya no se rechaza. */
+export function pagoYaConfirmado(): ErrorNegocio {
+  return new ErrorNegocio(409, 'PAGO_YA_CONFIRMADO', 'Este pago ya está confirmado: no se puede rechazar.');
+}
+
+/** 409 (007b, criterio 48): el pago ya se rechazó: no se aprueba. La persona sube otro comprobante. */
+export function pagoYaRechazado(): ErrorNegocio {
+  return new ErrorNegocio(409, 'PAGO_YA_RECHAZADO', 'Este pago ya fue rechazado: no se puede aprobar.');
+}

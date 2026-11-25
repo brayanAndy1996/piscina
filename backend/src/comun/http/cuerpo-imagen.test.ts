@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { esSubidaDeFoto, imagenNoValida, MENSAJE_IMAGEN_NO_VALIDA, tipoDeMedio } from './cuerpo-imagen';
+import {
+  esSubidaDeComprobante,
+  esSubidaDeFoto,
+  esSubidaDeImagen,
+  imagenNoValida,
+  MENSAJE_IMAGEN_NO_VALIDA,
+  tipoDeMedio,
+} from './cuerpo-imagen';
 
 describe('esSubidaDeFoto', () => {
   it.each([
@@ -29,6 +36,42 @@ describe('esSubidaDeFoto', () => {
     '/sesion',
   ])('PUT %s no es la subida', (ruta) => {
     expect(esSubidaDeFoto('PUT', ruta)).toBe(false);
+  });
+});
+
+describe('esSubidaDeComprobante y esSubidaDeImagen (007b)', () => {
+  it.each([
+    '/a/delfines/solicitudes/comprobante',
+    '/a/delfines/solicitudes/comprobante/',
+    '/a/delfines/Solicitudes/COMPROBANTE',
+    '/A/Delfines/solicitudes/comprobante/',
+  ])('PUT %s es la subida del comprobante y una subida de imagen, no la de la foto', (ruta) => {
+    expect(esSubidaDeComprobante('PUT', ruta)).toBe(true);
+    expect(esSubidaDeImagen('PUT', ruta)).toBe(true);
+    expect(esSubidaDeFoto('PUT', ruta)).toBe(false);
+  });
+
+  it.each(['GET', 'POST', 'PATCH', 'DELETE', 'HEAD', 'put'])(
+    '%s sobre la dirección del comprobante no es la subida',
+    (metodo) => {
+      expect(esSubidaDeComprobante(metodo, '/a/delfines/solicitudes/comprobante')).toBe(false);
+      expect(esSubidaDeImagen(metodo, '/a/delfines/solicitudes/comprobante')).toBe(false);
+    },
+  );
+
+  it.each([
+    '/a/delfines/solicitudes/comprobante/otra',
+    '/a/solicitudes/comprobante',
+    '/a/delfines/solicitudes//comprobante',
+    '/a/delfines/solicitudes/comprobantes',
+    '/pagos/comprobante',
+  ])('PUT %s no es la subida', (ruta) => {
+    expect(esSubidaDeComprobante('PUT', ruta)).toBe(false);
+    expect(esSubidaDeImagen('PUT', ruta)).toBe(false);
+  });
+
+  it('la foto sigue siendo una subida de imagen', () => {
+    expect(esSubidaDeImagen('PUT', '/a/delfines/solicitudes/foto')).toBe(true);
   });
 });
 

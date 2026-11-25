@@ -7,7 +7,7 @@ export interface DatosDelEstado {
   estado_solicitud: EstadoSolicitud;
   estado_matricula: 'RESERVADA' | 'VIGENTE' | 'FINALIZADA' | 'CANCELADA';
   reserva_vence_en: Date | null;
-  /** El estado del último pago de la matrícula (`registrado_en` más reciente y, a igual instante, el de mayor `id`), o `null` si no tiene. */
+  /** El estado del pago que cuenta de la matrícula (el abierto y, si no hay, el último rechazado: `unirUltimoPago`), o `null` si no tiene. */
   estado_ultimo_pago?: 'PENDIENTE_VERIFICACION' | 'CONFIRMADO' | 'RECHAZADO' | null;
   /** Si la matrícula tiene un pago `PENDIENTE_VERIFICACION` (a lo sumo uno, el índice `pagos_un_abierto_por_matricula`). */
   hay_pago_pendiente?: boolean | null;
@@ -50,8 +50,13 @@ export function estadoVisible(datos: DatosDelEstado, ahora: Date): EstadoSolicit
 }
 
 /**
- * El último pago de la matrícula `m` (`registrado_en` más reciente y, a igual instante, el de mayor `id`) como un `LEFT JOIN LATERAL` con el
- * alias `up`, más si hay un pago pendiente (`hay_pendiente`). Sin pagos, las columnas de `up` son nulas. Se une después de `matriculas m`.
+ * El pago de la matrícula `m` del que depende lo que se muestra, como un `LEFT JOIN LATERAL` con el alias `up`, más si hay un pago pendiente
+ * (`hay_pendiente`). Sin pagos, las columnas de `up` son nulas. Se une después de `matriculas m`.
+ *
+ * Es el pago abierto (`PENDIENTE_VERIFICACION` o `CONFIRMADO`, a lo sumo uno por matrícula: el índice `pagos_un_abierto_por_matricula`) y, si
+ * no hay, el último rechazado (`registrado_en` más reciente y, a igual instante, el de mayor `id`). Un abierto va antes que un rechazado aunque
+ * el `registrado_en` del rechazado sea posterior (los relojes de varias instancias de la API pueden diferir): así la vista `CONFIRMADA` muestra
+ * el método, el monto y el ticket del cobro, y `EN_VERIFICACION`, los datos del comprobante en revisión (spec 007b, «Notas»).
  */
 export const unirUltimoPago: Fragmento = sql`
   LEFT JOIN LATERAL (
@@ -61,7 +66,7 @@ export const unirUltimoPago: Fragmento = sql`
                       AND q.estado = 'PENDIENTE_VERIFICACION'::estado_pago) AS hay_pendiente
       FROM pagos p
      WHERE p.academia_id = m.academia_id AND p.matricula_id = m.id
-     ORDER BY p.registrado_en DESC, p.id DESC
+     ORDER BY (p.estado = 'RECHAZADO'::estado_pago), p.registrado_en DESC, p.id DESC
      LIMIT 1
   ) up ON true`;
 

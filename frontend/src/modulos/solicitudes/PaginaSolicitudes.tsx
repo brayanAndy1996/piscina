@@ -57,6 +57,7 @@ function ContenidoSolicitudes() {
   const [filtro, setFiltro] = useState<FiltroEstadoSolicitudes>('ACTIVAS');
   const usuario = useUsuario();
   const puedeAjustar = puede(usuario.rol, 'AJUSTAR_MONTO_COBRO');
+  const puedeVerificar = puede(usuario.rol, 'VERIFICAR_PAGOS');
   const [aCancelar, setACancelar] = useState<SolicitudPanel | null>(null);
   const [aCobrar, setACobrar] = useState<SolicitudPanel | null>(null);
   const [aAjustar, setAAjustar] = useState<SolicitudPanel | null>(null);
@@ -73,8 +74,9 @@ function ContenidoSolicitudes() {
       <h1 className="text-2xl font-semibold text-slate-900">Solicitudes de inscripción</h1>
       <p className="text-slate-700">
         Lo que enviaron los clientes desde el formulario. Cobra en efectivo a quien paga en recepción (con la caja de
-        hoy abierta). Una solicitud sin pagar guarda sus cupos hasta que vence su reserva; si el cliente ya no va a
-        venir, cancélala para liberar el cupo.
+        hoy abierta). Los comprobantes de Yape y transferencia se revisan en «Pagos por verificar». Una solicitud sin
+        pagar guarda sus cupos hasta que vence su reserva; si el cliente ya no va a venir, cancélala para liberar el
+        cupo.
       </p>
 
       <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap gap-2">
@@ -118,6 +120,7 @@ function ContenidoSolicitudes() {
                   <TarjetaSolicitud
                     solicitud={solicitud}
                     puedeAjustar={puedeAjustar}
+                    puedeVerificar={puedeVerificar}
                     alCancelar={() => {
                       setHecho(null);
                       setACancelar(solicitud);
@@ -188,15 +191,27 @@ function ContenidoSolicitudes() {
 interface PropiedadesTarjeta {
   solicitud: SolicitudPanel;
   puedeAjustar: boolean;
+  puedeVerificar: boolean;
   alCancelar: () => void;
   alCobrar: () => void;
   alAjustar: () => void;
 }
 
-function TarjetaSolicitud({ solicitud, puedeAjustar, alCancelar, alCobrar, alAjustar }: PropiedadesTarjeta) {
+function TarjetaSolicitud({
+  solicitud,
+  puedeAjustar,
+  puedeVerificar,
+  alCancelar,
+  alCobrar,
+  alAjustar,
+}: PropiedadesTarjeta) {
   const estado = ESTADO_EN_PALABRAS[solicitud.estado];
   const sePuedeCancelar = solicitud.estado === 'PENDIENTE_PAGO' || solicitud.estado === 'VENCIDA';
-  const sePuedeCobrar = solicitud.estado === 'PENDIENTE_PAGO';
+  // Una `PAGO_RECHAZADO` también se cobra en efectivo (criterio 54, 007b): la persona viene a pagar en recepción.
+  const sePuedeCobrar = solicitud.estado === 'PENDIENTE_PAGO' || solicitud.estado === 'PAGO_RECHAZADO';
+  // Con un comprobante en revisión no se cobra ni se cancela: se aprueba o se rechaza en la bandeja de pagos.
+  const enRevision = solicitud.estado === 'EN_VERIFICACION';
+  const sePuedeAjustar = solicitud.estado === 'PENDIENTE_PAGO';
   const ticket = solicitud.estado === 'CONFIRMADA' && solicitud.pago?.estado === 'CONFIRMADO' ? solicitud.pago : null;
   return (
     <article
@@ -272,7 +287,7 @@ function TarjetaSolicitud({ solicitud, puedeAjustar, alCancelar, alCobrar, alAju
         <dd className="text-slate-900">{formatearFechaHora(solicitud.creadaEn)}</dd>
       </dl>
 
-      {sePuedeCobrar || sePuedeCancelar || ticket ? (
+      {sePuedeCobrar || sePuedeCancelar || ticket || (enRevision && puedeVerificar) ? (
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           {sePuedeCancelar ? (
             <button
@@ -284,7 +299,7 @@ function TarjetaSolicitud({ solicitud, puedeAjustar, alCancelar, alCobrar, alAju
               Cancelar
             </button>
           ) : null}
-          {sePuedeCobrar && puedeAjustar ? (
+          {sePuedeAjustar && puedeAjustar ? (
             <button
               type="button"
               onClick={alAjustar}
@@ -303,6 +318,15 @@ function TarjetaSolicitud({ solicitud, puedeAjustar, alCancelar, alCobrar, alAju
             >
               Cobrar en efectivo
             </button>
+          ) : null}
+          {enRevision && puedeVerificar ? (
+            <Link
+              to="/panel/pagos"
+              aria-label={`Verificar el comprobante de la solicitud ${solicitud.codigo}`}
+              className={ESTILO_BOTON.primario}
+            >
+              Verificar el comprobante
+            </Link>
           ) : null}
           {ticket ? (
             <Link

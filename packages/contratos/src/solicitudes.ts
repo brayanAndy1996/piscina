@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { metodoPagoSchema } from './caja';
+import { datosDePagoSchema } from './configuracion';
 import { montoDeLecturaSchema } from './dinero';
 import { diaSemanaSchema, fechaSchema, horaBloqueSchema, nivelNatacionSchema } from './horario';
 import { clasePublicaSchema } from './inscripcion';
@@ -162,7 +163,12 @@ export type VistaSolicitud = z.infer<typeof vistaSolicitudSchema>;
 
 export const respuestaConsultaSolicitudSchema = z.strictObject({
   solicitud: vistaSolicitudSchema,
-  academia: z.strictObject({ nombre: z.string(), telefono: z.string().nullable() }),
+  academia: z.strictObject({
+    nombre: z.string(),
+    telefono: z.string().nullable(),
+    /** Los datos de pago de la academia que tienen valor, solo con la solicitud `PENDIENTE_PAGO` o `PAGO_RECHAZADO` (007b, criterio 53). */
+    datosDePago: datosDePagoSchema.optional(),
+  }),
 });
 export type RespuestaConsultaSolicitud = z.infer<typeof respuestaConsultaSolicitudSchema>;
 

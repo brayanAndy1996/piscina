@@ -1,4 +1,4 @@
-import { type ConsultarSolicitud } from '@aquagestion/contratos';
+import type { ConsultarSolicitud, DatosComprobante } from '@aquagestion/contratos';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useIdDeVisita } from '../../lib/visita';
 import * as api from './api';
@@ -26,5 +26,22 @@ export function useConsultarPorCodigo(nombreCorto: string) {
   return useMutation({
     mutationFn: (consulta: ConsultarSolicitud) => api.consultarSolicitud(nombreCorto, consulta),
     gcTime: 0,
+  });
+}
+
+/**
+ * La subida del comprobante. La clave de idempotencia va dentro de `datos` y la pone quien llama: no cambia entre intentos. Las
+ * devoluciones de llamada van en la propia mutación y no en cada `mutate`: siguen corriendo aunque la página cambie mientras espera.
+ */
+export function useSubirComprobante(
+  nombreCorto: string,
+  opciones: { alTerminar?: () => Promise<unknown> | void; alFallar?: (error: unknown) => Promise<unknown> | void } = {},
+) {
+  const { alTerminar, alFallar } = opciones;
+  return useMutation({
+    mutationFn: ({ token, datos, archivo }: { token: string; datos: DatosComprobante; archivo: File }) =>
+      api.subirComprobante(nombreCorto, token, datos, archivo),
+    ...(alTerminar ? { onSuccess: alTerminar } : {}),
+    ...(alFallar ? { onError: alFallar } : {}),
   });
 }

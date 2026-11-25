@@ -197,8 +197,9 @@ describe('el panel de solicitudes con los pagos (criterio 54)', () => {
     expect(within(rechazada).getByText(/Yape · Rechazado el 24\/11\/2026 11:00/)).toBeInTheDocument();
     expect(within(rechazada).getByText(/Operación 12345/)).toBeInTheDocument();
     expect(within(rechazada).getByText(/Motivo del rechazo: Foto ilegible/)).toBeInTheDocument();
-    // En 007a solo se cobra lo pendiente de pago.
-    expect(within(rechazada).queryByRole('button', { name: /Cobrar en efectivo/ })).not.toBeInTheDocument();
+    // Desde la 007b también se cobra en efectivo una solicitud con el pago rechazado (criterio 54); el ajuste sigue siendo solo de las pendientes.
+    expect(within(rechazada).getByRole('button', { name: /Cobrar en efectivo/ })).toBeInTheDocument();
+    expect(within(rechazada).queryByRole('button', { name: /Ajustar el monto/ })).not.toBeInTheDocument();
   });
 
   it('el filtro "Confirmadas" pide ?estado=CONFIRMADAS y muestra el ticket del pago', async () => {

@@ -2,8 +2,11 @@ import { Module } from '@nestjs/common';
 import { AuditoriaModule } from '../auditoria';
 import { UsuariosModule } from '../usuarios';
 import { CobrosService } from './cobros.service';
+import { ComprobantePublicoController } from './comprobante.controller';
+import { ComprobanteService } from './comprobante.service';
 import { PagosController } from './pagos.controller';
 import { TicketService } from './ticket.service';
+import { VerificacionService } from './verificacion.service';
 
 /**
  * Pagos (spec 007a): el cobro en efectivo en recepción con su paso de cliente a alumno, el ajuste del monto y el ticket interno. La 007b suma el
@@ -11,8 +14,8 @@ import { TicketService } from './ticket.service';
  */
 @Module({
   imports: [AuditoriaModule, UsuariosModule],
-  controllers: [PagosController],
-  providers: [CobrosService, TicketService],
-  exports: [CobrosService, TicketService],
+  controllers: [PagosController, ComprobantePublicoController],
+  providers: [CobrosService, TicketService, ComprobanteService, VerificacionService],
+  exports: [CobrosService, TicketService, ComprobanteService, VerificacionService],
 })
 export class PagosModule {}

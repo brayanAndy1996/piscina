@@ -240,8 +240,8 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
     `10000005`) y tres clientes con solicitud: `AQ-SM0001` (vigente), `AQ-SM0002` (vencida) y `AQ-SM0003` (menor con
     apoderado). Sus reservas vigentes vencen al fin del mes en Lima, los tokens se guardan solo como hash, y repetirla no
     duplica ni pisa lo editado. `tiburones` queda sin solicitudes.
-  - **Lo que todavía no trae.** El pago por Yape o transferencia y su verificación (007b); la renovación y el cambio de
-    horario (010). El cobro en efectivo y el paso de cliente a alumno llegaron con la 007a.
+  - **Lo que todavía no trae.** La renovación y el cambio de horario (010). El cobro en efectivo y el paso de cliente a
+    alumno llegaron con la 007a, y el pago por Yape o transferencia y su verificación, con la 007b.
 
 - **Lo que construye la historia 005b** (foto de la inscripción y panel de solicitudes; la especificación está en
   `specs/005-inscripcion-publica/`, criterios 34 a 40, 46, 61 a 66 y las partes de la 005b de 28, 33, 43, 44 y 48). No
@@ -453,8 +453,8 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
     `10000002`), con un egreso de S/ 15.50 y un cierre con un sobrante de S/ 0.50 y su observación. Las claves de
     idempotencia son fijas: repetir la semilla no duplica nada. `tiburones` queda sin cajas. `/panel/caja` solo muestra la
     caja de hoy o la abierta, así que esta se ve en el historial (006b).
-  - **Lo que todavía no trae.** Las verificaciones de Yape y transferencia (007b), los cobros de la 010 y la 016, y el egreso desde caja
-    de la 019. El historial, el detalle y el PDF del cierre llegaron con la 006b, y la reapertura de un día anterior desde
+  - **Lo que todavía no trae.** Los cobros de la 010 y la 016, y el egreso desde caja
+    de la 019. Las verificaciones de Yape y transferencia llegaron con la 007b. El historial, el detalle y el PDF del cierre llegaron con la 006b, y la reapertura de un día anterior desde
     la web también.
 - **Lo que construye la historia 006b** (historial y PDF del cierre; sin migraciones, con `pdfkit`). Las tres lecturas de
   la caja, con el alcance por rol, los 404 iguales, el PDF por tramos, la cola de generación y la web del historial. Su
@@ -485,9 +485,18 @@ Tabla de claves (valores por defecto y rangos aprobados en DR-1 de 003):
     - Un `Date` se reconoce por su ranura interna, leída con `Date.prototype.getTime` capturado al cargar el módulo, y no con `instanceof`. Un `Date` de otro contexto (`vm`), con el prototipo cambiado o de una subclase vale y da su instante. Un `Proxy`, un primitivo o un objeto que solo imita un `Date` se rechazan sin llamar a sus trampas.
     - Modelo de amenaza (criterio 59 e): el código del mismo proceso que modifica objetos nativos de JavaScript queda fuera. El endurecimiento de la ronda 4 lo dificulta, pero no lo garantiza.
   - **Correo después de confirmar** (criterio 51 a; D-08, D-19). Al confirmar un pago, la plantilla `PAGO_CONFIRMADO` se envía con `enviarSinEsperar`, una vez por cada destinatario distinto: el correo del alumno y, si es menor de edad, el de su apoderado. Lleva el nombre de la academia, el código de la solicitud, la dirección de ingreso (`/a/{nombreCorto}/ingresar`) y el aviso de que el usuario y la contraseña inicial son el DNI. No lleva el DNI ni el token. Si la transacción falla o el cobro es un reintento (200), no se envía nada.
-  - **Semilla** (criterio 57). En `delfines`, la solicitud `AQ-SM0001` (DNI `20000001`) tiene un ajuste de monto de ejemplo con su motivo: el total es S/ 60.00, frente al `monto_calculado` de S/ 80.00. Se escribe en la matrícula sin pasar por la API, y solo si la matrícula sigue `RESERVADA` y nadie la ha tocado, así que repetir la semilla no lo duplica ni pisa un ajuste del administrador. **No escribe auditoría** (`MATRICULA_MONTO_AJUSTADO`), como el resto de los datos de ejemplo: la auditoría registra lo que hacen las personas por la API. No se siembran pagos, y `tiburones` queda sin pagos. La prueba no protegida de la semilla está en `backend/test/integracion/semilla/semilla-ajuste-pagos.test.ts`.
-  - **Lo que todavía no trae.** La subida del comprobante de Yape o transferencia, la bandeja de verificación, la aprobación, el rechazo, los datos de pago de la academia y el correo de pago rechazado (007b); el carnet (008); las renovaciones y las mensualidades (010); los descuentos (015); los cobros de clases particulares (016). La facturación SUNAT es el último módulo (D-09).
+  - **Semilla** (criterio 57). En `delfines`, la solicitud `AQ-SM0001` (DNI `20000001`) tiene un ajuste de monto de ejemplo con su motivo: el total es S/ 60.00, frente al `monto_calculado` de S/ 80.00. Se escribe en la matrícula sin pasar por la API, y solo si la matrícula sigue `RESERVADA` y nadie la ha tocado, así que repetir la semilla no lo duplica ni pisa un ajuste del administrador. **No escribe auditoría** (`MATRICULA_MONTO_AJUSTADO`), como el resto de los datos de ejemplo: la auditoría registra lo que hacen las personas por la API. En la 007a no se siembran pagos (el Yape pendiente de ejemplo es de la 007b, más abajo), y `tiburones` queda sin pagos. La prueba no protegida de la semilla está en `backend/test/integracion/semilla/semilla-ajuste-pagos.test.ts`.
+  - **Lo que todavía no trae.** El carnet (008); las renovaciones y las mensualidades (010); los descuentos (015); los cobros de clases particulares (016). La facturación SUNAT es el último módulo (D-09).
   - **Riesgos aceptados** (spec 007, «Riesgos aceptados», y plan, «Riesgos»). La contraseña inicial es el DNI (RN-02): quien lo conozca puede entrar antes que el alumno, y lo limitan el cambio obligatorio, el bloqueo por intentos y el restablecimiento por la secretaria. `USUARIO_CREADO` guarda el DNI como usuario, también el de un menor; la auditoría es interna de la academia y el DNI es el usuario (RN-02). El ticket no tiene valor tributario hasta el módulo de facturación (D-09), y la leyenda lo dice. Un correo que no llega no se reintenta, como en la 005: el cliente ve el estado en su enlace. El cobro toma la caja al final, así que la caja serializa los cobros de la academia (riesgo ya aceptado en la 006). El middleware lee la sesión de recepción en las rutas públicas: una consulta más por petición con cookie válida. Un código del mismo proceso que modifica objetos nativos queda fuera del modelo de amenaza del id de la auditoría (criterio 59 e).
+
+- **Lo que construye la historia 007b** (Yape y transferencia; criterios 36 a 53 de `specs/007-pagos/spec.md`, las partes [007b] de los criterios 11, 15, 18, 21 y 28 a 32, y el criterio 60, que añadió la ronda 1 del ataque). Sin migraciones: todo cabe en la tabla `pagos` de la 007a.
+  - **Subida pública del comprobante** (`comprobante.controller.ts` y `comprobante.service.ts`). `PUT /api/a/{nombreCorto}/solicitudes/comprobante`, sin sesión: el token de la solicitud va en la cabecera `X-Token-Solicitud`, nunca en la dirección; los datos del pago, en `X-Pago-Datos` (JSON); la imagen, como cuerpo binario. `recodificarImagen` (con `sharp`) la vuelve a codificar sin metadatos antes de guardarla con `AlmacenArchivos`. Con un comprobante la reserva no vence (`reserva_vence_en = NULL`), y la subida bloquea siempre las clases de la matrícula antes de decidir (criterio 60).
+  - **Bandeja y comprobante** (criterios 45 y 46). `GET /api/pagos/pendientes` (`listarPendientes`, en `verificacion.service.ts`) lista los pagos `PENDIENTE_VERIFICACION` del más antiguo al más nuevo, como mucho 200 (`TOPE_DE_LA_BANDEJA`). `GET /api/pagos/{id}/comprobante` devuelve la imagen de un pago de Yape o transferencia. `HEAD` sobre `/api/pagos` responde 404 (`PREFIJOS_SIN_HEAD`, en `caja/head-sin-ruta.ts`).
+  - **Aprobar y rechazar** (criterios 47 a 52; `POST /api/pagos/{id}/aprobacion` y `POST /api/pagos/{id}/rechazo`, en `verificacion.service.ts`). Aprobar llama a `confirmarPagoEnTransaccion` con el método real del pago: el ingreso entra a la caja abierta de hoy y no suma al efectivo (D-04). Audita `PAGO_APROBADO`. Rechazar libera el cupo, audita `PAGO_RECHAZADO` y no necesita caja. Los bloqueos son los de `bloquearFilasDelPago` (`bloqueos.ts`), que parte del DNI leído desde el pago con `leerDatosDelPago`; en la aprobación, la caja va al final.
+  - **Correos** (criterio 51 a y b; `avisos.ts`). `avisarPagoConfirmado` y `avisarPagoRechazado` se envían después de confirmar la transacción, una vez por cada destinatario (el alumno y, si es menor, su apoderado), sin DNI ni token.
+  - **Datos de pago** (criterio 53). Seis claves de configuración de la academia: `yape_numero`, `yape_titular`, `transferencia_banco`, `transferencia_cuenta`, `transferencia_cci` y `transferencia_titular` (`packages/contratos/src/configuracion.ts`). El seguimiento solo muestra los que tienen valor.
+  - **Estados** (criterios 28 a 32). `EN_VERIFICACION` y `PAGO_RECHAZADO` en el seguimiento, el panel, la cancelación, la foto, el cobro en efectivo y el ajuste del monto, que solo admite `PENDIENTE_PAGO` y `PAGO_RECHAZADO`.
+  - **Lo que todavía no trae.** La web no ofrece cancelar ni ajustar una solicitud con `PAGO_RECHAZADO`, aunque la API lo permite. El resto de la deuda de la 007b está en `specs/backlog.md`, en la nota de la 007.
 
 ## Fechas y horas de negocio (America/Lima)
 
@@ -979,7 +988,7 @@ piscina/
 │   │   └── modulos/
 │   │       ├── academias/        Alta de academias, Superadmin
 │   │       ├── autenticacion/ · usuarios/ · auditoria/ · configuracion/
-│   │       ├── planes/ · clases/ · matriculas/ · inscripciones/ · caja/ · pagos/   (004, 005a, 005b, 006a, 006b y 007a; matriculas/ no tiene controlador; caja/ tiene el historial, el detalle y el PDF de la 006b, en `pdf/`)
+│   │       ├── planes/ · clases/ · matriculas/ · inscripciones/ · caja/ · pagos/   (004, 005a, 005b, 006a, 006b, 007a y 007b; matriculas/ no tiene controlador; caja/ tiene el historial, el detalle y el PDF de la 006b, en `pdf/`)
 │   │       └── <modulo>/         Un módulo por área (planes, clases, caja, pagos, asistencia…)
 │   │           ├── <modulo>.module.ts · .controller.ts · .service.ts
 │   │           └── dominio/      Cálculos puros + sus pruebas unitarias (*.test.ts)

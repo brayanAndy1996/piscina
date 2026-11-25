@@ -6,6 +6,7 @@ import { frasePorTelefono } from '../../componentes/Telefono';
 import { Alerta, Aviso, ESTILO_BOTON } from '../../componentes/ui';
 import { mensajeGeneral } from '../../lib/errores';
 import { useSolicitudPorToken } from './hooks';
+import { SeccionComprobante } from './SeccionComprobante';
 import { SeccionFoto } from './SeccionFoto';
 import { VistaSeguimiento } from './VistaSeguimiento';
 
@@ -41,7 +42,7 @@ export function PaginaSeguimiento() {
 function ContenidoSeguimiento({ nombreCorto, token }: { nombreCorto: string; token: string }) {
   const consulta = useSolicitudPorToken(nombreCorto, token);
   const consultaPorCodigo = `/a/${encodeURIComponent(nombreCorto)}/solicitud`;
-  // Un aviso de la foto sigue a la vista aunque la vista pase a reducida y la sección de la foto desaparezca (criterio 44).
+  // Un aviso de la foto o del comprobante sigue a la vista aunque la vista cambie y su sección desaparezca (criterio 44 de 005, 55 de 007).
   const [avisoFoto, setAvisoFoto] = useState<string | null>(null);
 
   if (consulta.data === undefined) {
@@ -81,7 +82,22 @@ function ContenidoSeguimiento({ nombreCorto, token }: { nombreCorto: string; tok
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold text-sky-900">Seguimiento de tu solicitud</h1>
       <VistaSeguimiento respuesta={respuesta} />
-      {respuesta.solicitud.estado === 'PENDIENTE_PAGO' ? (
+      {respuesta.solicitud.estado === 'PENDIENTE_PAGO' || respuesta.solicitud.estado === 'PAGO_RECHAZADO' ? (
+        <SeccionComprobante
+          // Otro estado es otro formulario: la clave de idempotencia de un envío no pasa al siguiente.
+          key={respuesta.solicitud.estado}
+          nombreCorto={nombreCorto}
+          token={token}
+          solicitud={respuesta.solicitud}
+          datosDePago={respuesta.academia.datosDePago}
+          telefono={respuesta.academia.telefono}
+          alActualizar={() => consulta.refetch()}
+          alAvisar={setAvisoFoto}
+        />
+      ) : null}
+      {respuesta.solicitud.estado === 'PENDIENTE_PAGO' ||
+      respuesta.solicitud.estado === 'EN_VERIFICACION' ||
+      respuesta.solicitud.estado === 'PAGO_RECHAZADO' ? (
         <SeccionFoto
           nombreCorto={nombreCorto}
           token={token}

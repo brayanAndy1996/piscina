@@ -2,7 +2,9 @@ import {
   type ActualizarConfiguracion,
   actualizarConfiguracionSchema,
   type CampoConfiguracion,
+  type CampoDatoDePago,
   CAMPOS_CONFIGURACION,
+  CAMPOS_DATOS_DE_PAGO,
   CAMPOS_ENTEROS_CONFIGURACION,
   CLAVES_CONFIGURACION,
   type ConfiguracionAcademia,
@@ -20,10 +22,14 @@ import { esErrorDeCambioDeSesion, useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
 import { useActualizarConfiguracion, useConfiguracion } from './hooks';
 
-/** Lo que el formulario guarda de cada campo: el texto de la entrada. Se convierte al enviar. */
-type Campos = Record<CampoConfiguracion, string>;
+/** Todo lo que el formulario edita: los seis valores de siempre y, desde la 007b, los datos de pago de la academia (criterio 53). */
+type CampoDelFormulario = CampoConfiguracion | CampoDatoDePago;
+const CAMPOS_DEL_FORMULARIO: readonly CampoDelFormulario[] = [...CAMPOS_CONFIGURACION, ...CAMPOS_DATOS_DE_PAGO];
 
-const GRUPOS: readonly { titulo: string; descripcion: string; campos: readonly CampoConfiguracion[] }[] = [
+/** Lo que el formulario guarda de cada campo: el texto de la entrada. Se convierte al enviar. */
+type Campos = Record<CampoDelFormulario, string>;
+
+const GRUPOS: readonly { titulo: string; descripcion: string; campos: readonly CampoDelFormulario[] }[] = [
   {
     titulo: 'Asistencia y mensualidades',
     descripcion: 'Cuándo se marca una asistencia como tarde y cuándo se avisa que una mensualidad está por vencer.',
@@ -33,6 +39,19 @@ const GRUPOS: readonly { titulo: string; descripcion: string; campos: readonly C
     titulo: 'Seguridad del inicio de sesión',
     descripcion: 'Cuántos intentos fallidos se permiten y cuánto dura el bloqueo de la cuenta.',
     campos: ['intentosInicioSesion', 'minutosBloqueo'],
+  },
+  {
+    titulo: 'Datos de pago',
+    descripcion:
+      'A dónde envían su Yape o su transferencia quienes se inscriben desde el enlace. Se muestran junto al formulario del comprobante; los que dejes vacíos no se muestran.',
+    campos: [
+      'yapeNumero',
+      'yapeTitular',
+      'transferenciaBanco',
+      'transferenciaCuenta',
+      'transferenciaCci',
+      'transferenciaTitular',
+    ],
   },
 ];
 
@@ -44,6 +63,12 @@ function aTextos(configuracion: ConfiguracionAcademia): Campos {
     intentosInicioSesion: String(configuracion.intentosInicioSesion),
     minutosBloqueo: String(configuracion.minutosBloqueo),
     telefono: configuracion.telefono ?? '',
+    yapeNumero: configuracion.yapeNumero ?? '',
+    yapeTitular: configuracion.yapeTitular ?? '',
+    transferenciaBanco: configuracion.transferenciaBanco ?? '',
+    transferenciaCuenta: configuracion.transferenciaCuenta ?? '',
+    transferenciaCci: configuracion.transferenciaCci ?? '',
+    transferenciaTitular: configuracion.transferenciaTitular ?? '',
   };
 }
 
@@ -60,12 +85,20 @@ function cambiosDe(textos: Campos, base: ConfiguracionAcademia): Record<string, 
   }
   const telefono = textos.telefono.trim() === '' ? null : textos.telefono.trim();
   if (telefono !== base.telefono) cambios.telefono = telefono;
+  // Un dato de pago vacío es `null` (lo quita); la API no trae los que no tienen valor.
+  for (const campo of CAMPOS_DATOS_DE_PAGO) {
+    const valor = textos[campo].trim() === '' ? null : textos[campo].trim();
+    if (valor !== (base[campo] ?? null)) cambios[campo] = valor;
+  }
   return cambios;
 }
 
-/** Si las dos configuraciones valen lo mismo en los seis campos. */
+/** Si las dos configuraciones valen lo mismo en todos los campos. */
 function sonIguales(a: ConfiguracionAcademia, b: ConfiguracionAcademia): boolean {
-  return CAMPOS_CONFIGURACION.every((campo) => a[campo] === b[campo]);
+  return (
+    CAMPOS_CONFIGURACION.every((campo) => a[campo] === b[campo]) &&
+    CAMPOS_DATOS_DE_PAGO.every((campo) => (a[campo] ?? null) === (b[campo] ?? null))
+  );
 }
 
 const AVISO_BASE_NUEVA =
@@ -74,12 +107,17 @@ const AVISO_BASE_NUEVA =
 const AVISO_SIN_COMPROBAR =
   'No pudimos comprobar si la configuración cambió. Tus cambios siguen aquí y puedes guardarlos.';
 
-function esCampo(nombre: unknown): nombre is CampoConfiguracion {
-  return CAMPOS_CONFIGURACION.some((campo) => campo === nombre);
+function esCampo(nombre: unknown): nombre is CampoDelFormulario {
+  return CAMPOS_DEL_FORMULARIO.some((campo) => campo === nombre);
+}
+
+function esDatoDePago(campo: CampoDelFormulario): campo is CampoDatoDePago {
+  return CAMPOS_DATOS_DE_PAGO.some((dato) => dato === campo);
 }
 
 /** El texto de ayuda de un campo: qué hace, su rango y su valor por defecto (criterio 23). */
-function ayudaDe(campo: CampoConfiguracion): string {
+function ayudaDe(campo: CampoDelFormulario): string {
+  if (esDatoDePago(campo)) return CLAVES_CONFIGURACION[campo].ayuda;
   if (campo === 'telefono') return `${CLAVES_CONFIGURACION.telefono.ayuda} Por defecto: sin teléfono.`;
   const definicion = CLAVES_CONFIGURACION[campo];
   const { minimo, maximo } = LIMITES_CONFIGURACION[campo];
@@ -179,7 +217,7 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
       return;
     }
     const nuevos = aTextos(base);
-    for (const nombre of CAMPOS_CONFIGURACION) {
+    for (const nombre of CAMPOS_DEL_FORMULARIO) {
       if (!editados.includes(nombre)) setValue(nombre, nuevos[nombre]);
     }
     setAvisoBaseNueva(true);
@@ -188,7 +226,7 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
   const cambios = cambiosDe({ ...aTextos(baseDeLlenado), ...textos }, baseDeLlenado);
   const hayCambios = Object.keys(cambios).length > 0;
 
-  const alEditar = (campo: CampoConfiguracion) => {
+  const alEditar = (campo: CampoDelFormulario) => {
     clearErrors(campo);
     setGuardado(false);
   };
@@ -224,10 +262,11 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
     !esErrorDeCambioDeSesion(actualizar.error) &&
     erroresPorCampo(actualizar.error).length === 0;
 
-  function campo(nombre: CampoConfiguracion): ReactNode {
+  function campo(nombre: CampoDelFormulario): ReactNode {
     const definicion = CLAVES_CONFIGURACION[nombre];
     const etiqueta = definicion.unidad ? `${definicion.etiqueta} (${definicion.unidad})` : definicion.etiqueta;
-    const porDefecto = CONFIGURACION_POR_DEFECTO[nombre];
+    const datoDePago = esDatoDePago(nombre);
+    const porDefecto = datoDePago ? null : CONFIGURACION_POR_DEFECTO[nombre];
     return (
       <div key={nombre} className="space-y-2">
         <CampoTexto
@@ -235,7 +274,11 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
           ayuda={ayudaDe(nombre)}
           error={formState.errors[nombre]?.message}
           autoComplete="off"
-          {...(nombre === 'telefono' ? { type: 'tel', inputMode: 'tel' as const } : { inputMode: 'numeric' as const })}
+          {...(nombre === 'telefono' || nombre === 'yapeNumero'
+            ? { type: 'tel', inputMode: 'tel' as const }
+            : datoDePago
+              ? { inputMode: 'text' as const }
+              : { inputMode: 'numeric' as const })}
           {...register(nombre, { onChange: () => alEditar(nombre) })}
         />
         <button
@@ -246,7 +289,8 @@ function FormularioConfiguracion({ base }: { base: ConfiguracionAcademia }) {
           }}
           className={ESTILO_BOTON.secundario}
         >
-          Usar el valor por defecto <span className="sr-only">de {definicion.etiqueta}</span>
+          {datoDePago ? 'Quitar este dato' : 'Usar el valor por defecto'}{' '}
+          <span className="sr-only">de {definicion.etiqueta}</span>
         </button>
       </div>
     );

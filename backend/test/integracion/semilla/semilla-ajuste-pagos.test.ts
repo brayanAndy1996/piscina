@@ -5,8 +5,8 @@ import { leerAcademias } from '../../utilidades/datos';
 import { leerAlumnos, leerMatriculas } from '../../utilidades/inscripciones';
 
 // Spec 007, criterio 57 (parte de la 007a; tarea T24; prueba no protegida): la semilla deja en `delfines` un ajuste de monto con su motivo
-// en la solicitud de ejemplo del DNI 20000001; repetirla no lo duplica ni pisa un ajuste editado; no se siembran pagos (ni confirmados ni
-// pendientes en la 007a) y `tiburones` queda sin pagos.
+// en la solicitud de ejemplo del DNI 20000001; repetirla no lo duplica ni pisa un ajuste editado; no se siembran pagos confirmados (con la
+// 007b se siembra un único Yape pendiente, en otra solicitud: ver `semilla-pago-007b.test.ts`) y `tiburones` queda sin pagos.
 
 const TIMEOUT = 120_000;
 const VARIABLES = {
@@ -26,7 +26,7 @@ async function idDe(nombreCorto: string): Promise<string> {
 async function contarPagos(academiaId: string): Promise<number> {
   const { rows } = await ejecutarComo(
     'propietario',
-    'SELECT count(*)::int AS n FROM pagos WHERE academia_id = $1::uuid',
+    `SELECT count(*)::int AS n FROM pagos WHERE academia_id = $1::uuid AND estado <> 'PENDIENTE_VERIFICACION'::estado_pago`,
     [academiaId],
     { academiaId },
   );
@@ -50,7 +50,7 @@ describe('semilla: ajuste de ejemplo y sin pagos (criterio 57, 007a)', () => {
   beforeEach(limpiarBase);
 
   it(
-    'delfines queda con un único ajuste de ejemplo con su motivo en una matrícula reservada; delfines y tiburones sin pagos',
+    'delfines queda con un único ajuste de ejemplo con su motivo en una matrícula reservada; delfines sin pagos confirmados y tiburones sin pagos',
     async () => {
       const resultado = ejecutarComando('db:semilla', VARIABLES);
 
@@ -59,9 +59,16 @@ describe('semilla: ajuste de ejemplo y sin pagos (criterio 57, 007a)', () => {
       expect(await matriculasConAjuste(delfinesId)).toEqual([
         { dni: DNI_CON_AJUSTE, monto: '60.00', motivo: MOTIVO_DE_EJEMPLO, estado: 'RESERVADA' },
       ]);
-      expect(await contarPagos(delfinesId), 'no se siembran pagos en delfines').toBe(0);
+      expect(await contarPagos(delfinesId), 'no se siembran pagos resueltos en delfines').toBe(0);
       const tiburonesId = await idDe('tiburones');
       expect(await contarPagos(tiburonesId), 'tiburones queda sin pagos').toBe(0);
+      const { rows } = await ejecutarComo(
+        'propietario',
+        'SELECT count(*)::int AS n FROM pagos WHERE academia_id = $1::uuid',
+        [tiburonesId],
+        { academiaId: tiburonesId },
+      );
+      expect((rows[0] as { n: number }).n, 'tiburones queda sin ningún pago').toBe(0);
       expect(await matriculasConAjuste(tiburonesId)).toEqual([]);
     },
     TIMEOUT,

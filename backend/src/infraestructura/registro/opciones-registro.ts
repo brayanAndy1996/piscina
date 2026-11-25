@@ -5,16 +5,17 @@ import type { DestinationStream } from 'pino';
 export const TEXTO_REDACTADO = '[Redactado]';
 
 /**
- * Rutas de los registros cuyo valor nunca debe aparecer: cookies, credenciales y las cabeceras `Referer` y `X-Token-Solicitud`. La página
+ * Rutas de los registros cuyo valor nunca debe aparecer: cookies, credenciales y las cabeceras `Referer`, `X-Token-Solicitud` y `X-Pago-Datos`. La página
  * de seguimiento lleva el token en su dirección (D-27) y un navegador puede mandar esa dirección en `Referer` a cualquier ruta de la API
  * (spec 005, criterio 53); la subida de la foto lleva el token en `X-Token-Solicitud` (criterio 28, 005b; Express entrega las cabeceras en
- * minúsculas): se redactan en toda la API y en todos los niveles.
+ * minúsculas) y la del comprobante, `X-Pago-Datos`, lleva el número de operación y el monto declarado (007b, criterio 43): se redactan en toda la API y en todos los niveles.
  */
 export const RUTAS_REDACTADAS = [
   'req.headers.cookie',
   'req.headers.authorization',
   'req.headers.referer',
   'req.headers["x-token-solicitud"]',
+  'req.headers["x-pago-datos"]',
   'res.headers["set-cookie"]',
 ];
 

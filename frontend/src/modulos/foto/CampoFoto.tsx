@@ -11,13 +11,21 @@ interface Propiedades {
   alElegir: (archivo: File | null) => void;
   /** El texto del selector cuando todavía no hay foto. */
   etiqueta?: string;
+  /** Cómo se llama lo que se elige en los textos de la vista previa (por defecto, "la foto"). */
+  nombre?: { vistaPrevia: string; cambiar: string; quitar: string };
 }
+
+const NOMBRE_FOTO = {
+  vistaPrevia: 'Vista previa de la foto elegida',
+  cambiar: 'Cambiar la foto',
+  quitar: 'Quitar la foto',
+};
 
 /**
  * Elegir un archivo de foto (JPG o PNG) y verlo antes de subirlo (criterios 43 y 44 de 005). En el celular, el navegador ofrece la cámara.
  * El peso y el tipo se avisan aquí, sin llamar a la API; las dimensiones las comprueba solo la API.
  */
-export function CampoFoto({ foto, aviso, alElegir, etiqueta = 'Elegir una foto' }: Propiedades) {
+export function CampoFoto({ foto, aviso, alElegir, etiqueta = 'Elegir una foto', nombre = NOMBRE_FOTO }: Propiedades) {
   const id = useId();
   const idAviso = `${id}-aviso`;
   const entrada = useRef<HTMLInputElement>(null);
@@ -31,7 +39,7 @@ export function CampoFoto({ foto, aviso, alElegir, etiqueta = 'Elegir una foto' 
     <div className="space-y-3">
       <div>
         <label htmlFor={id} className="block text-sm font-medium text-slate-800">
-          {foto ? 'Cambiar la foto' : etiqueta}
+          {foto ? nombre.cambiar : etiqueta}
         </label>
         <input
           ref={entrada}
@@ -58,13 +66,13 @@ export function CampoFoto({ foto, aviso, alElegir, etiqueta = 'Elegir una foto' 
         <div className="flex flex-wrap items-center gap-3">
           <img
             src={foto.url}
-            alt="Vista previa de la foto elegida"
+            alt={nombre.vistaPrevia}
             className="size-28 rounded-xl object-cover ring-1 ring-slate-300"
           />
           <div className="min-w-0 space-y-2">
             <p className="break-all text-sm text-slate-800">{foto.archivo.name}</p>
             <button type="button" onClick={quitar} className={ESTILO_BOTON.secundario}>
-              Quitar la foto
+              {nombre.quitar}
             </button>
           </div>
         </div>

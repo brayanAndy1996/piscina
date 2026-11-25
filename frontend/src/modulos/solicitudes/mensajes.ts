@@ -25,7 +25,8 @@ const detallesDelCobroSchema = z.looseObject({
   estado: z.string().optional(),
 });
 
-function detallesDe(error: unknown): z.infer<typeof detallesDelCobroSchema> {
+/** Los detalles de un 409 (`total`, `fecha`, `estado`), o nada si el error es otro. */
+export function detallesDeError(error: unknown): z.infer<typeof detallesDelCobroSchema> {
   if (!esErrorDeApi(error, 409)) return {};
   const detalles = detallesDelCobroSchema.safeParse(error.detalles);
   return detalles.success ? detalles.data : {};
@@ -34,7 +35,7 @@ function detallesDe(error: unknown): z.infer<typeof detallesDelCobroSchema> {
 /** El total nuevo que trae un 409 `MONTO_CAMBIO` (criterio 16), o `null` si el error es otro. */
 export function totalDelCambioDeMonto(error: unknown): string | null {
   if (!esErrorDeApi(error, 409, 'MONTO_CAMBIO')) return null;
-  return detallesDe(error).total ?? null;
+  return detallesDeError(error).total ?? null;
 }
 
 /** Los 409 que dicen que la caja no está lista: el cobro se puede reintentar cuando quien cobra la abra. */
@@ -47,7 +48,7 @@ export function esErrorDeCajaAlCobrar(error: unknown): boolean {
  * `MONTO_CAMBIO` no se explica aquí con el total: el diálogo lo muestra aparte, para que quien cobra lo vea antes de volver a confirmar.
  */
 export function mensajeDeCobro(error: unknown): string {
-  const { total, fecha } = detallesDe(error);
+  const { total, fecha } = detallesDeError(error);
   if (esErrorDeApi(error, 409, 'SIN_CAJA_ABIERTA')) return 'Abre la caja antes de cobrar.';
   if (esErrorDeApi(error, 409, 'CAJA_DE_OTRO_DIA')) {
     return fecha

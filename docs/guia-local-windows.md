@@ -343,6 +343,20 @@ npm run dev
 - La 007a no trae paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta.
 - Si `npm run db:preparar` se detiene con el código `23503`, tu base de desarrollo tiene un ingreso de caja de una prueba manual. Mira "La migración `20261124180100_pagos` falla con 23503", en "Problemas frecuentes".
 
+## Después de traer la historia 007b
+
+Si ya tenías el proyecto con la historia 007a, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- La 007b no tiene migraciones, paquetes ni variables nuevas: `npm ci`, `npm run db:migrar` y `npm run env:completar` no hacen falta.
+- `npm run db:preparar` ejecuta la semilla, que agrega a `delfines` un Yape pendiente de verificación para la solicitud `AQ-SM0003` (DNI `20000003`), su comprobante de ejemplo y los datos de pago de ejemplo (ver "Probar el pago con Yape o transferencia"). El comprobante es una imagen generada, y se guarda en la carpeta de `ALMACEN_DIRECTORIO`, por defecto `backend\almacenamiento`. Repetirlo no duplica nada, no vuelve a poner un dato de pago que hayas quitado y no cambia lo que hayas aprobado o rechazado.
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -592,9 +606,9 @@ seguimiento no se guardan en claro:
 | ----------- | -------- | ------------------------------------------------------------------------- |
 | `AQ-SM0001` | 20000001 | **Pendiente de pago**, con la fecha límite de su reserva y el monto de S/ 60.00 (ajuste de ejemplo de la 007a).                 |
 | `AQ-SM0002` | 20000002 | **Vencida**: sin nombre ni fecha límite.                                  |
-| `AQ-SM0003` | 20000003 | **Pendiente de pago**. Es la solicitud de un menor de edad con apoderado. |
+| `AQ-SM0003` | 20000003 | **Comprobante en revisión**, con un Yape pendiente de verificación de ejemplo (007b). Es la solicitud de un menor de edad con apoderado. |
 
-Las reservas de ejemplo vigentes vencen el último día del mes en Lima. Después de ese día, aparecen como **Vencida**.
+Las reservas de ejemplo vigentes vencen el último día del mes en Lima, salvo la de `AQ-SM0003`, que no vence mientras su comprobante está en revisión. Después de ese día, aparecen como **Vencida**.
 
 Otras comprobaciones:
 
@@ -651,7 +665,7 @@ tu carpeta `backend\almacenamiento`: usan una carpeta temporal, que se borra al 
 
 ## Dónde se guardan las fotos (ALMACEN_DIRECTORIO)
 
-La variable `ALMACEN_DIRECTORIO` de tu `.env` indica en qué carpeta se guardan las fotos.
+La variable `ALMACEN_DIRECTORIO` de tu `.env` indica en qué carpeta se guardan las fotos y los comprobantes de pago. La semilla de la 007b escribe ahí el comprobante de ejemplo.
 
 - **Por defecto**, si no está en tu `.env`, la carpeta es `backend\almacenamiento` dentro de tu proyecto (por ejemplo,
   `C:\proyectos\piscina\backend\almacenamiento`). Git la ignora, así que no se sube a GitHub.
@@ -708,7 +722,7 @@ Cada apertura, egreso, cierre y reapertura queda en la auditoría de la academia
 Fase 3.
 
 La caja de ejemplo de `delfines` (2 de noviembre de 2026) no aparece en **Caja**: la pantalla solo muestra la caja de hoy o
-la que siga abierta. Su historial y su PDF están en «Probar el historial y el PDF del cierre». Desde la 007a, los cobros en efectivo entran a esta caja como ingresos y suman al efectivo esperado (ver "Probar el cobro en efectivo, el ajuste y el ticket"). Los de Yape y transferencia llegan con la 007b.
+la que siga abierta. Su historial y su PDF están en «Probar el historial y el PDF del cierre». Desde la 007a, los cobros en efectivo entran a esta caja como ingresos y suman al efectivo esperado (ver "Probar el cobro en efectivo, el ajuste y el ticket"). Los de Yape y transferencia entran a la caja al aprobarlos desde «Pagos por verificar» (ver "Probar el pago con Yape o transferencia").
 
 Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`. La prueba
 de navegador de la caja corre con `npm run e2e`.
@@ -761,14 +775,14 @@ Si ya pasó el último día del mes en Lima, la reserva de ejemplo está vencida
 
 ### Ajustar el monto (solo el administrador)
 
-1. Entra como el administrador (`10000001`) en **http://localhost:5173/a/delfines/ingresar**. En **Solicitudes de inscripción**, busca una tarjeta **Pendiente de pago**, por ejemplo la de **AQ-SM0003**, y pulsa **Ajustar monto**. Así no cambias la de `AQ-SM0001`.
+1. Entra como el administrador (`10000001`) en **http://localhost:5173/a/delfines/ingresar**. En **Solicitudes de inscripción**, busca una tarjeta **Pendiente de pago** que no sea la de `AQ-SM0001`, por ejemplo una que hayas inscrito desde recepción (ver "Inscribir desde recepción", más abajo). La de **AQ-SM0003** tiene un comprobante en revisión y no se ajusta. Pulsa **Ajustar monto**.
 2. En el diálogo **Ajustar el monto de la solicitud**, escribe el **Nuevo monto (S/)**, un número entero de soles de 1 a 99999, y el **Motivo del ajuste**, de 3 a 200 caracteres. Pulsa **Guardar ajuste**. La tarjeta muestra el nuevo total y la línea **Ajuste**, con el motivo.
 
 Otras comprobaciones:
 
 - La secretaria no ve **Ajustar monto**, y la API responde 403 si le pide el ajuste directamente.
 - Un monto con céntimos (por ejemplo, `35.50`), cero o más de 99999 no se acepta: el diálogo lo dice junto al campo.
-- Una solicitud ya cobrada, vencida o cancelada no se ajusta: no aparece el botón, y la API responde 409 `SOLICITUD_NO_AJUSTABLE`.
+- Una solicitud ya cobrada, vencida, cancelada o con un comprobante en revisión no se ajusta: no aparece el botón, y la API responde 409 `SOLICITUD_NO_AJUSTABLE`.
 - Si la secretaria tiene abierto el diálogo **Cobrar en efectivo** cuando cambias el monto, al cobrar aparece «El monto cambió desde que lo viste: ahora es S/ …». Debe revisarlo y volver a cobrar: nunca se cobra un monto que no vio.
 
 ### Inscribir desde recepción
@@ -785,10 +799,52 @@ Otras comprobaciones:
 ### Datos de ejemplo de esta historia
 
 - `delfines` tiene un ajuste de monto de ejemplo en la solicitud **AQ-SM0001**: S/ 60.00, con el motivo «Descuento de ejemplo autorizado por la dirección». La semilla lo escribe directamente en la base, sin pasar por la API, así que **no queda en la auditoría** de la academia: la auditoría registra solo lo que se hace por la API. Repetir `npm run db:preparar` no lo duplica ni cambia un ajuste que hayas editado.
-- La semilla no crea pagos, ni confirmados ni pendientes. Tampoco crea la cuenta de la alumna de **AQ-SM0001** (DNI `20000001`): aparece al cobrarle, con su DNI como usuario y como contraseña inicial, y debe cambiarla al entrar, como los usuarios de la tabla de "Entrar como usuario de una academia".
+- La semilla de la 007a no crea pagos. El único pago de ejemplo de la 007b es un Yape pendiente de **AQ-SM0003** (ver "Probar el pago con Yape o transferencia"). Tampoco crea la cuenta de la alumna de **AQ-SM0001** (DNI `20000001`): aparece al cobrarle, con su DNI como usuario y como contraseña inicial, y debe cambiarla al entrar, como los usuarios de la tabla de "Entrar como usuario de una academia".
 - Los nombres y los DNI de estas solicitudes son inventados.
 
 Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
+
+## Probar el pago con Yape o transferencia
+
+El pago por Yape o transferencia (historia 007b) tiene dos partes: la persona sube el comprobante desde su enlace de seguimiento, y la secretaria o el administrador lo aprueba o lo rechaza en **Pagos por verificar**. Con `npm run dev` encendido:
+
+**Ver el comprobante de ejemplo**
+
+1. Entra como la secretaria (`10000002`) en **http://localhost:5173/a/delfines/ingresar**. En el inicio del panel, pulsa **Pagos por verificar**. Verás la tarjeta de **AQ-SM0003**, con el número de operación `00123456`, el monto de la solicitud y la fecha de la operación.
+2. Pulsa **Ver comprobante**. Se abre **Comprobante de AQ-SM0003** con la imagen de ejemplo, que es una imagen generada, sin datos reales.
+
+**Aprobar** (necesita la caja de hoy abierta)
+
+3. Abre la caja de hoy en **Caja** (ver "Probar la caja del día"). Sin ella, el diálogo dice «Abre la caja antes de aprobar el pago» y no deja confirmar.
+4. En la tarjeta de **AQ-SM0003**, pulsa **Aprobar**. En el diálogo **Aprobar el pago: AQ-SM0003**, revisa el monto y pulsa el botón de aprobar, que lleva el monto (**Aprobar S/ …**).
+5. Aparece **Pago aprobado: AQ-SM0003**, con el monto, el número de ticket y los botones **Cerrar** e **Imprimir ticket**. El ingreso queda en la caja de hoy como Yape, así que no suma al efectivo esperado del cierre.
+6. El alumno de **AQ-SM0003** (DNI `20000003`) ya tiene cuenta: entra con su DNI como usuario y como contraseña inicial, y el sistema le pide cambiarla.
+
+**Rechazar** (no necesita caja)
+
+7. Para probar el rechazo, primero envía otro comprobante (ver «Enviar un comprobante», más abajo). En su tarjeta, pulsa **Rechazar**, escribe el motivo (de 3 a 200 caracteres, por ejemplo «La imagen no se lee») y pulsa **Rechazar el pago**. Aparece «Pago de … (código) rechazado. El cliente verá el motivo en su seguimiento.»
+
+**Enviar un comprobante** (desde el enlace de seguimiento)
+
+8. Inscribe a una persona nueva desde el formulario público (ver "Probar la inscripción pública"). En la pantalla de confirmación, pulsa **Ver el seguimiento de mi solicitud**. Verás **Pendiente de pago** y el formulario **Pagar con Yape o transferencia**, con los datos de pago de la academia. La consulta con código y DNI no muestra el formulario: solo el enlace de seguimiento lo tiene.
+9. Elige el método (**Yape** o **Transferencia bancaria**) y escribe el número de operación, que está en tu comprobante. Deja el monto con el total, pon la fecha de la operación (entre el día de tu solicitud y hoy) y elige una imagen JPG o PNG de hasta 5 MB, de entre 100 y 8000 píxeles por lado. Pulsa **Enviar comprobante**: la solicitud pasa a **Comprobante en revisión** y el cupo sigue reservado.
+10. Si envías un número de operación que ya se usó, la web dice «Ese número de operación ya se registró». Si el monto no es el total, dice «El monto debe ser igual al total a pagar» y lo corrige.
+
+**Datos de pago**
+
+11. En **Configuración** (`/panel/configuracion`), el grupo **Datos de pago** tiene **Número de Yape**, **Titular del Yape**, **Banco de la transferencia**, **Número de cuenta**, **CCI** y **Titular de la cuenta**. Los que dejes vacíos no se muestran al cliente. Si todos lo están, el seguimiento dice «La academia todavía no publicó sus datos de pago en esta página».
+
+**Otras comprobaciones**
+
+- La secretaria y el administrador ven **Pagos por verificar**. El entrenador y el alumno no, y la API responde 403 si la piden directamente.
+- Un comprobante de un mes que ya terminó aparece con la marca **Mes terminado**. Se puede aprobar o rechazar; si lo rechazas, el cliente ya no podrá volver a pagar.
+- Un comprobante ya rechazado no se puede aprobar: la web dice «Este comprobante ya se había rechazado, así que no se puede aprobar. Actualizamos la lista».
+- Con la caja de hoy cerrada, el botón **Aprobar** no se activa, y el rechazo sigue funcionando.
+
+**Datos de ejemplo**
+
+- `delfines` trae el Yape pendiente de **AQ-SM0003** (paso 1), con su comprobante de ejemplo y los datos de pago de ejemplo. Repetir `npm run db:preparar` no lo duplica, no vuelve a poner un dato de pago que hayas quitado y no cambia lo que hayas aprobado o rechazado.
+- Los nombres y los DNI de estas solicitudes son inventados.
 
 ## Día a día
 

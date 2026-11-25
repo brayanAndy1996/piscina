@@ -57,12 +57,15 @@
   el total sin ajuste es el `monto_calculado` guardado (definición «Total a cobrar» e «Interfaces del backend»); las
   firmas reales de `confirmarPagoEnTransaccion` y `bloquearFilasDelCobro` («Interfaces del backend»); la respuesta del
   cobro en `solicitudes.ts` («Esquemas compartidos»); y el ajuste de ejemplo de la semilla sin auditoría (criterio 57).
+- **Ronda adversarial 1 de la 007b (25/11/2026):** una falla alta, que pasa al criterio 60 (crítico, sin cambios de
+  negocio): la subida del comprobante con la reserva vigente no bloqueaba las clases. El detalle de la ronda está en
+  [`rondas.md`](rondas.md), y las decisiones técnicas de la 007b son DT-21 a DT-30.
 - **División (DR-14):** dos entregas desde esta carpeta, las dos de ruta crítica, cada una con sus pruebas
   protegidas, su ataque y su PR (ver «División en 007a y 007b»):
   - **007a · Cobro en recepción y cuenta del alumno** (primero): criterios 1 a 35 y 54 a 57, salvo las partes marcadas
     **[007b]**, más 58 y 59 (ronda adversarial 1 de la 007a).
   - **007b · Yape y transferencia** (siguiente PR): criterios 36 a 53, más las partes marcadas **[007b]** de 28 a 32, 51,
-    54, 55 y 57.
+    54, 55 y 57, y el 60 (ronda adversarial 1 de la 007b).
 
 ## Objetivo
 
@@ -94,7 +97,7 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   clic, reintento, aprobar dos veces, aprobar un rechazado y aprobar y rechazar a la vez no duplican nada.
 - **Paso de cliente a alumno y autenticación (20 a 24):** el usuario y su contraseña inicial (el DNI, con argon2 y
   cambio obligatorio) se crean solo con el pago confirmado y en la misma transacción.
-- **Aforo y reservas (18, 32, 40 y 44):** el cupo se reserva sin límite mientras el comprobante está en revisión, se
+- **Aforo y reservas (18, 32, 40, 44 y 60):** el cupo se reserva sin límite mientras el comprobante está en revisión, se
   libera al rechazar y se vuelve a pedir al reintentar; nunca más inscritos que el aforo.
 - **Estados nuevos de la solicitud (28 a 32):** la vista de seguimiento sigue la regla de DR-14 de 005 (nombre solo en
   la vigente); la cancelación, la foto y el envío de la 005 respetan los pagos.
@@ -120,7 +123,7 @@ archivos nuevos. Los commits de pruebas protegidas llevan la historia sin letra 
 | Entrega | Criterios críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- |
 | **007a** · cobro en recepción y cuenta del alumno | 1 a 24, 26 (aislamiento y permiso), 28 a 35 (sin sus partes [007b]), 58 y 59 (ronda adversarial 1) | 25, 26 (contenido), 27, 54 y 56 (partes de la 007a) | 57 (parte de la 007a) |
-| **007b** · Yape y transferencia | 36 a 52, más las partes [007b] de 28 a 32 y 51 | 53, 55 y las partes [007b] de 54 y 56 | 57 (parte de la 007b) |
+| **007b** · Yape y transferencia | 36 a 52, más las partes [007b] de 28 a 32 y 51, y 60 (ronda adversarial 1) | 53, 55 y las partes [007b] de 54 y 56 | 57 (parte de la 007b) |
 
 **Cómo se resuelven las dependencias:**
 
@@ -143,7 +146,9 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
 
 - **Pago abierto:** un pago en estado `PENDIENTE_VERIFICACION` o `CONFIRMADO`. **Pago resuelto:** `CONFIRMADO` o
   `RECHAZADO`.
-- **Último pago de una matrícula:** el de `registrado_en` más reciente (y, a igual instante, el de mayor `id`).
+- **Último pago de una matrícula:** el pago abierto, si lo hay (como mucho uno, criterio 4 f); si no, el rechazado de
+  `registrado_en` más reciente (y, a igual instante, el de mayor `id`). _(DT-21, 25/11/2026: antes era solo por
+  `registrado_en`.)_
 - **Total a cobrar de una matrícula:** sale siempre de lo guardado en la matrícula, nunca del plan (HU-19):
   - **sin ajuste** (`monto_ajustado` nulo), es el `monto_calculado` guardado en la matrícula, el valor que se le cotizó
     al cliente al inscribirse. No se vuelve a calcular con el plan ni con `precio_plan`;
@@ -483,7 +488,8 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     8. estado visible de la solicitud (criterio 40);
     9. imagen (400 `IMAGEN_NO_VALIDA`, criterio 39);
     10. dentro de la transacción, con las filas bloqueadas: estado otra vez, 409 `MONTO_DISTINTO`, 409
-        `NUMERO_OPERACION_YA_USADO` y 409 `SIN_CUPO` (reintento).
+        `NUMERO_OPERACION_YA_USADO` y 409 `SIN_CUPO` (reintento). Las clases se bloquean siempre antes de este paso
+        (criterio 60, ronda adversarial 1 de la 007b).
 
     Ningún rechazo deja un pago, un archivo ni una auditoría. _(crítico)_ (HU-08, RNF-09; criterio 34 de 005)
 38. **Datos del comprobante (DR-6).** `numeroOperacion`: texto de 1 a 40 caracteres que, normalizado, cumple
@@ -735,6 +741,45 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
     transacción se revierte, y las operaciones siguientes del proceso auditan con normalidad. _(crítico)_ (RN-22,
     RNF-06; auditoría de `CLAUDE.md`)
 
+### N. Ronda adversarial 1 de la 007b
+
+60. **La subida del comprobante bloquea siempre las clases antes de decidir.** _(007b, ronda adversarial 1, falla
+    R1-1, 25/11/2026; precisa el paso 10 del criterio 37 y los criterios 41 y 44, con la misma garantía que el 18 b da al
+    cobro.)_ En `PUT /api/a/{nombreCorto}/solicitudes/comprobante`:
+    - a) **Siempre, una sola vez y en orden.** La transacción llama a `bloquearClasesParaCupo` una sola vez, con todas las
+      clases de la matrícula, con la reserva vigente (`PENDIENTE_PAGO`) y con `PAGO_RECHAZADO`, en el orden de bloqueos
+      del criterio 19 (consultivo del DNI → `alumnos` → `solicitudes_inscripcion` → `matriculas` → `pagos` → `clases`).
+      Lo hace antes de leer «ahora» y antes de decidir el estado, el monto, el número de operación y el cupo del paso
+      10 del criterio 37. Todas las decisiones de la transacción usan el instante leído después de ese bloqueo (como
+      DT-10 en el cobro). Con la reserva vigente no cuenta el cupo, que ya es suyo (como el 18 a).
+    - b) **Una reserva ya contada como vencida no vale como vigente.** Si, con ese instante, `reserva_vence_en` es
+      anterior o igual a «ahora» (estado visible `VENCIDA`), responde 409 `SOLICITUD_NO_EDITABLE` (criterio 41), sin
+      pago, sin el archivo nuevo (se borra, criterio 40) y sin auditoría. Así, una operación simultánea que bloqueó las
+      clases en el instante T del vencimiento y no contó la matrícula (un envío de la 005, un cobro o el reintento de
+      otra solicitud) nunca convive con un comprobante que deja esa matrícula con `reserva_vence_en` nula.
+    - c) **Nunca más que el aforo.** Con una subida y cualquiera de esas operaciones a la vez sobre el último cupo, la
+      ocupación de cada clase nunca supera su aforo por culpa de la subida, sin `40P01` ni 500.
+
+    **Prueba determinista (reproducción de la ronda):** aforo 20, con 19 matrículas que ocupan cupo más la de la solicitud
+    S, cuya reserva vence en el instante T.
+    - La subida de S empieza con el reloj en T0 (anterior a T). Su `INSERT` del pago queda retenido en el índice
+      `pagos_numero_operacion_abierto_key` por otra transacción sin confirmar, que insertó un pago abierto de la misma
+      academia y el mismo método con el mismo número normalizado y que no bloquea clases.
+    - Con la subida retenida y el reloj en T, un envío de la 005 por la misma clase.
+    - La transacción que retiene se revierte.
+
+    Resultado: exactamente una de las dos operaciones responde 201 y la otra 409, y la ocupación final de la clase es
+    menor o igual que 20 (nunca 21). Con el bloqueo de a, la subida ya tiene las clases cuando queda retenida, así que
+    el resultado esperado es la subida en 201 y el envío en 409 `SIN_CUPO`. La prueba protegida fija que haya un solo
+    201, la ocupación como mucho 20 y que la operación que pierde no deje nada (sin pago, archivo ni auditoría de la
+    subida, o sin solicitud ni matrícula del envío). Sin el bloqueo, las dos responden 201 y quedan 21.
+
+    **Control (puede pasar ya):** si la subida hace su lectura corta (paso 8 del criterio 37) con el reloj en T0 y entra
+    a su transacción con el reloj ya en T, después de que el envío tomó el cupo y confirmó, responde 409
+    `SOLICITUD_NO_EDITABLE`, sin pago, archivo ni auditoría, y la ocupación queda en 20.
+
+    _(crítico)_ (RN-11, RN-28, D-05; criterios 18 b, 37, 41 y 44; «Aforo» de `CLAUDE.md`)
+
 ## Casos límite
 
 - **Cobro a las 23:59:59.999 del último día con la caja de ese día:** se acepta; a las 00:00 del día siguiente responde
@@ -765,6 +810,9 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
   pasa a la vista reducida.
 - **[007b] Comprobante con coordenadas GPS en el EXIF:** se guarda sin metadatos (criterio 40).
 - **[007b] Comprobante de 5 242 880 bytes:** pasa al resto de las comprobaciones; un byte más, 413.
+- **[007b] Comprobante subido justo cuando vence la reserva, mientras otra persona toma el último cupo:** gana una de
+  las dos y la clase no supera el aforo; si la otra ya contó la reserva como vencida, 409 `SOLICITUD_NO_EDITABLE`
+  (criterio 60).
 - **[007b] Un comprobante en revisión ocupa el cupo de noviembre; el 1 de diciembre no ocupa el de diciembre**
   (criterio 44), pero el cliente sigue sin poder inscribirse de nuevo hasta que se resuelva (criterio 32).
 - **Inscripción desde recepción con muchas solicitudes seguidas:** no cuentan en los límites por conexión (criterios 33
@@ -1285,6 +1333,33 @@ lo que comprobaba contradice un criterio ya aprobado. Ninguna cambia una regla d
   pago de B falla al confirmar con 23503 y no deja nada en A (conserva la intención: un pago de otra academia nunca
   cuenta como de A). Alternativa descartada: llave primaria `(academia_id, id)` en `pagos`, que se aparta de la
   convención de todas las tablas. _(007a; criterios 1, 3 y 5.)_
+
+Las siguientes las decidió el orquestador el 25/11/2026, durante la implementación de la 007b. Ninguna cambia una
+regla de negocio. DT-20 queda para T20 (criterio 58 d, resuelta en «Preguntas abiertas»), por la convención Tn = DT-n.
+
+- **DT-21. Orden del «último pago».** Las vistas y los bloqueos ponen primero el pago abierto (pendiente o confirmado)
+  y después los rechazados, del más reciente al más antiguo; la definición «Último pago de una matrícula» lo recoge.
+  _(007b; criterios 28, 29 y 41.)_
+- **DT-22. Sin pago no hay vista inventada.** Una solicitud `CONFIRMADA` o `EN_VERIFICACION` sin el pago que su vista
+  necesita responde 500, sin método, monto ni ticket por defecto (plan, «Notas para la 007b»). _(007b; criterio 28.)_
+- **DT-23. Formatos de la bandeja y del monto.** `mes` de la bandeja va como `AAAA-MM`. El monto del comprobante solo
+  está probado escrito como `"42.00"`. _(007b; criterios 38 y 45.)_
+- **DT-24. Datos de pago de la configuración.** Se omiten de la respuesta cuando no tienen valor, y `null` en un `PATCH`
+  los quita. Largos máximos: titular y banco, 80; cuenta y CCI, 40. `yapeNumero` usa `telefonoCelularSchema`.
+  _(007b; criterio 53.)_
+- **DT-25. Orden real de las comprobaciones de la subida.** La clave de idempotencia (paso 7) va antes del rango de
+  `fechaOperacion` respecto del día de creación de la solicitud; el formato de la fecha sigue en el paso 5.
+  _(007b; criterios 37, 38 y 42.)_
+- **DT-26. Aprobar y rechazar sin clave de idempotencia.** Contrato estricto (`{}` y `{ motivo }`); la API es
+  idempotente por estado y la web bloquea el doble envío. _(007b; criterios 47 a 49 y 56.)_
+- **DT-27. Respuesta de la subida en la web.** Se valida con `respuestaConsultaSolicitudSchema.pick({ solicitud: true
+  })`. _(007b; criterios 36 y 55.)_
+- **DT-28. Dónde vive el código.** El servicio del comprobante está en el módulo `pagos`. Los avisos de pago
+  (`avisos.ts`) los comparten el cobro y la aprobación. _(007b; criterios 36 y 51.)_
+- **DT-29. Yape de ejemplo de la semilla.** Se asocia al cliente existente `20000003`, para no cambiar el número de
+  alumnos de ejemplo. _(007b; criterio 57.)_
+- **DT-30. Proxy de pruebas de la 005.** Acepta una marca configurable (`INSERTA_PAGO`) para la confirmación incierta del
+  comprobante. _(007b; criterio 40.)_
 
 ### Pruebas protegidas anteriores que amplía la 007a
 
