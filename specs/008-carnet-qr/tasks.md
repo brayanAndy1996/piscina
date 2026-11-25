@@ -8,42 +8,50 @@ entrega, en la revisión (D-31).
 
 - [x] T0 · orquestador · Aprobación de Bryan (P1 a P5, que son DR-1 a DR-5, 25/11/2026) y aceptación de DT-1 a DT-13;
       spec ajustado con lo decidido.
-- [ ] T1 · test-writer · Pruebas protegidas en rojo de los criterios críticos de la 008a, desde el spec y los contratos
+- [x] T1 · test-writer · Pruebas protegidas en rojo de los criterios críticos de la 008a, desde el spec y los contratos
       públicos (`carnet.ts`, rutas, columnas): modelo e invariantes como app y como dueño (1); token al confirmar en
       efectivo y en la aprobación, reversión y reintentos (2); forma, azar y funciones del contenido (3); permisos,
       alcance y 404 de todas las rutas (4 a 6); claves exactas del JSON con un menor (7); foto y foto de otra academia
       (9); cabeceras, permisos y aislamiento del PDF (11); el mismo contenido en el generador y en el JSON (12);
       regeneración, idempotencia y errores, con espera comprobada en `pg_locks` para las dos claves iguales (13 a 15);
       búsqueda y aislamiento (16); el token fuera de auditoría, registro y direcciones, y la RLS por token (17).
-      Commit «Pruebas protegidas (008): 008a, … (en rojo)». (criterios 1 a 7, 9, 11 a 17)
-- [ ] T2 · tester · Confirmar que las pruebas de T1 fallan por la razón esperada (rutas, columnas o esquemas que faltan).
-- [ ] T3 · backend · Contratos: `packages/contratos/src/carnet.ts` (`PREFIJO_QR`, `PATRON_TOKEN_QR`, `contenidoQr`,
+      Commit «Pruebas protegidas (008): 008a, … (en rojo)». (criterios 1 a 7, 9, 11 a 17) _(hecho: 5258512, 1f56475 y dbc2771)_
+- [x] T2 · tester · Confirmar que las pruebas de T1 fallan por la razón esperada (rutas, columnas o esquemas que faltan).
+      _(hecho: confirmación del tester, sin commit propio)_
+- [x] T3 · backend · Contratos: `packages/contratos/src/carnet.ts` (`PREFIJO_QR`, `PATRON_TOKEN_QR`, `contenidoQr`,
       `tokenDelContenidoQr`, `OPCIONES_QR`, `carnetSchema`, `regenerarQrSchema`, `buscarAlumnosSchema`,
-      `resultadoBusquedaAlumnosSchema`, `resumenDeHorario`) y su reexportación. (criterios 3, 7, 13, 16)
-- [ ] T4 · backend · Migración `<marca>_carnet_qr` con el relleno por academia, `schema.prisma`, `PRIVILEGIOS_APP` y
-      `scripts/lib/rol-app.mjs`. (criterio 1)
-- [ ] T5 · backend · `nuevoTokenQr` y el paso 5 de `confirmarPagoEnTransaccion`; ejecutar también las pruebas protegidas
-      de la 007 (`backend/test/integracion/pagos/`). (criterios 2 y 3)
-- [ ] T6 · backend · Módulo `alumnos/`: alcance de `VER_CARNET`, `CarnetService.leer` (matrícula del carnet, foto fuera
-      de la transacción), `GET /api/alumnos/{id}/carnet` y `GET /api/mi-carnet`. (criterios 4 a 10)
-- [ ] T7 · backend · Dependencia `qrcode` (y `@types/qrcode`) en `backend/package.json` y en
+      `resultadoBusquedaAlumnosSchema`, `resumenDeHorario`) y su reexportación. (criterios 3, 7, 13, 16) _(hecho: 0af5e41)_
+- [x] T4 · backend · Migración `<marca>_carnet_qr` con el relleno por academia, `schema.prisma`, `PRIVILEGIOS_APP` y
+      `scripts/lib/rol-app.mjs`. (criterio 1) _(hecho: 0af5e41)_
+- [x] T5 · backend · `nuevoTokenQr` y el paso 5 de `confirmarPagoEnTransaccion`; ejecutar también las pruebas protegidas
+      de la 007 (`backend/test/integracion/pagos/`). (criterios 2 y 3) _(hecho: 39adc54)_
+- [x] T6 · backend · Módulo `alumnos/`: alcance de `VER_CARNET`, `CarnetService.leer` (matrícula del carnet, foto fuera
+      de la transacción), `GET /api/alumnos/{id}/carnet` y `GET /api/mi-carnet`. (criterios 4 a 10) _(hecho: cfd9764; la
+      prueba del criterio 8, en 8559e35)_
+- [x] T7 · backend · Dependencia `qrcode` (y `@types/qrcode`) en `backend/package.json` y en
       `DEPENDENCIAS_BACKEND_PERMITIDAS`; `generarPdfCarnet` con `GENERADOR_PDF_CARNET` y las dos rutas del PDF; prueba
-      unitaria del generador. (criterios 11 y 12)
-- [ ] T8 · backend · Regeneración (`POST /api/alumnos/{id}/carnet/qr`) con idempotencia y auditoría. (criterios 13 a 15)
-- [ ] T9 · backend · Búsqueda (`POST /api/alumnos/buscar`). (criterio 16)
-- [ ] T10 · backend · `PREFIJOS_SIN_HEAD` con `/alumnos` y `/mi-carnet`, y su prueba. (criterio 18)
-- [ ] T11 · frontend · `qrcode` en la web; `VistaCarnet`, `QrDelCarnet`, `PaginaMiCarnet` y la descarga del PDF;
-      opciones del inicio por alcance. (criterios 19 y 20)
-- [ ] T12 · frontend · `/panel/alumnos` (búsqueda), `/panel/alumnos/{id}` (carnet, PDF) y `DialogoRegenerarQr`, con
-      pruebas de componentes. (criterio 19)
-- [ ] T13 · adversarial · Ataque de la 008a (hasta 3 rondas, D-31): token adivinable o reutilizado tras regenerar,
+      unitaria del generador. (criterios 11 y 12) _(hecho: cfd9764)_
+- [x] T8 · backend · Regeneración (`POST /api/alumnos/{id}/carnet/qr`) con idempotencia y auditoría. (criterios 13 a 15)
+      _(hecho: cfd9764)_
+- [x] T9 · backend · Búsqueda (`POST /api/alumnos/buscar`). (criterio 16) _(hecho: cfd9764)_
+- [x] T10 · backend · `PREFIJOS_SIN_HEAD` con `/alumnos` y `/mi-carnet`, y su prueba. (criterio 18) _(hecho: f833ba3)_
+- [x] T11 · frontend · `qrcode` en la web; `VistaCarnet`, `QrDelCarnet`, `PaginaMiCarnet` y la descarga del PDF;
+      opciones del inicio por alcance. (criterios 19 y 20) _(hecho: 9fe12f8 y 018c095)_
+- [x] T12 · frontend · `/panel/alumnos` (búsqueda), `/panel/alumnos/{id}` (carnet, PDF) y `DialogoRegenerarQr`, con
+      pruebas de componentes. (criterio 19) _(hecho: 9fe12f8 y 018c095)_
+- [x] T13 · adversarial · Ataque de la 008a (hasta 3 rondas, D-31): token adivinable o reutilizado tras regenerar,
       carnet o PDF de otra academia o de otro alumno, alcance de `VER_CARNET`, búsqueda con comodines, CLIENTE con QR,
       19:00 de Lima y fin de mes en la vigencia. Las fallas críticas o altas vuelven al especificador (`rondas.md`).
-- [ ] T14 · revisor y tester (a la vez) · Revisión contra el spec y las convenciones; suite completa, lint y tipos.
+      _(ronda 1, 25/11/2026: sin fallas críticas ni altas; R1-1, baja, en la deuda de [`specs/backlog.md`](../backlog.md);
+      ver [`rondas.md`](rondas.md). Cierra el ataque de la 008a en 1 de 3 rondas)_
+- [x] T14 · revisor y tester (a la vez) · Revisión contra el spec y las convenciones; suite completa, lint y tipos.
       Antes, el orquestador revisa con `git diff` que la implementación no tocó las pruebas protegidas. (todos los de la
-      008a; el 21 lo verifica el revisor)
-- [ ] T15 · documentador · `docs/arquitectura.md` («Lo que construye la historia 008a»), guía de Windows, nota de la 008
-      en `specs/backlog.md`, tareas marcadas y último commit. (criterio 21)
+      008a; el 21 lo verifica el revisor) _(hecho, 25/11/2026: el revisor no encontró bloqueantes ni importantes; la suite
+      completa pasó 16 772 pruebas, se saltaron 95 y falló 1, una prueba no protegida del menú (`Planes.test.tsx`) que se
+      corrigió en `018c095` (el archivo pasa sus 45); E2E 6 de 6; lint, tipos, build y pruebas protegidas en verde)_
+- [x] T15 · documentador · `docs/arquitectura.md` («Lo que construye la historia 008a»), guía de Windows, nota de la 008
+      en `specs/backlog.md`, tareas marcadas y último commit. (criterio 21) _(hecho en el commit «Cierre (008a): tareas,
+      rondas, deuda y documentación del carnet y QR»)_
 
 ## 008b · Foto desde el panel y cámara
 
@@ -71,9 +79,9 @@ entrega, en la revisión (D-31).
 
 ## Solo ruta crítica
 
-- [ ] 008a: pruebas escritas por test-writer y confirmadas en rojo
-- [ ] 008a: pruebas en verde tras la implementación
-- [ ] 008a: ataque adversarial sin fallas críticas ni altas abiertas
+- [x] 008a: pruebas escritas por test-writer y confirmadas en rojo _(5258512, 1f56475 y dbc2771; T2)_
+- [x] 008a: pruebas en verde tras la implementación _(T14, 25/11/2026: suite completa; la prueba no protegida que falló se corrigió en `018c095`)_
+- [x] 008a: ataque adversarial sin fallas críticas ni altas abiertas _(ronda 1, 25/11/2026: R1-1, baja, en la deuda de `specs/backlog.md`)_
 - [ ] 008b: pruebas escritas por test-writer y confirmadas en rojo
 - [ ] 008b: pruebas en verde tras la implementación
 - [ ] 008b: ataque adversarial sin fallas críticas ni altas abiertas

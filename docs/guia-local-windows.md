@@ -357,6 +357,22 @@ npm run dev
 - La 007b no tiene migraciones, paquetes ni variables nuevas: `npm ci`, `npm run db:migrar` y `npm run env:completar` no hacen falta.
 - `npm run db:preparar` ejecuta la semilla, que agrega a `delfines` un Yape pendiente de verificación para la solicitud `AQ-SM0003` (DNI `20000003`), su comprobante de ejemplo y los datos de pago de ejemplo (ver "Probar el pago con Yape o transferencia"). El comprobante es una imagen generada, y se guarda en la carpeta de `ALMACEN_DIRECTORIO`, por defecto `backend\almacenamiento`. Repetirlo no duplica nada, no vuelve a poner un dato de pago que hayas quitado y no cambia lo que hayas aprobado o rechazado.
 
+## Después de traer la historia 008a
+
+Si ya tenías el proyecto con la historia 007b, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm ci
+npm run db:preparar
+npm run dev
+```
+
+- La 008a tiene una migración nueva, `20261125180000_carnet_qr`, que agrega a los alumnos el token de su QR (`qr_token`, `qr_generado_en` y `qr_clave_idempotencia`). `npm run db:preparar` la aplica a las dos bases. A los alumnos que ya existían, la migración les da su QR en ese momento; los clientes no tienen QR hasta que pagan.
+- `npm ci` instala la dependencia `qrcode` (y sus tipos) en el backend y en la web. No hay variables nuevas, así que `npm run env:completar` no hace falta.
+- La semilla no cambia: repetir `npm run db:preparar` no duplica nada ni cambia los QR que ya existen (ver "Probar el carnet y el QR").
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -464,18 +480,19 @@ Lo que ves en `/panel` depende del rol:
 
 - **Administrador:** **Solicitudes de inscripción** (cobro y ajuste de monto, ver "Probar el cobro en efectivo, el ajuste y el ticket") y **Nueva inscripción** (ver "Probar la foto y el panel de
   solicitudes"), **Caja** (ver "Probar la caja del día"), **Usuarios** (el personal), **Restablecer contraseña**,
-  **Configuración** (la configuración de la academia, más abajo) y **Planes** y **Clases y horarios** (ver "Probar planes y
+  **Pagos por verificar** (ver "Probar el pago con Yape o transferencia"), **Alumnos y carnets** (ver "Probar el carnet y el QR"), **Configuración** (la configuración de la academia, más abajo) y **Planes** y **Clases y horarios** (ver "Probar planes y
   clases"). En **Usuarios** puedes crear, desactivar,
   reactivar y restablecer al personal. No puedes desactivar ni restablecer tu propia cuenta.
-- **Secretaria:** **Solicitudes de inscripción** (donde cobra en efectivo), **Nueva inscripción** y **Caja** (ver "Probar la caja del día"), y
+- **Secretaria:** **Solicitudes de inscripción** (donde cobra en efectivo), **Pagos por verificar** (ver "Probar el pago con Yape o transferencia"), **Alumnos y carnets** (ver "Probar el carnet y el QR"), **Nueva inscripción** y **Caja** (ver "Probar la caja del día"), y
   **Restablecer contraseña**, solo para alumnos.
-- **Entrenador y alumno:** solo **Cambiar contraseña**. Las demás pantallas llegan con sus historias.
+- **Entrenador:** solo **Cambiar contraseña**. Las demás pantallas llegan con sus historias.
+- **Alumno:** **Cambiar contraseña** y **Mi carnet** (ver "Probar el carnet y el QR"). Las demás pantallas llegan con sus historias.
 
 Quién restablece a quién: el administrador, a cualquier usuario de su academia menos a sí mismo; la secretaria, solo a
 alumnos; el superadmin, a los administradores de cada academia. Restablecer deja la contraseña igual al DNI, y la persona
 la cambia al entrar. Si olvidas tu contraseña, pide en recepción que la restablezcan.
 
-Todavía no hay el panel del alumno con su carnet y su asistencia (historia 011) ni la pantalla de auditoría.
+Todavía no hay la asistencia del alumno en su panel (historia 011) ni la pantalla de auditoría.
 
 ## Probar la configuración de la academia
 
@@ -641,7 +658,7 @@ encendido:
 3. Abre el enlace de seguimiento. Mientras la solicitud esté pendiente de pago, verás **Foto cargada** y la opción de cambiarla
    (**Elegir otra foto**). Si la solicitud ya venció o se canceló, esa opción no aparece.
 
-La foto no se puede ver desde la web todavía: eso llega con el carnet (historia 008). Para comprobar que se guardó, mira la
+La foto de la inscripción se ve en el carnet del alumno, en **Alumnos y carnets**, cuando la inscripción está confirmada (ver "Probar el carnet y el QR"). Mientras tanto, para comprobar que se guardó, mira la
 carpeta de "Dónde se guardan las fotos" más abajo.
 
 Hay un límite de 10 subidas de foto por hora desde cada conexión. En tu PC, todas las pruebas comparten esa conexión (ver los
@@ -845,6 +862,44 @@ El pago por Yape o transferencia (historia 007b) tiene dos partes: la persona su
 
 - `delfines` trae el Yape pendiente de **AQ-SM0003** (paso 1), con su comprobante de ejemplo y los datos de pago de ejemplo. Repetir `npm run db:preparar` no lo duplica, no vuelve a poner un dato de pago que hayas quitado y no cambia lo que hayas aprobado o rechazado.
 - Los nombres y los DNI de estas solicitudes son inventados.
+
+## Probar el carnet y el QR
+
+El carnet (historia 008a) tiene dos vistas: **Mi carnet**, para el alumno, y **Alumnos y carnets**, para el administrador y la secretaria. Un cliente que todavía no ha pagado no tiene carnet: el carnet y el QR aparecen cuando su pago se confirma. Con `npm run dev` encendido:
+
+**Confirmar el pago de AQ-SM0001**
+
+1. Si todavía no cobraste a **AQ-SM0001** (ver "Probar el cobro en efectivo, el ajuste y el ticket"), entra como la secretaria (`10000002`), abre la caja de hoy en **Caja** (ver "Probar la caja del día") y cóbrala en efectivo. Así la cuenta de **Valeria Andrea Mendoza Salas** (DNI `20000001`) pasa a ser de alumna, con su QR. Si la reserva de ejemplo ya venció, usa otra inscripción (ver "Inscribir desde recepción").
+2. También sirve aprobar el Yape de **AQ-SM0003** (DNI `20000003`, Mateo Quispe Rojas) en **Pagos por verificar** (ver "Probar el pago con Yape o transferencia"). Los pasos de abajo son los mismos, con su DNI.
+
+**Buscar al alumno y ver su carnet**
+
+3. En el inicio del panel, pulsa **Alumnos y carnets**. En el campo **Buscar por DNI o nombre** escribe `20000001`, o parte del nombre (por ejemplo, `Mendoza`), y pulsa **Buscar**. Escribe los 8 dígitos del DNI o al menos 3 letras: con menos, la web lo dice junto al campo.
+4. La tarjeta muestra **Mendoza Salas, Valeria Andrea**, el DNI, el nivel, la insignia **Activo** y **Foto pendiente**, porque la semilla no trae foto. Pulsa la tarjeta.
+5. Se abre **Carnet del alumno**, con el carnet: la academia, la foto o «Foto pendiente», el nombre, el DNI, el nivel, el plan, el horario, la vigencia (con «vigente hoy» o «no vigente hoy») y el QR, con la fecha y la hora en que se generó.
+6. Pulsa **Descargar PDF**. Se descarga `carnet.pdf`: una hoja A4 con la tarjeta de 85,6 × 54 mm para recortar, y debajo «Datos al» con la fecha de hoy. El nombre del archivo no lleva nombres ni DNI.
+
+**Regenerar el QR**
+
+7. En el carnet, pulsa **Regenerar QR**. En el diálogo **Regenerar el QR**, escribe un motivo de 3 a 200 caracteres (por ejemplo, «Perdió el carnet») y pulsa **Regenerar el QR**. El carnet muestra un QR nuevo, y la web dice: «Se generó un QR nuevo. El anterior ya no sirve: imprime el carnet nuevo y entrégaselo al alumno.»
+8. Un doble clic en **Regenerar el QR** no genera dos QR nuevos. El motivo queda en la auditoría de la academia; la pantalla de auditoría llega más adelante.
+
+**Entrar como alumno a Mi carnet**
+
+9. Cierra la sesión y entra en **http://localhost:5173/a/delfines/ingresar** con el DNI `20000001` como usuario y como contraseña inicial. Cambia la contraseña, como en "Entrar como usuario de una academia".
+10. En el inicio del panel, pulsa **Mi carnet**. Verás tu carnet con el QR nuevo, en grande, y el botón **Descargar PDF**. No hay botón para regenerar el QR: el alumno solo ve su carnet.
+
+**Otras comprobaciones**
+
+- El entrenador no ve **Alumnos y carnets** ni **Mi carnet**, y la API responde 403 si pide el carnet de un alumno o la búsqueda. Un alumno no ve **Alumnos y carnets**, y si pide por la API el carnet de otro alumno, recibe 403.
+- Un cliente con la solicitud pendiente de pago no aparece en la búsqueda, aunque escribas su DNI completo, y no tiene carnet.
+- La cuenta de ejemplo `10000004` (Diego Delgado Soto, rol Alumno) no tiene carnet: la semilla no la registra como alumna, y **Mi carnet** le muestra «No encontramos este carnet. Puede que el alumno ya no esté en tu academia.»
+
+**Datos de ejemplo**
+
+- La semilla no crea ningún alumno con carnet: los clientes de ejemplo son `CLIENTE` hasta que pagan, y el carnet aparece cuando se confirma su solicitud (**AQ-SM0001** o **AQ-SM0003**). Repetir `npm run db:preparar` no cambia los QR que ya existen.
+
+Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
 
 ## Día a día
 

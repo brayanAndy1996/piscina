@@ -237,7 +237,18 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
   - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-5 y DT-1 a DT-13 de 008), en
-    [`specs/008-carnet-qr/`](008-carnet-qr/spec.md). Dos entregas: 008a (criterios 1 a 21), en curso, y 008b (22 a 29).
+    [`specs/008-carnet-qr/`](008-carnet-qr/spec.md). Dos entregas: 008a (criterios 1 a 21), lista para unir (25/11/2026, una ronda adversarial sin críticas ni altas), y 008b (22 a 29).
+  - **Deuda de la 008a** (las medias y las bajas no abren ronda, D-31; el detalle de la ronda 1 está en [`rondas.md`](008-carnet-qr/rondas.md)):
+    - **R1-1** (ronda 1, baja): un cuerpo mal formado responde 400 o 413 en lugar de 403 al rol cuya celda de `VER_CARNET` tiene otro alcance: un `ALUMNO` en `POST /api/alumnos/buscar` y en `GET /api/alumnos/{id}/carnet[/pdf]` con cuerpo, y la secretaria o el administrador en `GET /api/mi-carnet[/pdf]` con cuerpo. `PermisosGuard` lanza el error de cuerpo guardado antes de `exigirAlcanceDelCarnet`. No da acceso a nada.
+    - **REV-1** (de la revisión, menor): las pruebas unitarias `backend/src/modulos/alumnos/pdf/carnet-pdf.test.ts` y `backend/src/modulos/alumnos/dominio/token-qr.test.ts` cubren parte de los criterios críticos 12 y 3 sin la marca de pruebas protegidas; la cobertura crítica está en la integración protegida.
+    - **REV-2** (de la revisión, menor): imports profundos. `carnet-pdf.ts` importa `../../caja/pdf/texto-pdf` en lugar de `caja/index.ts`, y `pagos/confirmacion.ts` importa `../alumnos/dominio/token-qr` en lugar de `../alumnos`. Antes de cambiarlos, revisar que no se forme un ciclo.
+    - **REV-3** (de la revisión, menor): `carnet.service.ts` tiene dos consultas casi iguales (`leerConFecha`).
+    - **REV-4** (de la revisión, menor): la regeneración lee el carnet en otra transacción, así que con otra regeneración simultánea devuelve el QR más reciente (coherente con «vale el último»).
+    - **REV-5** (de la revisión, menor): el PDF corta con «...» y no con «…», porque `textoParaPdf` no admite la elipsis Unicode.
+    - **REV-6** (de la revisión, menor): el comentario de la cabecera de `carnet-pdf.ts` no menciona `CreationDate`.
+    - **REV-7** (de la revisión, menor): `useDescargarPdfDelCarnet` duplica `useDescargarPdfDelCierre`.
+    - **TES-1** (del tester): ninguna prueba E2E cubre el carnet.
+    - **TES-2** (del tester): el chunk JS del frontend pesa 1 038 kB y Vite avisa por pasar de 500 kB.
   - **Desde 005b (DR-21 de 005, antes B5):** agregar la foto después desde el panel (a una solicitud o un alumno ya
     registrado, sin el token de seguimiento) y tomarla con la cámara de la PC de recepción. En la 005b la foto solo se
     sube en el paso del formulario (también cuando la secretaria abre "Nueva inscripción", eligiendo un archivo) o desde
