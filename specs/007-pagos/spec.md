@@ -48,6 +48,10 @@
   `getPrototypeOf` que lanza propagaba un `TypeError` o el error de la trampa en lugar de `RangeError`, y un `Date` real
   de otro contexto (`vm`) o con el prototipo cambiado se rechazaba. La precisión está en el criterio 59 («Qué es un
   `Date`»).
+- **Ronda adversarial 4 de la 007a (25/11/2026):** sin fallas dentro del modelo de amenaza. Solo encontró fallas que
+  exigen que código del mismo proceso modifique objetos nativos de JavaScript después de cargar el módulo; el
+  orquestador las dejó fuera del modelo de amenaza del criterio 59 (59 e), con un endurecimiento sin criterio protegido
+  nuevo.
 - **Alineación con la revisión de la 007a (24/11/2026):** el revisor aceptó cinco desviaciones de la implementación y
   la spec y el plan las recogen, sin cambiar reglas de negocio: `montoMostrado` con `montoCotizadoSchema` (criterio 16);
   el total sin ajuste es el `monto_calculado` guardado (definición «Total a cobrar» e «Interfaces del backend»); las
@@ -672,7 +676,7 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
 
     _(crítico)_ (D-04, RN-17, D-23; criterios 3 y 5)
 59. **El id ordenado de la auditoría no se daña con una fecha no válida.** _(007a, ronda adversarial 1; a y b
-    precisados en las rondas adversariales 2 y 3.)_
+    precisados en las rondas adversariales 2 y 3; modelo de amenaza, e, de la ronda 4.)_
     `idDeAuditoriaOrdenado(fechaHora)` (`backend/src/modulos/auditoria/id-ordenado.ts`) genera ids UUID versión 7: los
     milisegundos de `fechaHora`, un contador que no retrocede dentro del proceso y el resto al azar.
     - a) **Rechazo sin daño.** Una fecha no válida es:
@@ -712,6 +716,20 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
       - **Cómo se decide.** La decisión no usa `instanceof` ni lee propiedades del valor, ni llama a sus métodos o a sus
         trampas, fuera de un `try`/`catch` que convierte cualquier error en `RangeError`. Después de cualquiera de estos
         rechazos, b se cumple igual.
+    - e) **Modelo de amenaza.** _(Ronda adversarial 4 de la 007a, 25/11/2026; decisión del orquestador, sin cambios de
+      negocio.)_ El criterio 59 protege contra los **valores** que recibe `idDeAuditoriaOrdenado`, cualesquiera que sean
+      (a a d), no contra un proceso comprometido. El código que corre dentro del proceso del servidor y modifica objetos
+      nativos de JavaScript (`Function.prototype`, `Date.prototype`, `Number`, `Math`, `Buffer` u otros) está **fuera del
+      modelo de amenaza**, antes o después de cargar el módulo: ese código ya podría reemplazar el propio módulo. Por
+      eso no son fallas del criterio 59 las de la ronda 4: redefinir `Date.prototype.getTime.call` o
+      `Function.prototype.call` para que cualquier valor pase como `Date`, o reemplazar `Number.isSafeInteger` para que
+      un `NaN` pase y dañe el estado. Con todas las entradas de a a d la ronda 4 no encontró fallas (9105 ids
+      correctas).
+
+      Como endurecimiento barato, sin criterio protegido nuevo ni prueba que lo exija, el módulo liga `call` al
+      cargarse (`Function.prototype.call.bind(Date.prototype.getTime)`), guarda `Number.isSafeInteger` (y `Math.max`) y
+      escribe la comprobación del rango en positivo, de modo que un `NaN` se rechaza siempre. Reduce el efecto de un
+      reemplazo posterior por descuido; no es una garantía frente a código hostil del mismo proceso.
 
     Como consecuencia, una operación cuya auditoría recibiera una fecha no válida falla antes de escribir y su
     transacción se revierte, y las operaciones siguientes del proceso auditan con normalidad. _(crítico)_ (RN-22,
@@ -1071,6 +1089,9 @@ sumando (DT-17 a DT-19), está en «Decisiones», «Pruebas protegidas anteriore
   limitan el token y el límite por conexión.
 - **Correo que no llega:** sin reintento, como en la 005; el cliente ve el estado en su enlace.
 - **Ticket sin valor tributario:** hasta el módulo de facturación (D-09); la leyenda lo dice (DR-4).
+- **Código del mismo proceso que modifica objetos nativos (criterio 59 e):** queda fuera del modelo de amenaza del id
+  de la auditoría; ese código ya podría reemplazar el propio módulo. El endurecimiento de la ronda adversarial 4 de la
+  007a lo dificulta, pero no lo garantiza.
 
 ## Decisiones
 

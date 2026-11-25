@@ -7,7 +7,8 @@ historias. Lo marcado **[007b]** va en el segundo PR.
 
 - `backend/prisma/migrations/<marca>_estado_solicitud_confirmada/` y `<marca>_pagos/` (007a), y `schema.prisma`. Desde la
   ronda adversarial 1 de la 007a, `<marca>_pagos_movimiento_confirmado/` (criterio 58).
-- `backend/src/modulos/auditoria/id-ordenado.ts` (rondas adversariales 1 a 3 de la 007a, criterio 59).
+- `backend/src/modulos/auditoria/id-ordenado.ts` (rondas adversariales 1 a 3 de la 007a, criterio 59; endurecimiento
+  de la ronda 4, criterio 59 e).
 - `backend/src/modulos/pagos/` (nuevo):
   - `pagos.module.ts`, `pagos.controller.ts` (ticket; **[007b]** bandeja, comprobante, aprobación y rechazo),
     `cobros.service.ts` (cobro en efectivo y ajuste), **[007b]** `verificacion.service.ts`, **[007b]**
@@ -479,7 +480,7 @@ como texto» es la de `<` entre cadenas: las ids tienen hexadecimales en minúsc
 | Decisión | Alternativa descartada | Motivo |
 | --- | --- | --- |
 | Solo `Date.prototype.getTime.call` dentro de un `try` | `instanceof Date` dentro del `try` | Corrige el `TypeError` del `Proxy`, pero sigue rechazando los `Date` reales de otro contexto o con el prototipo cambiado (criterio 59 d) |
-| `getTime` capturado al cargar el módulo | `Date.prototype.getTime` leído en cada llamada | Un `Date.prototype.getTime` reemplazado más tarde en el proceso no cambia la decisión; no tiene costo |
+| `getTime` capturado al cargar el módulo | `Date.prototype.getTime` leído en cada llamada | Endurecimiento, no garantía: evita que un `Date.prototype.getTime` reemplazado más tarde por descuido cambie la decisión, sin costo. El código del mismo proceso que modifica objetos nativos queda fuera del modelo de amenaza (criterio 59 e; ver «Ronda adversarial 4 de la 007a») |
 | Sin `util.types.isDate` | `util.types.isDate` y después `getTime.call` | Dos comprobaciones de lo mismo; la de Node no da el instante y no agrega casos |
 | Sin `Object.prototype.toString.call(valor) === '[object Date]'` | Esa comprobación | Lee `Symbol.toStringTag` (falsificable y, en un `Proxy`, una trampa `get` que puede lanzar) |
 
@@ -507,6 +508,45 @@ propio `generadorLimpio()` (el mismo `vi.resetModules()` e `import()` dinámico 
   con `util.types.isDate(valor)` que el valor es un `Date` según 59 d; en los de «lanzan», que no lo es. Los valores
   con trampas que lanzan se crean dentro de cada caso y no se pasan a los nombres de las pruebas ni a los mensajes de
   `expect` (imprimirlos dispararía las trampas).
+
+**Estado:** pruebas protegidas 820cd22 (en rojo), corrección 65aa1f0.
+
+## Ronda adversarial 4 de la 007a (criterio 59 e)
+
+**Resultado (25/11/2026): cerrada sin fallas dentro del modelo de amenaza.** Con todas las entradas de 59 a a d no hubo
+fallas (9105 ids correctas). Solo encontró dos fallas que exigen que código del mismo proceso modifique objetos nativos
+después de cargar el módulo:
+
+1. redefinir `Date.prototype.getTime.call` o `Function.prototype.call` hace que cualquier valor pase como `Date`;
+2. reemplazar `Number.isSafeInteger` deja pasar `NaN` y daña el estado del generador.
+
+El orquestador decidió que ese código está fuera del modelo de amenaza del criterio 59 (59 e): ya podría reemplazar el
+propio módulo. No hay criterio protegido nuevo ni prueba protegida nueva.
+
+**Endurecimiento (solo `backend/src/modulos/auditoria/id-ordenado.ts`, sin prueba protegida):**
+
+- `const leerInstante = Function.prototype.call.bind(Date.prototype.getTime)` al cargar el módulo, y la lectura del
+  instante como `leerInstante(fechaHora)` dentro del `try`: un `call` redefinido más tarde ya no interviene;
+- `Number.isSafeInteger` (y `Math.max`) guardados en constantes del módulo al cargarlo;
+- la comprobación del rango escrita en positivo, `if (!(esEnteroSeguro(t) && t >= 0 && t <= 2 ** 48 - 1)) throw …`:
+  un `NaN` no cumple ninguna comparación y se rechaza aunque `esEnteroSeguro` mienta;
+- el comentario del módulo dice que es endurecimiento, no una defensa, y que el código que modifica objetos nativos
+  está fuera del modelo de amenaza.
+
+| Decisión | Alternativa descartada | Motivo |
+| --- | --- | --- |
+| Fuera del modelo de amenaza, con endurecimiento barato | Defender el módulo de objetos nativos modificados (copias congeladas, `Reflect.apply` guardado, `Object.freeze` de los prototipos al arrancar) | Siempre queda otro nativo que reemplazar (`Buffer`, `randomBytes`, el propio módulo en la caché de `require`); congelar prototipos globales puede romper dependencias |
+
+## Preguntas técnicas para historias futuras (no la 007)
+
+- **Orden de `auditoria_plataforma` en el mismo milisegundo.** `insertarEnAuditoriaPlataforma`
+  (`backend/src/modulos/auditoria/insercion.ts`) usa `gen_random_uuid()` como id, a diferencia de
+  `insertarEnAuditoriaDeAcademia`, que usa `idDeAuditoriaOrdenado`. Si `auditoria_plataforma` se lee `ORDER BY
+  fecha_hora, id`, las filas del mismo milisegundo (o con el reloj fijo de las pruebas) quedan en orden aleatorio y no
+  en el orden en que se registraron. Propuesta: cuando una historia lea o muestre esa bitácora (por ejemplo, la del
+  Superadmin), usar también `idDeAuditoriaOrdenado` en `insertarEnAuditoriaPlataforma` y decidir si las filas ya
+  guardadas necesitan algo (con UUID v4 no se puede recuperar su orden dentro del milisegundo). No cambia la 007: la
+  007 solo escribe en `auditoria`.
 
 ## Migraciones
 
@@ -538,3 +578,5 @@ propio `generadorLimpio()` (el mismo `vi.resetModules()` e `import()` dinámico 
   cobros de la academia (riesgo ya aceptado en la 006).
 - **El middleware lee la sesión en las rutas públicas:** una consulta más por petición con cookie válida. Con cookie
   inválida no toca la base.
+- **Objetos nativos modificados en el proceso:** fuera del modelo de amenaza del id de la auditoría (criterio 59 e). El
+  endurecimiento de la ronda 4 lo dificulta, pero no es una garantía.

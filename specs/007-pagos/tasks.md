@@ -206,7 +206,7 @@ Estas tareas van antes de T27.
       _(hecho, 25/11/2026: sin fallas dentro del modelo de amenaza; 9105 ids correctas con las entradas de 59 a a d.
       Las dos fallas que exigen modificar objetos nativos del proceso quedaron fuera del modelo de amenaza (criterio
       59 e), con el endurecimiento de T61, sin prueba protegida nueva)_
-- [ ] T61 · backend · Endurecimiento de la ronda 4, sin prueba protegida nueva: `Function.prototype.call.bind(
+- [x] T61 · backend · (50c8e0b) Endurecimiento de la ronda 4, sin prueba protegida nueva: `Function.prototype.call.bind(
       Date.prototype.getTime)` al cargar el módulo, `Number.isSafeInteger` guardado y la comprobación del rango en
       positivo para que un `NaN` se rechace siempre; comentario «endurecimiento, no garantía». Las pruebas protegidas
       del criterio 59 siguen en verde (criterio 59 e; plan, «Ronda adversarial 4 de la 007a»)
