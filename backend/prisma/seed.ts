@@ -3,6 +3,8 @@
 // Nunca corre con NODE_ENV=production. No imprime la contraseña.
 import { VERSION_CONSENTIMIENTOS } from '@aquagestion/contratos';
 import { createHash } from 'node:crypto';
+import path from 'node:path';
+import sharp from 'sharp';
 import {
   cargarEnvDeLaRaiz,
   crearClienteDelDueno,
@@ -14,6 +16,8 @@ import {
 import { mensajeSeguro } from '../src/cli/mensaje-seguro';
 import { aTextoMonto } from '../src/comun/dinero';
 import { hoyEnLima } from '../src/comun/fechas';
+import { AlmacenArchivosDisco } from '../src/infraestructura/almacen-archivos';
+import { resolverAlmacenDirectorio } from '../src/infraestructura/entorno/entorno';
 import { Decimal } from '../src/infraestructura/prisma';
 import { calcularDiferencia, calcularResumen } from '../src/modulos/caja/dominio/esperado';
 import { montoProporcional } from '../src/modulos/matriculas/dominio/cobro';
@@ -146,6 +150,55 @@ const CLASES_DE_LOS_CLIENTES = [
   { dia: 5, hora: '18:00' },
 ] as const;
 const PLAN_DE_LOS_CLIENTES = '3 veces por semana';
+
+/**
+ * Los datos de pago de ejemplo de `delfines` (spec 007b, criterio 57): inventados. Se agregan solo si la academia no tiene ninguna de estas
+ * claves, así repetir la semilla no los duplica ni vuelve a poner uno que el administrador quitó o cambió.
+ */
+const DATOS_DE_PAGO_DE_EJEMPLO = [
+  { clave: 'yape_numero', valor: '987000333' },
+  { clave: 'yape_titular', valor: 'Academia de ejemplo (Yape)' },
+  { clave: 'transferencia_banco', valor: 'Banco de ejemplo' },
+  { clave: 'transferencia_cuenta', valor: '000-0000000000-00' },
+  { clave: 'transferencia_cci', valor: '00000000000000000000' },
+  { clave: 'transferencia_titular', valor: 'Academia de ejemplo (cuenta)' },
+] as const;
+
+/**
+ * El Yape pendiente de verificación de ejemplo (spec 007b, criterio 57): el cliente de este DNI, con su matrícula todavía reservada y sin
+ * cambios desde que se sembró, envió un comprobante (una imagen generada, sin datos reales). Los identificadores son fijos: repetir la semilla
+ * ni duplica el pago ni el archivo, y no toca lo que el administrador haya hecho después (aprobarlo o rechazarlo). Un pago confirmado no se
+ * siembra (exigiría un movimiento en una caja abierta).
+ */
+const YAPE_DE_EJEMPLO = {
+  dniDelCliente: '20000003',
+  pagoId: '7b0a0000-0000-4000-8000-000000000001',
+  claveDeIdempotencia: '7b0a0000-0000-4000-8000-000000000002',
+  archivoId: '7b0a0000-0000-4000-8000-000000000003',
+  numeroDeOperacion: '00123456',
+  numeroNormalizado: '123456',
+} as const;
+
+/** Un comprobante inventado: una imagen con formas simples (sin texto: no depende de las fuentes del sistema), de 600 por 800 píxeles. */
+async function imagenDeEjemploDelComprobante(): Promise<Buffer> {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">
+    <rect width="600" height="800" fill="#f5f0fa"/>
+    <rect x="40" y="40" width="520" height="110" rx="16" fill="#742284"/>
+    <circle cx="100" cy="95" r="30" fill="#ffffff"/>
+    <rect x="160" y="75" width="260" height="14" rx="7" fill="#ffffff"/>
+    <rect x="160" y="105" width="180" height="14" rx="7" fill="#d9c2e4"/>
+    <rect x="40" y="190" width="520" height="470" rx="16" fill="#ffffff" stroke="#d9c2e4" stroke-width="2"/>
+    <rect x="80" y="240" width="200" height="16" rx="8" fill="#b9a3c6"/>
+    <rect x="80" y="280" width="440" height="40" rx="8" fill="#ece3f2"/>
+    <rect x="80" y="350" width="160" height="16" rx="8" fill="#b9a3c6"/>
+    <rect x="80" y="390" width="440" height="40" rx="8" fill="#ece3f2"/>
+    <rect x="80" y="460" width="200" height="16" rx="8" fill="#b9a3c6"/>
+    <rect x="80" y="500" width="300" height="40" rx="8" fill="#ece3f2"/>
+    <rect x="80" y="580" width="440" height="3" fill="#d9c2e4"/>
+    <rect x="80" y="610" width="120" height="16" rx="8" fill="#b9a3c6"/>
+  </svg>`;
+  return sharp(Buffer.from(svg)).jpeg({ quality: 80 }).toBuffer();
+}
 
 /**
  * Caja de ejemplo de `delfines` (spec 006, criterio 45): una caja cerrada en una fecha fija pasada (no depende del día en que se ejecuta la
@@ -468,6 +521,82 @@ async function sembrar(): Promise<number> {
           ? `Clientes de ejemplo con solicitud agregados a delfines: ${clientesCreados}`
           : 'Los clientes de ejemplo de delfines ya existían',
     );
+    // Los datos de pago de ejemplo (007b, criterio 57): solo si la academia no tiene ninguno.
+    const datosDePago = await enAcademia(
+      cliente,
+      delfinesId,
+      (tx) =>
+        tx.$queryRaw<{ clave: string }[]>`
+          INSERT INTO configuraciones (academia_id, clave, valor, actualizado_en)
+          SELECT ${delfinesId}::uuid, d.clave, to_jsonb(d.valor::text), ${ahora}::timestamptz
+            FROM unnest(${DATOS_DE_PAGO_DE_EJEMPLO.map((dato) => dato.clave)}::text[], ${DATOS_DE_PAGO_DE_EJEMPLO.map((dato) => dato.valor)}::text[])
+                 AS d(clave, valor)
+           WHERE NOT EXISTS (SELECT 1 FROM configuraciones
+                              WHERE academia_id = ${delfinesId}::uuid AND clave = ANY(${DATOS_DE_PAGO_DE_EJEMPLO.map((dato) => dato.clave)}::text[]))
+          ON CONFLICT (academia_id, clave) DO NOTHING
+          RETURNING clave`,
+    );
+    console.log(
+      datosDePago.length > 0
+        ? 'Datos de pago de ejemplo agregados a la configuración de delfines'
+        : 'Los datos de pago de ejemplo de delfines ya existían (o se cambiaron)',
+    );
+    // El Yape pendiente de verificación de ejemplo (007b, criterio 57): a la matrícula del cliente de ejemplo que nadie tocó y que todavía no
+    // tiene pagos. El archivo se guarda antes de la fila (una fila nunca apunta a un archivo que no existe) y la fila, solo si no existe.
+    const destinoDelYape = plan
+      ? await enAcademia(
+          cliente,
+          delfinesId,
+          (tx) =>
+            tx.$queryRaw<{ matricula_id: string; alumno_id: string }[]>`
+              SELECT m.id::text AS matricula_id, m.alumno_id::text AS alumno_id
+                FROM matriculas m
+                JOIN alumnos a ON a.academia_id = m.academia_id AND a.id = m.alumno_id
+               WHERE m.academia_id = ${delfinesId}::uuid AND a.dni = ${YAPE_DE_EJEMPLO.dniDelCliente}
+                 AND m.estado = 'RESERVADA'::estado_matricula AND m.actualizado_en = m.creado_en
+                 AND NOT EXISTS (SELECT 1 FROM pagos p WHERE p.academia_id = m.academia_id AND p.matricula_id = m.id)`,
+        )
+      : [];
+    const yape = destinoDelYape[0];
+    if (yape) {
+      const almacen = resolverAlmacenDirectorio(leerVariable(process.env, 'ALMACEN_DIRECTORIO'), {
+        raiz: path.resolve(__dirname, '..', '..'),
+        ruta: path,
+      });
+      if ('problema' in almacen) throw new Error(almacen.problema);
+      const claveDelArchivo = `academias/${delfinesId}/pagos/${YAPE_DE_EJEMPLO.pagoId}/comprobante-${YAPE_DE_EJEMPLO.archivoId}.jpg`;
+      await new AlmacenArchivosDisco(almacen.directorio).guardar(
+        delfinesId,
+        claveDelArchivo,
+        await imagenDeEjemploDelComprobante(),
+        'image/jpeg',
+      );
+      const creado = await enAcademia(cliente, delfinesId, async (tx) => {
+        const pagos = await tx.$queryRaw<{ id: string }[]>`
+          INSERT INTO pagos (id, academia_id, alumno_id, matricula_id, concepto, metodo, estado, monto, numero_operacion,
+                             numero_operacion_normalizado, fecha_operacion, comprobante_clave, registrado_en, clave_idempotencia, creado_en,
+                             actualizado_en)
+          VALUES (${YAPE_DE_EJEMPLO.pagoId}::uuid, ${delfinesId}::uuid, ${yape.alumno_id}::uuid, ${yape.matricula_id}::uuid,
+                  'INSCRIPCION'::concepto_movimiento_caja, 'YAPE'::metodo_pago, 'PENDIENTE_VERIFICACION'::estado_pago, ${montoCalculado}::numeric,
+                  ${YAPE_DE_EJEMPLO.numeroDeOperacion}, ${YAPE_DE_EJEMPLO.numeroNormalizado}, ${hoy}::date, ${claveDelArchivo},
+                  ${ahora}::timestamptz, ${YAPE_DE_EJEMPLO.claveDeIdempotencia}::uuid, ${ahora}::timestamptz, ${ahora}::timestamptz)
+          ON CONFLICT DO NOTHING
+          RETURNING id::text AS id`;
+        if (pagos.length === 0) return false;
+        // Con un comprobante en revisión la matrícula sigue reservada y sin vencimiento (RN-28).
+        await tx.$executeRaw`
+          UPDATE matriculas SET reserva_vence_en = NULL, actualizado_en = ${ahora}::timestamptz
+           WHERE academia_id = ${delfinesId}::uuid AND id = ${yape.matricula_id}::uuid`;
+        return true;
+      });
+      console.log(
+        creado
+          ? 'Yape pendiente de verificación de ejemplo agregado a delfines'
+          : 'El Yape pendiente de ejemplo de delfines ya existía',
+      );
+    } else {
+      console.log('No se agregó el Yape pendiente de ejemplo a delfines: ya existía o el cliente de ejemplo cambió');
+    }
     // La caja de ejemplo (criterio 45): se abre, se registra su egreso, se cierra y recién entonces queda cerrada (el trigger de la base no
     // deja insertar movimientos en una caja cerrada). Si la fecha, la clave o una caja abierta chocan, no se agrega nada.
     const secretarias = await enAcademia(
