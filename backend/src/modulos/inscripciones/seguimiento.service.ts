@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  CAMPOS_DATOS_DE_PAGO,
+  type ConfiguracionAcademia,
   type ConsultarSolicitud,
+  type DatosDePago,
   type EstadoSolicitud,
   PATRON_CODIGO,
   PATRON_TOKEN,
@@ -9,7 +12,14 @@ import {
 } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
 import { aTextoMonto } from '../../comun/dinero';
-import { BaseDatos, type AcademiaResuelta, Decimal, type Fragmento, sql } from '../../infraestructura/prisma';
+import {
+  type AcademiaResuelta,
+  BaseDatos,
+  Decimal,
+  type Fragmento,
+  sql,
+  type TransaccionAcademia,
+} from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { leerConfiguracion } from '../configuracion/lectura';
 import { finDelMesEnLima } from '../matriculas';
@@ -71,8 +81,48 @@ export class SeguimientoService {
     const busqueda = 'token' in datos ? this.porToken(datos.token) : this.porCodigoYDni(datos.codigo, datos.dni);
     if (busqueda === null) throw solicitudNoEncontrada();
     return this.baseDatos.conAcademia(academia.id, async (tx) => {
-      // Una sola consulta con todas las condiciones y con la vista ya armada.
-      const filas = await tx.cliente.$queryRaw<FilaVista[]>`
+      const vista = await leerVistaDeSolicitud(tx, busqueda, ahora);
+      if (!vista) throw solicitudNoEncontrada();
+      const configuracion = await leerConfiguracion(tx, { registro: this.registro });
+      const respuesta: RespuestaConsultaSolicitud = {
+        solicitud: vista,
+        academia: { nombre: academia.nombre, telefono: configuracion.telefono },
+      };
+      // Los datos de pago (007b, criterio 53) solo mientras la persona todavía puede pagar, y solo los que tienen valor.
+      if (vista.estado === 'PENDIENTE_PAGO' || vista.estado === 'PAGO_RECHAZADO') {
+        const datosDePago = datosDePagoDe(configuracion);
+        if (Object.keys(datosDePago).length > 0) respuesta.academia.datosDePago = datosDePago;
+      }
+      return respuesta;
+    });
+  }
+
+  /** El token solo se busca si tiene la forma exacta (43 caracteres base64url): cualquier otra cosa es "no encontrada". */
+  private porToken(token: string): Fragmento | null {
+    if (!PATRON_TOKEN.test(token)) return null;
+    return sql`s.token_hash = decode(${hashDeToken(token)}::text, 'hex')`;
+  }
+
+  /** El código se recorta y se pasa a mayúsculas; el DNI se recorta y debe tener 8 dígitos. No se corrige ninguna letra parecida. */
+  private porCodigoYDni(codigoCrudo: string, dniCrudo: string): Fragmento | null {
+    const codigo = codigoCrudo.trim().toUpperCase();
+    const dni = dniCrudo.trim();
+    if (!PATRON_CODIGO.test(codigo) || !PATRON_DNI.test(dni)) return null;
+    return sql`s.codigo = ${codigo}::text AND a.dni = ${dni}::text`;
+  }
+}
+
+/**
+ * La vista de seguimiento de la solicitud que cumple `condicion` (el token, o el código con el DNI), con una sola consulta, sin bloquear nada, o
+ * `null` si no hay ninguna. La comparten la consulta de seguimiento y la subida del comprobante (007b), que responde con la misma vista.
+ * `condicion` usa los alias `s` (solicitud) y `a` (alumno); `tx` ya corre con la academia, y la consulta la filtra otra vez.
+ */
+export async function leerVistaDeSolicitud(
+  tx: TransaccionAcademia,
+  condicion: Fragmento,
+  ahora: Date,
+): Promise<VistaSolicitud | null> {
+  const filas = await tx.cliente.$queryRaw<FilaVista[]>`
         SELECT s.codigo, s.estado::text AS estado_solicitud, s.creado_en AS creada_en, m.estado::text AS estado_matricula,
                m.reserva_vence_en, a.nombres, (a.foto_clave IS NOT NULL) AS foto_cargada, p.nombre AS plan,
                m.anio::int AS anio, m.mes::int AS mes, m.clases_totales::int AS clases_totales,
@@ -93,32 +143,21 @@ export class SeguimientoService {
           JOIN matriculas m ON m.academia_id = s.academia_id AND m.solicitud_id = s.id
           JOIN planes p ON p.academia_id = m.academia_id AND p.id = m.plan_id
           ${unirUltimoPago}
-         WHERE s.academia_id = ${tx.academiaId}::uuid AND ${busqueda}
+         WHERE s.academia_id = ${tx.academiaId}::uuid AND ${condicion}
          ORDER BY m.creado_en DESC
          LIMIT 1`;
-      const fila = filas[0];
-      if (!fila) throw solicitudNoEncontrada();
-      const configuracion = await leerConfiguracion(tx, { registro: this.registro });
-      return {
-        solicitud: vistaDe(fila, ahora),
-        academia: { nombre: academia.nombre, telefono: configuracion.telefono },
-      };
-    });
-  }
+  const fila = filas[0];
+  return fila ? vistaDe(fila, ahora) : null;
+}
 
-  /** El token solo se busca si tiene la forma exacta (43 caracteres base64url): cualquier otra cosa es "no encontrada". */
-  private porToken(token: string): Fragmento | null {
-    if (!PATRON_TOKEN.test(token)) return null;
-    return sql`s.token_hash = decode(${hashDeToken(token)}::text, 'hex')`;
+/** Los datos de pago de la configuración que tienen valor (007b, criterio 53). */
+function datosDePagoDe(configuracion: ConfiguracionAcademia): DatosDePago {
+  const datos: DatosDePago = {};
+  for (const campo of CAMPOS_DATOS_DE_PAGO) {
+    const valor = configuracion[campo];
+    if (valor !== undefined && valor !== null) datos[campo] = valor;
   }
-
-  /** El código se recorta y se pasa a mayúsculas; el DNI se recorta y debe tener 8 dígitos. No se corrige ninguna letra parecida. */
-  private porCodigoYDni(codigoCrudo: string, dniCrudo: string): Fragmento | null {
-    const codigo = codigoCrudo.trim().toUpperCase();
-    const dni = dniCrudo.trim();
-    if (!PATRON_CODIGO.test(codigo) || !PATRON_DNI.test(dni)) return null;
-    return sql`s.codigo = ${codigo}::text AND a.dni = ${dni}::text`;
-  }
+  return datos;
 }
 
 /**

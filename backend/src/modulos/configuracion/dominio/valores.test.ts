@@ -142,7 +142,7 @@ describe('configuracionEfectiva (criterios 1 a 3)', () => {
     expect(JSON.stringify(resultado.clavesInvalidas)).not.toContain('99');
   });
 
-  it('CLAVES_EN_BASE son las seis claves de la tabla', () => {
+  it('CLAVES_EN_BASE son las seis claves de la tabla y las seis de los datos de pago (007b, criterio 53)', () => {
     expect([...CLAVES_EN_BASE]).toEqual([
       'tolerancia_tardanza_minutos',
       'dias_por_vencer',
@@ -150,7 +150,61 @@ describe('configuracionEfectiva (criterios 1 a 3)', () => {
       'intentos_inicio_sesion',
       'minutos_bloqueo',
       'telefono',
+      'yape_numero',
+      'yape_titular',
+      'transferencia_banco',
+      'transferencia_cuenta',
+      'transferencia_cci',
+      'transferencia_titular',
     ]);
+  });
+});
+
+describe('datos de pago de la academia (007b, criterio 53)', () => {
+  it('sin filas, la configuración efectiva no trae ningún dato de pago (la misma de antes de la 007b)', () => {
+    expect(configuracionEfectiva([]).configuracion).toEqual(CONFIGURACION_POR_DEFECTO);
+    expect(Object.keys(configuracionEfectiva([]).configuracion)).toHaveLength(6);
+  });
+
+  it('un dato de pago guardado y válido se lee; uno inválido o null no aparece y el inválido se anota', () => {
+    const resultado = configuracionEfectiva([
+      { clave: 'yape_numero', valor: '987654321' },
+      { clave: 'yape_titular', valor: null },
+      { clave: 'transferencia_banco', valor: 'Banco de ejemplo' },
+      { clave: 'transferencia_cci', valor: 12345 },
+    ]);
+
+    expect(resultado.configuracion).toEqual({
+      ...CONFIGURACION_POR_DEFECTO,
+      yapeNumero: '987654321',
+      transferenciaBanco: 'Banco de ejemplo',
+    });
+    expect(resultado.clavesInvalidas).toEqual(['transferencia_cci']);
+  });
+
+  it('cambiosPedidos escribe un dato nuevo, no escribe el mismo valor ni quitar uno que no existe, y quitar uno que existe escribe null', () => {
+    expect(cambiosPedidos([], { yapeNumero: '987654321' })).toEqual([
+      { campo: 'yapeNumero', clave: 'yape_numero', antes: null, despues: '987654321' },
+    ]);
+    expect(cambiosPedidos([{ clave: 'yape_numero', valor: '987654321' }], { yapeNumero: '987654321' })).toEqual([]);
+    expect(cambiosPedidos([], { yapeNumero: null })).toEqual([]);
+    expect(cambiosPedidos([{ clave: 'yape_numero', valor: '987654321' }], { yapeNumero: null })).toEqual([
+      { campo: 'yapeNumero', clave: 'yape_numero', antes: '987654321', despues: null },
+    ]);
+  });
+
+  it('aplicarCambios suma un dato de pago y lo quita de la respuesta con null', () => {
+    const base = { ...CONFIGURACION_POR_DEFECTO, yapeNumero: '987654321' };
+
+    const quitado = aplicarCambios(base, [
+      { campo: 'yapeNumero', clave: 'yape_numero', antes: '987654321', despues: null },
+    ]);
+    const sumado = aplicarCambios(CONFIGURACION_POR_DEFECTO, [
+      { campo: 'yapeTitular', clave: 'yape_titular', antes: null, despues: 'Academia Delfines' },
+    ]);
+
+    expect(quitado).toEqual(CONFIGURACION_POR_DEFECTO);
+    expect(sumado).toEqual({ ...CONFIGURACION_POR_DEFECTO, yapeTitular: 'Academia Delfines' });
   });
 });
 

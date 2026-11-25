@@ -1,9 +1,11 @@
 import { z } from 'zod';
-import { sinControles } from './texto';
+import { telefonoCelularSchema } from './inscripcion';
+import { sinControles, textoVisibleSchema } from './texto';
 
 /**
  * Configuración de cada academia (spec 003): tolerancia de tardanza (D-11), días "por vencer" (HU-11), días de prioridad al renovar
- * (D-06), intentos y minutos de bloqueo del inicio de sesión (D-07) y teléfono (D-22). Los valores viven en `configuraciones`
+ * (D-06), intentos y minutos de bloqueo del inicio de sesión (D-07) y teléfono (D-22), más, desde la 007b, los datos de pago de la academia
+ * (Yape y transferencia, criterio 53 de la spec 007). Los valores viven en `configuraciones`
  * (clave/valor por academia). Una clave sin fila, o con un valor que no cumple esta tabla, vale lo de por defecto. La API y la web
  * leen la misma tabla, así que los rangos se cambian en un solo lugar.
  */
@@ -47,6 +49,29 @@ interface DefinicionTelefono {
   readonly clave: string;
   readonly tipo: 'telefono';
   readonly porDefecto: null;
+  readonly etiqueta: string;
+  readonly unidad: string;
+  readonly ayuda: string;
+}
+
+/** Los datos de pago que la persona ve junto al formulario del comprobante (007b, criterio 53). Todos opcionales: sin valor, no se muestran. */
+export const CAMPOS_DATOS_DE_PAGO = [
+  'yapeNumero',
+  'yapeTitular',
+  'transferenciaBanco',
+  'transferenciaCuenta',
+  'transferenciaCci',
+  'transferenciaTitular',
+] as const;
+export type CampoDatoDePago = (typeof CAMPOS_DATOS_DE_PAGO)[number];
+
+interface DefinicionDatoDePago {
+  readonly clave: string;
+  /** `celular`: 9 dígitos que empiezan con 9; `texto`: de 1 a `maximo` caracteres visibles. */
+  readonly tipo: 'celular' | 'texto';
+  readonly porDefecto: null;
+  /** Solo en `texto`. */
+  readonly maximo?: number;
   readonly etiqueta: string;
   readonly unidad: string;
   readonly ayuda: string;
@@ -118,7 +143,63 @@ export const CLAVES_CONFIGURACION = {
     unidad: '',
     ayuda: 'De 6 a 20 caracteres: dígitos, espacios, guiones, paréntesis y un + al inicio. Déjalo vacío para quitarlo.',
   },
-} as const satisfies Record<CampoConfiguracion, DefinicionEntera | DefinicionTelefono>;
+  yapeNumero: {
+    clave: 'yape_numero',
+    tipo: 'celular',
+    porDefecto: null,
+    etiqueta: 'Número de Yape',
+    unidad: '',
+    ayuda: 'Celular de 9 dígitos al que la persona envía el Yape. Déjalo vacío para no mostrarlo.',
+  },
+  yapeTitular: {
+    clave: 'yape_titular',
+    tipo: 'texto',
+    porDefecto: null,
+    maximo: 80,
+    etiqueta: 'Titular del Yape',
+    unidad: '',
+    ayuda: 'Nombre que aparece en el Yape, para que la persona compruebe que paga al lugar correcto.',
+  },
+  transferenciaBanco: {
+    clave: 'transferencia_banco',
+    tipo: 'texto',
+    porDefecto: null,
+    maximo: 80,
+    etiqueta: 'Banco de la transferencia',
+    unidad: '',
+    ayuda: 'Banco de la cuenta que recibe las transferencias.',
+  },
+  transferenciaCuenta: {
+    clave: 'transferencia_cuenta',
+    tipo: 'texto',
+    porDefecto: null,
+    maximo: 40,
+    etiqueta: 'Número de cuenta',
+    unidad: '',
+    ayuda: 'Número de la cuenta que recibe las transferencias.',
+  },
+  transferenciaCci: {
+    clave: 'transferencia_cci',
+    tipo: 'texto',
+    porDefecto: null,
+    maximo: 40,
+    etiqueta: 'CCI',
+    unidad: '',
+    ayuda: 'Código de cuenta interbancario, para transferencias desde otro banco.',
+  },
+  transferenciaTitular: {
+    clave: 'transferencia_titular',
+    tipo: 'texto',
+    porDefecto: null,
+    maximo: 80,
+    etiqueta: 'Titular de la cuenta',
+    unidad: '',
+    ayuda: 'Nombre del titular de la cuenta que recibe las transferencias.',
+  },
+} as const satisfies Record<
+  CampoConfiguracion | CampoDatoDePago,
+  DefinicionEntera | DefinicionTelefono | DefinicionDatoDePago
+>;
 
 /** Valores por defecto de cada campo (criterio 1). */
 export const CONFIGURACION_POR_DEFECTO: Readonly<ConfiguracionAcademia> = {
@@ -193,7 +274,43 @@ export const telefonoAcademiaSchema = sinControles(
     message: `El teléfono debe tener al menos ${TELEFONO_DIGITOS_MINIMOS} dígitos.`,
   });
 
-/** Los seis valores efectivos de una academia: todos presentes. */
+/** Un dato de pago de texto (007b, criterio 53): recortado, de 1 al máximo de su definición, sin controles ni caracteres de dirección. */
+function textoDePago(
+  campo: 'yapeTitular' | 'transferenciaBanco' | 'transferenciaCuenta' | 'transferenciaCci' | 'transferenciaTitular',
+) {
+  const definicion = CLAVES_CONFIGURACION[campo];
+  return textoVisibleSchema({ sujeto: definicion.etiqueta, min: 1, max: definicion.maximo, visibles: 1 });
+}
+
+/** Los esquemas de cada dato de pago, sin `nullable` ni `optional`. */
+const ESQUEMAS_DATOS_DE_PAGO = {
+  yapeNumero: telefonoCelularSchema,
+  yapeTitular: textoDePago('yapeTitular'),
+  transferenciaBanco: textoDePago('transferenciaBanco'),
+  transferenciaCuenta: textoDePago('transferenciaCuenta'),
+  transferenciaCci: textoDePago('transferenciaCci'),
+  transferenciaTitular: textoDePago('transferenciaTitular'),
+} as const;
+
+/**
+ * Los datos de pago de una academia (007b, criterio 53), todos opcionales: la respuesta de la configuración solo trae los que tienen valor, y
+ * la consulta del seguimiento los devuelve así en `academia.datosDePago` cuando la solicitud espera el pago. Un celular son 9 dígitos que
+ * empiezan con 9.
+ */
+export const datosDePagoSchema = z.strictObject({
+  yapeNumero: ESQUEMAS_DATOS_DE_PAGO.yapeNumero.optional(),
+  yapeTitular: ESQUEMAS_DATOS_DE_PAGO.yapeTitular.optional(),
+  transferenciaBanco: ESQUEMAS_DATOS_DE_PAGO.transferenciaBanco.optional(),
+  transferenciaCuenta: ESQUEMAS_DATOS_DE_PAGO.transferenciaCuenta.optional(),
+  transferenciaCci: ESQUEMAS_DATOS_DE_PAGO.transferenciaCci.optional(),
+  transferenciaTitular: ESQUEMAS_DATOS_DE_PAGO.transferenciaTitular.optional(),
+});
+export type DatosDePago = z.infer<typeof datosDePagoSchema>;
+
+/**
+ * Los valores efectivos de una academia: los seis de siempre, todos presentes, y los datos de pago solo si tienen valor (007b: la respuesta
+ * no trae una clave `yapeNumero: null`; así una lectura sin datos de pago es la misma de antes de la 007b).
+ */
 export const configuracionAcademiaSchema = z.strictObject({
   toleranciaTardanzaMinutos: enteroDe('toleranciaTardanzaMinutos'),
   diasPorVencer: enteroDe('diasPorVencer'),
@@ -201,12 +318,13 @@ export const configuracionAcademiaSchema = z.strictObject({
   intentosInicioSesion: enteroDe('intentosInicioSesion'),
   minutosBloqueo: enteroDe('minutosBloqueo'),
   telefono: telefonoAcademiaSchema.nullable(),
+  ...datosDePagoSchema.shape,
 });
 export type ConfiguracionAcademia = z.infer<typeof configuracionAcademiaSchema>;
 
 /**
- * `PATCH /api/configuracion`: los seis campos son opcionales y debe venir al menos uno. Estricto: un campo que no es del contrato (por
- * ejemplo `academiaId`, `nombre` o `logo`) es un 400. `telefono: null` quita el teléfono.
+ * `PATCH /api/configuracion`: los campos son opcionales y debe venir al menos uno. Estricto: un campo que no es del contrato (por
+ * ejemplo `academiaId`, `nombre` o `logo`) es un 400. `telefono: null` quita el teléfono; `null` en un dato de pago también lo quita (007b).
  */
 export const actualizarConfiguracionSchema = z
   .strictObject({
@@ -216,6 +334,12 @@ export const actualizarConfiguracionSchema = z
     intentosInicioSesion: enteroDe('intentosInicioSesion').optional(),
     minutosBloqueo: enteroDe('minutosBloqueo').optional(),
     telefono: telefonoAcademiaSchema.nullable().optional(),
+    yapeNumero: ESQUEMAS_DATOS_DE_PAGO.yapeNumero.nullable().optional(),
+    yapeTitular: ESQUEMAS_DATOS_DE_PAGO.yapeTitular.nullable().optional(),
+    transferenciaBanco: ESQUEMAS_DATOS_DE_PAGO.transferenciaBanco.nullable().optional(),
+    transferenciaCuenta: ESQUEMAS_DATOS_DE_PAGO.transferenciaCuenta.nullable().optional(),
+    transferenciaCci: ESQUEMAS_DATOS_DE_PAGO.transferenciaCci.nullable().optional(),
+    transferenciaTitular: ESQUEMAS_DATOS_DE_PAGO.transferenciaTitular.nullable().optional(),
   })
   .refine((cuerpo) => Object.values(cuerpo).some((valor) => valor !== undefined), {
     message: 'Envía al menos un campo de la configuración.',

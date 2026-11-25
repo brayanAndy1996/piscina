@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { conceptoMovimientoSchema, metodoPagoSchema } from './caja';
-import { montoCotizadoSchema, montoDeLecturaSchema } from './dinero';
+import { montoCotizadoSchema, montoDeLecturaSchema, montoSchema } from './dinero';
 import { fechaSchema } from './horario';
+import { dniSchema } from './sesion';
 import { textoVisibleSchema } from './texto';
+import { cuerpoVacioSchema } from './usuarios';
 
 /**
  * Pagos (spec 007a, criterios 4, 11, 13, 16, 26; D-03, D-04, D-07, HU-07, HU-34). Los montos viajan como texto, nunca como número. La
@@ -123,3 +125,81 @@ export type Ticket = z.infer<typeof ticketSchema>;
 
 export const respuestaTicketSchema = z.strictObject({ ticket: ticketSchema });
 export type RespuestaTicket = z.infer<typeof respuestaTicketSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 007b: comprobante de Yape o transferencia, bandeja de verificación y rechazo (criterios 36, 38, 45 y 49)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Cabecera con los datos del pago en `PUT /api/a/{nombreCorto}/solicitudes/comprobante` (un JSON ASCII de hasta 1024 bytes, criterio 36). */
+export const CABECERA_DATOS_PAGO = 'X-Pago-Datos';
+
+/** Largo máximo, en bytes, de la cabecera `X-Pago-Datos` (criterio 37, paso 5). */
+export const DATOS_PAGO_LARGO_MAXIMO = 1024;
+
+/** Lado mayor, en píxeles, del comprobante que se guarda (DT-8): más grande que la foto (800) para que el número se lea. */
+export const COMPROBANTE_LADO_GUARDADO = 2000;
+
+/** Los métodos que llevan comprobante: el efectivo se cobra en recepción y no sube imagen (criterio 38). */
+export const METODOS_CON_COMPROBANTE = ['YAPE', 'TRANSFERENCIA'] as const;
+export const metodoConComprobanteSchema = z.enum(METODOS_CON_COMPROBANTE, 'El método de pago no es válido.');
+export type MetodoConComprobante = z.infer<typeof metodoConComprobanteSchema>;
+
+/**
+ * Los datos del comprobante (`X-Pago-Datos`, criterios 36 y 38): estricto, así que ni la academia, ni el estado, ni quién lo registra se
+ * aceptan del cliente. `numeroOperacion` es lo que escribió la persona, recortado (se guarda así y, aparte, normalizado); `monto` debe ser
+ * igual al total a cobrar (lo decide el servicio, 409 `MONTO_DISTINTO`); `fechaOperacion` es una fecha real (que no sea posterior a hoy en
+ * Lima ni anterior al día en que se creó la solicitud lo comprueba el servicio).
+ */
+export const datosComprobanteSchema = z.strictObject({
+  claveIdempotencia: z.uuid('La clave del comprobante no es válida.'),
+  metodo: metodoConComprobanteSchema,
+  numeroOperacion: numeroOperacionSchema,
+  monto: montoSchema,
+  fechaOperacion: fechaSchema,
+});
+export type DatosComprobante = z.infer<typeof datosComprobanteSchema>;
+
+/**
+ * Un pago de la bandeja de verificación (`GET /api/pagos/pendientes`, criterio 45): lo que la secretaria necesita para comparar el
+ * comprobante con su Yape o su estado de cuenta. Nunca lleva datos médicos, el apoderado, el token, la clave del archivo, el número
+ * normalizado ni la IP.
+ */
+export const pagoPendienteSchema = z.strictObject({
+  id: z.uuid(),
+  metodo: metodoConComprobanteSchema,
+  /** Texto con dos decimales. */
+  monto: montoDeLecturaSchema,
+  /** Lo que escribió la persona. */
+  numeroOperacion: z.string(),
+  fechaOperacion: fechaSchema,
+  /** Cuándo se subió el comprobante. */
+  enviadoEn: z.iso.datetime(),
+  solicitud: z.strictObject({ id: z.uuid(), codigo: z.string() }),
+  cliente: z.strictObject({ nombres: z.string(), apellidos: z.string(), dni: dniSchema }),
+  /** `AAAA-MM` de la matrícula. */
+  mes: z.string().regex(/^[0-9]{4}-(0[1-9]|1[0-2])$/),
+  /** Si «hoy» en Lima ya no es del mes de la matrícula (criterio 52). */
+  mesTerminado: z.boolean(),
+});
+export type PagoPendiente = z.infer<typeof pagoPendienteSchema>;
+
+/** Cuántos pagos trae la bandeja como mucho (criterio 45): los más antiguos. */
+export const TOPE_DE_LA_BANDEJA = 200;
+
+export const respuestaPagosPendientesSchema = z.strictObject({
+  pagos: z.array(pagoPendienteSchema).max(TOPE_DE_LA_BANDEJA),
+});
+export type RespuestaPagosPendientes = z.infer<typeof respuestaPagosPendientesSchema>;
+
+/** `POST /api/pagos/{id}/aprobacion` (criterio 47): el cuerpo es `{}` estricto. */
+export const aprobarPagoSchema = cuerpoVacioSchema;
+
+/** `POST /api/pagos/{id}/rechazo` (criterio 49): el motivo de 3 a 200 caracteres visibles, que se muestra a la persona y queda en la auditoría. */
+export const rechazarPagoSchema = z.strictObject({
+  motivo: textoVisibleSchema({ sujeto: 'El motivo', min: 3, max: 200 }),
+});
+export type RechazarPago = z.infer<typeof rechazarPagoSchema>;
+
+/** La respuesta de la aprobación y del rechazo (criterios 47 y 49). */
+export const respuestaPagoSchema = z.strictObject({ pago: pagoSchema });
+export type RespuestaPago = z.infer<typeof respuestaPagoSchema>;
