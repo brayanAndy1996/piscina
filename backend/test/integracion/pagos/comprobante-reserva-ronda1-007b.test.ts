@@ -122,10 +122,11 @@ describe('la subida del comprobante bloquea las clases antes de decidir (criteri
     it('criterio 60 a y c: la subida de S, retenida en el índice del número, y un envío de la 005 en T por la misma clase: un solo 201, la ocupación como mucho 20 y quien pierde no deja nada', async () => {
       const { plan, clase, s } = await sembrarClaseConLaReservaQueVence();
       const cuerpoDelEnvio = await cuerpoInscripcion(e, { plan, clases: [clase], ahora: T });
-      const alumnosAntes = (await leerAlumnos(e.A.id)).length;
-      const matriculasAntes = (await leerMatriculas(e.A.id)).length;
       const numero = numeroNuevo();
       const retenedor = await retenerElIndiceDelNumero(numero);
+      // Después del retenedor: `retenerElIndiceDelNumero` siembra otra solicitud con su alumno y su matrícula.
+      const alumnosAntes = (await leerAlumnos(e.A.id)).length;
+      const matriculasAntes = (await leerMatriculas(e.A.id)).length;
       let comprobante: Awaited<ReturnType<typeof comprobanteDe>>;
       let envio: Awaited<ReturnType<typeof enviar>>;
       try {
