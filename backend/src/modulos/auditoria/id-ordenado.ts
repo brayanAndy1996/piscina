@@ -23,7 +23,13 @@ export function idDeAuditoriaOrdenado(fechaHora: Date): string {
   if (!(fechaHora instanceof Date)) {
     throw new RangeError('La fecha de la auditoría no es un Date.');
   }
-  const instante = fechaHora.getTime();
+  // Se lee el valor interno una sola vez y con el `getTime` del prototipo: un objeto que solo hereda de Date (o que trae su propio `getTime`) no es un Date.
+  let instante: number;
+  try {
+    instante = Date.prototype.getTime.call(fechaHora);
+  } catch {
+    throw new RangeError('La fecha de la auditoría no es un Date.');
+  }
   if (!Number.isSafeInteger(instante) || instante < 0 || instante > ULTIMO_MILISEGUNDO) {
     throw new RangeError('La fecha de la auditoría está fuera del rango que cabe en un id.');
   }

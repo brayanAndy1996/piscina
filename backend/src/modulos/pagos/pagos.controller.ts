@@ -4,6 +4,7 @@ import {
   type AjustarMonto,
   cobrarEnEfectivoSchema,
   type CobrarEnEfectivo,
+  type RespuestaCobro,
   type RespuestaSolicitudPanel,
   type RespuestaTicket,
 } from '@aquagestion/contratos';
@@ -38,7 +39,7 @@ export class PagosController {
     @Param('id') id: string,
     @Req() solicitud: Request,
     @Res({ passthrough: true }) respuesta: Response,
-  ): Promise<{ pago: unknown; solicitud: unknown }> {
+  ): Promise<RespuestaCobro> {
     const resultado = await this.cobros.cobrarEnEfectivo(sesion, id, datos, solicitud.ip ?? null);
     respuesta.status(resultado.creado ? 201 : 200);
     return { pago: resultado.pago, solicitud: resultado.solicitud };

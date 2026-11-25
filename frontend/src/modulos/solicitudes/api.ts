@@ -3,18 +3,13 @@ import {
   type CancelarSolicitud,
   type CobrarEnEfectivo,
   type FiltroEstadoSolicitudes,
-  pagoSchema,
+  respuestaCobroSchema,
   respuestaListaSolicitudesSchema,
   respuestaSolicitudPanelSchema,
-  solicitudPanelSchema,
 } from '@aquagestion/contratos';
-import { z } from 'zod';
 import { enviarJson, pedirJson } from '../../api/cliente';
 
 /** Llamadas del panel de solicitudes. La academia sale de la sesión: ninguna ruta la lleva (criterios 38 y 39 de 005). */
-
-/** `POST …/pago-efectivo` responde `{ pago, solicitud }` (spec 007a, criterio 13): el pago y el elemento del panel ya actualizado. */
-const respuestaCobroSchema = z.strictObject({ pago: pagoSchema, solicitud: solicitudPanelSchema });
 
 export async function listarSolicitudes(estado: FiltroEstadoSolicitudes) {
   const ruta = `/api/solicitudes?estado=${encodeURIComponent(estado)}`;

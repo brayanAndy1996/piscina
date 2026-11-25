@@ -36,8 +36,6 @@ interface FilaDeLaLista {
   anio: number;
   mes: number;
   clases_totales: number;
-  precio_plan: string;
-  clases_por_mes_plan: number;
   monto_calculado: string;
   monto_ajustado: string | null;
   motivo_ajuste: string | null;
@@ -84,7 +82,6 @@ export async function leerElementosDelPanel(
            s.creado_en AS creada_en, m.reserva_vence_en, a.nombres, a.apellidos, a.dni, a.telefono,
            a.fecha_nacimiento::text AS fecha_nacimiento, p.id::text AS plan_id, p.nombre AS plan_nombre,
            m.anio::int AS anio, m.mes::int AS mes, m.clases_totales::int AS clases_totales,
-           m.precio_plan::text AS precio_plan, m.clases_por_mes_plan::int AS clases_por_mes_plan,
            m.monto_calculado::text AS monto_calculado, m.monto_ajustado::text AS monto_ajustado, m.motivo_ajuste,
            up.id::text AS pago_id, up.metodo::text AS pago_metodo, up.estado::text AS pago_estado, up.monto::text AS pago_monto,
            up.registrado_en AS pago_registrado_en, up.verificado_en AS pago_verificado_en,
@@ -120,9 +117,6 @@ export async function leerElementosDelPanel(
       ahora,
     );
     const total = totalACobrar({
-      precioPlan: new Decimal(fila.precio_plan),
-      clasesPorMesPlan: fila.clases_por_mes_plan,
-      clasesTotales: fila.clases_totales,
       montoAjustado: fila.monto_ajustado === null ? null : new Decimal(fila.monto_ajustado),
       montoCalculado: new Decimal(fila.monto_calculado),
     });

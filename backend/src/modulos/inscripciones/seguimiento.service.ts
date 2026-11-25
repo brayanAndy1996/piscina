@@ -30,8 +30,6 @@ interface FilaVista {
   anio: number;
   mes: number;
   clases_totales: number;
-  precio_plan: string;
-  clases_por_mes_plan: number;
   monto_ajustado: string | null;
   monto_calculado: string;
   es_proporcional: boolean;
@@ -78,7 +76,6 @@ export class SeguimientoService {
         SELECT s.codigo, s.estado::text AS estado_solicitud, s.creado_en AS creada_en, m.estado::text AS estado_matricula,
                m.reserva_vence_en, a.nombres, (a.foto_clave IS NOT NULL) AS foto_cargada, p.nombre AS plan,
                m.anio::int AS anio, m.mes::int AS mes, m.clases_totales::int AS clases_totales,
-               m.precio_plan::text AS precio_plan, m.clases_por_mes_plan::int AS clases_por_mes_plan,
                m.monto_ajustado::text AS monto_ajustado, m.monto_calculado::text AS monto_calculado, m.es_proporcional,
                up.metodo::text AS pago_metodo, up.estado::text AS pago_estado, up.monto::text AS pago_monto,
                up.registrado_en AS pago_registrado_en, up.verificado_en AS pago_verificado_en,
@@ -148,9 +145,6 @@ function vistaDe(fila: FilaVista, ahora: Date): VistaSolicitud {
   );
   const mes = String(fila.mes).padStart(2, '0');
   const total = totalACobrar({
-    precioPlan: new Decimal(fila.precio_plan),
-    clasesPorMesPlan: fila.clases_por_mes_plan,
-    clasesTotales: fila.clases_totales,
     montoAjustado: fila.monto_ajustado === null ? null : new Decimal(fila.monto_ajustado),
     montoCalculado: new Decimal(fila.monto_calculado),
   });
@@ -168,15 +162,25 @@ function vistaDe(fila: FilaVista, ahora: Date): VistaSolicitud {
   // El primer nombre de pila (DR-9, P2): nunca los demás nombres ni los apellidos.
   const nombres = fila.nombres.trim().split(/\s+/)[0] ?? '';
   if (estado === 'CONFIRMADA') {
+    // Una solicitud confirmada siempre tiene su pago confirmado (criterio 5): si falta, es un fallo interno, no un valor inventado.
+    const confirmadoEn = fila.pago_verificado_en ?? fila.pago_registrado_en;
+    if (
+      fila.pago_metodo === null ||
+      fila.pago_monto === null ||
+      fila.pago_numero_ticket === null ||
+      confirmadoEn === null
+    ) {
+      throw new Error('Una solicitud confirmada no tiene su pago confirmado.');
+    }
     return {
       ...base,
       estado,
       nombres,
       pago: {
-        metodo: fila.pago_metodo ?? 'EFECTIVO',
-        monto: aTextoMonto(fila.pago_monto ?? total),
-        confirmadoEn: (fila.pago_verificado_en ?? fila.pago_registrado_en ?? fila.creada_en).toISOString(),
-        numeroTicket: fila.pago_numero_ticket ?? 0,
+        metodo: fila.pago_metodo,
+        monto: aTextoMonto(fila.pago_monto),
+        confirmadoEn: confirmadoEn.toISOString(),
+        numeroTicket: fila.pago_numero_ticket,
       },
     };
   }

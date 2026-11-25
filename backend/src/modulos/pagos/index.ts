@@ -5,9 +5,7 @@
 //     cuenta del alumno. La base no acepta un pago confirmado sin su movimiento (criterio 5).
 //   bloquearFilasDelCobro(tx, …)  el orden de bloqueos de un cobro: consultivo del DNI → alumno → solicitud → matrícula → pagos.
 //   totalACobrar(matricula)       el total sale de lo guardado en la matrícula (D-03), nunca del plan.
-//   normalizarNumeroOperacion(escrito)  el número de operación comparable (la misma función de `packages/contratos`).
 export { bloquearFilasDelCobro, leerDniDeLaSolicitud, type FilasDelCobro } from './bloqueos';
 export { confirmarPagoEnTransaccion, type EntradaDeConfirmacion, type ResultadoDeConfirmacion } from './confirmacion';
 export { totalACobrar, type DatosDelTotal } from './dominio/total';
-export { normalizarNumeroOperacion } from './dominio/numero-operacion';
 export { PagosModule } from './pagos.module';

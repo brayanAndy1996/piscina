@@ -3,7 +3,7 @@ import { metodoPagoSchema } from './caja';
 import { montoDeLecturaSchema } from './dinero';
 import { diaSemanaSchema, fechaSchema, horaBloqueSchema, nivelNatacionSchema } from './horario';
 import { clasePublicaSchema } from './inscripcion';
-import { estadoPagoSchema } from './pagos';
+import { estadoPagoSchema, pagoSchema } from './pagos';
 import { textoVisibleSchema } from './texto';
 
 /**
@@ -246,6 +246,13 @@ export type RespuestaListaSolicitudes = z.infer<typeof respuestaListaSolicitudes
 /** Respuesta de la cancelación: la solicitud ya con `estado: 'CANCELADA'` y `reservaVenceEn: null`. */
 export const respuestaSolicitudPanelSchema = z.strictObject({ solicitud: solicitudPanelSchema });
 export type RespuestaSolicitudPanel = z.infer<typeof respuestaSolicitudPanelSchema>;
+
+/**
+ * `POST /api/solicitudes/{id}/pago-efectivo` (spec 007a, criterio 13): 201 con el pago nuevo, o 200 con el mismo resultado si repite la clave.
+ * Responde el pago y el elemento del panel ya actualizado. Vive aquí, junto al panel, y no en `pagos.ts`, para no cruzar los imports.
+ */
+export const respuestaCobroSchema = z.strictObject({ pago: pagoSchema, solicitud: solicitudPanelSchema });
+export type RespuestaCobro = z.infer<typeof respuestaCobroSchema>;
 
 /** `POST /api/solicitudes/{id}/cancelar`: estricto; el motivo de 3 a 200 caracteres visibles, recortado. */
 export const cancelarSolicitudSchema = z.strictObject({
