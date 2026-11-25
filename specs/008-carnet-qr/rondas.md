@@ -25,3 +25,29 @@ en criterios de `spec.md`; las medias o bajas quedan como deuda en las notas de 
 
 - **Sin fallas en:** todo lo demás de la lista anterior. R1-1 solo cambia el código de error de un cuerpo mal formado: no da acceso a ningún dato.
 - **Cierre:** el ataque de la 008a termina en 1 de 3 rondas, sin fallas críticas ni altas. No hace falta una segunda ronda. La web (criterios 19 y 20) no es de ruta crítica.
+
+## Entrega 008b · Ronda 1
+
+- **Fecha:** 25/11/2026
+- **Qué se atacó:** la foto desde el panel y con la cámara, con el adversarial sin ver el razonamiento de quien la implementó:
+  - carreras con 30 y 12 clientes mezclando foto del panel, foto pública, cancelación, comprobante, cobro, aprobación, rechazo y regeneración: 0 respuestas 500 y 0 `40P01`;
+  - el orden de bloqueos en todos los caminos;
+  - metadatos EXIF, GPS, XMP, ICC, IPTC, COM y PNG `tEXt`/`iTXt`, políglotos, tipos que mienten y bombas de píxeles;
+  - 12 variantes de ruta y `?academiaId`;
+  - permisos;
+  - auditoría y registro técnico;
+  - la cámara en la web.
+
+| Falla | Gravedad | Qué pasó | Decisión |
+| --- | --- | --- | --- |
+| R1-1 | media | Un cuerpo troceado que nunca termina no recibe el 413 mientras el cliente sigue enviando, porque `express.raw` hace `dump` antes de `next(err)`. También pasa en la foto pública y en el comprobante, que no piden sesión; viene de la 005b. | Deuda en el backlog («Deuda de la 008b», R1-1, en `specs/backlog.md`); a resolver antes de producción (límite en el proxy o `requestTimeout`). |
+| R1-2 | media | Los rechazos 401 y 403 (sin sesión, cambio de clave pendiente, academia suspendida) no cierran la conexión, y el servidor sigue recibiendo el cuerpo. | Deuda en el backlog («Deuda de la 008b», R1-2); a resolver antes de producción (límite en el proxy o `requestTimeout`). |
+| R1-3 | baja | Con `Expect: 100-continue`, Node envía «100 Continue» antes del 401 o el 403. | Deuda en el backlog («Deuda de la 008b», R1-3). |
+| R1-4 | baja | En la web, con StrictMode en desarrollo y los permisos resueltos en orden inverso, la cámara puede quedar encendida en `CapturaCamara.tsx`. | Deuda en el backlog («Deuda de la 008b», R1-4). |
+
+- **Sin fallas en:** el resto de la lista anterior.
+- **Cierre:** el ataque de la 008b termina en 1 de 3 rondas, sin fallas críticas ni altas. No hace falta una segunda ronda.
+
+### Nota de la revisión (T23, 25/11/2026)
+
+El revisor no encontró bloqueantes. Encontró un problema importante: en la extracción de la foto (`reemplazarFotoDelAlumno`), «ahora» se leía antes de los bloqueos. Se corrigió con la prueba protegida `4adeddd` (en rojo, `backend/test/integracion/carnet/foto-panel-ahora-tras-bloqueos.test.ts`) y el commit `8f9030a`: las tres rutas leen «ahora» después de los bloqueos, con `confirmar(tx)` (DT-16 de `specs/008-carnet-qr/spec.md`). Las pruebas afectadas pasan.

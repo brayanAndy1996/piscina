@@ -55,33 +55,36 @@ entrega, en la revisión (D-31).
 
 ## 008b · Foto desde el panel y cámara
 
-- [ ] T16 · test-writer · **[008b]** Pruebas protegidas en rojo: las dos rutas con sus 204, 404 y 409 (22 y 23); el
+- [x] T16 · test-writer · **[008b]** Pruebas protegidas en rojo: las dos rutas con sus 204, 404 y 409 (22 y 23); el
       orden de las comprobaciones, con 401 y 403 sin leer el cuerpo y las rutas fuera de `LIMITES_PUBLICOS` (24); la
       foto guardada sin metadatos, la clave, la transacción, el borrado después de confirmar, los rechazos y la
       confirmación incierta con un almacén de prueba (25); las cuatro carreras deterministas con `pg_locks` (26).
-      Commit «Pruebas protegidas (008): 008b, … (en rojo)». (criterios 22 a 26)
-- [ ] T17 · tester · **[008b]** Confirmar que las pruebas de T16 fallan por la razón esperada.
-- [ ] T18 · backend · **[008b]** Extraer `reemplazarFotoDelAlumno` de `FotoService` sin cambiar lo observable; ejecutar
-      las pruebas protegidas de la 005b (foto) antes del commit. (criterio 25)
-- [ ] T19 · backend · **[008b]** Lector binario en las rutas del panel (después de la sesión y del permiso) y
-      `esSubidaDeImagen`; prueba de que el lector JSON no las toca. (criterio 24)
-- [ ] T20 · backend · **[008b]** `PUT /api/alumnos/{id}/foto` y `PUT /api/solicitudes/{id}/foto`, con sus comprobaciones
-      previas, la transacción de escritura y la auditoría `ALUMNO_FOTO_ACTUALIZADA`. (criterios 22, 23, 25 a 27)
-- [ ] T21 · frontend · **[008b]** `CapturaCamara` y `DialogoFoto` (archivo o cámara), en el carnet del panel y en las
+      Commit «Pruebas protegidas (008): 008b, … (en rojo)». (criterios 22 a 26) _(hecho: b652ccd)_
+- [x] T17 · tester · **[008b]** Confirmar que las pruebas de T16 fallan por la razón esperada.
+      _(hecho: confirmación del tester, sin commit propio)_
+- [x] T18 · backend · **[008b]** Extraer `reemplazarFotoDelAlumno` de `FotoService` sin cambiar lo observable; ejecutar
+      las pruebas protegidas de la 005b (foto) antes del commit. (criterio 25) _(hecho: 66dce4a)_
+- [x] T19 · backend · **[008b]** Lector binario en las rutas del panel (después de la sesión y del permiso) y
+      `esSubidaDeImagen`; prueba de que el lector JSON no las toca. (criterio 24) _(hecho: 0e9a701)_
+- [x] T20 · backend · **[008b]** `PUT /api/alumnos/{id}/foto` y `PUT /api/solicitudes/{id}/foto`, con sus comprobaciones
+      previas, la transacción de escritura y la auditoría `ALUMNO_FOTO_ACTUALIZADA`. (criterios 22, 23, 25 a 27) _(hecho: 1cfa172 y 8f9030a)_
+- [x] T21 · frontend · **[008b]** `CapturaCamara` y `DialogoFoto` (archivo o cámara), en el carnet del panel y en las
       tarjetas de solicitudes, con pruebas de componentes con la cámara simulada (permiso negado, sin cámara, apagado al
-      cerrar). (criterio 28)
-- [ ] T22 · adversarial · **[008b]** Ataque: foto a un alumno o una solicitud de otra academia, entrenador o alumno que
+      cerrar). (criterio 28) _(hecho: 840e560; verificado en el navegador en PC y en celular)_
+- [x] T22 · adversarial · **[008b]** Ataque: foto a un alumno o una solicitud de otra academia, entrenador o alumno que
       suben, cuerpo enorme sin permiso, metadatos que sobreviven, archivo referenciado que no existe, carreras con la
       subida pública, la cancelación y la confirmación del pago.
-- [ ] T23 · revisor y tester (a la vez) · **[008b]** Revisión y suite completa, lint y tipos.
-- [ ] T24 · documentador · **[008b]** `docs/arquitectura.md` («Lo que construye la historia 008b» y la nota «Foto desde
-      recepción» de la 005b), guía de Windows (la cámara con `localhost` o HTTPS), backlog y último commit. (criterio 29)
+      _(ronda 1, 25/11/2026: sin fallas críticas ni altas. R1-1 y R1-2, medias, y R1-3 y R1-4, bajas, en la deuda de [`specs/backlog.md`](../backlog.md); ver [`rondas.md`](rondas.md). Cierra el ataque de la 008b en 1 de 3 rondas)_
+- [x] T23 · revisor y tester (a la vez) · **[008b]** Revisión y suite completa, lint y tipos.
+      _(hecho, 25/11/2026: el revisor no encontró bloqueantes. Su hallazgo importante («ahora» se leía antes de los bloqueos en la extracción de la foto) se corrigió con la prueba protegida `4adeddd` (en rojo) y el commit `8f9030a`, y las pruebas afectadas pasan. El tester: formato, lint, tipos, build, E2E (6 de 6) y pruebas protegidas en verde. La suite completa, sobre `1cfa172` (antes de la corrección), dio 16 966 pasan, 10 fallan y 95 se saltan; las 10 fallas son de `verificacion-aprobar-007b.test.ts`, por choques con otra ejecución sobre la base de pruebas compartida, y ese archivo, repetido solo, pasa 26 de 26. La suite completa del HEAD final la corre la CI del PR.)_
+- [x] T24 · documentador · **[008b]** `docs/arquitectura.md` («Lo que construye la historia 008b» y la nota «Foto desde
+      recepción» de la 005b), guía de Windows (la cámara con `localhost` o HTTPS), backlog y último commit. (criterio 29) _(hecho en el commit «Cierre (008b): tareas, rondas, deuda y documentación de la foto desde el panel»)_
 
 ## Solo ruta crítica
 
 - [x] 008a: pruebas escritas por test-writer y confirmadas en rojo _(5258512, 1f56475 y dbc2771; T2)_
 - [x] 008a: pruebas en verde tras la implementación _(T14, 25/11/2026: suite completa; la prueba no protegida que falló se corrigió en `018c095`)_
 - [x] 008a: ataque adversarial sin fallas críticas ni altas abiertas _(ronda 1, 25/11/2026: R1-1, baja, en la deuda de `specs/backlog.md`)_
-- [ ] 008b: pruebas escritas por test-writer y confirmadas en rojo
-- [ ] 008b: pruebas en verde tras la implementación
-- [ ] 008b: ataque adversarial sin fallas críticas ni altas abiertas
+- [x] 008b: pruebas escritas por test-writer y confirmadas en rojo _(b652ccd; T17)_
+- [x] 008b: pruebas en verde tras la implementación _(T23, 25/11/2026: pruebas protegidas en verde, también tras la corrección `8f9030a`; la suite completa tuvo 10 fallas por la base compartida, ver T23)_
+- [x] 008b: ataque adversarial sin fallas críticas ni altas abiertas _(ronda 1, 25/11/2026: R1-1 y R1-2, medias, y R1-3 y R1-4, bajas, en la deuda de `specs/backlog.md`)_
