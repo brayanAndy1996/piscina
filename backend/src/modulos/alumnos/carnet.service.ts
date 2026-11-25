@@ -11,7 +11,6 @@ import { PinoLogger } from 'nestjs-pino';
 import { fechaCortaEnLima, hoyEnLima } from '../../comun/fechas';
 import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
 import { ALMACEN_ARCHIVOS, type AlmacenArchivos } from '../../infraestructura/almacen-archivos';
-import { tipoDeError } from '../../infraestructura/correo';
 import { BaseDatos } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { insertarEnAuditoriaDeAcademia } from '../auditoria/insercion';
@@ -20,6 +19,7 @@ import type { SesionVerificada } from '../autenticacion/tipos';
 import { elegirMatriculaDelCarnet, vigenteHoy } from './dominio/matricula-del-carnet';
 import { nuevoTokenQr } from './dominio/token-qr';
 import { alumnoNoEncontrado } from './errores';
+import { leerFotoComoData } from './foto-como-data';
 import { GENERADOR_PDF_CARNET, type GeneradorPdfCarnet } from './pdf/carnet-pdf';
 
 /** A quién pertenece el carnet que se lee: un alumno por su id (rutas del personal) o el alumno de una cuenta (`/api/mi-carnet`). */
@@ -62,8 +62,6 @@ interface CarnetLeido {
   readonly carnet: Carnet;
   readonly ahora: Date;
 }
-
-const MENSAJE_DE_FOTO = 'No se pudo leer la foto del alumno';
 
 /**
  * El carnet digital del alumno y la regeneración de su QR (spec 008a; HU-13, RN-05, RN-06, sección 8.6).
@@ -205,7 +203,7 @@ export class CarnetService {
       : null;
 
     // La foto, fuera de toda transacción y con la academia de la sesión (DT-6, criterio 9).
-    const foto = await this.leerFoto(academiaId, alumno.foto_clave);
+    const foto = await leerFotoComoData(this.almacen, this.registro, academiaId, alumno.foto_clave);
 
     const carnet = carnetSchema.parse({
       academia: { nombre: alumno.academia_nombre },
@@ -225,19 +223,6 @@ export class CarnetService {
           : null,
     });
     return { carnet, ahora };
-  }
-
-  /** `data:image/jpeg;base64,…` con los bytes del archivo guardado, o `null` sin foto o si no se puede leer (DT-13: «Foto pendiente»). */
-  private async leerFoto(academiaId: string, clave: string | null): Promise<string | null> {
-    if (clave === null) return null;
-    try {
-      const bytes = await this.almacen.leer(academiaId, clave);
-      return `data:image/jpeg;base64,${bytes.toString('base64')}`;
-    } catch (error) {
-      // Solo el tipo del error: su mensaje lleva la ruta del archivo.
-      this.registro.warn({ academiaId, error: { tipo: tipoDeError(error) } }, MENSAJE_DE_FOTO);
-      return null;
-    }
   }
 }
 
