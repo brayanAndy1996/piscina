@@ -42,6 +42,12 @@
     antes del `COMMIT`. Pasaba como app y como dueño de las tablas.
   - **Criterio 59:** `idDeAuditoriaOrdenado` con una fecha inválida (`NaN`) dejaba el generador dañado para todo el
     proceso: las ids siguientes salían `00000000-0NaN-7000-…` y toda inserción en auditoría habría fallado.
+- **Rondas adversariales 2 y 3 de la 007a (24 y 25/11/2026):** precisan qué es «un `Date`» en el criterio 59, sin cambios
+  de negocio. La ronda 2 mostró objetos con el prototipo de `Date` pero sin su valor interno (pruebas e80d5ae). La
+  ronda 3 mostró dos fallas de la comprobación con `instanceof Date`: un `Proxy` revocado o con una trampa
+  `getPrototypeOf` que lanza propagaba un `TypeError` o el error de la trampa en lugar de `RangeError`, y un `Date` real
+  de otro contexto (`vm`) o con el prototipo cambiado se rechazaba. La precisión está en el criterio 59 («Qué es un
+  `Date`»).
 - **Alineación con la revisión de la 007a (24/11/2026):** el revisor aceptó cinco desviaciones de la implementación y
   la spec y el plan las recogen, sin cambiar reglas de negocio: `montoMostrado` con `montoCotizadoSchema` (criterio 16);
   el total sin ajuste es el `monto_calculado` guardado (definición «Total a cobrar» e «Interfaces del backend»); las
@@ -665,7 +671,8 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
       (criterio 3).
 
     _(crítico)_ (D-04, RN-17, D-23; criterios 3 y 5)
-59. **El id ordenado de la auditoría no se daña con una fecha no válida.** _(007a, ronda adversarial 1.)_
+59. **El id ordenado de la auditoría no se daña con una fecha no válida.** _(007a, ronda adversarial 1; a y b
+    precisados en las rondas adversariales 2 y 3.)_
     `idDeAuditoriaOrdenado(fechaHora)` (`backend/src/modulos/auditoria/id-ordenado.ts`) genera ids UUID versión 7: los
     milisegundos de `fechaHora`, un contador que no retrocede dentro del proceso y el resto al azar.
     - a) **Rechazo sin daño.** Una fecha no válida es:
@@ -685,6 +692,26 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
       el generador lanza `RangeError` sin cambiar su estado; no devuelve un id con un desborde. Desde ahí, toda llamada
       lanza `RangeError`, porque no queda un id mayor que dar. No es un daño del estado: solo se llega con fechas del
       año 10889.
+    - d) **Qué es un `Date`.** _(Precisión de la ronda adversarial 3 de la 007a, 25/11/2026; precisa a y b y recoge lo
+      que ya probó la ronda 2.)_ En a y b, un `Date` es un valor con la ranura interna de fecha (`[[DateValue]]`): el
+      que `Date.prototype.getTime.call(valor)` acepta sin lanzar y que `util.types.isDate(valor)` reconoce, sin importar
+      su prototipo ni el contexto (realm) donde se creó. Su instante es el de esa ranura, no el que devuelva un `getTime`
+      propio o heredado.
+      - **Son un `Date`:** un `Date` creado en otro contexto (`vm.runInNewContext('new Date(…)')`); un `Date` real con
+        el prototipo cambiado (`Object.setPrototypeOf(new Date(t), null)` o a otro objeto); una instancia de una subclase
+        de `Date`; un `Date` real con un `getTime` propio que devuelve otro número (cuenta la ranura). Con un instante
+        válido devuelven una id válida que cumple b (formato, distinta y mayor que las anteriores, con los milisegundos
+        de la ranura). Con un instante no válido (`NaN`, anterior a 1970 o que no cabe en 48 bits) se rechazan como
+        cualquier `Date` (a).
+      - **No son un `Date`:** los primitivos (texto, número, `bigint`, símbolo, booleano), `null` y `undefined`; un
+        objeto cualquiera, también con un `getTime` propio; un objeto con el prototipo de `Date` sin la ranura
+        (`Object.create(Date.prototype)` o con `Object.setPrototypeOf`, con o sin un `getTime` propio; ronda 2); un
+        `Proxy`, sea de un `Date` real o de otro objeto, también revocado o con trampas que lanzan (`getPrototypeOf`,
+        `get`, `has`, `getOwnPropertyDescriptor` u otras). Con cualquiera de ellos el generador lanza `RangeError`, no
+        `TypeError` ni el error de una trampa o de un método del valor, no devuelve un id y no cambia su estado.
+      - **Cómo se decide.** La decisión no usa `instanceof` ni lee propiedades del valor, ni llama a sus métodos o a sus
+        trampas, fuera de un `try`/`catch` que convierte cualquier error en `RangeError`. Después de cualquiera de estos
+        rechazos, b se cumple igual.
 
     Como consecuencia, una operación cuya auditoría recibiera una fecha no válida falla antes de escribir y su
     transacción se revierte, y las operaciones siguientes del proceso auditan con normalidad. _(crítico)_ (RN-22,
@@ -729,6 +756,8 @@ Definiciones (las de la 005 y la 006 siguen valiendo: «ahora», «hoy», «matr
   `COMMIT`:** no dejan un movimiento de caja de un pago sin confirmar (criterio 58).
 - **Un reloj que devuelve una fecha no válida:** la operación falla sin escribir y la auditoría de las siguientes sigue
   funcionando (criterio 59).
+- **La auditoría recibe un `Date` de otro contexto, con el prototipo cambiado o envuelto en un `Proxy`:** el `Date` real
+  da su id; el `Proxy` y el objeto que solo imita un `Date` lanzan `RangeError` sin dañar el generador (criterio 59 d).
 
 ## Reglas de negocio aplicables
 
@@ -1001,6 +1030,7 @@ sumando (DT-17 a DT-19), está en «Decisiones», «Pruebas protegidas anteriore
   de la 006 (`caja/tablas.test.ts`, `aislamiento/forma-politicas`).
 - **002, auditoría (criterio 59):** `idDeAuditoriaOrdenado`, que la 007a introdujo para todas las filas de auditoría,
   rechaza una fecha no válida con `RangeError` sin cambiar su estado. Las operaciones con fechas válidas no cambian.
+  Desde la ronda adversarial 3, reconoce un `Date` por su ranura interna y no por `instanceof` (criterio 59 d).
 - **006, regla «Después de la caja solo se insertan filas y auditoría»:** se precisa: después de la caja también se
   actualizan filas que la misma transacción ya bloqueó (el pago, el alumno, la solicitud y la matrícula), porque no
   esperan a nadie.

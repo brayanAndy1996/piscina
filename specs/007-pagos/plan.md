@@ -7,7 +7,7 @@ historias. Lo marcado **[007b]** va en el segundo PR.
 
 - `backend/prisma/migrations/<marca>_estado_solicitud_confirmada/` y `<marca>_pagos/` (007a), y `schema.prisma`. Desde la
   ronda adversarial 1 de la 007a, `<marca>_pagos_movimiento_confirmado/` (criterio 58).
-- `backend/src/modulos/auditoria/id-ordenado.ts` (ronda adversarial 1 de la 007a, criterio 59).
+- `backend/src/modulos/auditoria/id-ordenado.ts` (rondas adversariales 1 a 3 de la 007a, criterio 59).
 - `backend/src/modulos/pagos/` (nuevo):
   - `pagos.module.ts`, `pagos.controller.ts` (ticket; **[007b]** bandeja, comprobante, aprobación y rechazo),
     `cobros.service.ts` (cobro en efectivo y ajuste), **[007b]** `verificacion.service.ts`, **[007b]**
@@ -255,6 +255,22 @@ duplica ni pisa un ajuste editado. Lo comprueba una prueba no protegida de la se
   aprobación y el rechazo necesitan una variante por `pagoId` que lea antes, sin bloqueos, el alumno y el DNI desde el
   pago (pago → alumno) y bloquee en el mismo orden (consultivo del DNI → alumno → solicitud, si hay → matrícula →
   pagos).
+- **La vista `CONFIRMADA` lee el pago confirmado, no el último pago** (de la ronda adversarial 3 de la 007a,
+  25/11/2026). En la 007a la matrícula de una solicitud `CONFIRMADA` tiene un solo pago, así que «último pago» y «pago
+  confirmado» coinciden. Con la 007b, una matrícula puede tener un Yape `RECHAZADO` y después el pago `CONFIRMADO`, y
+  el «último» se elige por `registrado_en`, que sale del reloj de la instancia que atendió cada petición. Con varias
+  instancias de la API y relojes distintos, el rechazado puede quedar con un `registrado_en` posterior al del
+  confirmado: si la consulta del seguimiento toma el último pago, la rama `CONFIRMADA` recibe el rechazado (sin
+  ticket, otro método) y la vista falla o muestra datos que no son los del cobro. Al implementar la 007b:
+  - la rama `CONFIRMADA` del seguimiento (y cualquier otra vista que muestre el método, el monto o el ticket del cobro)
+    busca el pago `CONFIRMADO` de la matrícula, que es uno solo (criterio 5 y el índice de un pago abierto por
+    matrícula), en lugar del último pago;
+  - el «último pago» queda solo para lo que de verdad depende del intento más reciente (`EN_VERIFICACION`,
+    `PAGO_RECHAZADO`); si allí también importa el orden entre intentos, desempatar por estado (un pago abierto antes que
+    uno rechazado) y no solo por `registrado_en`;
+  - una prueba de la 007b con un `RECHAZADO` cuyo `registrado_en` es posterior al del `CONFIRMADO` de la misma
+    matrícula comprueba que la vista `CONFIRMADA` muestra el método, el monto y el ticket del confirmado. Va con la
+    revisión de los valores por defecto de la primera nota (T38).
 
 ## Decisiones
 
@@ -395,7 +411,8 @@ pendiente con movimiento.
 
 **Diseño:**
 
-1. Validar la entrada antes de leer el estado:
+1. Validar la entrada antes de leer el estado (la primera comprobación se reemplazó en las rondas 2 y 3: ver «Rondas
+   adversariales 2 y 3 de la 007a»):
    - `fechaHora instanceof Date`;
    - `Number.isFinite(t)`, con `t = fechaHora.getTime()`;
    - `t >= 0` y `t <= 2 ** 48 - 1`.
@@ -421,6 +438,75 @@ como texto» es la de `<` entre cadenas: las ids tienen hexadecimales en minúsc
   y crecientes, y la 4097.ª lanza `RangeError`. Una llamada más, con esa fecha o con una anterior, vuelve a lanzar:
   el estado quedó en el máximo y no hay un id mayor que dar (criterio 59 c). Este caso va en su propio módulo
   importado, para no afectar a los demás.
+
+## Rondas adversariales 2 y 3 de la 007a (criterio 59 d)
+
+### Un `Date` se reconoce por su ranura interna, no por `instanceof`
+
+**Las fallas.**
+
+- **Ronda 2 (pruebas e80d5ae):** el punto 1 del diseño de la ronda 1 usaba `fechaHora instanceof Date` y después
+  `fechaHora.getTime()`. Un objeto con el prototipo de `Date` sin su valor interno pasaba `instanceof` y su `getTime`
+  lanzaba `TypeError`, lanzaba otro error o devolvía lo que quisiera. Se corrigió leyendo el instante con
+  `Date.prototype.getTime.call(fechaHora)` dentro de un `try`/`catch`, pero se dejó `instanceof Date` delante, fuera
+  del `try`.
+- **Ronda 3:** ese `instanceof` que quedó fuera del `try` produce las dos fallas:
+  - `instanceof` consulta el prototipo del valor. Con un `Proxy` revocado lanza `TypeError`; con un `Proxy` cuya trampa
+    `getPrototypeOf` lanza, propaga el error de la trampa. Ninguno es `RangeError` (criterio 59 a);
+  - un `Date` real de otro contexto (`vm.runInNewContext`) tiene otro `Date.prototype`, y uno con el prototipo cambiado
+    (`Object.setPrototypeOf(new Date(t), null)`) ya no hereda de `Date.prototype`. Los dos fallan `instanceof Date` y se
+    rechazan, aunque tienen la ranura y un instante válido (criterio 59 b y d).
+
+**Diseño (solo `backend/src/modulos/auditoria/id-ordenado.ts`):**
+
+1. Se quita `fechaHora instanceof Date`. La única operación sobre el valor es `getTime.call(fechaHora)`, con el `getTime`
+   de `Date.prototype` guardado en una constante del módulo al cargarlo (`const leerInstante = Date.prototype.getTime`),
+   dentro del `try`. Si lanza (primitivo, `null`, objeto sin la ranura, `Proxy` de lo que sea, revocado o no), el
+   `catch` lanza `RangeError('La fecha de la auditoría no es un Date.')` sin la causa ni la fecha.
+   - `Date.prototype.getTime` comprueba la ranura `[[DateValue]]` del valor y no consulta su prototipo ni sus
+     propiedades, así que no dispara trampas de un `Proxy` ni un `getTime` propio. Un `Proxy` no tiene la ranura, aunque
+     envuelva un `Date`: lanza y se rechaza.
+   - La ranura no depende del contexto ni del prototipo: un `Date` de `vm`, con el prototipo cambiado o de una subclase
+     da su instante.
+2. El resto queda igual: `Number.isSafeInteger(instante)`, el rango `0 … 2 ** 48 - 1`, el estado nuevo en variables
+   locales y la asignación al final (criterio 59 a a c).
+3. No hace falta `util.types.isDate`: coincide con lo que acepta `getTime.call` y sumarlo sería una segunda decisión
+   que podría separarse de la primera. Si se usa, va antes y dentro del mismo `try`, y no reemplaza a `getTime.call`
+   (el instante sale de ahí).
+4. El comentario de la función y el `@throws` se actualizan: «un valor sin la ranura de fecha», no «un valor que no es
+   un `Date`» en el sentido de `instanceof`.
+
+| Decisión | Alternativa descartada | Motivo |
+| --- | --- | --- |
+| Solo `Date.prototype.getTime.call` dentro de un `try` | `instanceof Date` dentro del `try` | Corrige el `TypeError` del `Proxy`, pero sigue rechazando los `Date` reales de otro contexto o con el prototipo cambiado (criterio 59 d) |
+| `getTime` capturado al cargar el módulo | `Date.prototype.getTime` leído en cada llamada | Un `Date.prototype.getTime` reemplazado más tarde en el proceso no cambia la decisión; no tiene costo |
+| Sin `util.types.isDate` | `util.types.isDate` y después `getTime.call` | Dos comprobaciones de lo mismo; la de Node no da el instante y no agrega casos |
+| Sin `Object.prototype.toString.call(valor) === '[object Date]'` | Esa comprobación | Lee `Symbol.toStringTag` (falsificable y, en un `Proxy`, una trampa `get` que puede lanzar) |
+
+**Precisiones de las pruebas (criterio 59 d):** prueba unitaria protegida nueva,
+`backend/src/modulos/auditoria/id-ordenado-ronda3.test.ts`, con la marca `// spec: 007-pagos (pruebas protegidas)` y su
+propio `generadorLimpio()` (el mismo `vi.resetModules()` e `import()` dinámico de `id-ordenado.test.ts`). Así el
+`git diff` de la ronda no toca el archivo protegido de las rondas 1 y 2. `T0` es `2026-11-24T15:00:00.000Z`. Casos:
+
+- **Lanzan `RangeError`** (con `toThrow(RangeError)`, que no acepta un `TypeError` ni un `Error`), cada uno con una id
+  válida antes y varias después, todas con el formato, distintas y crecientes:
+  - un `Proxy` revocado (`Proxy.revocable(new Date(T0), {})`, después `revoke()`);
+  - un `Proxy` de `new Date(T0)` cuya trampa `getPrototypeOf` lanza un `Error` propio;
+  - un `Proxy` de `new Date(T0)` cuyas trampas `get`, `has` y `getOwnPropertyDescriptor` lanzan;
+  - un `Proxy` de `new Date(T0)` sin trampas;
+  - un `Proxy` de un objeto con el prototipo de `Date` y un `getTime` propio que devuelve `T0`;
+  - un `bigint` (`0n`), un símbolo y `true` (con `as unknown as Date`).
+- **Devuelven una id válida** con los milisegundos de la ranura (`milisegundosDe(id) === t`), mayor que la anterior:
+  - `vm.runInNewContext('new Date(' + T0.getTime() + ')')` (de `node:vm`);
+  - `Object.setPrototypeOf(new Date(T0), null)` y `Object.setPrototypeOf(new Date(T0), {})`;
+  - una instancia de `class FechaPropia extends Date {}` con `T0`;
+  - `new Date(T0)` con un `getTime` propio que devuelve `5`: la id lleva los milisegundos de `T0`, no 5.
+- **Con un instante no válido se rechazan igual:** `vm.runInNewContext('new Date(NaN)')` y
+  `Object.setPrototypeOf(new Date(-1), null)` lanzan `RangeError`, y la id siguiente es válida y mayor que la anterior.
+- **Los datos de la prueba son lo que dicen ser:** antes de cada caso de «devuelven una id válida», la prueba confirma
+  con `util.types.isDate(valor)` que el valor es un `Date` según 59 d; en los de «lanzan», que no lo es. Los valores
+  con trampas que lanzan se crean dentro de cada caso y no se pasan a los nombres de las pruebas ni a los mensajes de
+  `expect` (imprimirlos dispararía las trampas).
 
 ## Migraciones
 
