@@ -47,11 +47,12 @@ export interface PedidoDeFoto {
   readonly cuerpo: Buffer;
   readonly tipo: FotoTipo;
   /**
-   * La comprobación de cada ruta dentro de la transacción de escritura: los bloqueos que le tocan (siempre `alumnos` `FOR UPDATE`), la repetición
-   * de sus comprobaciones (puede lanzar 401, 404 o 409) y devuelve la clave anterior de `foto_clave`. `ahora` es el instante de la transacción
-   * (el mismo que se guarda en `actualizado_en`). Esta función guarda después `foto_clave` y `actualizado_en`.
+   * La comprobación de cada ruta dentro de la transacción de escritura: los bloqueos que le tocan (siempre `alumnos` `FOR UPDATE`), la lectura de
+   * «ahora» **después** de bloquear (DT-10 de la 007: si la transacción esperó, la hora es la de después de esperar), la repetición de sus
+   * comprobaciones (puede lanzar 401, 404 o 409) y devuelve la clave anterior de `foto_clave` junto con esa hora. Esta función guarda después
+   * `foto_clave` y `actualizado_en` con la misma hora.
    */
-  readonly confirmar: (tx: TransaccionAcademia, ahora: Date) => Promise<string | null>;
+  readonly confirmar: (tx: TransaccionAcademia) => Promise<{ readonly anterior: string | null; readonly ahora: Date }>;
   /** Opcional: lo que se escribe en la misma transacción después de guardar la clave (la auditoría de la foto del panel). Recibe la clave anterior. */
   readonly despuesDeGuardar?: (tx: TransaccionAcademia, ahora: Date, anterior: string | null) => Promise<void>;
   /** El mensaje del `info` de la subida correcta (con la academia): lo único que cambia entre la foto pública y las del panel. */
@@ -72,7 +73,7 @@ export interface PedidoDeFoto {
  *    deja un aviso con el tipo del error (nunca su mensaje, que lleva la ruta) y no cambia la respuesta.
  */
 export async function reemplazarFotoDelAlumno(deps: DependenciasDeLaFoto, pedido: PedidoDeFoto): Promise<void> {
-  const { baseDatos, reloj, almacen, registro } = deps;
+  const { baseDatos, almacen, registro } = deps;
   const { academiaId, alumnoId } = pedido;
 
   // Imagen (g de 005b, j de 008b), fuera de toda transacción.
@@ -96,8 +97,7 @@ export async function reemplazarFotoDelAlumno(deps: DependenciasDeLaFoto, pedido
   const leida: { anterior: string | null } = { anterior: null };
   try {
     await baseDatos.conAcademia(academiaId, async (tx) => {
-      const ahora = reloj.ahora();
-      const anterior = await pedido.confirmar(tx, ahora);
+      const { anterior, ahora } = await pedido.confirmar(tx);
       leida.anterior = anterior;
       await tx.cliente.$executeRaw`
         UPDATE alumnos SET foto_clave = ${clave}, actualizado_en = ${ahora}::timestamptz

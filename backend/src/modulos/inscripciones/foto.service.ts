@@ -52,11 +52,13 @@ export class FotoService {
         cuerpo,
         tipo,
         mensajeGuardada: 'Foto de la solicitud guardada',
-        confirmar: async (tx, ahora) => {
+        confirmar: async (tx) => {
           const bloqueada = await bloquearYLeerLaSolicitud(tx, previa.solicitud_id, previa.alumno_id);
           if (!bloqueada) throw solicitudNoEncontrada();
+          // «Ahora» después de los bloqueos (DT-10 de la 007).
+          const ahora = this.reloj.ahora();
           if (!esEditable(bloqueada.fila, ahora)) throw solicitudNoEditable();
-          return bloqueada.fotoClaveAnterior;
+          return { anterior: bloqueada.fotoClaveAnterior, ahora };
         },
       },
     );

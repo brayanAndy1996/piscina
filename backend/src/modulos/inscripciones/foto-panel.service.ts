@@ -61,12 +61,14 @@ export class FotoPanelService {
         cuerpo,
         tipo,
         mensajeGuardada: 'Foto del alumno guardada',
-        confirmar: async (tx, ahora) => {
+        confirmar: async (tx) => {
           await bloquearActorVigente(tx, bloqueo, opciones);
           const bloqueada = await bloquearYLeerLaSolicitud(tx, previa.solicitud_id, previa.alumno_id);
           if (!bloqueada) throw noEncontrado();
+          // «Ahora» después de los bloqueos (DT-10 de la 007).
+          const ahora = this.reloj.ahora();
           if (!esEditableDesdeElPanel(bloqueada.fila, ahora)) throw solicitudNoEditable();
-          return bloqueada.fotoClaveAnterior;
+          return { anterior: bloqueada.fotoClaveAnterior, ahora };
         },
         despuesDeGuardar: (tx, ahora, anterior) =>
           auditarFotoDelPanel(tx, ahora, {

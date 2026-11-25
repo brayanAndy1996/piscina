@@ -17,6 +17,6 @@ import { SolicitudesService } from './solicitudes.service';
   imports: [AuditoriaModule],
   controllers: [InscripcionPublicaController, SeguimientoController, SolicitudesController],
   providers: [InscripcionesService, SeguimientoService, FotoService, FotoPanelService, SolicitudesService],
-  exports: [InscripcionesService, SeguimientoService, FotoService, FotoPanelService, SolicitudesService],
+  exports: [InscripcionesService, SeguimientoService, FotoService, SolicitudesService],
 })
 export class InscripcionesModule {}

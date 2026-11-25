@@ -7,7 +7,7 @@ import { BaseDatos, type TransaccionAcademia } from '../../infraestructura/prism
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
 import type { SesionVerificada } from '../autenticacion/tipos';
-import { auditarFotoDelPanel, reemplazarFotoDelAlumno } from '../inscripciones/foto-del-alumno';
+import { auditarFotoDelPanel, reemplazarFotoDelAlumno } from '../inscripciones';
 import { alumnoNoEncontrado } from './errores';
 
 /**
@@ -63,7 +63,9 @@ export class FotoAlumnoService {
         mensajeGuardada: 'Foto del alumno guardada',
         confirmar: async (tx) => {
           await bloquearActorVigente(tx, bloqueo, opciones);
-          return this.bloquearAlumno(tx, alumnoId);
+          const anterior = await this.bloquearAlumno(tx, alumnoId);
+          // «Ahora» después de los bloqueos (DT-10 de la 007).
+          return { anterior, ahora: this.reloj.ahora() };
         },
         despuesDeGuardar: (tx, ahora, anterior) =>
           auditarFotoDelPanel(tx, ahora, {
