@@ -2,6 +2,7 @@ import type { ConceptoIngreso, MetodoPago } from '../caja/movimientos';
 import { aTextoMonto } from '../../comun/dinero';
 import { ErrorNegocio } from '../../comun/errores';
 import type { Decimal, TransaccionAcademia } from '../../infraestructura/prisma';
+import { nuevoTokenQr } from '../alumnos/dominio/token-qr';
 import { insertarEnAuditoriaDeAcademia } from '../auditoria/insercion';
 import { registrarIngresoEnCaja } from '../caja/movimientos';
 import type { UsuariosService } from '../usuarios/usuarios.service';
@@ -22,7 +23,8 @@ import { dniDelPersonal } from './errores';
  *    después de su movimiento porque el `CHECK` exige el ticket; la llave y el trigger del criterio 5 se comprueban al `COMMIT`), o `UPDATE`
  *    del pago pendiente (007b);
  * 5. si el alumno es `CLIENTE`, su cuenta con `crearEnTransaccion` (rol `ALUMNO`, usuario y contraseña inicial iguales a su DNI, con el cambio
- *    obligatorio) y pasa a `ALUMNO_ACTIVO` con su `usuario_id`;
+ *    obligatorio) y pasa a `ALUMNO_ACTIVO` con su `usuario_id`, su token del QR y la fecha de su generación (008a, criterio 2; solo al
+ *    pasar de `CLIENTE` a alumno: una renovación no lo toca);
  * 6. la matrícula pasa a `VIGENTE` sin vencimiento y la solicitud, si tiene, a `CONFIRMADA`;
  * 7. la auditoría del pago (`PAGO_REGISTRADO` o `PAGO_APROBADO`).
  *
@@ -143,7 +145,8 @@ export async function confirmarPagoEnTransaccion(
       throw error;
     }
     await tx.cliente.$executeRaw`
-      UPDATE alumnos SET estado = 'ALUMNO_ACTIVO'::estado_alumno, usuario_id = ${cuentaId}::uuid, actualizado_en = ${ahora}::timestamptz
+      UPDATE alumnos SET estado = 'ALUMNO_ACTIVO'::estado_alumno, usuario_id = ${cuentaId}::uuid, qr_token = ${nuevoTokenQr()},
+             qr_generado_en = ${ahora}::timestamptz, actualizado_en = ${ahora}::timestamptz
        WHERE academia_id = ${tx.academiaId}::uuid AND id = ${entrada.alumnoId}::uuid`;
     usuarioCreado = true;
   }
