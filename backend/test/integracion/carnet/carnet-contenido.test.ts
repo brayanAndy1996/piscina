@@ -299,7 +299,7 @@ describe('lo que lleva y lo que no lleva el carnet (criterios 4, 6 y 7)', () => 
 
     it('criterio 6: un alumno con la matrícula vencida (ya terminó el mes) también ve su carnet, con vigenteHoy: false', async () => {
       const alumno = await crearAlumnoPorPago(ctx, esc);
-      ctx.reloj.fijar(new Date('2026-12-15T15:00:00.000Z'));
+      ctx.reloj.fijar(new Date('2026-12-02T15:00:00.000Z'));
 
       const respuesta = await ctx.http.get(RUTA_MI_CARNET, { cookie: alumno.cookie });
 
