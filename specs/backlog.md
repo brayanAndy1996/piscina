@@ -20,7 +20,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | ✅ |
 | 006b | Historial y PDF del cierre de caja | Sí | ✅ |
 | 007a | Cobro en recepción y cuenta del alumno | Sí | ✅ |
-| 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | 🟨 |
+| 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ✅ |
 | 008 | Carnet digital con QR | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
 | 010 | Mensualidades y renovación | En parte | ⬜ |
@@ -171,7 +171,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
       (tabla `pagos` completa con sus invariantes, cobro en efectivo con la caja de hoy, ajuste del monto por el
       administrador, paso de cliente a alumno con su cuenta, ticket imprimible, estado `CONFIRMADA`, recepción sin los
       límites por conexión, correo de pago confirmado).
-    - **007b · Yape y transferencia** (lista para unir a `main`, 25/11/2026: dos rondas adversariales, criterio 60 nuevo; con la 007a unida; método de la D-31): criterios 36 a 53, más las partes [007b]
+    - **007b · Yape y transferencia** (unida a main el 25/11/2026, [PR #15](https://github.com/brayanAndy1996/piscina/pull/15): dos rondas adversariales, criterio 60 nuevo; con la 007a unida; método de la D-31): criterios 36 a 53, más las partes [007b]
       (subida del comprobante desde el enlace, número de operación sin duplicados, bandeja, aprobación y rechazo, datos
       de pago en la configuración, correo de pago rechazado). Sin migración.
     - **Deuda de la 007b** (las rondas 1 y 2 del ataque y la revisión; las medias y las bajas no abren ronda, D-31):
