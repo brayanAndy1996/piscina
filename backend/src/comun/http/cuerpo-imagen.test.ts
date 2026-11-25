@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   esSubidaDeComprobante,
   esSubidaDeFoto,
+  esSubidaDeFotoDelPanel,
   esSubidaDeImagen,
   imagenNoValida,
   MENSAJE_IMAGEN_NO_VALIDA,
@@ -72,6 +73,45 @@ describe('esSubidaDeComprobante y esSubidaDeImagen (007b)', () => {
 
   it('la foto sigue siendo una subida de imagen', () => {
     expect(esSubidaDeImagen('PUT', '/a/delfines/solicitudes/foto')).toBe(true);
+  });
+});
+
+describe('esSubidaDeFotoDelPanel (008b)', () => {
+  it.each([
+    '/alumnos/8d1f0c2e-5a3b-4c6d-9e7f-0a1b2c3d4e5f/foto',
+    '/alumnos/8d1f0c2e-5a3b-4c6d-9e7f-0a1b2c3d4e5f/foto/',
+    '/Alumnos/ABC/FOTO',
+    '/alumnos/no-es-uuid/foto',
+    '/solicitudes/8d1f0c2e-5a3b-4c6d-9e7f-0a1b2c3d4e5f/foto',
+    '/solicitudes/8d1f0c2e-5a3b-4c6d-9e7f-0a1b2c3d4e5f/foto/',
+    '/Solicitudes/ABC/FOTO',
+  ])('PUT %s es la foto del panel y una subida de imagen, no la pública', (ruta) => {
+    expect(esSubidaDeFotoDelPanel('PUT', ruta)).toBe(true);
+    expect(esSubidaDeImagen('PUT', ruta)).toBe(true);
+    expect(esSubidaDeFoto('PUT', ruta)).toBe(false);
+  });
+
+  it.each(['GET', 'POST', 'PATCH', 'DELETE', 'HEAD', 'put'])('%s sobre la foto del panel no es la subida', (metodo) => {
+    expect(esSubidaDeFotoDelPanel(metodo, '/alumnos/abc/foto')).toBe(false);
+    expect(esSubidaDeImagen(metodo, '/alumnos/abc/foto')).toBe(false);
+    expect(esSubidaDeImagen(metodo, '/solicitudes/abc/foto')).toBe(false);
+  });
+
+  it.each([
+    '/alumnos/foto',
+    '/alumnos//foto',
+    '/alumnos/abc/foto/otra',
+    '/alumnos/abc/carnet',
+    '/alumnos/abc/carnet/qr',
+    '/alumnos/abc/fotos',
+    '/alumnos/a/b/foto',
+    '/solicitudes/foto',
+    '/solicitudes/abc/cancelar',
+    '/solicitudes/abc/comprobante',
+    '/mi-carnet/foto',
+    '/a/delfines/alumnos/abc/foto',
+  ])('PUT %s no es la foto del panel', (ruta) => {
+    expect(esSubidaDeFotoDelPanel('PUT', ruta)).toBe(false);
   });
 });
 
