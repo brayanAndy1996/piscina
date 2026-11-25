@@ -171,9 +171,22 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
       (tabla `pagos` completa con sus invariantes, cobro en efectivo con la caja de hoy, ajuste del monto por el
       administrador, paso de cliente a alumno con su cuenta, ticket imprimible, estado `CONFIRMADA`, recepción sin los
       límites por conexión, correo de pago confirmado).
-    - **007b · Yape y transferencia** (en curso desde el 25/11/2026, con la 007a unida; método de la D-31): criterios 36 a 53, más las partes [007b]
+    - **007b · Yape y transferencia** (lista para unir a `main`, 25/11/2026: dos rondas adversariales, criterio 60 nuevo; con la 007a unida; método de la D-31): criterios 36 a 53, más las partes [007b]
       (subida del comprobante desde el enlace, número de operación sin duplicados, bandeja, aprobación y rechazo, datos
       de pago en la configuración, correo de pago rechazado). Sin migración.
+    - **Deuda de la 007b** (las rondas 1 y 2 del ataque y la revisión; las medias y las bajas no abren ronda, D-31):
+      - R1-2 y R1-3 (ronda 1, bajas): `X-Pago-Datos` acepta bytes de 0x80 a 0xFF (latin1), por ejemplo `"¹²³"`, que responde 201 y se guarda tal cual, aunque los criterios 36 y 37 piden JSON ASCII; un número de operación con controles que son espacios (`\t`, `\n`, `\r`, `\v`, `\f`, `\u0085`) se acepta y se guarda con el control, y el criterio 38 dice que los controles responden 400.
+      - R2-1 (media, decisión pendiente de Bryan): un cliente `PAGO_RECHAZADO` que luego se registra como personal (criterio 22 b) puede subir otro comprobante. La matrícula vuelve a ocupar cupo sin vencimiento y la aprobación responde 409 `DNI_DEL_PERSONAL` para siempre. La spec no dice qué debe responder la subida.
+      - R2-2 (baja): el correo `PAGO_RECHAZADO` de un mes ya terminado invita a subir otro comprobante, aunque la solicitud queda `VENCIDA` (los criterios 51 b y 52 se contradicen).
+      - R2-3 (baja): en la web, la `claveIdempotencia` queda fija en `PAGO_RECHAZADO` después de un 200 de reintento; hay que recargar la página para enviar otro comprobante.
+      - De la revisión (menores):
+        - la web no ofrece cancelar ni ajustar una `PAGO_RECHAZADO`, aunque la API lo permite;
+        - duplicación entre `comprobante.service.ts` y `foto.service.ts` (relectura incierta, `esRechazoDeLaTransaccion`, `borrarSinFallar`);
+        - rama muerta `normalizarNumeroOperacion(...) === null` en `comprobante.service.ts`;
+        - el nombre `instalarHeadSinRutasDeCaja` está desactualizado;
+        - el texto del diálogo de aprobar asume siempre un alumno nuevo;
+        - el archivo de la semilla se guarda antes del `INSERT … ON CONFLICT DO NOTHING`.
+    - **Tamaño (D-31):** `specs/007-pagos/spec.md` tiene 1 487 líneas, más de las ~800 de la D-31. Venía de la 007a y no se reescribe en esta entrega.
   - Lo decidido: el personal y los alumnos no comparten DNI (DR-1); un comprobante en revisión al terminar el mes se
     puede aprobar (DR-2); el DNI físico se revisa en la primera visita, riesgo aceptado (DR-3); el ticket es una página
     imprimible, sin DNI, con la frase de que no es un comprobante SUNAT (DR-4); el rechazo libera el cupo y se puede
@@ -242,6 +255,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     ocupa cupo si está `VIGENTE`, o `RESERVADA` sin vencer), después de `bloquearClasesParaCupo` (regla «Cupo de una clase»
     de 004). Las renovaciones no tienen `solicitud_id`. La inscripción para el mes siguiente y la prioridad de renovación
     (D-06) siguen en la pregunta N3 de la spec 005, que decide esta historia.
+  - Nota de 007b: la bandeja de pagos (`GET /api/pagos/pendientes`, en `verificacion.service.ts`) hace un `JOIN` interno con
+    `solicitudes_inscripcion`, así que los pagos de renovación, que no tienen solicitud, no aparecerían en `/panel/pagos`.
+    La 010 tendrá que cambiarlo al llevar esos pagos a la bandeja.
 - **011 · Panel del alumno y apoderado.** Datos, plan, horario, clases restantes, vencimiento, asistencia día por
   día con hora (puntual, tarde, falta), nivel actual; solo lectura salvo el cambio de contraseña (HU-06, D-08, D-14).
 
@@ -281,3 +297,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **Fase 3:** reportes exportables, dashboard, asistencia de entrenadores (D-02) y auditoría avanzada.
 - **Fase 4:** PWA, QR dinámico y certificados.
 - **Último módulo:** facturación electrónica SUNAT (D-09), por academia (D-23).
+
+## Pendiente técnico
+
+- **Integración continua: límite del trabajo de Linux.** En esta rama, el trabajo de Linux de `.github/workflows/ci.yml`
+  pasa de 60 a 90 minutos (`timeout-minutes: 90`), aprobado por Bryan el 25/11/2026. En el PR #13 la suite tardó 51 de
+  los 60 minutos. En este entorno la suite tardó 40 minutos. Queda pendiente repartir la integración en trabajos paralelos
+  (D-31), en su propio PR: ese es el arreglo de fondo, y los 90 minutos son provisionales.

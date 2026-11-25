@@ -215,30 +215,34 @@ Estas tareas van antes de T27.
 
 ### Pruebas protegidas (antes del código)
 
-- [ ] T30 · test-writer · Subida del comprobante: orden de comprobaciones, datos, número sin duplicados, imagen sin
+- [x] T30 · test-writer · Subida del comprobante: orden de comprobaciones, datos, número sin duplicados, imagen sin
   metadatos, estados, reintento tras rechazo con cupo, idempotencia, límite y registro técnico, reserva sin límite
-  (criterios 36 a 44)
-- [ ] T31 · test-writer · Bandeja, comprobante con `HEAD`, aprobar, aprobar dos veces, aprobar y rechazar a la vez,
-  rechazar, cupo liberado, mes terminado (criterios 45 a 50 y 52)
-- [ ] T32 · test-writer · Partes [007b] de los criterios 11, 15, 18 c, 21, 28 a 32; correo `PAGO_RECHAZADO` (criterio 51 b)
-- [ ] T33 · tester · Confirmar en rojo; commit «Pruebas protegidas (007): 007b, … (en rojo)»
+  (criterios 36 a 44) _(hecho: ea3a58c)_
+- [x] T31 · test-writer · Bandeja, comprobante con `HEAD`, aprobar, aprobar dos veces, aprobar y rechazar a la vez,
+  rechazar, cupo liberado, mes terminado (criterios 45 a 50 y 52) _(hecho: ea3a58c)_
+- [x] T32 · test-writer · Partes [007b] de los criterios 11, 15, 18 c, 21, 28 a 32; correo `PAGO_RECHAZADO` (criterio 51 b)
+  _(hecho: ea3a58c)_
+- [x] T33 · tester · Confirmar en rojo; commit «Pruebas protegidas (007): 007b, … (en rojo)» _(hecho: commit ea3a58c.
+  Después de la implementación hubo tres commits más de pruebas protegidas: 6c141d3, 05f6244 y 55030b6; ver el historial)_
 
 ### Implementación
 
-- [ ] T34 · backend · Contratos de la 007b (`datosComprobanteSchema`, `pagoPendienteSchema`, `rechazarPagoSchema`,
-  constantes) y claves de configuración de los datos de pago (criterios 36, 45, 49 y 53)
-- [ ] T35 · backend · Regla `comprobante`, lector binario, `RUTAS_REDACTADAS`, servicio y ruta pública del comprobante
-  (criterios 36 a 44)
-- [ ] T36 · backend · Bandeja, comprobante y `HEAD` 404 en `/api/pagos` (criterios 45 y 46)
-- [ ] T37 · backend · Aprobación con `confirmarPagoEnTransaccion` (sin `nuevo`) y la variante de `bloquearFilasDelCobro`
+- [x] T34 · backend · Contratos de la 007b (`datosComprobanteSchema`, `pagoPendienteSchema`, `rechazarPagoSchema`,
+  constantes) y claves de configuración de los datos de pago (criterios 36, 45, 49 y 53) _(hecho: 69a7ba0)_
+- [x] T35 · backend · Regla `comprobante`, lector binario, `RUTAS_REDACTADAS`, servicio y ruta pública del comprobante
+  (criterios 36 a 44) _(hecho: 2b52c55)_
+- [x] T36 · backend · Bandeja, comprobante y `HEAD` 404 en `/api/pagos` (criterios 45 y 46) _(hecho: 2b52c55)_
+- [x] T37 · backend · Aprobación con `confirmarPagoEnTransaccion` (sin `nuevo`) y la variante de `bloquearFilasDelCobro`
   por `pagoId`, que lee el DNI desde el pago; rechazo con el cupo y el correo (criterios 47 a 52; plan, «Notas para la
   007b»). Si hacen falta las transiciones como función pura, recrear `dominio/estado-pago.ts` con su prueba
-- [ ] T38 · backend · Estados `EN_VERIFICACION` y `PAGO_RECHAZADO` en el seguimiento, el panel, la cancelación, la foto y
+  _(hecho: 5108ffb)_
+- [x] T38 · backend · Estados `EN_VERIFICACION` y `PAGO_RECHAZADO` en el seguimiento, el panel, la cancelación, la foto y
   el cobro en efectivo y el ajuste del monto (partes [007b] de 11, 15, 18, 28 a 32). Revisar los valores por defecto de
-  `seguimiento.service.ts` (líneas 176, 179, 190 y 192; plan, «Notas para la 007b»)
-- [ ] T39 · frontend · Seguimiento: estados, datos de pago y formulario del comprobante (criterios 53 y 55)
-- [ ] T40 · frontend · Bandeja `/panel/pagos` y configuración de los datos de pago (criterios 53 y 56)
-- [ ] T41 · backend · Semilla: Yape pendiente con comprobante de ejemplo y datos de pago (criterio 57, parte de la 007b)
+  `seguimiento.service.ts` (líneas 176, 179, 190 y 192; plan, «Notas para la 007b») _(hecho: 69a7ba0, 2b52c55 y 5108ffb)_
+- [x] T39 · frontend · Seguimiento: estados, datos de pago y formulario del comprobante (criterios 53 y 55) _(hecho: 8c2331f)_
+- [x] T40 · frontend · Bandeja `/panel/pagos` y configuración de los datos de pago (criterios 53 y 56) _(hecho: 8c2331f)_
+- [x] T41 · backend · Semilla: Yape pendiente con comprobante de ejemplo y datos de pago (criterio 57, parte de la 007b)
+  _(hecho: ede4bdb)_
 
 ### Ataque, revisión y cierre
 
@@ -248,16 +252,16 @@ Estas tareas van antes de T27.
   R1-3, como deuda en el backlog; ver [`rondas.md`](rondas.md). La corrección y la ronda 2 son T42a a T42c)_
 - [x] T43 · especificador · Criterios nuevos de cada falla, con su origen _(ronda 1 de la 007b: criterio 60,
   `rondas.md` y DT-21 a DT-30)_
-- [ ] T44 · revisor · Comparar con la spec; `git diff` de las pruebas protegidas
-- [ ] T45 · tester · Suite completa, lint y tipos
-- [ ] T46 · documentador · Documentación y `specs/backlog.md`; commit (criterio 57)
+- [x] T44 · revisor · Comparar con la spec; `git diff` de las pruebas protegidas _(hecho, 25/11/2026: sin bloqueantes ni importantes)_
+- [x] T45 · tester · Suite completa, lint y tipos _(hecho, 25/11/2026: `npm test` con 530 archivos, 16 401 pasan, 0 fallan y 95 se saltan; E2E 6 de 6; lint, formato, tipos y build; pruebas protegidas intactas)_
+- [x] T46 · documentador · Documentación y `specs/backlog.md`; commit (criterio 57) _(hecho en el commit «Cierre (007b): tareas, rondas, deuda y documentación de Yape y transferencia»)_
 
 ### Ataque adversarial de la 007b, ronda 1 (25/11/2026)
 
 Una falla alta, R1-1: la subida del comprobante con la reserva vigente no bloqueaba las clases y dejaba 21 matrículas
 con aforo 20. Pasa al criterio 60 de `spec.md`, crítico. El detalle está en `rondas.md`. Estas tareas van antes de T44.
 
-- [ ] T42a · test-writer · Prueba protegida del criterio 60 en rojo, en
+- [x] T42a · test-writer · Prueba protegida del criterio 60 en rojo, en
       `backend/test/integracion/pagos/comprobante-reserva-ronda1-007b.test.ts`, desde la spec y los contratos públicos,
       sin mirar la implementación y con la marca `// spec: 007-pagos (pruebas protegidas)`. Incluye la reproducción
       determinista: la subida con el reloj en T0 y el `INSERT` retenido en `pagos_numero_operacion_abierto_key` por otra
@@ -265,14 +269,14 @@ con aforo 20. Pasa al criterio 60 de `spec.md`, crítico. El detalle está en `r
       queda como mucho en 20 y que la operación que pierde no deja nada. Suma el control 409 `SOLICITUD_NO_EDITABLE`.
       `tester` confirma el rojo por la razón esperada (dos 201 y ocupación 21), sin editar las pruebas protegidas
       anteriores. Commit: «Pruebas protegidas (007): 007b, ataque ronda 1: la subida del comprobante bloquea las clases
-      (en rojo)», junto con estos cambios de `specs/007-pagos/` (criterio 60)
-- [ ] T42b · backend · Bloquear las clases en la subida: llamar a `bloquearClasesParaCupo` siempre y una sola vez, con
+      (en rojo)», junto con estos cambios de `specs/007-pagos/` (criterio 60) _(hecho: f4f05fc)_
+- [x] T42b · backend · Bloquear las clases en la subida: llamar a `bloquearClasesParaCupo` siempre y una sola vez, con
       todas las clases de la matrícula, después de los pagos y antes de leer «ahora» y de decidir el paso 10 del
       criterio 37. Contar el cupo solo con `PAGO_RECHAZADO`, sin tocar las pruebas protegidas. `tester` corre en verde la
       prueba de T42a y las pruebas protegidas del comprobante, y el orquestador revisa con `git diff` que T42b no tocó
-      pruebas protegidas (criterio 60; plan, «Subida del comprobante», paso 4)
-- [ ] T42c · adversarial · Ronda 2 de la 007b, con foco en el criterio 60 (el reintento, el cobro y el envío sobre el
-      último cupo en el instante del vencimiento, y la subida con varias clases) y en lo que no se atacó en la ronda 1
+      pruebas protegidas (criterio 60; plan, «Subida del comprobante», paso 4) _(hecho: 845be60)_
+- [x] T42c · adversarial · Ronda 2 de la 007b, con foco en el criterio 60 (el reintento, el cobro y el envío sobre el
+      último cupo en el instante del vencimiento, y la subida con varias clases) y en lo que no se atacó en la ronda 1 _(ronda 2, 25/11/2026: sin fallas críticas ni altas; R2-1 media, y R2-2 y R2-3 bajas, en la deuda de [`specs/backlog.md`](../backlog.md); ver [`rondas.md`](rondas.md). Cierra el ataque de la 007b en 2 de 3 rondas)_
 
 ## Solo ruta crítica
 
@@ -281,6 +285,6 @@ con aforo 20. Pasa al criterio 60 de `spec.md`, crítico. El detalle está en `r
   es T28)_
 - [x] Ataque adversarial sin fallas abiertas (007a) _(ronda 4, 25/11/2026: sin fallas dentro del modelo de amenaza,
   criterio 59 e)_
-- [ ] Pruebas escritas por test-writer y confirmadas en rojo (007b)
-- [ ] Pruebas en verde tras la implementación (007b)
-- [ ] Ataque adversarial sin fallas abiertas (007b)
+- [x] Pruebas escritas por test-writer y confirmadas en rojo (007b) _(ea3a58c)_
+- [x] Pruebas en verde tras la implementación (007b) _(5108ffb, 845be60)_
+- [x] Ataque adversarial sin fallas abiertas (007b) _(ronda 2, 25/11/2026: sin fallas críticas ni altas; R2-1, R2-2 y R2-3 quedan como deuda en `specs/backlog.md`)_

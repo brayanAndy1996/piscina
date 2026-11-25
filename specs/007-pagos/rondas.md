@@ -33,3 +33,21 @@ Las rondas 1 a 4 de la 007a son anteriores a este archivo: están resumidas en e
   - la idempotencia de la subida;
   - las vistas del seguimiento;
   - el reintento, el cobro de un `PAGO_RECHAZADO` y el rechazo, que sí bloquean las clases.
+
+## Entrega 007b · Ronda 2
+
+- **Fecha:** 25/11/2026
+- **Qué se atacó:** la corrección del criterio 60 frente a todo lo que toma cupo (envío público y de recepción, cobro,
+  reintento, rechazo y cancelación), en 144 cruces, sin interbloqueos ni respuestas 500; la aprobación con la caja
+  cerrada y reabierta, con el esperado por método en el cierre; el DNI del personal; la bandeja; y la clave de
+  idempotencia de la web.
+
+| Falla | Gravedad | Qué pasó | Decisión |
+| --- | --- | --- | --- |
+| R2-1 | media | Un cliente con `PAGO_RECHAZADO` que luego se registra como personal (criterio 22 b) puede subir otro comprobante. La matrícula vuelve a ocupar cupo sin fecha de vencimiento, y la aprobación responde 409 `DNI_DEL_PERSONAL` para siempre. La spec no dice qué debe responder la subida en ese caso. | deuda en el backlog; decisión pendiente del responsable (Bryan) sobre la respuesta de la subida |
+| R2-2 | baja | El correo `PAGO_RECHAZADO` de un mes ya terminado invita a subir otro comprobante, aunque la solicitud queda `VENCIDA`. Los criterios 51 b y 52 se contradicen. | deuda en el backlog |
+| R2-3 | baja | En la web, la `claveIdempotencia` queda fija en `PAGO_RECHAZADO` después de un 200 de reintento: hay que recargar la página para enviar otro comprobante. | deuda en el backlog |
+
+- **Sin fallas en:** todo lo demás de la lista anterior (la corrección del criterio 60 en todos los cruces, la aprobación
+  con la caja, el DNI del personal, la bandeja y la clave de idempotencia de la web), salvo las fallas de la tabla.
+- **Cierre:** el ataque de la 007b termina en 2 de 3 rondas, sin fallas críticas ni altas. No hace falta una tercera ronda.

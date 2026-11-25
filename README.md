@@ -151,7 +151,7 @@ Trae:
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, abre http://localhost:5173/a/delfines/inscripcion. El paso a paso
   está en la guía, en «Probar la inscripción pública». Las pruebas automáticas corren con `npm test` (necesita PostgreSQL) y
   con `npm run test:unit`.
-- **Lo que todavía no trae:** el pago por Yape o transferencia y su verificación (007b); la renovación y el cambio de horario (010). El cobro en efectivo y el paso a alumno llegaron con la 007a.
+- **Lo que todavía no trae:** la renovación y el cambio de horario (010). El cobro en efectivo y el paso a alumno llegaron con la 007a, y el pago por Yape o transferencia, con la 007b.
 
 **005b · Foto de la inscripción y panel de solicitudes** está construida y unida a `main`. Trae:
 
@@ -206,13 +206,13 @@ está en [`specs/backlog.md`](specs/backlog.md).
   `POST /api/cajas/{id}/reapertura`. Esta última usa el permiso nuevo `REABRIR_CAJA`, que solo tiene el administrador.
 - **Interfaz para los cobros:** `registrarIngresoEnCaja`, `registrarEgresoEnCaja` y `leerCajaAbierta` (en
   `backend/src/modulos/caja/`) son la forma en que la 007, la 016 y la 019 registran dinero en la caja. Los cobros en efectivo ya la usan
-  desde la 007a; los de Yape y transferencia llegan con la 007b. Sus reglas están en [`docs/arquitectura.md`](docs/arquitectura.md).
+  desde la 007a; los de Yape y transferencia llegaron con la 007b. Sus reglas están en [`docs/arquitectura.md`](docs/arquitectura.md).
 - **Datos de ejemplo:** `delfines` tiene una caja cerrada del 2 de noviembre de 2026, con un egreso de S/ 15.50 y un
   sobrante de S/ 0.50. `/panel/caja` solo muestra la caja de hoy, así que esa se ve en el historial (`/panel/cajas`, desde
   la 006b). `tiburones` queda sin cajas.
 - **Sin paquetes ni variables nuevas.** La migración es `20261122120000_caja`.
-- **Lo que todavía no trae:** las verificaciones de Yape y transferencia (007b), los cobros de la 010 y la 016, y el egreso desde caja de los
-  entrenadores (019). El historial y el PDF llegaron con la 006b.
+- **Lo que todavía no trae:** los cobros de la 010 y la 016, y el egreso desde caja de los
+  entrenadores (019). Las verificaciones de Yape y transferencia llegaron con la 007b. El historial y el PDF llegaron con la 006b.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria y pulsa **Caja**. El paso a paso está
   en la guía, en «Probar la caja del día».
 
@@ -235,8 +235,8 @@ está en [`specs/backlog.md`](specs/backlog.md).
   cupo chico. Si aparece «Hay muchas descargas de PDF en curso», espera unos segundos y vuelve a pulsar.
 - **Dependencia nueva:** `pdfkit` (y `@types/pdfkit` en desarrollo). No hay migración ni variables nuevas, y la semilla no
   cambia.
-- **Lo que todavía no trae:** las verificaciones de Yape y transferencia (007b), los cobros de la 010 y la 016, el egreso desde caja de los
-  entrenadores (019) y la facturación SUNAT (último módulo). Los reportes exportables y el dashboard son de la Fase 3.
+- **Lo que todavía no trae:** los cobros de la 010 y la 016, el egreso desde caja de los
+  entrenadores (019) y la facturación SUNAT (último módulo). Los reportes exportables y el dashboard son de la Fase 3. Las verificaciones de Yape y transferencia llegaron con la 007b.
 - **Cómo probarlo en tu PC:** con `npm run dev` encendido, entra como el administrador o la secretaria y pulsa **Historial
   de caja**. El paso a paso está en la guía, en «Probar el historial y el PDF del cierre».
 
@@ -252,12 +252,24 @@ La historia 006 (la 006a y la 006b) está en [`specs/006-caja/`](specs/006-caja/
 - **Ticket interno** en `/panel/pagos/{id}/ticket`, para imprimir en papel de 80 mm o A4: número correlativo por academia, sin DNI y con la leyenda «Comprobante interno de pago. No es un comprobante electrónico SUNAT».
 - **Seguimiento:** la solicitud confirmada aparece como **Pago confirmado**, con el método, la fecha, el número de ticket y el enlace para ingresar con el DNI. En el panel, el filtro **Confirmadas** la lista.
 - **Recepción sin los límites por conexión:** las peticiones con la sesión de la secretaria o del administrador no cuentan en los límites por conexión de la inscripción ni en el de cinco reservas sin pagar. Cada solicitud que inscribe recepción queda registrada con el usuario que la inscribió.
-- **Tabla de pagos en la base:** un pago confirmado no se guarda sin su movimiento de caja, y un pago resuelto no cambia. La base ya admite Yape y transferencia; su flujo llega con la 007b.
+- **Tabla de pagos en la base:** un pago confirmado no se guarda sin su movimiento de caja, y un pago resuelto no cambia. La base ya admite Yape y transferencia; su flujo llegó con la 007b.
 - **Correo de pago confirmado** después de confirmar, al alumno y, si es menor, a su apoderado. En desarrollo el correo es simulado.
 - **Auditoría:** el cobro, el ajuste y las inscripciones de recepción quedan auditados. Los ids de la auditoría de la academia siguen el orden del instante en que se registraron.
 - **Datos de ejemplo:** `delfines` tiene un ajuste de monto de ejemplo en la solicitud `AQ-SM0001`. Los datos de ejemplo no se auditan.
-- **Lo que todavía no trae:** el pago por Yape o transferencia, la subida del comprobante, la bandeja de verificación, la aprobación y el rechazo (007b); el carnet (008); las renovaciones y las mensualidades (010). La facturación SUNAT es el último módulo.
+- **Lo que todavía no trae:** el carnet (008); las renovaciones y las mensualidades (010). La facturación SUNAT es el último módulo.
 - **Cómo probarlo en tu PC:** con `npm run dev` encendido, entra como la secretaria, abre la caja y pulsa **Solicitudes de inscripción**. El paso a paso está en la guía, en «Probar el cobro en efectivo, el ajuste y el ticket».
+
+**007b · Yape y transferencia** está construida y pasó la suite completa, el E2E, el lint, el formato, los tipos y el build. Falta el PR para unirse a `main` y que pase la integración continua en Windows. Trae:
+
+- **Pagar desde el seguimiento:** cuando la solicitud está en **Pendiente de pago** o en **Pago rechazado**, el enlace de seguimiento muestra **Pagar con Yape o transferencia**, con los datos de pago de la academia y el formulario del comprobante: método, número de operación, monto (igual al total a pagar), fecha de la operación y una imagen JPG o PNG de hasta 5 MB. La consulta con código y DNI solo muestra el estado: el formulario está en el enlace de seguimiento que da la inscripción.
+- **Número de operación sin duplicados:** un número ya usado en un pago abierto del mismo método no se acepta otra vez, aunque se escriba con espacios, con ceros al inicio o en minúsculas. La web dice «Ese número de operación ya se registró».
+- **Comprobante en revisión:** mientras la academia lo revisa, el seguimiento dice **Comprobante en revisión** y el cupo sigue reservado, sin fecha de vencimiento.
+- **Bandeja «Pagos por verificar»** (`/panel/pagos`, para el administrador y la secretaria): los comprobantes pendientes, del más antiguo al más nuevo, con **Ver comprobante**, **Aprobar** y **Rechazar**. Aprobar exige la caja de hoy abierta («Abre la caja antes de aprobar el pago»); confirma el pago, crea la cuenta del alumno si es nuevo, registra el ingreso como Yape o transferencia (no suma al efectivo) y ofrece **Imprimir ticket**. Rechazar pide un motivo de 3 a 200 caracteres, que ve el cliente en su seguimiento y en su correo; libera el cupo y no necesita caja.
+- **Datos de pago** en **Configuración** (grupo **Datos de pago**): número y titular del Yape; banco, número de cuenta, CCI y titular de la transferencia. Los que quedan vacíos no se muestran al cliente.
+- **Correos:** el de pago rechazado va al alumno y, si es menor, a su apoderado, después de rechazar. En desarrollo el correo es simulado.
+- **Datos de ejemplo:** `delfines` tiene un Yape pendiente de verificación para la solicitud `AQ-SM0003` (DNI `20000003`), con un comprobante de ejemplo, y datos de pago de ejemplo.
+- **Lo que todavía no trae:** la web no ofrece cancelar ni ajustar una solicitud con pago rechazado, aunque la API lo permite; el carnet (008); las renovaciones y las mensualidades (010).
+- **Cómo probarlo en tu PC:** con `npm run dev` encendido, el paso a paso está en la guía, en «Probar el pago con Yape o transferencia».
 
 La historia 007 (la 007a y la 007b) está en [`specs/007-pagos/`](specs/007-pagos/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
@@ -309,6 +321,8 @@ migraciones ni variables nuevas, y la semilla no cambia. Los pasos están en la 
 
 Si ya tenías la historia 006b y traes la 007a, ejecuta `npm run db:preparar`: la 007a agrega la tabla de pagos con sus tres migraciones, y la semilla suma un ajuste de monto de ejemplo en `delfines`. No hay paquetes ni variables nuevas, así que `npm ci` no hace falta. Los pasos están en la guía, en "Después de traer la historia 007a".
 
+Si ya tenías la historia 007a y traes la 007b, ejecuta `npm run db:preparar`: la 007b no tiene migraciones, paquetes ni variables nuevos, y la semilla agrega a `delfines` un Yape pendiente de verificación de ejemplo, sus datos de pago y su comprobante de ejemplo, que se guarda en `ALMACEN_DIRECTORIO`. `npm ci` no hace falta. Los pasos están en la guía, en "Después de traer la historia 007b".
+
 ## Comandos principales
 
 | Comando                                                                 | Qué hace                                                                                                          |
@@ -323,7 +337,7 @@ Si ya tenías la historia 006b y traes la 007a, ejecuta `npm run db:preparar`: l
 | `npm run db:crear`                                                      | Crea solo el rol `aquagestion_app` y las bases que falten (lo usa `db:preparar`).                                 |
 | `npm run db:migrar`, `npm run db:migrar:pruebas`                        | Aplica las migraciones pendientes a la base de desarrollo o a la de pruebas.                                      |
 | `npm run db:migracion`                                                  | Crea una migración nueva a partir de un cambio en el esquema de Prisma.                                           |
-| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo, el teléfono de ejemplo de `delfines`, sus planes, clases y clientes con solicitud (con un ajuste de monto de ejemplo), y su caja cerrada de ejemplo, si no existen.              |
+| `npm run db:semilla`                                                    | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo, el teléfono de ejemplo de `delfines`, sus planes, clases y clientes con solicitud (con un ajuste de monto de ejemplo), su caja cerrada de ejemplo, un Yape pendiente de verificación y los datos de pago de ejemplo, si no existen.              |
 | `npm run env:completar`                                                 | Agrega a `.env` las variables de `.env.example` que falten, sin cambiar las que ya tienes.                        |
 | `npm run plataforma:superadmin`                                         | Crea el superadmin de la plataforma o le restablece la clave, con `SUPERADMIN_CORREO`, `SUPERADMIN_NOMBRE` y `SUPERADMIN_CLAVE`. |
 | `npm run verificar:pruebas-protegidas`, `npm run verificar:sin-secretos` | Verificaciones del método y de seguridad del repositorio.                                                         |
@@ -351,8 +365,8 @@ Si ya tenías la historia 006b y traes la 007a, ejecuta `npm run db:preparar`: l
   transacciones de la caja toman primero al usuario que pide, y la caja al final. Las de los cobros (007a) toman antes las
   filas del alumno, la solicitud, la matrícula, los pagos y las clases. Así ningún cobro entra en una caja que se está cerrando. Las reglas están en
   `docs/arquitectura.md`.
-- **Pagos y caja:** un pago confirmado tiene siempre su movimiento de caja, y la base no guarda uno sin el otro. Los movimientos de caja no se cambian ni se borran, tampoco el dueño de las tablas, salvo con una migración que desactiva su trigger a propósito. Las reglas están en `docs/arquitectura.md`.
-- **Archivos:** las fotos se guardan con `AlmacenArchivos`, en la carpeta de `ALMACEN_DIRECTORIO`, fuera de lo que sirve la web.
+- **Pagos y caja:** un pago confirmado tiene siempre su movimiento de caja, y la base no guarda uno sin el otro. La aprobación de un comprobante (007b) toma antes el alumno, la solicitud, la matrícula y el pago, y la caja al final. Los movimientos de caja no se cambian ni se borran, tampoco el dueño de las tablas, salvo con una migración que desactiva su trigger a propósito. Las reglas están en `docs/arquitectura.md`.
+- **Archivos:** las fotos y los comprobantes de pago se guardan con `AlmacenArchivos`, en la carpeta de `ALMACEN_DIRECTORIO`, fuera de lo que sirve la web.
   Cada historia que guarda archivos los guarda antes de confirmar la transacción, y borra lo que reemplaza después de confirmar
   (reglas en `docs/arquitectura.md`). Los PDF del cierre de caja no se guardan: se arman al descargarlos (006b).
 - **Varias academias:** cada tabla de negocio lleva `academia_id`, y PostgreSQL filtra por academia con seguridad a nivel
