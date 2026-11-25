@@ -5,6 +5,13 @@ const ULTIMO_MILISEGUNDO = 2 ** 48 - 1;
 /** El contador ocupa 12 bits. */
 const MAXIMO_CONTADOR = 0xfff;
 
+/**
+ * El `getTime` de `Date.prototype`, guardado al cargar el módulo: comprueba la ranura interna del valor sin consultar su prototipo ni sus propiedades,
+ * y un reemplazo posterior de `Date.prototype.getTime` en el proceso no cambia la decisión.
+ */
+// eslint-disable-next-line @typescript-eslint/unbound-method -- se usa siempre con `.call(valor)`
+const leerInstante = Date.prototype.getTime;
+
 let ultimoMilisegundo = 0;
 let contador = 0;
 
@@ -15,18 +22,19 @@ let contador = 0;
  * un UUID al azar. No es un secreto ni una credencial: el id de una fila de auditoría solo identifica la fila. Con varias instancias de la
  * API el orden entre ellas es el de sus relojes.
  *
- * Lanza `RangeError` (sin cambiar el estado del generador) con un valor que no es un `Date`, con una fecha inválida, anterior a 1970 o que no cabe
- * en 48 bits, y cuando el contador desborda en el último milisegundo representable: no queda un id mayor que dar. El mensaje no lleva la fecha.
+ * Un `Date` es un valor con la ranura interna de fecha, sin importar su prototipo ni el contexto donde se creó (`vm`, subclases, prototipo cambiado); su
+ * instante es el de la ranura, no el de un `getTime` propio. No se usa `instanceof`: consulta el prototipo y un `Proxy` puede hacerlo lanzar.
+ *
+ * @throws RangeError (sin cambiar el estado del generador) con un valor sin la ranura de fecha (primitivo, `null`, objeto, `Proxy`), con una fecha inválida,
+ * anterior a 1970 o que no cabe en 48 bits, y cuando el contador desborda en el último milisegundo representable: no queda un id mayor que dar. El mensaje no
+ * lleva la causa ni la fecha.
  */
 export function idDeAuditoriaOrdenado(fechaHora: Date): string {
   // Se valida antes de tocar el estado: una fecha no válida no cambia ni el último milisegundo ni el contador.
-  if (!(fechaHora instanceof Date)) {
-    throw new RangeError('La fecha de la auditoría no es un Date.');
-  }
-  // Se lee el valor interno una sola vez y con el `getTime` del prototipo: un objeto que solo hereda de Date (o que trae su propio `getTime`) no es un Date.
+  // La única operación sobre el valor es `leerInstante.call`: cualquier error (primitivo, objeto sin la ranura, `Proxy`, revocado o no) es un valor que no es un Date.
   let instante: number;
   try {
-    instante = Date.prototype.getTime.call(fechaHora);
+    instante = leerInstante.call(fechaHora);
   } catch {
     throw new RangeError('La fecha de la auditoría no es un Date.');
   }
