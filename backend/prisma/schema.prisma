@@ -339,22 +339,27 @@ enum Parentesco {
 /// La persona que se inscribe (RN-01: es cliente hasta que su primer pago se confirme). El DNI es único por academia (D-28). El rol de la
 /// API no cambia el DNI, el estado ni la academia, y no borra filas. `fotoClave` es la clave del archivo en `AlmacenArchivos` (005b).
 model Alumno {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  academiaId      String        @map("academia_id") @db.Uuid
-  dni             String
-  nombres         String
-  apellidos       String
-  fechaNacimiento DateTime      @map("fecha_nacimiento") @db.Date
-  telefono        String
-  correo          String?
-  direccion       String?
-  gradoColegio    GradoColegio? @map("grado_colegio")
-  nivel           NivelNatacion
-  fotoClave       String?       @map("foto_clave")
-  estado          EstadoAlumno  @default(CLIENTE)
-  usuarioId       String?       @map("usuario_id") @db.Uuid
-  creadoEn        DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
-  actualizadoEn   DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId          String        @map("academia_id") @db.Uuid
+  dni                 String
+  nombres             String
+  apellidos           String
+  fechaNacimiento     DateTime      @map("fecha_nacimiento") @db.Date
+  telefono            String
+  correo              String?
+  direccion           String?
+  gradoColegio        GradoColegio? @map("grado_colegio")
+  nivel               NivelNatacion
+  fotoClave           String?       @map("foto_clave")
+  estado              EstadoAlumno  @default(CLIENTE)
+  usuarioId           String?       @map("usuario_id") @db.Uuid
+  /// Token aleatorio del QR del carnet (008a, RN-06): 32 bytes en base64url. Solo con el pago confirmado; los CHECK de la migración lo garantizan.
+  qrToken             String?       @map("qr_token")
+  qrGeneradoEn        DateTime?     @map("qr_generado_en") @db.Timestamptz(3)
+  /// Clave de la última regeneración del QR (DT-7): un reintento con la misma clave no cambia el token.
+  qrClaveIdempotencia String?       @map("qr_clave_idempotencia") @db.Uuid
+  creadoEn            DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn       DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
   academia        Academia               @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   usuario         Usuario?               @relation(fields: [academiaId, usuarioId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
@@ -368,6 +373,7 @@ model Alumno {
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
+  @@unique([academiaId, qrToken])
   @@index([academiaId, estado])
   @@map("alumnos")
 }

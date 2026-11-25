@@ -178,6 +178,10 @@ export const PRIVILEGIOS_APP = Object.freeze(
     { tabla: 'alumnos', columna: 'actualizado_en', privilegio: 'UPDATE' },
     { tabla: 'alumnos', columna: 'estado', privilegio: 'UPDATE' },
     { tabla: 'alumnos', columna: 'usuario_id', privilegio: 'UPDATE' },
+    // Historia 008a (criterio 1): el token del QR del carnet, su fecha y la clave de la última regeneración. Nada más de `alumnos` cambia.
+    { tabla: 'alumnos', columna: 'qr_token', privilegio: 'UPDATE' },
+    { tabla: 'alumnos', columna: 'qr_generado_en', privilegio: 'UPDATE' },
+    { tabla: 'alumnos', columna: 'qr_clave_idempotencia', privilegio: 'UPDATE' },
     { tabla: 'apoderados', columna: null, privilegio: 'SELECT' },
     { tabla: 'apoderados', columna: null, privilegio: 'INSERT' },
     { tabla: 'apoderados', columna: null, privilegio: 'DELETE' },
