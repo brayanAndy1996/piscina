@@ -104,8 +104,8 @@ function esRechazoDeLaTransaccion(error: unknown): boolean {
  * 3. La imagen: se valida y se vuelve a codificar como JPEG de como mucho 2000 píxeles, sin metadatos (criterio 40), fuera de toda transacción.
  * 4. Se guarda con una clave del servidor, `academias/{academiaId}/pagos/{pagoId}/comprobante-{uuid}.jpg`, **antes** de la transacción (un
  *    archivo sin referencia no lo ve nadie; una referencia a un archivo que no existe, sí).
- * 5. La transacción bloquea, en el orden de la regla de bloqueos, el consultivo del DNI → alumno → solicitud → matrícula → pagos (y las clases
- *    si hay que volver a pedir el cupo), decide otra vez con lo ya confirmado (clave, estado, monto, número de operación, cupo) y escribe el
+ * 5. La transacción bloquea, en el orden de la regla de bloqueos, el consultivo del DNI → alumno → solicitud → matrícula → pagos (y siempre las
+ *    clases, criterio 60), decide otra vez con lo ya confirmado (clave, estado, monto, número de operación, cupo) y escribe el
  *    pago `PENDIENTE_VERIFICACION`, la matrícula `RESERVADA` sin vencimiento y la auditoría. No toca la caja: el ingreso entra al aprobar.
  * 6. Si la transacción rechazó, se borra el archivo nuevo. Con cualquier otro error no se sabe si el `COMMIT` llegó: se relee el pago por su
  *    id (criterios 61 y 64 de 005) y se decide con lo que se ve. Un comprobante guardado nunca se borra después (es evidencia).
@@ -331,10 +331,11 @@ export class ComprobanteService {
       dni: dni.dni,
     });
     if (filas === null) throw solicitudNoEncontrada();
-    // 2. Tras un rechazo, la matrícula vuelve a pedir su cupo: las clases se bloquean antes de decidir (DT-10 de 007).
-    const vuelveDeUnRechazo = filas.matricula.estado === 'CANCELADA' && filas.pagos[0]?.estado === 'RECHAZADO';
-    if (vuelveDeUnRechazo) await bloquearClasesParaCupo(tx, filas.claseIds);
-    // 3. «Ahora» después de bloquear: toda decisión de la transacción usa este instante.
+    // 2. Siempre, una sola vez y con todas las clases de la matrícula, antes de leer «ahora» y de decidir (criterio 60 a; DT-10 de 007): con la
+    //    reserva vigente no se cuenta el cupo (ya es suyo), pero sí se espera a quien lo cuenta en el instante del vencimiento.
+    await bloquearClasesParaCupo(tx, filas.claseIds);
+    // 3. «Ahora» después de bloquear: toda decisión de la transacción usa este instante. Una reserva ya vencida con él es 409
+    //    `SOLICITUD_NO_EDITABLE` en el paso 5 (criterio 60 b).
     const ahora = this.reloj.ahora();
 
     // 4. La clave de idempotencia con lo que otra transacción ya confirmó (criterio 42).
