@@ -907,10 +907,9 @@ function bloquearFilasDelCobro(tx: TransaccionAcademia, entrada: { solicitudId: 
 function normalizarNumeroOperacion(escrito: string): string | null; // null si no cumple ^[0-9A-Z]{1,30}$ tras normalizar
 
 // backend/src/modulos/pagos/dominio/total.ts (pura). Sin ajuste, montoCalculado (el valor cotizado al cliente); con
-// ajuste, calcularTotal({ base: baseProporcional(precioPlan, clasesPorMesPlan, clasesTotales), montoAjustado }). Entero
-// de soles. montoCalculado es obligatorio.
-function totalACobrar(matricula: { precioPlan: Decimal; clasesPorMesPlan: number; clasesTotales: number;
-  montoCalculado: Decimal; montoAjustado: Decimal | null }): Decimal;
+// ajuste, calcularTotal con montoAjustado (la base se descarta cuando hay ajuste). Entero de soles. montoCalculado es
+// obligatorio.
+function totalACobrar(matricula: { montoCalculado: Decimal; montoAjustado: Decimal | null }): Decimal;
 ```
 
 _(Alineación con la revisión de la 007a: las firmas de `confirmarPagoEnTransaccion`, `bloquearFilasDelCobro` y

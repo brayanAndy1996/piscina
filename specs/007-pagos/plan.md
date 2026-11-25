@@ -69,14 +69,13 @@ historias. Lo marcado **[007b]** va en el segundo PR.
 
 ### Total a cobrar
 
-`totalACobrar({ precioPlan, clasesPorMesPlan, clasesTotales, montoCalculado, montoAjustado })`:
+`totalACobrar({ montoCalculado, montoAjustado })`:
 
 - **sin ajuste**, el `monto_calculado` guardado en la matrícula (el valor cotizado al cliente al inscribirse), sin
   recalcular con el plan. En el código pasa por `calcularTotal({ base: baseProporcional(montoCalculado, 1, 1) })`, que
   lo deja igual (la 005 lo guarda ya redondeado al sol entero; uno con céntimos escrito como dueño se redondearía hacia
   arriba);
-- **con ajuste**, `calcularTotal({ base: baseProporcional(precioPlan, clasesPorMesPlan, clasesTotales), montoAjustado
-  })`. Con `monto_ajustado` en soles enteros (DR-11), el total es el ajuste; uno con céntimos escrito como dueño se
+- **con ajuste**, `calcularTotal` con `montoAjustado` (con ajuste la base no cuenta, así que no hace falta el plan). Con `monto_ajustado` en soles enteros (DR-11), el total es el ajuste; uno con céntimos escrito como dueño se
   redondea hacia arriba (DT-17).
 
 `montoCalculado` es obligatorio en la entrada, para que ningún llamador caiga sin querer en el recálculo. Se usa en el

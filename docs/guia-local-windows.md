@@ -149,7 +149,7 @@ Hace cuatro cosas, en este orden:
 4. Ejecuta la semilla. Crea, si no existen, las academias de ejemplo `delfines` ("Academia de Natación Los Delfines") y
    `tiburones` ("Club de Natación Tiburones"), el superadmin de desarrollo, con los datos `SUPERADMIN_*` de tu `.env`, los
    usuarios de ejemplo de cada academia (ver "Entrar como usuario de una academia") y el teléfono de ejemplo de `delfines`
-   (ver "Probar la configuración de la academia"), y los planes y clases de ejemplo (ver "Probar planes y clases").
+   (ver "Probar la configuración de la academia"), y los planes y clases de ejemplo (ver "Probar planes y clases"), y el ajuste de monto de ejemplo de la solicitud `AQ-SM0001` (ver "Probar el cobro en efectivo, el ajuste y el ticket").
 
 Es seguro repetir este comando: no borra nada.
 
@@ -328,6 +328,21 @@ npm run dev
   hacen falta, y la semilla no cambia.
 - Si `npm ci` se detiene, lee el mensaje que muestra y vuelve a ejecutarlo.
 
+## Después de traer la historia 007a
+
+Si ya tenías el proyecto con la historia 006b, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- `npm run db:preparar` aplica a las dos bases las tres migraciones de la 007a: `20261124180000_estado_solicitud_confirmada` (el estado «Pago confirmado»), `20261124180100_pagos` (la tabla de pagos, con sus reglas y sus permisos) y `20261124190000_pagos_movimiento_confirmado` (la regla que liga cada pago confirmado con su ingreso de caja). Después ejecuta la semilla, que agrega el ajuste de monto de ejemplo de la solicitud `AQ-SM0001` (ver "Probar el cobro en efectivo, el ajuste y el ticket"). Repetirlo no duplica ni cambia nada.
+- La 007a no trae paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta.
+- Si `npm run db:preparar` se detiene con el código `23503`, tu base de desarrollo tiene un ingreso de caja de una prueba manual. Mira "La migración `20261124180100_pagos` falla con 23503", en "Problemas frecuentes".
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -429,16 +444,16 @@ La contraseña inicial de cada uno es su DNI, y debe cambiarla al entrar. El DNI
 `delfines` también tiene un teléfono de ejemplo, `+51 999 000 111`, que se ve en **Configuración** (ver "Probar la
 configuración de la academia"). Además tiene un segundo entrenador (Paula Fuentes Ibarra), dos planes y ocho clases de
 ejemplo (ver "Probar planes y clases"), y tres clientes con una solicitud de inscripción (ver "Probar la inscripción pública"). Además tiene una caja cerrada de
-ejemplo del 2 de noviembre de 2026 (ver "Probar la caja del día").
+ejemplo del 2 de noviembre de 2026 (ver "Probar la caja del día"). Además, la solicitud `AQ-SM0001` tiene un ajuste de monto de ejemplo (ver "Probar el cobro en efectivo, el ajuste y el ticket").
 
 Lo que ves en `/panel` depende del rol:
 
-- **Administrador:** **Solicitudes de inscripción** y **Nueva inscripción** (ver "Probar la foto y el panel de
+- **Administrador:** **Solicitudes de inscripción** (cobro y ajuste de monto, ver "Probar el cobro en efectivo, el ajuste y el ticket") y **Nueva inscripción** (ver "Probar la foto y el panel de
   solicitudes"), **Caja** (ver "Probar la caja del día"), **Usuarios** (el personal), **Restablecer contraseña**,
   **Configuración** (la configuración de la academia, más abajo) y **Planes** y **Clases y horarios** (ver "Probar planes y
   clases"). En **Usuarios** puedes crear, desactivar,
   reactivar y restablecer al personal. No puedes desactivar ni restablecer tu propia cuenta.
-- **Secretaria:** **Solicitudes de inscripción**, **Nueva inscripción** y **Caja** (ver "Probar la caja del día"), y
+- **Secretaria:** **Solicitudes de inscripción** (donde cobra en efectivo), **Nueva inscripción** y **Caja** (ver "Probar la caja del día"), y
   **Restablecer contraseña**, solo para alumnos.
 - **Entrenador y alumno:** solo **Cambiar contraseña**. Las demás pantallas llegan con sus historias.
 
@@ -575,7 +590,7 @@ seguimiento no se guardan en claro:
 
 | Código      | DNI      | Qué verás                                                                 |
 | ----------- | -------- | ------------------------------------------------------------------------- |
-| `AQ-SM0001` | 20000001 | **Pendiente de pago**, con la fecha límite de su reserva.                 |
+| `AQ-SM0001` | 20000001 | **Pendiente de pago**, con la fecha límite de su reserva y el monto de S/ 60.00 (ajuste de ejemplo de la 007a).                 |
 | `AQ-SM0002` | 20000002 | **Vencida**: sin nombre ni fecha límite.                                  |
 | `AQ-SM0003` | 20000003 | **Pendiente de pago**. Es la solicitud de un menor de edad con apoderado. |
 
@@ -597,6 +612,7 @@ Otras comprobaciones:
   «Ya tienes varias reservas sin pagar desde esta conexión.». Estas reservas están en la base, así que reiniciar
   `npm run dev` no las quita: vencen solas, a las 24 horas o al fin del mes en Lima, lo que ocurra primero. Para empezar de
   cero, mira «Borrar la base de desarrollo y empezar de cero».
+- **Recepción.** Las peticiones que haces con tu sesión de administrador o de secretaria (por ejemplo, desde **Nueva inscripción**) no cuentan en los límites de esta sección ni en el de reservas sin pagar. Si cierras la sesión, vuelven a contar.
 
 ## Probar la foto y el panel de solicitudes
 
@@ -692,8 +708,7 @@ Cada apertura, egreso, cierre y reapertura queda en la auditoría de la academia
 Fase 3.
 
 La caja de ejemplo de `delfines` (2 de noviembre de 2026) no aparece en **Caja**: la pantalla solo muestra la caja de hoy o
-la que siga abierta. Su historial y su PDF están en «Probar el historial y el PDF del cierre». Todavía no hay cobros: la
-caja tiene el monto inicial y los egresos, y los cobros llegan con la 007.
+la que siga abierta. Su historial y su PDF están en «Probar el historial y el PDF del cierre». Desde la 007a, los cobros en efectivo entran a esta caja como ingresos y suman al efectivo esperado (ver "Probar el cobro en efectivo, el ajuste y el ticket"). Los de Yape y transferencia llegan con la 007b.
 
 Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`. La prueba
 de navegador de la caja corre con `npm run e2e`.
@@ -730,6 +745,50 @@ El historial de caja (historia 006b) lo usan el administrador y la secretaria. C
    y vuelve a pulsar **Descargar PDF**. La API arma pocos PDF a la vez.
 
 La prueba de navegador del historial (`e2e/pruebas/caja-historial.spec.ts`) corre con `npm run e2e`.
+
+## Probar el cobro en efectivo, el ajuste y el ticket
+
+El cobro en efectivo (historia 007a) lo hacen el administrador y la secretaria desde el panel de solicitudes, con la caja de hoy abierta. Con `npm run dev` encendido:
+
+1. Entra como la secretaria (`10000002`) en **http://localhost:5173/a/delfines/ingresar**. En **Caja** (`/panel/caja`), abre la caja de hoy con el monto inicial que quieras (ver "Probar la caja del día"). Sin caja de hoy abierta no se cobra.
+2. En el inicio del panel, pulsa **Solicitudes de inscripción**. Con el filtro **Activas**, busca la tarjeta **AQ-SM0001**, de Valeria Andrea Mendoza Salas. Verás **Pendiente de pago** y el total de **S/ 60.00**. La misma tarjeta dice que el monto lo ajustó el administrador (calculado: S/ 80.00) y muestra el motivo: es el ajuste de ejemplo de la semilla.
+3. Pulsa **Cobrar en efectivo**. El diálogo muestra el **Total a cobrar** y «En efectivo. El precio ya incluye IGV.». Pulsa **Cobrar S/ 60.00**. Debe aparecer **Cobro registrado: AQ-SM0001**, con «Ticket N.º» y su número.
+4. Pulsa **Imprimir ticket**. Se abre la página del ticket, con la academia y su teléfono, el número, la fecha y la hora de Lima, el alumno, el plan, el mes, el método (Efectivo), el total, quién atendió y la leyenda «Comprobante interno de pago. No es un comprobante electrónico SUNAT». El DNI no aparece. Pulsa **Imprimir**: los botones no salen en el papel.
+5. Vuelve a **Solicitudes de inscripción**. La tarjeta ya no está en **Activas**. Con el filtro **Confirmadas**, aparece como **Pago confirmado**, con el botón **Imprimir ticket**.
+6. El cobro también crea la cuenta de la alumna: entra en **http://localhost:5173/a/delfines/ingresar** con el DNI `20000001` como usuario y como contraseña inicial. El sistema te pide cambiarla antes de seguir.
+
+Si ya pasó el último día del mes en Lima, la reserva de ejemplo está vencida: la tarjeta dice **Vencida** y no se puede cobrar. Para probar el cobro, inscribe a otra persona (ver "Inscribir desde recepción", más abajo) o empieza de cero.
+
+### Ajustar el monto (solo el administrador)
+
+1. Entra como el administrador (`10000001`) en **http://localhost:5173/a/delfines/ingresar**. En **Solicitudes de inscripción**, busca una tarjeta **Pendiente de pago**, por ejemplo la de **AQ-SM0003**, y pulsa **Ajustar monto**. Así no cambias la de `AQ-SM0001`.
+2. En el diálogo **Ajustar el monto de la solicitud**, escribe el **Nuevo monto (S/)**, un número entero de soles de 1 a 99999, y el **Motivo del ajuste**, de 3 a 200 caracteres. Pulsa **Guardar ajuste**. La tarjeta muestra el nuevo total y la línea **Ajuste**, con el motivo.
+
+Otras comprobaciones:
+
+- La secretaria no ve **Ajustar monto**, y la API responde 403 si le pide el ajuste directamente.
+- Un monto con céntimos (por ejemplo, `35.50`), cero o más de 99999 no se acepta: el diálogo lo dice junto al campo.
+- Una solicitud ya cobrada, vencida o cancelada no se ajusta: no aparece el botón, y la API responde 409 `SOLICITUD_NO_AJUSTABLE`.
+- Si la secretaria tiene abierto el diálogo **Cobrar en efectivo** cuando cambias el monto, al cobrar aparece «El monto cambió desde que lo viste: ahora es S/ …». Debe revisarlo y volver a cobrar: nunca se cobra un monto que no vio.
+
+### Inscribir desde recepción
+
+1. Con tu sesión abierta como administrador o secretaria, en el inicio del panel pulsa **Nueva inscripción**. Se abre en otra pestaña el formulario público de la academia.
+2. Llena el formulario como en "Probar la inscripción pública" y pulsa **Enviar inscripción**. La solicitud queda **Pendiente de pago**, y ya puedes cobrarla en efectivo desde **Solicitudes de inscripción**.
+3. Las peticiones que haces con tu sesión no cuentan en los límites por conexión del formulario (lecturas, cotizaciones, envíos, consultas y fotos) ni en el de cinco reservas sin pagar, así que puedes inscribir a varias personas seguidas desde la PC de recepción. Cada solicitud queda registrada con el usuario que la inscribió. Si tu cuenta se desactiva mientras inscribes, el envío responde 401 y no guarda nada.
+
+### Lo que ve la persona al confirmarse
+
+1. Con su código y su DNI, en **http://localhost:5173/a/delfines/solicitud** (o con su enlace de seguimiento), la solicitud pasa a **Pago confirmado**. Aparecen el método, la fecha de confirmación y el número de ticket, el texto «Tu pago está confirmado y tu inscripción quedó lista. Para ingresar usa tu DNI como usuario y como contraseña inicial…» y el enlace **Ingresar con mi DNI**.
+2. El correo de pago confirmado va al alumno y, si es menor de edad, también a su apoderado. En desarrollo el correo es simulado: no sale ningún mensaje.
+
+### Datos de ejemplo de esta historia
+
+- `delfines` tiene un ajuste de monto de ejemplo en la solicitud **AQ-SM0001**: S/ 60.00, con el motivo «Descuento de ejemplo autorizado por la dirección». La semilla lo escribe directamente en la base, sin pasar por la API, así que **no queda en la auditoría** de la academia: la auditoría registra solo lo que se hace por la API. Repetir `npm run db:preparar` no lo duplica ni cambia un ajuste que hayas editado.
+- La semilla no crea pagos, ni confirmados ni pendientes. Tampoco crea la cuenta de la alumna de **AQ-SM0001** (DNI `20000001`): aparece al cobrarle, con su DNI como usuario y como contraseña inicial, y debe cambiarla al entrar, como los usuarios de la tabla de "Entrar como usuario de una academia".
+- Los nombres y los DNI de estas solicitudes son inventados.
+
+Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
 
 ## Día a día
 
@@ -791,7 +850,7 @@ Las pruebas E2E levantan la API y la web en otros puertos (3100 y 5180), así qu
 | `npm run db:crear`                     | Crea solo el rol `aquagestion_app` y las bases que falten. Lo usa `db:preparar`.                         |
 | `npm run db:migrar`                    | Aplica a la base de desarrollo las migraciones pendientes.                                               |
 | `npm run db:migrar:pruebas`            | Aplica las migraciones pendientes a la base de pruebas.                                                  |
-| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines`, sus planes y clases de ejemplo y sus clientes con solicitud, si no existen. Repetirla no duplica nada ni cambia las contraseñas, el teléfono ni lo que hayas editado.   |
+| `npm run db:semilla`                   | Crea las academias de ejemplo, el superadmin de desarrollo, los usuarios de ejemplo y el teléfono de ejemplo de `delfines`, sus planes y clases de ejemplo y sus clientes con solicitud (con un ajuste de monto de ejemplo), si no existen. Repetirla no duplica nada ni cambia las contraseñas, el teléfono ni lo que hayas editado.   |
 | `npm run db:migracion`                 | Crea una migración nueva a partir de un cambio del esquema. Pide un nombre.                              |
 | `npm run env:completar`                | Agrega a `.env` las variables de `.env.example` que falten. No cambia las que ya tienes.                 |
 | `npm run plataforma:superadmin`        | Crea el superadmin de la plataforma o le restablece la clave (usa `SUPERADMIN_*`; ver arriba).           |
@@ -983,7 +1042,7 @@ repite `npm run e2e`.
 Según el mensaje que muestre la página de ingreso:
 
 - **«DNI o contraseña incorrectos.»** Revisa el DNI (8 números) y la contraseña. Si nunca la cambiaste, es tu DNI. Si ni
-  los usuarios de ejemplo entran, ejecuta `npm run db:semilla` (es seguro repetirlo): puede faltar la semilla de la 002.
+  los usuarios de ejemplo entran, ejecuta `npm run db:semilla` (es seguro repetirlo): puede faltar la semilla de la 002. Si la persona todavía no pagó su inscripción, no tiene cuenta: la cuenta se crea al confirmar su pago (007a).
 - **«Hiciste demasiados intentos. Espera un minuto.»** Hay un límite de 10 ingresos por minuto desde una misma red, y todas
   las personas de esa red cuentan juntas. Espera un minuto.
 - **«La cuenta está bloqueada por varios intentos fallidos…»** Por defecto, cinco intentos fallidos seguidos bloquean la
@@ -1024,6 +1083,22 @@ npm run db:preparar
 **Se pierden los datos de desarrollo**: las academias, los usuarios y las solicitudes que hayas creado en tu PC. El código del
 proyecto no cambia. La base de pruebas no tiene reservas de ejemplo, porque la semilla solo va a la de desarrollo; si el paso
 «Migrando la base de pruebas» también falla, aplica la misma solución.
+
+### La migración `20261124180100_pagos` falla con 23503
+
+Síntoma: `npm run db:preparar` se detiene con el mensaje «Falló el paso: Migrando la base de desarrollo», y el error de PostgreSQL incluye el código `23503` y el nombre `movimientos_caja_academia_id_pago_id_fkey`. Volver a ejecutar `npm run db:preparar` no lo arregla: falla igual.
+
+Causa: la 007a agrega a `movimientos_caja.pago_id` la llave hacia la tabla de pagos. Si la base tiene un ingreso de caja cuyo `pago_id` no existe, la llave no se puede agregar. La 006 no tenía ninguna pantalla ni ruta para crear ingresos, así que solo pasa si insertaste uno a mano para probar. La semilla no crea ingresos.
+
+Solución: borra la base de desarrollo y créala de cero, con los pasos de [Borrar la base de desarrollo y empezar de cero](#borrar-la-base-de-desarrollo-y-empezar-de-cero), en PowerShell, dentro de la carpeta del proyecto:
+
+```powershell
+docker compose down -v
+docker compose up -d
+npm run db:preparar
+```
+
+**Se pierden los datos de desarrollo**: las academias, los usuarios, las solicitudes y las cajas que hayas creado en tu PC. El código del proyecto no cambia. Si también falla el paso «Migrando la base de pruebas», aplica la misma solución.
 
 ### `npm ci` falla con sharp, o la API no arranca con «Could not load the "sharp" module»
 
