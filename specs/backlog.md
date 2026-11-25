@@ -21,8 +21,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 006b | Historial y PDF del cierre de caja | Sí | ✅ |
 | 007a | Cobro en recepción y cuenta del alumno | Sí | ✅ |
 | 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ✅ |
-| 008a | Carnet digital y QR | En parte | 🟨 |
-| 008b | Foto desde el panel y cámara | En parte | ⬜ |
+| 008a | Carnet digital y QR | En parte | ✅ |
+| 008b | Foto desde el panel y cámara | En parte | 🟨 |
 | 009 | Asistencia y faltas | Sí | ⬜ |
 | 010 | Mensualidades y renovación | En parte | ⬜ |
 | 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
@@ -237,7 +237,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
   - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-5 y DT-1 a DT-13 de 008), en
-    [`specs/008-carnet-qr/`](008-carnet-qr/spec.md). Dos entregas: 008a (criterios 1 a 21), lista para unir (25/11/2026, una ronda adversarial sin críticas ni altas), y 008b (22 a 29).
+    [`specs/008-carnet-qr/`](008-carnet-qr/spec.md). Dos entregas: 008a (criterios 1 a 21), unida a main el 25/11/2026, [PR #16](https://github.com/brayanAndy1996/piscina/pull/16), tras una ronda adversarial sin críticas ni altas, y 008b (22 a 29).
   - **Deuda de la 008a** (las medias y las bajas no abren ronda, D-31; el detalle de la ronda 1 está en [`rondas.md`](008-carnet-qr/rondas.md)):
     - **R1-1** (ronda 1, baja): un cuerpo mal formado responde 400 o 413 en lugar de 403 al rol cuya celda de `VER_CARNET` tiene otro alcance: un `ALUMNO` en `POST /api/alumnos/buscar` y en `GET /api/alumnos/{id}/carnet[/pdf]` con cuerpo, y la secretaria o el administrador en `GET /api/mi-carnet[/pdf]` con cuerpo. `PermisosGuard` lanza el error de cuerpo guardado antes de `exigirAlcanceDelCarnet`. No da acceso a nada.
     - **REV-1** (de la revisión, menor): las pruebas unitarias `backend/src/modulos/alumnos/pdf/carnet-pdf.test.ts` y `backend/src/modulos/alumnos/dominio/token-qr.test.ts` cubren parte de los criterios críticos 12 y 3 sin la marca de pruebas protegidas; la cobertura crítica está en la integración protegida.
