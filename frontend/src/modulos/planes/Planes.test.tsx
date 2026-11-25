@@ -180,6 +180,7 @@ describe('menú y permiso (criterio 26)', () => {
     expect(enlaces.map((enlace) => enlace.getAttribute('href'))).toEqual([
       '/panel/solicitudes',
       '/panel/pagos',
+      '/panel/alumnos',
       '/a/delfines/inscripcion',
       '/panel/caja',
       '/panel/cajas',
