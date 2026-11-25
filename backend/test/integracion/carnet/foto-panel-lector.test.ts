@@ -62,4 +62,27 @@ describe('el lector binario de la foto del panel (T19, criterio 24)', () => {
       expect([respuesta.status, codigoDeRespuesta(respuesta)], nombre).toEqual([400, 'IMAGEN_NO_VALIDA']);
     }
   });
+
+  it('el entrenador y el alumno reciben 403 SIN_PERMISO sin que se lea el cuerpo, aunque sea JSON roto o enorme', async () => {
+    for (const cookie of [esc.cookies.entrenador, alumno.cookie]) {
+      for (const [nombre, ruta] of rutas()) {
+        const roto = await subirFotoPanel(ctx, ruta, {
+          cookie,
+          tipo: 'application/json',
+          cuerpo: Buffer.from('{ no es json'),
+          plazoMs: 5000,
+        });
+        expect([roto.status, codigoDeRespuesta(roto)], `${nombre}, JSON roto`).toEqual([403, 'SIN_PERMISO']);
+        const declarado = await subirFotoPanel(ctx, ruta, {
+          cookie,
+          largoDeclarado: 5 * 1024 * 1024,
+          plazoMs: 5000,
+        });
+        expect([declarado.status, codigoDeRespuesta(declarado)], `${nombre}, 5 MB declarados`).toEqual([
+          403,
+          'SIN_PERMISO',
+        ]);
+      }
+    }
+  });
 });

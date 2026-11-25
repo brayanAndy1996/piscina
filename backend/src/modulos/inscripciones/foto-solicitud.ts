@@ -37,22 +37,30 @@ export function esEditableDesdeElPanel(fila: FilaDeLaSolicitud, ahora: Date): bo
   return fila.estado_solicitud === 'CONFIRMADA' && fila.estado_alumno !== 'CLIENTE';
 }
 
-/** La solicitud de un id con su matrícula y su alumno, sin bloquear nada (comprobación previa de la foto del panel). Un id que no es UUID no se consulta. */
+/**
+ * La solicitud de un id con su última matrícula y su alumno, sin bloquear nada (comprobación previa de la foto del panel). A diferencia de la
+ * pública, no exige matrícula: la fila anterior `VENCIDA` de un cliente que volvió no tiene ninguna y debe responder 409, no 404 (criterio 23). Sin
+ * matrícula, el estado de la matrícula se toma como `CANCELADA`: una solicitud sin matrícula nunca está activa.
+ */
 export async function leerSolicitudParaLaFoto(
   tx: TransaccionAcademia,
   solicitudId: string,
 ): Promise<FilaDeLaSolicitud | undefined> {
   const filas = await tx.cliente.$queryRaw<FilaDeLaSolicitud[]>`
     SELECT s.id::text AS solicitud_id, s.alumno_id::text AS alumno_id, s.estado::text AS estado_solicitud,
-           m.estado::text AS estado_matricula, m.reserva_vence_en, a.estado::text AS estado_alumno,
-           up.estado::text AS estado_ultimo_pago, up.hay_pendiente AS hay_pago_pendiente, m.anio::int AS anio, m.mes::int AS mes
+           COALESCE(m.estado::text, 'CANCELADA') AS estado_matricula, m.reserva_vence_en, a.estado::text AS estado_alumno,
+           up.estado::text AS estado_ultimo_pago, up.hay_pendiente AS hay_pago_pendiente,
+           COALESCE(m.anio, 0)::int AS anio, COALESCE(m.mes, 0)::int AS mes
       FROM solicitudes_inscripcion s
       JOIN alumnos a ON a.academia_id = s.academia_id AND a.id = s.alumno_id
-      JOIN matriculas m ON m.academia_id = s.academia_id AND m.solicitud_id = s.id
+      LEFT JOIN LATERAL (
+        SELECT m2.* FROM matriculas m2
+         WHERE m2.academia_id = s.academia_id AND m2.solicitud_id = s.id
+         ORDER BY m2.creado_en DESC
+         LIMIT 1
+      ) m ON true
       ${unirUltimoPago}
-     WHERE s.academia_id = ${tx.academiaId}::uuid AND s.id = ${solicitudId}::uuid
-     ORDER BY m.creado_en DESC
-     LIMIT 1`;
+     WHERE s.academia_id = ${tx.academiaId}::uuid AND s.id = ${solicitudId}::uuid`;
   return filas[0];
 }
 

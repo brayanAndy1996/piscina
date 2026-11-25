@@ -86,6 +86,17 @@ export class SolicitudesService {
       if (!PATRON_UUID.test(idPedido)) throw noEncontrado();
       const id = idPedido.toLowerCase();
 
+      // El orden de bloqueos de la academia: `alumnos` antes que `solicitudes_inscripcion` (como el cobro y la foto, 008b criterio 26 c). El alumno
+      // de una solicitud no cambia nunca, así que se lee sin bloquear y se bloquea antes de tomar la solicitud.
+      const alumnos = await tx.cliente.$queryRaw<{ alumno_id: string }[]>`
+        SELECT alumno_id::text AS alumno_id FROM solicitudes_inscripcion
+         WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid`;
+      if (!alumnos[0]) throw noEncontrado();
+      await tx.cliente.$queryRaw`
+        SELECT id FROM alumnos
+         WHERE academia_id = ${tx.academiaId}::uuid AND id = ${alumnos[0].alumno_id}::uuid
+           FOR UPDATE`;
+
       const solicitudes = await tx.cliente.$queryRaw<FilaBloqueadaDeLaSolicitud[]>`
         SELECT estado::text AS estado FROM solicitudes_inscripcion
          WHERE academia_id = ${tx.academiaId}::uuid AND id = ${id}::uuid

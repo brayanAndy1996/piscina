@@ -12,6 +12,7 @@ import {
   type TransaccionAcademia,
 } from '../../infraestructura/prisma';
 import type { Reloj } from '../../infraestructura/reloj';
+import { insertarEnAuditoriaDeAcademia } from '../auditoria/insercion';
 
 /** Lo máximo que espera la relectura de `resolverConfirmacionIncierta` a que termine la transacción de confirmación (criterio 64 de 005). */
 const FOTO_ESPERA_RELECTURA_MS = 5000;
@@ -176,4 +177,35 @@ async function borrarSinFallar(deps: DependenciasDeLaFoto, academiaId: string, c
       // Un registro que falla no cambia la respuesta.
     }
   }
+}
+
+/** De dónde viene la foto del panel: la ruta del alumno o la de la solicitud (008b, criterio 27). */
+export type OrigenDeLaFotoDelPanel = 'PANEL_ALUMNO' | 'PANEL_SOLICITUD';
+
+/**
+ * La auditoría `ALUMNO_FOTO_ACTUALIZADA` de la foto del panel (008b, criterio 27, DT-10), dentro de la transacción de escritura y después de guardar
+ * `foto_clave`: quién (el usuario de la sesión), cuándo, la IP y si el alumno ya tenía foto. Sin la imagen, la clave, el DNI ni datos médicos. La
+ * foto pública no la usa: sigue sin auditar (criterio 37 de 005).
+ */
+export async function auditarFotoDelPanel(
+  tx: TransaccionAcademia,
+  ahora: Date,
+  datos: {
+    readonly actorId: string;
+    readonly alumnoId: string;
+    readonly tuvoFoto: boolean;
+    readonly origen: OrigenDeLaFotoDelPanel;
+    readonly ip: string | null;
+  },
+): Promise<void> {
+  await insertarEnAuditoriaDeAcademia(tx.cliente, tx.academiaId, ahora, {
+    actorTipo: 'USUARIO',
+    actorId: datos.actorId,
+    accion: 'ALUMNO_FOTO_ACTUALIZADA',
+    entidad: 'alumno',
+    entidadId: datos.alumnoId,
+    datosAntes: { tieneFoto: datos.tuvoFoto },
+    datosDespues: { tieneFoto: true, origen: datos.origen },
+    ip: datos.ip,
+  });
 }
