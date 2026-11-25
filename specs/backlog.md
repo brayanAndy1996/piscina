@@ -20,8 +20,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | ✅ |
 | 006b | Historial y PDF del cierre de caja | Sí | ✅ |
 | 007a | Cobro en recepción y cuenta del alumno | Sí | ✅ |
-| 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | 🟨 |
-| 008 | Carnet digital con QR | En parte | ⬜ |
+| 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ✅ |
+| 008a | Carnet digital y QR | En parte | 🟨 |
+| 008b | Foto desde el panel y cámara | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
 | 010 | Mensualidades y renovación | En parte | ⬜ |
 | 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
@@ -171,7 +172,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
       (tabla `pagos` completa con sus invariantes, cobro en efectivo con la caja de hoy, ajuste del monto por el
       administrador, paso de cliente a alumno con su cuenta, ticket imprimible, estado `CONFIRMADA`, recepción sin los
       límites por conexión, correo de pago confirmado).
-    - **007b · Yape y transferencia** (lista para unir a `main`, 25/11/2026: dos rondas adversariales, criterio 60 nuevo; con la 007a unida; método de la D-31): criterios 36 a 53, más las partes [007b]
+    - **007b · Yape y transferencia** (unida a main el 25/11/2026, [PR #15](https://github.com/brayanAndy1996/piscina/pull/15): dos rondas adversariales, criterio 60 nuevo; con la 007a unida; método de la D-31): criterios 36 a 53, más las partes [007b]
       (subida del comprobante desde el enlace, número de operación sin duplicados, bandeja, aprobación y rechazo, datos
       de pago en la configuración, correo de pago rechazado). Sin migración.
     - **Deuda de la 007b** (las rondas 1 y 2 del ataque y la revisión; las medias y las bajas no abren ronda, D-31):
@@ -235,6 +236,19 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     avisar "Abre la caja antes de cobrar" sin decidir con ella. La caja de un día anterior no admite cobros (DR-2 de 006).
 - **008 · Carnet QR.** Token aleatorio, regeneración que invalida el anterior, carnet en pantalla y en PDF, "Foto
   pendiente" (HU-13, RN-05, RN-06, D-24).
+  - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-5 y DT-1 a DT-13 de 008), en
+    [`specs/008-carnet-qr/`](008-carnet-qr/spec.md). Dos entregas: 008a (criterios 1 a 21), lista para unir (25/11/2026, una ronda adversarial sin críticas ni altas), y 008b (22 a 29).
+  - **Deuda de la 008a** (las medias y las bajas no abren ronda, D-31; el detalle de la ronda 1 está en [`rondas.md`](008-carnet-qr/rondas.md)):
+    - **R1-1** (ronda 1, baja): un cuerpo mal formado responde 400 o 413 en lugar de 403 al rol cuya celda de `VER_CARNET` tiene otro alcance: un `ALUMNO` en `POST /api/alumnos/buscar` y en `GET /api/alumnos/{id}/carnet[/pdf]` con cuerpo, y la secretaria o el administrador en `GET /api/mi-carnet[/pdf]` con cuerpo. `PermisosGuard` lanza el error de cuerpo guardado antes de `exigirAlcanceDelCarnet`. No da acceso a nada.
+    - **REV-1** (de la revisión, menor): las pruebas unitarias `backend/src/modulos/alumnos/pdf/carnet-pdf.test.ts` y `backend/src/modulos/alumnos/dominio/token-qr.test.ts` cubren parte de los criterios críticos 12 y 3 sin la marca de pruebas protegidas; la cobertura crítica está en la integración protegida.
+    - **REV-2** (de la revisión, menor): imports profundos. `carnet-pdf.ts` importa `../../caja/pdf/texto-pdf` en lugar de `caja/index.ts`, y `pagos/confirmacion.ts` importa `../alumnos/dominio/token-qr` en lugar de `../alumnos`. Antes de cambiarlos, revisar que no se forme un ciclo.
+    - **REV-3** (de la revisión, menor): `carnet.service.ts` tiene dos consultas casi iguales (`leerConFecha`).
+    - **REV-4** (de la revisión, menor): la regeneración lee el carnet en otra transacción, así que con otra regeneración simultánea devuelve el QR más reciente (coherente con «vale el último»).
+    - **REV-5** (de la revisión, menor): el PDF corta con «...» y no con «…», porque `textoParaPdf` no admite la elipsis Unicode.
+    - **REV-6** (de la revisión, menor): el comentario de la cabecera de `carnet-pdf.ts` no menciona `CreationDate`.
+    - **REV-7** (de la revisión, menor): `useDescargarPdfDelCarnet` duplica `useDescargarPdfDelCierre`.
+    - **TES-1** (del tester): ninguna prueba E2E cubre el carnet.
+    - **TES-2** (del tester): el chunk JS del frontend pesa 1 038 kB y Vite avisa por pasar de 500 kB.
   - **Desde 005b (DR-21 de 005, antes B5):** agregar la foto después desde el panel (a una solicitud o un alumno ya
     registrado, sin el token de seguimiento) y tomarla con la cámara de la PC de recepción. En la 005b la foto solo se
     sube en el paso del formulario (también cuando la secretaria abre "Nueva inscripción", eligiendo un archivo) o desde

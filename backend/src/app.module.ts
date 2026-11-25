@@ -10,6 +10,7 @@ import { PrismaModule } from './infraestructura/prisma';
 import { crearOpcionesRegistro } from './infraestructura/registro';
 import { RelojModule } from './infraestructura/reloj';
 import { AcademiasModule } from './modulos/academias';
+import { AlumnosModule } from './modulos/alumnos';
 import { AuditoriaModule } from './modulos/auditoria';
 import { AutenticacionModule } from './modulos/autenticacion';
 import { CajaModule } from './modulos/caja';
@@ -57,6 +58,7 @@ export class AppModule {
         InscripcionesModule,
         CajaModule,
         PagosModule,
+        AlumnosModule,
         SaludModule,
       ],
       // El filtro también es un proveedor normal: el middleware de `/api/plataforma` lo reutiliza para sus respuestas.

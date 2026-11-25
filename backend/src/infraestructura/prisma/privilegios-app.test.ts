@@ -2,6 +2,7 @@
 // Actualizada por la 007 (spec 007-pagos, criterio 2 y «Pruebas protegidas anteriores que amplía la 007a»): la lista exacta suma `pagos` (SELECT, INSERT y
 // UPDATE solo de `estado`, `verificado_por`, `verificado_en`, `motivo_rechazo`, `numero_ticket` y `actualizado_en`), el UPDATE de `alumnos.estado` y
 // `alumnos.usuario_id` y el de `matriculas.monto_ajustado` y `matriculas.motivo_ajuste`. No se quitó ni se cambió nada de lo anterior.
+// Actualizada por la 008 (spec 008-carnet-qr, criterio 1): la lista exacta suma el UPDATE de `alumnos.qr_token`, `alumnos.qr_generado_en` y `alumnos.qr_clave_idempotencia`. No se quitó ni se cambió nada más.
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -97,6 +98,9 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
     'actualizado_en',
     'estado',
     'usuario_id',
+    'qr_token',
+    'qr_generado_en',
+    'qr_clave_idempotencia',
   ].map((c) => efectivo('alumnos', c, 'UPDATE')),
   efectivo('apoderados', null, 'SELECT'),
   efectivo('apoderados', null, 'INSERT'),

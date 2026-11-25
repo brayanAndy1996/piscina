@@ -274,6 +274,21 @@ La historia 006 (la 006a y la 006b) está en [`specs/006-caja/`](specs/006-caja/
 La historia 007 (la 007a y la 007b) está en [`specs/007-pagos/`](specs/007-pagos/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
 
+**008a · Carnet digital y QR** está construida y pasó la suite completa, el E2E, el lint, los tipos, el build y las pruebas protegidas. Falta el PR para unirse a `main` y que pase la integración continua en Windows. Trae:
+
+- **Mi carnet** (`/panel/mi-carnet`, para el alumno): su carnet con la academia, la foto o «Foto pendiente», el nombre, el DNI, el nivel, el plan, el horario, la vigencia y el QR, grande para mostrarlo en la entrada de la piscina. Es de solo lectura, y lo ve también con la matrícula vencida. **Descargar PDF** baja el carnet para imprimirlo.
+- **Alumnos y carnets** (`/panel/alumnos`, para el administrador y la secretaria): busca al alumno por su DNI completo (8 dígitos) o por al menos 3 letras de su nombre o apellido, y muestra hasta 20 resultados, con «Foto pendiente» o «Con foto». Cada tarjeta lleva a su carnet (`/panel/alumnos/{id}`), con **Descargar PDF** y **Regenerar QR**.
+- **PDF del carnet** (`carnet.pdf`): una hoja A4 con la tarjeta de 85,6 × 54 mm, lista para recortar, y debajo «Datos al» con la fecha. Lleva el DNI completo y el mismo QR de la pantalla. No se guarda: se arma al descargarlo.
+- **El QR nace al pagar:** cuando un cliente pasa a alumno (cobro en efectivo, o aprobación de Yape o transferencia), recibe su QR, con 43 caracteres al azar y sin datos de la persona. El contenido del QR es `AQ1:` más ese token. Un cliente sin pago confirmado no tiene QR, y la base no lo acepta.
+- **Regenerar QR** (solo el administrador y la secretaria): pide un motivo de 3 a 200 caracteres. El QR anterior deja de valer en la misma operación, y un doble clic no genera dos QR nuevos. La regeneración queda en la auditoría de la academia.
+- **Foto pendiente:** un alumno sin foto muestra «Foto pendiente» en la búsqueda y en el carnet. La foto que se subió en la inscripción aparece en el carnet cuando la inscripción está confirmada.
+- **Lo que todavía no trae:** agregar o cambiar la foto desde el panel y con la cámara (008b), la lectura del QR en la entrada (009) y la asistencia del alumno en su panel (011). La web del carnet todavía no tiene pruebas E2E (deuda en `specs/backlog.md`).
+- **Datos de ejemplo:** la semilla no cambia. El carnet aparece cuando se confirma una solicitud de ejemplo: `AQ-SM0001` (cobro en efectivo) o `AQ-SM0003` (aprobación de su Yape).
+- **Cómo probarlo en tu PC:** con `npm run dev` encendido, el paso a paso está en la guía, en «Probar el carnet y el QR».
+
+La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-carnet-qr/spec.md). Su estado está en
+[`specs/backlog.md`](specs/backlog.md).
+
 ## Cómo levantarlo en Windows
 
 La guía paso a paso, escrita para quien no es experto, está en
@@ -323,6 +338,8 @@ Si ya tenías la historia 006b y traes la 007a, ejecuta `npm run db:preparar`: l
 
 Si ya tenías la historia 007a y traes la 007b, ejecuta `npm run db:preparar`: la 007b no tiene migraciones, paquetes ni variables nuevos, y la semilla agrega a `delfines` un Yape pendiente de verificación de ejemplo, sus datos de pago y su comprobante de ejemplo, que se guarda en `ALMACEN_DIRECTORIO`. `npm ci` no hace falta. Los pasos están en la guía, en "Después de traer la historia 007b".
 
+Si ya tenías la historia 007b y traes la 008a, ejecuta `npm ci` y `npm run db:preparar`: la 008a agrega a `alumnos` las columnas del token del QR, con su migración (que da un QR a los alumnos que ya existían), y la dependencia `qrcode`, que `npm ci` instala. La semilla no cambia. Los pasos están en la guía, en "Después de traer la historia 008a".
+
 ## Comandos principales
 
 | Comando                                                                 | Qué hace                                                                                                          |
@@ -368,7 +385,7 @@ Si ya tenías la historia 007a y traes la 007b, ejecuta `npm run db:preparar`: l
 - **Pagos y caja:** un pago confirmado tiene siempre su movimiento de caja, y la base no guarda uno sin el otro. La aprobación de un comprobante (007b) toma antes el alumno, la solicitud, la matrícula y el pago, y la caja al final. Los movimientos de caja no se cambian ni se borran, tampoco el dueño de las tablas, salvo con una migración que desactiva su trigger a propósito. Las reglas están en `docs/arquitectura.md`.
 - **Archivos:** las fotos y los comprobantes de pago se guardan con `AlmacenArchivos`, en la carpeta de `ALMACEN_DIRECTORIO`, fuera de lo que sirve la web.
   Cada historia que guarda archivos los guarda antes de confirmar la transacción, y borra lo que reemplaza después de confirmar
-  (reglas en `docs/arquitectura.md`). Los PDF del cierre de caja no se guardan: se arman al descargarlos (006b).
+  (reglas en `docs/arquitectura.md`). Los PDF del cierre de caja (006b) y del carnet (008a) no se guardan: se arman al descargarlos.
 - **Varias academias:** cada tabla de negocio lleva `academia_id`, y PostgreSQL filtra por academia con seguridad a nivel
   de fila (D-23). Eso ya está en la 001. Las reglas de fechas, transacciones y errores que siguen las historias nuevas
   están en [`docs/arquitectura.md`](docs/arquitectura.md).
@@ -402,7 +419,7 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 - [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, cómo
-  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día, el historial de caja con su PDF, y el cobro en efectivo con su ticket y su ajuste de monto.
+  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día, el historial de caja con su PDF, y el cobro en efectivo con su ticket y su ajuste de monto, el pago por Yape o transferencia, y el carnet con su QR.
 
 ## Forma de trabajo
 
