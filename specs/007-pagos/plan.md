@@ -196,8 +196,9 @@ relectura con `FOR SHARE` y `esperaMaximaDeBloqueoMs` si la confirmación es inc
    del estado y de la clave de idempotencia, imagen con `sharp` (recodificación a 2000 px, sin metadatos).
 3. `AlmacenArchivos.guardar` con la clave `academias/{a}/pagos/{pagoId}/comprobante-{uuid}.jpg` (el `pagoId` se genera
    en la API antes).
-4. Transacción: consultivo del DNI → alumno → solicitud → matrícula → pagos → (si es `PAGO_RECHAZADO`)
-   `bloquearClasesParaCupo` y cupo → decisiones en el orden del criterio 37 (paso 10) → `INSERT` del pago pendiente →
+4. Transacción: consultivo del DNI → alumno → solicitud → matrícula → pagos → `bloquearClasesParaCupo` siempre, una
+   sola vez (criterio 60, ronda adversarial 1 de la 007b; antes solo con `PAGO_RECHAZADO`) → «ahora» → decisiones en
+   el orden del criterio 37 (paso 10; el cupo solo se cuenta con `PAGO_RECHAZADO`) → `INSERT` del pago pendiente →
    `UPDATE matriculas SET estado = 'RESERVADA', reserva_vence_en = NULL` → auditoría. Sin caja.
 5. Si la transacción rechaza, se borra el archivo nuevo. Si el `INSERT` choca con `pagos_numero_operacion_abierto_key`,
    409 `NUMERO_OPERACION_YA_USADO` por el nombre del índice.

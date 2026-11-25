@@ -242,13 +242,37 @@ Estas tareas van antes de T27.
 
 ### Ataque, revisión y cierre
 
-- [ ] T42 · adversarial · Ataque de la 007b (número de operación con espacios, ceros, mayúsculas y ancho completo;
+- [x] T42 · adversarial · Ataque de la 007b (número de operación con espacios, ceros, mayúsculas y ancho completo;
   aprobar dos veces o un rechazado; caja de otro día; `HEAD` y archivos; token y aislamiento; último cupo en el
-  reintento; fin de mes)
-- [ ] T43 · especificador · Criterios nuevos de cada falla, con su origen
+  reintento; fin de mes) _(ronda 1, 25/11/2026: una falla alta, R1-1, que pasa al criterio 60, y dos bajas, R1-2 y
+  R1-3, como deuda en el backlog; ver [`rondas.md`](rondas.md). La corrección y la ronda 2 son T42a a T42c)_
+- [x] T43 · especificador · Criterios nuevos de cada falla, con su origen _(ronda 1 de la 007b: criterio 60,
+  `rondas.md` y DT-21 a DT-30)_
 - [ ] T44 · revisor · Comparar con la spec; `git diff` de las pruebas protegidas
 - [ ] T45 · tester · Suite completa, lint y tipos
 - [ ] T46 · documentador · Documentación y `specs/backlog.md`; commit (criterio 57)
+
+### Ataque adversarial de la 007b, ronda 1 (25/11/2026)
+
+Una falla alta, R1-1: la subida del comprobante con la reserva vigente no bloqueaba las clases y dejaba 21 matrículas
+con aforo 20. Pasa al criterio 60 de `spec.md`, crítico. El detalle está en `rondas.md`. Estas tareas van antes de T44.
+
+- [ ] T42a · test-writer · Prueba protegida del criterio 60 en rojo, en
+      `backend/test/integracion/pagos/comprobante-reserva-ronda1-007b.test.ts`, desde la spec y los contratos públicos,
+      sin mirar la implementación y con la marca `// spec: 007-pagos (pruebas protegidas)`. Incluye la reproducción
+      determinista: la subida con el reloj en T0 y el `INSERT` retenido en `pagos_numero_operacion_abierto_key` por otra
+      transacción sin confirmar, y el envío de la 005 con el reloj en T. Comprueba que hay un solo 201, que la ocupación
+      queda como mucho en 20 y que la operación que pierde no deja nada. Suma el control 409 `SOLICITUD_NO_EDITABLE`.
+      `tester` confirma el rojo por la razón esperada (dos 201 y ocupación 21), sin editar las pruebas protegidas
+      anteriores. Commit: «Pruebas protegidas (007): 007b, ataque ronda 1: la subida del comprobante bloquea las clases
+      (en rojo)», junto con estos cambios de `specs/007-pagos/` (criterio 60)
+- [ ] T42b · backend · Bloquear las clases en la subida: llamar a `bloquearClasesParaCupo` siempre y una sola vez, con
+      todas las clases de la matrícula, después de los pagos y antes de leer «ahora» y de decidir el paso 10 del
+      criterio 37. Contar el cupo solo con `PAGO_RECHAZADO`, sin tocar las pruebas protegidas. `tester` corre en verde la
+      prueba de T42a y las pruebas protegidas del comprobante, y el orquestador revisa con `git diff` que T42b no tocó
+      pruebas protegidas (criterio 60; plan, «Subida del comprobante», paso 4)
+- [ ] T42c · adversarial · Ronda 2 de la 007b, con foco en el criterio 60 (el reintento, el cobro y el envío sobre el
+      último cupo en el instante del vencimiento, y la subida con varias clases) y en lo que no se atacó en la ronda 1
 
 ## Solo ruta crítica
 
