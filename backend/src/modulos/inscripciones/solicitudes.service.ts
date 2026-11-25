@@ -39,10 +39,10 @@ interface FilaBloqueadaDelPago {
  * `conAcademia(<academia de la sesión>, …)`: la academia nunca viene de la dirección, la consulta ni el cuerpo.
  *
  * - `listar`: lectura sin bloqueos ni auditoría. Las 200 solicitudes más recientes de la academia, filtradas por estado visible.
- * - `cancelar`: en una sola transacción, `bloquearActorVigente` → la solicitud `FOR UPDATE` → su matrícula `FOR UPDATE` → sus pagos `FOR UPDATE` →
- *   `bloquearClasesParaCupo` con sus clases (una llamada). No toma `alumnos` ni los bloqueos consultivos del envío, así que no entra en
- *   ciclo con el envío (alumno → solicitudes → matrículas → clases) ni con la foto (alumno → solicitud). No envía correo ni toca la foto
- *   (DR-17 y DR-18).
+ * - `cancelar`: en una sola transacción, `bloquearActorVigente` → el alumno de la solicitud `FOR UPDATE` (DT-14 de 008) → la solicitud
+ *   `FOR UPDATE` → su matrícula `FOR UPDATE` → sus pagos `FOR UPDATE` → `bloquearClasesParaCupo` con sus clases (una llamada). Es el mismo
+ *   orden del envío, el cobro y la foto (alumno → solicitud → matrícula → pagos → clases), así que no entra en ciclo con ellos. No toma
+ *   los bloqueos consultivos del envío, que van siempre antes de `alumnos`. No envía correo ni toca la foto (DR-17 y DR-18).
  */
 @Injectable()
 export class SolicitudesService {
