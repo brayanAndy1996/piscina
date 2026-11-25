@@ -19,8 +19,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 005b | Foto de la inscripción y panel de solicitudes | Sí | ✅ |
 | 006a | Caja del día: apertura, egresos, cierre y reapertura | Sí | ✅ |
 | 006b | Historial y PDF del cierre de caja | Sí | ✅ |
-| 007a | Cobro en recepción y cuenta del alumno | Sí | 🟨 |
-| 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ⬜ |
+| 007a | Cobro en recepción y cuenta del alumno | Sí | ✅ |
+| 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | 🟨 |
 | 008 | Carnet digital con QR | En parte | ⬜ |
 | 009 | Asistencia y faltas | Sí | ⬜ |
 | 010 | Mensualidades y renovación | En parte | ⬜ |
@@ -167,11 +167,11 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Estado: spec aprobada por Bryan el 24/11/2026 (DR-1 a DR-14 de 007, todas con la propuesta; DT-1 a DT-16 de 007,
     aceptadas por el orquestador), en [`specs/007-pagos/`](007-pagos/spec.md). Por DR-14 se entrega en dos PR desde esa
     misma carpeta, los dos de ruta crítica:
-    - **007a · cobro en recepción y cuenta del alumno** (en curso): criterios 1 a 35 y 54 a 57 sin las partes [007b]
+    - **007a · cobro en recepción y cuenta del alumno** (unida a main el 25/11/2026, [PR #13](https://github.com/brayanAndy1996/piscina/pull/13), tras cuatro rondas adversariales): criterios 1 a 35 y 54 a 57 sin las partes [007b]
       (tabla `pagos` completa con sus invariantes, cobro en efectivo con la caja de hoy, ajuste del monto por el
       administrador, paso de cliente a alumno con su cuenta, ticket imprimible, estado `CONFIRMADA`, recepción sin los
       límites por conexión, correo de pago confirmado).
-    - **007b · Yape y transferencia** (siguiente PR, con la 007a unida): criterios 36 a 53, más las partes [007b]
+    - **007b · Yape y transferencia** (en curso desde el 25/11/2026, con la 007a unida; método de la D-31): criterios 36 a 53, más las partes [007b]
       (subida del comprobante desde el enlace, número de operación sin duplicados, bandeja, aprobación y rechazo, datos
       de pago en la configuración, correo de pago rechazado). Sin migración.
   - Lo decidido: el personal y los alumnos no comparten DNI (DR-1); un comprobante en revisión al terminar el mes se
