@@ -43,7 +43,7 @@ interface FilaVista {
   monto_ajustado: string | null;
   monto_calculado: string;
   es_proporcional: boolean;
-  /** El último pago de la matrícula (`unirUltimoPago`): todo nulo si no tiene. */
+  /** El pago que cuenta de la matrícula (`unirUltimoPago`: el abierto y, si no hay, el último rechazado): todo nulo si no tiene. */
   pago_metodo: 'EFECTIVO' | 'YAPE' | 'TRANSFERENCIA' | null;
   pago_estado: 'PENDIENTE_VERIFICACION' | 'CONFIRMADO' | 'RECHAZADO' | null;
   pago_monto: string | null;
@@ -201,9 +201,11 @@ function vistaDe(fila: FilaVista, ahora: Date): VistaSolicitud {
   // El primer nombre de pila (DR-9, P2): nunca los demás nombres ni los apellidos.
   const nombres = fila.nombres.trim().split(/\s+/)[0] ?? '';
   if (estado === 'CONFIRMADA') {
-    // Una solicitud confirmada siempre tiene su pago confirmado (criterio 5): si falta, es un fallo interno, no un valor inventado.
-    const confirmadoEn = fila.pago_verificado_en ?? fila.pago_registrado_en;
+    // Una solicitud confirmada siempre tiene su pago confirmado (criterio 5): `unirUltimoPago` trae el abierto antes que cualquier rechazado,
+    // así que aquí está el confirmado. Si falta, es un fallo interno, no un valor inventado.
+    const confirmadoEn = fila.pago_verificado_en;
     if (
+      fila.pago_estado !== 'CONFIRMADO' ||
       fila.pago_metodo === null ||
       fila.pago_monto === null ||
       fila.pago_numero_ticket === null ||
@@ -224,29 +226,40 @@ function vistaDe(fila: FilaVista, ahora: Date): VistaSolicitud {
     };
   }
   if (estado === 'EN_VERIFICACION') {
+    // El comprobante en revisión es el pago pendiente: ningún dato se inventa. Una solicitud en revisión sin su pago es un fallo interno.
+    if (
+      fila.pago_estado !== 'PENDIENTE_VERIFICACION' ||
+      fila.pago_metodo === null ||
+      fila.pago_metodo === 'EFECTIVO' ||
+      fila.pago_monto === null ||
+      fila.pago_fecha_operacion === null ||
+      fila.pago_registrado_en === null
+    ) {
+      throw new Error('Una solicitud en verificación no tiene su comprobante pendiente.');
+    }
     return {
       ...base,
       estado,
       nombres,
       fotoCargada: fila.foto_cargada,
       pago: {
-        metodo: fila.pago_metodo ?? 'YAPE',
-        monto: aTextoMonto(fila.pago_monto ?? total),
-        fechaOperacion: fila.pago_fecha_operacion ?? '',
-        enviadoEn: (fila.pago_registrado_en ?? fila.creada_en).toISOString(),
+        metodo: fila.pago_metodo,
+        monto: aTextoMonto(fila.pago_monto),
+        fechaOperacion: fila.pago_fecha_operacion,
+        enviadoEn: fila.pago_registrado_en.toISOString(),
       },
     };
   }
   if (estado === 'PAGO_RECHAZADO') {
+    if (fila.pago_estado !== 'RECHAZADO' || fila.pago_motivo_rechazo === null || fila.pago_verificado_en === null) {
+      throw new Error('Una solicitud con el pago rechazado no tiene su pago rechazado.');
+    }
     return {
       ...base,
       estado,
       nombres,
       fotoCargada: fila.foto_cargada,
-      rechazo: {
-        motivo: fila.pago_motivo_rechazo ?? '',
-        rechazadoEn: (fila.pago_verificado_en ?? fila.pago_registrado_en ?? fila.creada_en).toISOString(),
-      },
+      rechazo: { motivo: fila.pago_motivo_rechazo, rechazadoEn: fila.pago_verificado_en.toISOString() },
       // El fin del mes de la matrícula en Lima: hasta entonces se puede volver a pagar.
       pagableHasta: finDelMesEnLima(new Date(Date.UTC(fila.anio, fila.mes - 1, 15, 12))).toISOString(),
     };

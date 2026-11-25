@@ -81,3 +81,13 @@ export function numeroOperacionYaUsado(): ErrorNegocio {
     'Ese número de operación ya se registró. Revisa el número o acércate a recepción.',
   );
 }
+
+/** 409 (007b, criterios 48 y 49): el pago ya se confirmó (aprobado o cobrado en efectivo): ya no se rechaza. */
+export function pagoYaConfirmado(): ErrorNegocio {
+  return new ErrorNegocio(409, 'PAGO_YA_CONFIRMADO', 'Este pago ya está confirmado: no se puede rechazar.');
+}
+
+/** 409 (007b, criterio 48): el pago ya se rechazó: no se aprueba. La persona sube otro comprobante. */
+export function pagoYaRechazado(): ErrorNegocio {
+  return new ErrorNegocio(409, 'PAGO_YA_RECHAZADO', 'Este pago ya fue rechazado: no se puede aprobar.');
+}

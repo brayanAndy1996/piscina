@@ -3,15 +3,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   type AjustarMonto,
   type CobrarEnEfectivo,
-  esMenorDeEdad,
   type Pago,
   type RespuestaSolicitudPanel,
   type SolicitudPanel,
 } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
 import { aDecimal, aTextoMonto, montosIguales } from '../../comun/dinero';
-import { hoyEnLima } from '../../comun/fechas';
-import { ENVIADOR_CORREO, enviarSinEsperar, type EnviadorCorreo } from '../../infraestructura/correo';
+import { ENVIADOR_CORREO, type EnviadorCorreo } from '../../infraestructura/correo';
 import { BaseDatos, restriccionDeUnicidadViolada, type TransaccionAcademia } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { hashearClave } from '../../infraestructura/seguridad';
@@ -22,7 +20,8 @@ import { bloquearClasesParaCupo } from '../clases';
 import { estadoVisible } from '../inscripciones/estado-visible';
 import { leerElementosDelPanel } from '../inscripciones/panel-solicitudes';
 import { UsuariosService } from '../usuarios/usuarios.service';
-import { bloquearFilasDelCobro, type FilasDelCobro, leerDniDeLaSolicitud } from './bloqueos';
+import { avisarPagoConfirmado, type DestinatarioDelAviso, destinatariosDelAviso } from './avisos';
+import { bloquearFilasDelCobro, leerDniDeLaSolicitud } from './bloqueos';
 import { exigirCupoDeLaMatricula } from './cupo';
 import { confirmarPagoEnTransaccion } from './confirmacion';
 import { totalACobrar } from './dominio/total';
@@ -48,11 +47,6 @@ export interface ResultadoDelCobro {
   readonly pago: Pago;
   readonly solicitud: SolicitudPanel;
   readonly creado: boolean;
-}
-
-interface DestinatarioDelAviso {
-  readonly correos: readonly string[];
-  readonly codigo: string;
 }
 
 interface FilaDelPago {
@@ -143,7 +137,18 @@ export class CobrosService {
         const resultado = await this.baseDatos.conAcademia(actor.academiaId, (tx) =>
           this.cobrarEnTransaccion(tx, sesion, solicitudIdPedido, datos, previa, claveHash, ip),
         );
-        if (resultado.aviso !== null) this.avisarPagoConfirmado(sesion, resultado.aviso);
+        if (resultado.aviso !== null) {
+          avisarPagoConfirmado(
+            this.correo,
+            this.registro,
+            {
+              id: sesion.usuario.academiaId,
+              nombre: sesion.academia.nombre,
+              nombreCorto: sesion.academia.nombreCorto,
+            },
+            resultado.aviso,
+          );
+        }
         return { pago: resultado.pago, solicitud: resultado.solicitud, creado: resultado.creado };
       } catch (error) {
         const restriccion = restriccionDeUnicidadViolada(error);
@@ -245,7 +250,7 @@ export class CobrosService {
     return {
       ...(await this.respuestaDe(tx, ahora, filas.solicitud.id, pagoId)),
       creado: true,
-      aviso: await this.destinatariosDelAviso(tx, filas, ahora),
+      aviso: await destinatariosDelAviso(tx, filas.alumno.id, filas.solicitud.codigo, ahora),
     };
   }
 
@@ -259,52 +264,6 @@ export class CobrosService {
     const [solicitud] = await leerElementosDelPanel(tx, ahora, { id: solicitudId });
     if (!pago || !solicitud) throw new Error('El cobro no dejó su pago o su solicitud.');
     return { pago, solicitud };
-  }
-
-  /** A quién avisar del pago (criterio 51 a): el correo actual del alumno y, si es menor, el de su apoderado, sin repetir. */
-  private async destinatariosDelAviso(
-    tx: TransaccionAcademia,
-    filas: FilasDelCobro,
-    ahora: Date,
-  ): Promise<DestinatarioDelAviso> {
-    const personas = await tx.cliente.$queryRaw<
-      { correo: string | null; fecha_nacimiento: string; correo_apoderado: string | null }[]
-    >`
-      SELECT a.correo, a.fecha_nacimiento::text AS fecha_nacimiento, ap.correo AS correo_apoderado
-        FROM alumnos a
-        LEFT JOIN apoderados ap ON ap.academia_id = a.academia_id AND ap.alumno_id = a.id
-       WHERE a.academia_id = ${tx.academiaId}::uuid AND a.id = ${filas.alumno.id}::uuid`;
-    const persona = personas[0];
-    const correos: string[] = [];
-    if (persona) {
-      const menor = esMenorDeEdad(persona.fecha_nacimiento, hoyEnLima(ahora));
-      for (const correo of [persona.correo, menor ? persona.correo_apoderado : null]) {
-        if (correo !== null && correo !== undefined && correo !== '' && !correos.includes(correo)) correos.push(correo);
-      }
-    }
-    return { correos, codigo: filas.solicitud.codigo };
-  }
-
-  /** Después de confirmar y sin esperar (D-19, criterio 51): ni un proveedor lento ni un fallo cambian la respuesta. Sin el DNI ni el token. */
-  private avisarPagoConfirmado(sesion: SesionVerificada, aviso: DestinatarioDelAviso): void {
-    for (const para of aviso.correos) {
-      enviarSinEsperar(
-        this.correo,
-        {
-          academiaId: sesion.usuario.academiaId,
-          para,
-          plantilla: 'PAGO_CONFIRMADO',
-          datos: {
-            nombreAcademia: sesion.academia.nombre,
-            codigo: aviso.codigo,
-            enlaceDeIngreso: `/a/${sesion.academia.nombreCorto}/ingresar`,
-            aviso:
-              'Tu usuario y tu contraseña inicial son tu DNI. Al entrar por primera vez debes cambiar tu contraseña.',
-          },
-        },
-        this.registro,
-      );
-    }
   }
 
   // -------------------------------------------------------------------------------------------------------------------------------

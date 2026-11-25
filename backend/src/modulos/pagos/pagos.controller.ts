@@ -1,10 +1,14 @@
-import { Body, Controller, Get, HttpCode, NotImplementedException, Param, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
 import {
+  aprobarPagoSchema,
   ajustarMontoSchema,
   type AjustarMonto,
   cobrarEnEfectivoSchema,
   type CobrarEnEfectivo,
+  rechazarPagoSchema,
+  type RechazarPago,
   type RespuestaCobro,
+  type RespuestaPago,
   type RespuestaPagosPendientes,
   type RespuestaSolicitudPanel,
   type RespuestaTicket,
@@ -98,21 +102,31 @@ export class PagosController {
   }
 
   /**
-   * `POST /api/pagos/{id}/aprobacion` (criterio 47). **Todavía sin implementar (T37 de la 007):** valida el permiso y responde 501. La ruta existe
-   * para que las rutas de la 007b estén registradas; T37 le suma el cuerpo, el `{id}` y el servicio.
+   * `POST /api/pagos/{id}/aprobacion` (criterio 47): cuerpo `{}` estricto. 200 con `{ pago }`, también si ya estaba confirmado (criterio 48). El
+   * `{id}` no pasa por pipes: uno que no es UUID responde el mismo 404 que uno que no existe o es de otra academia (AT-2 de 004).
    */
   @Post('pagos/:id/aprobacion')
   @HttpCode(200)
   @Permiso('VERIFICAR_PAGOS')
-  aprobar(): never {
-    throw new NotImplementedException();
+  aprobar(
+    @SesionActual() sesion: SesionVerificada,
+    @Body(new ValidarCon(aprobarPagoSchema)) _cuerpo: unknown,
+    @Param('id') id: string,
+    @Req() solicitud: Request,
+  ): Promise<RespuestaPago> {
+    return this.verificacion.aprobar(sesion, id, solicitud.ip ?? null);
   }
 
-  /** `POST /api/pagos/{id}/rechazo` (criterio 49). **Todavía sin implementar (T37 de la 007):** valida el permiso y responde 501. */
+  /** `POST /api/pagos/{id}/rechazo` (criterio 49): `{ motivo }` estricto. 200 con `{ pago }`, también si ya estaba rechazado. */
   @Post('pagos/:id/rechazo')
   @HttpCode(200)
   @Permiso('VERIFICAR_PAGOS')
-  rechazar(): never {
-    throw new NotImplementedException();
+  rechazar(
+    @SesionActual() sesion: SesionVerificada,
+    @Body(new ValidarCon(rechazarPagoSchema)) datos: RechazarPago,
+    @Param('id') id: string,
+    @Req() solicitud: Request,
+  ): Promise<RespuestaPago> {
+    return this.verificacion.rechazar(sesion, id, datos, solicitud.ip ?? null);
   }
 }
