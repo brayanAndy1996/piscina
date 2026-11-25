@@ -1,4 +1,5 @@
 // spec: 004-planes-clases-aforo (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, DT-12 y criterio 8): la matriz pasa de 25 a 26 filas con `AJUSTAR_MONTO_COBRO` (solo ADMIN); solo cambia el conteo de la matriz.
 import { MATRIZ_PERMISOS, puede } from '@aquagestion/contratos';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -362,8 +363,8 @@ describe('criterio 5: permisos de planes y clases', () => {
   describe('la matriz de permisos', () => {
     it('criterio 5: CONFIGURAR_PLANES_HORARIOS_AFORO sigue solo con ADMIN: TODO y la matriz sigue con 24 filas más REABRIR_CAJA de la 006 (DT-2)', () => {
       expect(MATRIZ_PERMISOS['CONFIGURAR_PLANES_HORARIOS_AFORO']).toEqual({ ADMIN: 'TODO' });
-      // Historia 006 (DT-1): la matriz suma la fila REABRIR_CAJA (de 24 a 25); esta prueba no cambia más.
-      expect(Object.keys(MATRIZ_PERMISOS)).toHaveLength(25);
+      // Historia 006 (DT-1): la matriz suma la fila REABRIR_CAJA (de 24 a 25); historia 007 (DT-12): suma AJUSTAR_MONTO_COBRO (de 25 a 26).
+      expect(Object.keys(MATRIZ_PERMISOS)).toHaveLength(26);
       expect(puede('ADMIN', 'CONFIGURAR_PLANES_HORARIOS_AFORO')).toBe(true);
       for (const rol of ['SECRETARIA', 'ENTRENADOR', 'ALUMNO']) {
         expect(puede(rol, 'CONFIGURAR_PLANES_HORARIOS_AFORO'), rol).toBe(false);

@@ -32,8 +32,8 @@ export function LayoutPanel({
   const rutaIngreso = `/a/${encodeURIComponent(usuario.academia.nombreCorto)}/ingresar`;
 
   return (
-    <div className="min-h-screen bg-sky-50">
-      <header className="bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="min-h-screen bg-sky-50 print:bg-white">
+      <header className="bg-white shadow-sm ring-1 ring-sky-100 print:hidden">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-sky-800">AquaGestión</p>
@@ -57,7 +57,7 @@ export function LayoutPanel({
           </button>
         </div>
       </header>
-      <div className="mx-auto max-w-4xl px-4 pt-4">
+      <div className="mx-auto max-w-4xl px-4 pt-4 print:hidden">
         {aviso ? (
           <div
             role="status"
@@ -73,7 +73,7 @@ export function LayoutPanel({
         ) : null}
         {cerrar.isError ? <Alerta>No se pudo cerrar la sesión. {mensajeGeneral(cerrar.error)}</Alerta> : null}
       </div>
-      <main className="mx-auto max-w-4xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-4xl px-4 py-6 print:max-w-none print:p-0">{children}</main>
     </div>
   );
 }

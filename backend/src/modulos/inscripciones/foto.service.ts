@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  type EstadoSolicitud,
   FOTO_LADO_GUARDADO,
   FOTO_LADO_MAXIMO,
   FOTO_LADO_MINIMO,
@@ -23,7 +24,7 @@ import {
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { hashDeToken } from './dominio/codigos';
 import { imagenNoValida, solicitudNoEditable, solicitudNoEncontrada } from './errores';
-import { estadoVisible } from './estado-visible';
+import { estadoVisible, unirUltimoPago } from './estado-visible';
 
 // `sharp` guarda en memoria las últimas operaciones por defecto: en un servidor que recibe fotos de desconocidos no sirve de nada.
 sharp.cache(false);
@@ -48,10 +49,15 @@ function esRechazoDeLaTransaccion(error: unknown): boolean {
 interface FilaDeLaSolicitud {
   solicitud_id: string;
   alumno_id: string;
-  estado_solicitud: 'PENDIENTE_PAGO' | 'VENCIDA' | 'CANCELADA';
+  estado_solicitud: EstadoSolicitud;
   estado_matricula: 'RESERVADA' | 'VIGENTE' | 'FINALIZADA' | 'CANCELADA';
   reserva_vence_en: Date | null;
   estado_alumno: string;
+  /** El último pago de la matrícula, si lo hay, y el mes de la matrícula (007: `EN_VERIFICACION` y `PAGO_RECHAZADO` siguen editables). */
+  estado_ultimo_pago: 'PENDIENTE_VERIFICACION' | 'CONFIRMADO' | 'RECHAZADO' | null;
+  hay_pago_pendiente: boolean | null;
+  anio: number;
+  mes: number;
 }
 
 /**
@@ -188,10 +194,12 @@ export class FotoService {
   private async leerPorToken(tx: TransaccionAcademia, hash: string): Promise<FilaDeLaSolicitud | undefined> {
     const filas = await tx.cliente.$queryRaw<FilaDeLaSolicitud[]>`
       SELECT s.id::text AS solicitud_id, s.alumno_id::text AS alumno_id, s.estado::text AS estado_solicitud,
-             m.estado::text AS estado_matricula, m.reserva_vence_en, a.estado::text AS estado_alumno
+             m.estado::text AS estado_matricula, m.reserva_vence_en, a.estado::text AS estado_alumno,
+             up.estado::text AS estado_ultimo_pago, up.hay_pendiente AS hay_pago_pendiente, m.anio::int AS anio, m.mes::int AS mes
         FROM solicitudes_inscripcion s
         JOIN alumnos a ON a.academia_id = s.academia_id AND a.id = s.alumno_id
         JOIN matriculas m ON m.academia_id = s.academia_id AND m.solicitud_id = s.id
+        ${unirUltimoPago}
        WHERE s.academia_id = ${tx.academiaId}::uuid AND s.token_hash = decode(${hash}::text, 'hex')
        ORDER BY m.creado_en DESC
        LIMIT 1`;
@@ -199,16 +207,14 @@ export class FotoService {
   }
 
   /**
-   * ¿Admite la foto? Solo con la vista completa (PB5): estado visible `PENDIENTE_PAGO`, fila `PENDIENTE_PAGO` y alumno `CLIENTE`. Una
-   * `PENDIENTE_PAGO` sin vencimiento (pago en verificación, desde la 007) sigue aceptándola. En el instante exacto del vencimiento (con el
-   * tope del fin de mes, criterio 54) ya es `VENCIDA`.
+   * ¿Admite la foto? Solo con la vista completa de la solicitud vigente del cliente (PB5; 007, criterio 31): fila `PENDIENTE_PAGO`, alumno
+   * `CLIENTE` y estado visible `PENDIENTE_PAGO`, `EN_VERIFICACION` o `PAGO_RECHAZADO`. Con `CONFIRMADA` el alumno ya no está en `CLIENTE`:
+   * la foto de un alumno es de la 008. En el instante exacto del vencimiento (con el tope del fin de mes, criterio 54) ya es `VENCIDA`.
    */
   private esEditable(fila: FilaDeLaSolicitud, ahora: Date): boolean {
-    return (
-      fila.estado_solicitud === 'PENDIENTE_PAGO' &&
-      fila.estado_alumno === 'CLIENTE' &&
-      estadoVisible(fila, ahora) === 'PENDIENTE_PAGO'
-    );
+    if (fila.estado_solicitud !== 'PENDIENTE_PAGO' || fila.estado_alumno !== 'CLIENTE') return false;
+    const estado = estadoVisible(fila, ahora);
+    return estado === 'PENDIENTE_PAGO' || estado === 'EN_VERIFICACION' || estado === 'PAGO_RECHAZADO';
   }
 
   /**
@@ -231,11 +237,21 @@ export class FotoService {
        WHERE academia_id = ${tx.academiaId}::uuid AND id = ${solicitudId}::uuid
          FOR UPDATE`;
     const matriculas = await tx.cliente.$queryRaw<
-      { estado: FilaDeLaSolicitud['estado_matricula']; reserva_vence_en: Date | null }[]
+      {
+        estado: FilaDeLaSolicitud['estado_matricula'];
+        reserva_vence_en: Date | null;
+        estado_ultimo_pago: FilaDeLaSolicitud['estado_ultimo_pago'];
+        hay_pago_pendiente: boolean | null;
+        anio: number;
+        mes: number;
+      }[]
     >`
-      SELECT estado::text AS estado, reserva_vence_en FROM matriculas
-       WHERE academia_id = ${tx.academiaId}::uuid AND solicitud_id = ${solicitudId}::uuid
-       ORDER BY creado_en DESC
+      SELECT m.estado::text AS estado, m.reserva_vence_en, up.estado::text AS estado_ultimo_pago,
+             up.hay_pendiente AS hay_pago_pendiente, m.anio::int AS anio, m.mes::int AS mes
+        FROM matriculas m
+        ${unirUltimoPago}
+       WHERE m.academia_id = ${tx.academiaId}::uuid AND m.solicitud_id = ${solicitudId}::uuid
+       ORDER BY m.creado_en DESC
        LIMIT 1`;
     const alumno = alumnos[0];
     const solicitud = solicitudes[0];
@@ -249,6 +265,10 @@ export class FotoService {
       estado_matricula: matricula.estado,
       reserva_vence_en: matricula.reserva_vence_en,
       estado_alumno: alumno.estado,
+      estado_ultimo_pago: matricula.estado_ultimo_pago,
+      hay_pago_pendiente: matricula.hay_pago_pendiente,
+      anio: matricula.anio,
+      mes: matricula.mes,
     };
     if (!this.esEditable(fila, ahora)) throw solicitudNoEditable();
     leida.anterior = alumno.foto_clave;

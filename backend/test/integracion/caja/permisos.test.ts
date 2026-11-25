@@ -1,4 +1,5 @@
 // spec: 006-caja (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, DT-12 y criterio 8): la matriz pasa de 25 a 26 filas con `AJUSTAR_MONTO_COBRO` (solo ADMIN); solo cambia el conteo de la matriz.
 import { MATRIZ_PERMISOS } from '@aquagestion/contratos';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { insertarAuditoria, leerAuditoriaDeAcademia } from '../../utilidades/datos';
@@ -414,7 +415,7 @@ describe('criterio 7: permisos de las rutas de la caja', () => {
     it('criterio 7: REABRIR_CAJA es solo de ADMIN y ABRIR_CERRAR_CAJA de ADMIN y SECRETARIA (la API y la web leen la misma matriz)', () => {
       expect(matriz['REABRIR_CAJA']).toEqual({ ADMIN: 'TODO' });
       expect(matriz['ABRIR_CERRAR_CAJA']).toEqual({ ADMIN: 'TODO', SECRETARIA: 'TODO' });
-      expect(Object.keys(matriz)).toHaveLength(25);
+      expect(Object.keys(matriz)).toHaveLength(26);
     });
   });
 });

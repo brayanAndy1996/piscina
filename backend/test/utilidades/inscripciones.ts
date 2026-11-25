@@ -1,4 +1,5 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterio 7): `TIPO_DE_COLUMNA` suma `registrada_por` (uuid) para escribir esa columna de `solicitudes_inscripcion`. No se quitó ni se cambió nada más.
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -891,6 +892,7 @@ const TIPO_DE_COLUMNA: Readonly<Record<string, string>> = {
   matricula_id: 'uuid',
   clase_id: 'uuid',
   usuario_id: 'uuid',
+  registrada_por: 'uuid',
   clave_idempotencia: 'uuid',
   dni: 'text',
   nombres: 'text',

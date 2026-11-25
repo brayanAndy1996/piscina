@@ -1,6 +1,9 @@
 import {
+  type AjustarMonto,
   type CancelarSolicitud,
+  type CobrarEnEfectivo,
   type FiltroEstadoSolicitudes,
+  respuestaCobroSchema,
   respuestaListaSolicitudesSchema,
   respuestaSolicitudPanelSchema,
 } from '@aquagestion/contratos';
@@ -15,5 +18,17 @@ export async function listarSolicitudes(estado: FiltroEstadoSolicitudes) {
 
 export async function cancelarSolicitud({ id, datos }: { id: string; datos: CancelarSolicitud }) {
   const ruta = `/api/solicitudes/${encodeURIComponent(id)}/cancelar`;
+  return (await enviarJson('POST', ruta, datos, respuestaSolicitudPanelSchema, [200])).datos.solicitud;
+}
+
+/** 201 con el pago nuevo; 200 con el mismo resultado si es el reintento de la misma clave (criterio 17). */
+export async function cobrarEnEfectivo({ id, datos }: { id: string; datos: CobrarEnEfectivo }) {
+  const ruta = `/api/solicitudes/${encodeURIComponent(id)}/pago-efectivo`;
+  return (await enviarJson('POST', ruta, datos, respuestaCobroSchema, [200, 201])).datos;
+}
+
+/** Solo el administrador (RN-25). Repetir el mismo monto y motivo responde 200 sin cambiar nada (criterio 11). */
+export async function ajustarMonto({ id, datos }: { id: string; datos: AjustarMonto }) {
+  const ruta = `/api/solicitudes/${encodeURIComponent(id)}/ajuste-monto`;
   return (await enviarJson('POST', ruta, datos, respuestaSolicitudPanelSchema, [200])).datos.solicitud;
 }

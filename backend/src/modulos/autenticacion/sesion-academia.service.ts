@@ -203,6 +203,25 @@ export class SesionAcademiaService {
   }
 
   /**
+   * La sesión de recepción de una petición pública de `/api/a/{nombreCorto}/…` (spec 007, criterios 33 a 35; DT-11): la de un `ADMIN` o una
+   * `SECRETARIA` activos, con la versión de token vigente, de una academia activa y sin el cambio de contraseña pendiente. Para cualquier otra
+   * cosa (sin cookie, cookie inválida, vencida o de una versión anterior, otro rol, academia suspendida, cambio pendiente o un fallo al leer)
+   * devuelve `null` y nunca lanza: una petición pública no responde 401 ni 403 por su cookie. Es una lectura sin bloqueos, sin auditoría y sin
+   * el recuerdo por petición de `autenticar`. Una cookie con la firma inválida no llega a la base. Quien llama decide además si la academia
+   * de la sesión es la del nombre corto de la dirección.
+   */
+  async leerSesionDeRecepcion(solicitud: Request): Promise<SesionVerificada | null> {
+    try {
+      const sesion = await this.verificarSesion(solicitud);
+      if (sesion.usuario.debeCambiarClave) return null;
+      if (sesion.usuario.rol !== 'ADMIN' && sesion.usuario.rol !== 'SECRETARIA') return null;
+      return sesion;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Vuelve a comprobar la sesión de una petición que ya empezó (spec 006b, criterio 53), por ejemplo después de esperar un turno largo. Hace
    * lo mismo que una petición nueva con la misma cookie, en el mismo orden y con los mismos errores: la sesión sin el recuerdo por petición de
    * `autenticar` (401 `NO_AUTENTICADO`, 403 `ACADEMIA_SUSPENDIDA`), el cambio de contraseña pendiente (403 `CAMBIO_DE_CLAVE_OBLIGATORIO`, la regla

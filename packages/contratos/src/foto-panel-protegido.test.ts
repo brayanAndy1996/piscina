@@ -1,4 +1,6 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterio 29 y «Pruebas protegidas anteriores que amplía la 007a»): el elemento de ejemplo suma
+// `ajuste: null` y `pago: null`, y la lista de claves obligatorias suma `ajuste` y `pago`. No se quitó ni se cambió nada más.
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -100,6 +102,8 @@ const elemento = (cambios: Record<string, unknown> = {}): Record<string, unknown
   mes: '2026-11',
   clasesTotales: 12,
   monto: '120.00',
+  ajuste: null,
+  pago: null,
   ...cambios,
 });
 
@@ -156,6 +160,8 @@ describe('solicitudPanelSchema (criterio 38, PB11)', () => {
     'mes',
     'clasesTotales',
     'monto',
+    'ajuste',
+    'pago',
   ])('criterio 38: rechaza un elemento sin la clave %s', async (clave) => {
     const schema = await esquema('solicitudPanelSchema');
     const sin = elemento();

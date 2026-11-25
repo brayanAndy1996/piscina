@@ -82,6 +82,7 @@ model Academia {
   cajas           Caja[]
   movimientosCaja MovimientoCaja[]
   cierresCaja     CierreCaja[]
+  pagos           Pago[]
 
   @@map("academias")
 }
@@ -175,13 +176,16 @@ model Usuario {
   creadoEn         DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn    DateTime      @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
-  academia          Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  clases            Clase[]
-  alumnos           Alumno[]
-  cajasAbiertas     Caja[]           @relation("CajaAbiertaPor")
-  movimientosCaja   MovimientoCaja[]
-  cierresCerrados   CierreCaja[]     @relation("CierreCerradoPor")
-  cierresReabiertos CierreCaja[]     @relation("CierreReabiertoPor")
+  academia               Academia               @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  clases                 Clase[]
+  alumnos                Alumno[]
+  cajasAbiertas          Caja[]                 @relation("CajaAbiertaPor")
+  movimientosCaja        MovimientoCaja[]
+  cierresCerrados        CierreCaja[]           @relation("CierreCerradoPor")
+  cierresReabiertos      CierreCaja[]           @relation("CierreReabiertoPor")
+  pagosRegistrados       Pago[]                 @relation("PagoRegistradoPor")
+  pagosVerificados       Pago[]                 @relation("PagoVerificadoPor")
+  solicitudesRegistradas SolicitudInscripcion[] @relation("SolicitudRegistradaPor")
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
@@ -258,11 +262,12 @@ enum EstadoAlumno {
   @@map("estado_alumno")
 }
 
-/// La 007 suma los estados de la verificación del pago.
+/// `CONFIRMADA` (007): el pago se confirmó y la persona pasó a alumno. `EN_VERIFICACION` y `PAGO_RECHAZADO` se calculan al leer con el último pago.
 enum EstadoSolicitud {
   PENDIENTE_PAGO
   VENCIDA
   CANCELADA
+  CONFIRMADA
 
   @@map("estado_solicitud")
 }
@@ -359,6 +364,7 @@ model Alumno {
   solicitudes     SolicitudInscripcion[]
   matriculas      Matricula[]
   movimientosCaja MovimientoCaja[]
+  pagos           Pago[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
@@ -440,11 +446,14 @@ model SolicitudInscripcion {
   claveIdempotencia String          @map("clave_idempotencia") @db.Uuid
   estado            EstadoSolicitud @default(PENDIENTE_PAGO)
   ipOrigen          String?         @map("ip_origen") @db.Inet
+  /// Quién inscribió a la persona desde recepción (007, criterio 34); `null` si se inscribió sola. Solo se escribe al insertar.
+  registradaPorId   String?         @map("registrada_por") @db.Uuid
   creadoEn          DateTime        @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn     DateTime        @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
   academia        Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   alumno          Alumno           @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  registradaPor   Usuario?         @relation("SolicitudRegistradaPor", fields: [academiaId, registradaPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   consentimientos Consentimiento[]
   matriculas      Matricula[]
 
@@ -487,8 +496,10 @@ model Matricula {
   plan      Plan                  @relation(fields: [academiaId, planId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   solicitud SolicitudInscripcion? @relation(fields: [academiaId, solicitudId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   clases    MatriculaClase[]
+  pagos     Pago[]
 
   @@unique([academiaId, id])
+  @@unique([academiaId, id, alumnoId])
   @@index([academiaId, anio, mes, estado])
   @@index([academiaId, alumnoId])
   @@index([academiaId, solicitudId])
@@ -573,8 +584,8 @@ model Caja {
   @@map("cajas")
 }
 
-/// Un ingreso (de un cobro, 007) o un egreso menor (en efectivo) de la caja. No cambia ni se borra (DR-5). `pagoId` no tiene llave foránea
-/// hasta la 007. Los índices únicos parciales por `pago_id` y por `clave_idempotencia` y el trigger de la caja cerrada van a mano.
+/// Un ingreso (de un cobro, 007) o un egreso menor (en efectivo) de la caja. No cambia ni se borra (DR-5). `pagoId` tiene la llave compuesta
+/// hacia `pagos` (007), diferida: el pago en efectivo se inserta después de su movimiento. Los índices únicos parciales por `pago_id` y por `clave_idempotencia` y el trigger de la caja cerrada van a mano.
 model MovimientoCaja {
   id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   academiaId        String                 @map("academia_id") @db.Uuid
@@ -596,6 +607,7 @@ model MovimientoCaja {
   caja          Caja     @relation(fields: [academiaId, cajaId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   alumno        Alumno?  @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   registradoPor Usuario  @relation(fields: [academiaId, registradoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  pago          Pago?    @relation(fields: [academiaId, pagoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([academiaId, id])
   @@unique([academiaId, cajaId, numero])
@@ -637,4 +649,58 @@ model CierreCaja {
   @@unique([academiaId, cajaId, numero])
   @@unique([academiaId, claveIdempotencia])
   @@map("cierres_caja")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Historia 007a · Pagos (D-04, D-07, D-23; HU-04, HU-07 a HU-09, RN-01, RN-04, RN-17). Los CHECK, los índices parciales, los triggers (la
+// transición única y «confirmado ⇔ su movimiento de caja»), las políticas de RLS y los privilegios van a mano en la migración `pagos`. La API
+// escribe con SQL (`$queryRaw` y `$executeRaw`): el modelo existe para que Prisma conozca la tabla y sus llaves compuestas.
+// ---------------------------------------------------------------------------------------------------------------------
+
+enum EstadoPago {
+  PENDIENTE_VERIFICACION
+  CONFIRMADO
+  RECHAZADO
+
+  @@map("estado_pago")
+}
+
+/// El pago de una matrícula. Un pago resuelto (`CONFIRMADO` o `RECHAZADO`) no cambia nunca. Un confirmado tiene exactamente un movimiento de caja
+/// con su `pago_id`. `numeroOperacion` es lo que escribió la persona y `numeroOperacionNormalizado` su forma comparable (D-07, DT-9).
+model Pago {
+  id                         String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId                 String                 @map("academia_id") @db.Uuid
+  alumnoId                   String                 @map("alumno_id") @db.Uuid
+  matriculaId                String                 @map("matricula_id") @db.Uuid
+  concepto                   ConceptoMovimientoCaja
+  metodo                     MetodoPago
+  estado                     EstadoPago
+  monto                      Decimal                @db.Decimal(10, 2)
+  numeroOperacion            String?                @map("numero_operacion")
+  numeroOperacionNormalizado String?                @map("numero_operacion_normalizado")
+  fechaOperacion             DateTime?              @map("fecha_operacion") @db.Date
+  comprobanteClave           String?                @map("comprobante_clave")
+  ipOrigen                   String?                @map("ip_origen") @db.Inet
+  registradoPorId            String?                @map("registrado_por") @db.Uuid
+  verificadoPorId            String?                @map("verificado_por") @db.Uuid
+  registradoEn               DateTime               @map("registrado_en") @db.Timestamptz(3)
+  verificadoEn               DateTime?              @map("verificado_en") @db.Timestamptz(3)
+  motivoRechazo              String?                @map("motivo_rechazo")
+  numeroTicket               Int?                   @map("numero_ticket")
+  claveIdempotencia          String                 @map("clave_idempotencia") @db.Uuid
+  creadoEn                   DateTime               @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn              DateTime               @default(now()) @map("actualizado_en") @db.Timestamptz(3)
+
+  academia        Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno          Alumno           @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  matricula       Matricula        @relation(fields: [academiaId, matriculaId, alumnoId], references: [academiaId, id, alumnoId], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor   Usuario?         @relation("PagoRegistradoPor", fields: [academiaId, registradoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  verificadoPor   Usuario?         @relation("PagoVerificadoPor", fields: [academiaId, verificadoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  movimientosCaja MovimientoCaja[]
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, claveIdempotencia])
+  @@unique([academiaId, numeroTicket])
+  @@index([academiaId, estado, registradoEn])
+  @@map("pagos")
 }

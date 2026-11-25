@@ -1,54 +1,22 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type EstadoSolicitud,
-  esMenorDeEdad,
   type FiltroEstadoSolicitudes,
   type RespuestaListaSolicitudes,
   type RespuestaSolicitudPanel,
-  type SolicitudPanel,
-  TOPE_DE_LA_LISTA,
   type CancelarSolicitud,
 } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
-import { hoyEnLima } from '../../comun/fechas';
 import { PATRON_UUID } from '../../comun/validacion/patron-uuid';
-import { BaseDatos, type Fragmento, sql, type TransaccionAcademia, vacio } from '../../infraestructura/prisma';
+import { BaseDatos } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { AuditoriaService } from '../auditoria';
 import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
 import type { SesionVerificada } from '../autenticacion/tipos';
 import { bloquearClasesParaCupo } from '../clases';
-import { noEncontrado, solicitudNoCancelable } from './errores';
-import { estadoVisible, estadoVisibleSql } from './estado-visible';
-
-/** El estado visible que corresponde a cada filtro de la lista (`TODAS` no filtra). */
-const ESTADO_DEL_FILTRO: Readonly<Record<Exclude<FiltroEstadoSolicitudes, 'TODAS'>, EstadoSolicitud>> = {
-  ACTIVAS: 'PENDIENTE_PAGO',
-  VENCIDAS: 'VENCIDA',
-  CANCELADAS: 'CANCELADA',
-};
-
-interface FilaDeLaLista {
-  id: string;
-  codigo: string;
-  estado_solicitud: EstadoSolicitud;
-  estado_matricula: 'RESERVADA' | 'VIGENTE' | 'FINALIZADA' | 'CANCELADA';
-  creada_en: Date;
-  reserva_vence_en: Date | null;
-  nombres: string;
-  apellidos: string;
-  dni: string;
-  telefono: string;
-  fecha_nacimiento: string;
-  plan_id: string;
-  plan_nombre: string;
-  anio: number;
-  mes: number;
-  clases_totales: number;
-  monto: string;
-  /** JSON de las clases (`jsonb` como texto): `[{ id, nivel, diaSemana, horaInicio, horaFin }]`. */
-  clases: string;
-}
+import { noEncontrado, solicitudConPagoPendiente, solicitudNoCancelable } from './errores';
+import { estadoVisible } from './estado-visible';
+import { leerElementosDelPanel } from './panel-solicitudes';
 
 interface FilaBloqueadaDeLaSolicitud {
   estado: EstadoSolicitud;
@@ -56,8 +24,14 @@ interface FilaBloqueadaDeLaSolicitud {
 
 interface FilaBloqueadaDeLaMatricula {
   id: string;
-  estado: FilaDeLaLista['estado_matricula'];
+  estado: 'RESERVADA' | 'VIGENTE' | 'FINALIZADA' | 'CANCELADA';
   reserva_vence_en: Date | null;
+  anio: number;
+  mes: number;
+}
+
+interface FilaBloqueadaDelPago {
+  estado: 'PENDIENTE_VERIFICACION' | 'CONFIRMADO' | 'RECHAZADO';
 }
 
 /**
@@ -65,7 +39,7 @@ interface FilaBloqueadaDeLaMatricula {
  * `conAcademia(<academia de la sesión>, …)`: la academia nunca viene de la dirección, la consulta ni el cuerpo.
  *
  * - `listar`: lectura sin bloqueos ni auditoría. Las 200 solicitudes más recientes de la academia, filtradas por estado visible.
- * - `cancelar`: en una sola transacción, `bloquearActorVigente` → la solicitud `FOR UPDATE` → su matrícula `FOR UPDATE` →
+ * - `cancelar`: en una sola transacción, `bloquearActorVigente` → la solicitud `FOR UPDATE` → su matrícula `FOR UPDATE` → sus pagos `FOR UPDATE` →
  *   `bloquearClasesParaCupo` con sus clases (una llamada). No toma `alumnos` ni los bloqueos consultivos del envío, así que no entra en
  *   ciclo con el envío (alumno → solicitudes → matrículas → clases) ni con la foto (alumno → solicitud). No envía correo ni toca la foto
  *   (DR-17 y DR-18).
@@ -84,7 +58,9 @@ export class SolicitudesService {
   /** `GET /api/solicitudes?estado=`: de la más nueva a la más antigua (`creadaEn` y, a igual `creadaEn`, `id`), como mucho 200. */
   async listar(academiaId: string, filtro: FiltroEstadoSolicitudes): Promise<RespuestaListaSolicitudes> {
     const ahora = this.reloj.ahora();
-    const solicitudes = await this.baseDatos.conAcademia(academiaId, (tx) => this.leerElementos(tx, ahora, { filtro }));
+    const solicitudes = await this.baseDatos.conAcademia(academiaId, (tx) =>
+      leerElementosDelPanel(tx, ahora, { filtro }),
+    );
     return { solicitudes };
   }
 
@@ -117,12 +93,19 @@ export class SolicitudesService {
       const solicitud = solicitudes[0];
       if (!solicitud) throw noEncontrado();
       const matriculas = await tx.cliente.$queryRaw<FilaBloqueadaDeLaMatricula[]>`
-        SELECT id::text AS id, estado::text AS estado, reserva_vence_en FROM matriculas
+        SELECT id::text AS id, estado::text AS estado, reserva_vence_en, anio::int AS anio, mes::int AS mes FROM matriculas
          WHERE academia_id = ${tx.academiaId}::uuid AND solicitud_id = ${id}::uuid
          ORDER BY id
            FOR UPDATE`;
       const matricula = matriculas[0];
       if (!matricula) throw noEncontrado();
+      // Los pagos de la matrícula (007, criterio 30), después de la matrícula y antes de las clases: el orden de bloqueos de un cobro.
+      // `ORDER BY registrado_en DESC, id DESC`: el primero es el último pago.
+      const pagos = await tx.cliente.$queryRaw<FilaBloqueadaDelPago[]>`
+        SELECT estado::text AS estado FROM pagos
+         WHERE academia_id = ${tx.academiaId}::uuid AND matricula_id = ANY(${matriculas.map((fila) => fila.id)}::uuid[])
+         ORDER BY registrado_en DESC, id DESC
+           FOR UPDATE`;
       const clases = await tx.cliente.$queryRaw<{ clase_id: string }[]>`
         SELECT DISTINCT clase_id::text AS clase_id FROM matricula_clases
          WHERE academia_id = ${tx.academiaId}::uuid AND matricula_id = ANY(${matriculas.map((fila) => fila.id)}::uuid[])`;
@@ -137,9 +120,15 @@ export class SolicitudesService {
           estado_solicitud: solicitud.estado,
           estado_matricula: matricula.estado,
           reserva_vence_en: matricula.reserva_vence_en,
+          estado_ultimo_pago: pagos[0]?.estado ?? null,
+          hay_pago_pendiente: pagos.some((pago) => pago.estado === 'PENDIENTE_VERIFICACION'),
+          anio: matricula.anio,
+          mes: matricula.mes,
         },
         ahora,
       );
+      // Un comprobante en revisión (007b): primero se aprueba o se rechaza (DR-12).
+      if (antes === 'EN_VERIFICACION') throw solicitudConPagoPendiente();
       if (antes !== 'CANCELADA') {
         // La fila `VENCIDA` (la solicitud anterior de un cliente que volvió) ya no es `PENDIENTE_PAGO` ni `CANCELADA`: no se cancela.
         if (solicitud.estado !== 'PENDIENTE_PAGO') throw solicitudNoCancelable();
@@ -161,73 +150,9 @@ export class SolicitudesService {
           ip,
         });
       }
-      const [elemento] = await this.leerElementos(tx, ahora, { id });
+      const [elemento] = await leerElementosDelPanel(tx, ahora, { id });
       if (!elemento) throw noEncontrado();
       return { solicitud: elemento };
-    });
-  }
-
-  /**
-   * Los elementos del panel (criterio 38) con una sola consulta: la solicitud, el alumno, la matrícula (`m.solicitud_id = s.id`), el plan y
-   * las clases (por día y hora). Con `id`, solo esa solicitud; con `filtro`, las de ese estado visible, de la más nueva a la más antigua y
-   * hasta el tope. Los datos de la persona son los que tiene hoy el alumno (no hay historial); el plan, las clases, el mes y el monto son
-   * los de la matrícula de la solicitud.
-   */
-  private async leerElementos(
-    tx: TransaccionAcademia,
-    ahora: Date,
-    pedido: { filtro: FiltroEstadoSolicitudes } | { id: string },
-  ): Promise<SolicitudPanel[]> {
-    let condicion: Fragmento = vacio;
-    let tope: Fragmento = vacio;
-    if ('id' in pedido) {
-      condicion = sql`AND s.id = ${pedido.id}::uuid`;
-    } else {
-      if (pedido.filtro !== 'TODAS')
-        condicion = sql`AND ${estadoVisibleSql(ahora)} = ${ESTADO_DEL_FILTRO[pedido.filtro]}`;
-      tope = sql`LIMIT ${TOPE_DE_LA_LISTA}::int`;
-    }
-    const filas = await tx.cliente.$queryRaw<FilaDeLaLista[]>`
-      SELECT s.id::text AS id, s.codigo, s.estado::text AS estado_solicitud, m.estado::text AS estado_matricula,
-             s.creado_en AS creada_en, m.reserva_vence_en, a.nombres, a.apellidos, a.dni, a.telefono,
-             a.fecha_nacimiento::text AS fecha_nacimiento, p.id::text AS plan_id, p.nombre AS plan_nombre,
-             m.anio::int AS anio, m.mes::int AS mes, m.clases_totales::int AS clases_totales,
-             coalesce(m.monto_ajustado, m.monto_calculado)::text AS monto,
-             (SELECT coalesce(jsonb_agg(jsonb_build_object('id', c.id::text, 'nivel', c.nivel::text, 'diaSemana', c.dia_semana::int,
-                                                           'horaInicio', to_char(c.hora_inicio, 'HH24:MI'),
-                                                           'horaFin', to_char(c.hora_fin, 'HH24:MI'))
-                                       ORDER BY c.dia_semana, c.hora_inicio, c.id), '[]'::jsonb)::text
-                FROM matricula_clases mc
-                JOIN clases c ON c.academia_id = mc.academia_id AND c.id = mc.clase_id
-               WHERE mc.academia_id = s.academia_id AND mc.matricula_id = m.id) AS clases
-        FROM solicitudes_inscripcion s
-        JOIN alumnos a ON a.academia_id = s.academia_id AND a.id = s.alumno_id
-        JOIN matriculas m ON m.academia_id = s.academia_id AND m.solicitud_id = s.id
-        JOIN planes p ON p.academia_id = m.academia_id AND p.id = m.plan_id
-       WHERE s.academia_id = ${tx.academiaId}::uuid ${condicion}
-       ORDER BY s.creado_en DESC, s.id DESC
-       ${tope}`;
-    const hoy = hoyEnLima(ahora);
-    return filas.map((fila) => {
-      const estado = estadoVisible(fila, ahora);
-      return {
-        id: fila.id,
-        codigo: fila.codigo,
-        estado,
-        creadaEn: fila.creada_en.toISOString(),
-        reservaVenceEn:
-          estado === 'PENDIENTE_PAGO' && fila.reserva_vence_en ? fila.reserva_vence_en.toISOString() : null,
-        nombres: fila.nombres,
-        apellidos: fila.apellidos,
-        dni: fila.dni,
-        telefono: fila.telefono,
-        menorDeEdad: esMenorDeEdad(fila.fecha_nacimiento, hoy),
-        plan: { id: fila.plan_id, nombre: fila.plan_nombre },
-        clases: JSON.parse(fila.clases) as SolicitudPanel['clases'],
-        mes: `${fila.anio}-${String(fila.mes).padStart(2, '0')}`,
-        clasesTotales: fila.clases_totales,
-        monto: fila.monto,
-      };
     });
   }
 }

@@ -11,6 +11,9 @@ import { describe, expect, it } from 'vitest';
 //
 // Actualizada por la 006 (spec 006-caja, DT-1 y criterio 7): suma la fila `REABRIR_CAJA` con `ADMIN: 'TODO'` y nada más (de 24 a 25 filas):
 // solo el administrador reabre un cierre de caja. No se quitó ni se cambió nada de lo anterior.
+//
+// Actualizada por la 007 (spec 007-pagos, DT-12 y criterio 8): suma la fila `AJUSTAR_MONTO_COBRO` con `ADMIN: 'TODO'` y nada más (de 25 a
+// 26 filas): solo el administrador ajusta el monto de un cobro (RN-25); la secretaria no. No se quitó ni se cambió nada de lo anterior.
 
 type Rol = 'ADMIN' | 'SECRETARIA' | 'ENTRENADOR' | 'ALUMNO';
 type Alcance = 'TODO' | 'SUS_ALUMNOS' | 'SUS_CLASES' | 'PROPIO' | 'SU_CAJA' | 'LOS_QUE_SUBE' | 'ALUMNOS';
@@ -75,6 +78,7 @@ const MATRIZ_ESPERADA: Readonly<Record<string, Fila>> = {
   RESTABLECER_CLAVE: { ADMIN: 'TODO', SECRETARIA: 'ALUMNOS' },
   CONFIGURAR_ACADEMIA: { ADMIN: 'TODO' },
   REABRIR_CAJA: { ADMIN: 'TODO' },
+  AJUSTAR_MONTO_COBRO: { ADMIN: 'TODO' },
 };
 
 const PERMISOS_ESPERADOS = Object.keys(MATRIZ_ESPERADA).sort();
@@ -85,8 +89,8 @@ function sinVacias(fila: Fila | undefined): Fila {
 }
 
 describe('criterio 26: matriz de permisos', () => {
-  it('criterio 26: la tabla esperada tiene las 25 filas del contrato (21 de la sección 2.1, las 2 de la 002, CONFIGURAR_ACADEMIA de la 003 y REABRIR_CAJA de la 006)', () => {
-    expect(PERMISOS_ESPERADOS).toHaveLength(25);
+  it('criterio 26: la tabla esperada tiene las 26 filas del contrato (21 de la sección 2.1, las 2 de la 002, CONFIGURAR_ACADEMIA de la 003, REABRIR_CAJA de la 006 y AJUSTAR_MONTO_COBRO de la 007)', () => {
+    expect(PERMISOS_ESPERADOS).toHaveLength(26);
   });
 
   it('criterio 26: ROLES_USUARIO son exactamente ADMIN, SECRETARIA, ENTRENADOR y ALUMNO', async () => {
@@ -103,7 +107,7 @@ describe('criterio 26: matriz de permisos', () => {
     );
   });
 
-  it('criterio 26: PERMISOS y las claves de MATRIZ_PERMISOS son exactamente los 25 permisos del contrato, sin repetir', async () => {
+  it('criterio 26: PERMISOS y las claves de MATRIZ_PERMISOS son exactamente los 26 permisos del contrato, sin repetir', async () => {
     const { PERMISOS, MATRIZ_PERMISOS } = await cargar();
 
     expect([...PERMISOS].sort()).toEqual(PERMISOS_ESPERADOS);
@@ -162,6 +166,15 @@ describe('criterio 26: matriz de permisos', () => {
     expect(ROLES.filter((rol) => puede(rol, 'REABRIR_CAJA'))).toEqual(['ADMIN']);
     expect(sinVacias(MATRIZ_PERMISOS['REABRIR_CAJA'])).toStrictEqual({ ADMIN: 'TODO' });
     expect(ROLES.filter((rol) => puede(rol, 'ABRIR_CERRAR_CAJA'))).toEqual(['ADMIN', 'SECRETARIA']);
+  });
+
+  it('007, criterio 8: solo el administrador ajusta el monto de un cobro; la secretaria, el entrenador y el alumno no (DT-12, RN-25)', async () => {
+    const { MATRIZ_PERMISOS, puede } = await cargar();
+
+    expect(ROLES.filter((rol) => puede(rol, 'AJUSTAR_MONTO_COBRO'))).toEqual(['ADMIN']);
+    expect(sinVacias(MATRIZ_PERMISOS['AJUSTAR_MONTO_COBRO'])).toStrictEqual({ ADMIN: 'TODO' });
+    expect(ROLES.filter((rol) => puede(rol, 'REGISTRAR_INSCRIPCION_Y_COBRO'))).toEqual(['ADMIN', 'SECRETARIA']);
+    expect(ROLES.filter((rol) => puede(rol, 'VERIFICAR_PAGOS'))).toEqual(['ADMIN', 'SECRETARIA']);
   });
 
   it('criterio 26: el entrenador solo ve a sus alumnos y no verifica pagos ni abre la caja (CLAUDE.md, RN-18)', async () => {

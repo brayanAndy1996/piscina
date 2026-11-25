@@ -43,6 +43,8 @@ function solicitud(extra: Record<string, unknown> = {}) {
     mes: '2026-11',
     clasesTotales: 5,
     monto: '88.00',
+    ajuste: null,
+    pago: null,
     ...extra,
   };
 }

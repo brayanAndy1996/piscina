@@ -12,6 +12,7 @@ import type { Request } from 'express';
 import { ValidarCon } from '../../comun/validacion';
 import type { AcademiaResuelta } from '../../infraestructura/prisma';
 import { ResolverAcademiaPipe } from '../academias/resolver-academia.pipe';
+import type { SolicitudDeRecepcion } from '../autenticacion/tipos';
 import { InscripcionesService } from './inscripciones.service';
 
 /**
@@ -59,6 +60,8 @@ export class InscripcionPublicaController {
     @Req() solicitud: Request,
   ): Promise<RespuestaInscripcionCreada> {
     const datos: EnviarInscripcion = this.validarEnvio.transform(cuerpo);
-    return this.servicio.enviar(academia, datos, solicitud.ip ?? null);
+    // La sesión de recepción que verificó el middleware de `/api/a` (007, criterio 33): solo si es de la academia de la dirección.
+    const recepcion = (solicitud as SolicitudDeRecepcion).sesionDeRecepcion;
+    return this.servicio.enviar(academia, datos, solicitud.ip ?? null, recepcion);
   }
 }

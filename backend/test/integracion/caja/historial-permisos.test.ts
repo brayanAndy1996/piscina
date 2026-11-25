@@ -1,4 +1,5 @@
 // spec: 006-caja (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, DT-12 y criterio 8): la matriz pasa de 25 a 26 filas con `AJUSTAR_MONTO_COBRO` (solo ADMIN); solo cambia el conteo de la matriz.
 import { MATRIZ_PERMISOS } from '@aquagestion/contratos';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { insertarAuditoria, leerAuditoriaDeAcademia } from '../../utilidades/datos';
@@ -369,7 +370,7 @@ describe('criterio 7 (006b): permisos del historial, el detalle y el PDF', () =>
       const matriz = MATRIZ_PERMISOS as Readonly<Record<string, unknown>>;
 
       expect(matriz['VER_REPORTES_FINANCIEROS']).toEqual({ ADMIN: 'TODO', SECRETARIA: 'SU_CAJA' });
-      expect(Object.keys(matriz)).toHaveLength(25);
+      expect(Object.keys(matriz)).toHaveLength(26);
     });
   });
 });

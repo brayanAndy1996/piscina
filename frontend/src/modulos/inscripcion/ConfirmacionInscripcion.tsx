@@ -1,10 +1,11 @@
-import type { RespuestaInscripcionCreada } from '@aquagestion/contratos';
+import { puede, type RespuestaInscripcionCreada } from '@aquagestion/contratos';
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { Alerta, Aviso, ESTILO_BOTON } from '../../componentes/ui';
 import { formatearFechaHora } from '../../lib/fechas';
 import { formatearSoles } from '../../lib/dinero';
 import { frasePorTelefono } from '../../componentes/Telefono';
+import { useSesionAcademia } from '../sesion/hooks';
 import { CuadroDeMonto } from './pasos/PasoResumen';
 
 type Solicitud = RespuestaInscripcionCreada['solicitud'];
@@ -35,6 +36,35 @@ function BotonCopiar({ texto, etiqueta }: { texto: string; etiqueta: string }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Para quien inscribe desde recepción (hay una sesión de `ADMIN` o `SECRETARIA` de esta academia, spec 007a, criterio 34): un enlace a las
+ * solicitudes, donde se cobra en efectivo. Un cliente sin sesión no ve nada de esto.
+ */
+function EnlaceDeRecepcion() {
+  const { nombreCorto = '' } = useParams();
+  const sesion = useSesionAcademia();
+  const usuario = sesion.data?.usuario;
+  if (
+    !usuario ||
+    usuario.academia.nombreCorto !== nombreCorto ||
+    usuario.debeCambiarClave ||
+    !puede(usuario.rol, 'REGISTRAR_INSCRIPCION_Y_COBRO')
+  ) {
+    return null;
+  }
+  return (
+    <section aria-label="Recepción" className="space-y-2 rounded-xl bg-sky-50 p-4 ring-1 ring-sky-100">
+      <p className="text-slate-800">
+        Inscribiste desde recepción. Para cobrar en efectivo, abre la solicitud en el panel (con la caja de hoy
+        abierta).
+      </p>
+      <Link to="/panel/solicitudes" className={ESTILO_BOTON.primario}>
+        Ir a cobrar en las solicitudes
+      </Link>
+    </section>
   );
 }
 
@@ -97,6 +127,8 @@ export function ConfirmacionInscripcion({
       </section>
 
       <CuadroDeMonto cotizacion={solicitud.cotizacion} />
+
+      <EnlaceDeRecepcion />
 
       <p className="text-slate-800">
         Tu cupo está reservado hasta el {formatearFechaHora(solicitud.reservaVenceEn)} (hora de Lima). Paga{' '}

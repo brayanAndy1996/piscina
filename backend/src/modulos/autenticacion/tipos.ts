@@ -27,3 +27,12 @@ export interface SolicitudDeAcademia extends Request {
 
 /** Valor del claim `tipo` de los tokens de academia: un token de otro tipo (por ejemplo, de plataforma) no sirve aquí. */
 export const TIPO_TOKEN_ACADEMIA = 'academia';
+
+/**
+ * Petición de `/api/a/{nombreCorto}/…` con la sesión de recepción que verificó el middleware de los límites por conexión (spec 007,
+ * criterios 33 a 35): un `ADMIN` o una `SECRETARIA` activos, sin cambio de contraseña pendiente, de la academia del nombre corto de la
+ * dirección. Quien la lee (el envío del formulario) igual vuelve a comprobar al actor dentro de su transacción (`bloquearActorVigente`).
+ */
+export interface SolicitudDeRecepcion extends Request {
+  sesionDeRecepcion?: SesionVerificada;
+}

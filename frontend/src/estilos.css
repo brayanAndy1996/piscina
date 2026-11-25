@@ -1,1 +1,31 @@
 @import 'tailwindcss';
+
+/*
+ * Impresión del ticket (spec 007a, criterio 27; DR-4, DT-14). Al imprimir solo queda el ticket: el marco del panel, los botones y los
+ * enlaces llevan `print:hidden`. Con papel de 80 mm el ticket ocupa todo el ancho útil; con una hoja A4 se queda en una columna de 80 mm
+ * al centro. El tamaño de la hoja lo elige el diálogo de impresión del navegador.
+ */
+@media print {
+  @page {
+    margin: 4mm;
+  }
+  body {
+    background: #fff;
+  }
+  .ticket {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+    --tw-ring-shadow: 0 0 #0000;
+    background: #fff;
+    color: #000;
+  }
+}
+@media print and (min-width: 150mm) {
+  .ticket {
+    max-width: 80mm;
+    margin: 0 auto;
+  }
+}

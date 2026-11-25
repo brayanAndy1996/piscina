@@ -1,4 +1,7 @@
 // spec: 006-caja (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterios 1 y 5 y «Pruebas protegidas anteriores que amplía la 007a»): todo ingreso con `pago_id` crea, en la misma
+// transacción, su pago `CONFIRMADO` del mismo alumno, método, monto y concepto (`insertarFilaCaja`, `crearIngresoDePrueba` y `cobroImitado`), como exige la
+// base desde la 007. `sqlDeInsercion` se exporta como `sqlDeInsercionCaja`. No cambia lo que comprueban las pruebas que usan estas utilidades.
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -11,6 +14,7 @@ import { type Contexto, ejecutarComo, type RolPruebas, urlAppPruebas, urlPropiet
 import { escucharAplicacion } from './carreras';
 import { crearAlumnoSolo } from './inscripciones';
 import { type BaseDatosPrueba, ejecutar, obtenerBaseDatos, type TransaccionAcademiaPrueba } from './modulos';
+import { ejecutarTransaccion, insertarPagoDeSoporteEnTransaccion, sentenciasDelPagoDeSoporte } from './pagos';
 import { observar, type Retenedor } from './planes-clases';
 import {
   AHORA_PRUEBAS,
@@ -205,7 +209,11 @@ function contextoDe(academiaId: string, opciones: OpcionesDeEscritura): Contexto
   return 'contexto' in opciones ? opciones.contexto : { academiaId };
 }
 
-function sqlDeInsercion(tabla: Tabla006, academiaId: string, columnas: Columnas): { sql: string; valores: unknown[] } {
+export function sqlDeInsercionCaja(
+  tabla: Tabla006,
+  academiaId: string,
+  columnas: Columnas,
+): { sql: string; valores: unknown[] } {
   const todas: Columnas = { academia_id: academiaId, ...columnas };
   const nombres = Object.keys(todas);
   const marcas = nombres.map((nombre, i) => `$${i + 1}::${tipoDe(nombre)}`);
@@ -213,6 +221,27 @@ function sqlDeInsercion(tabla: Tabla006, academiaId: string, columnas: Columnas)
     sql: `INSERT INTO ${tabla} (${nombres.join(', ')}) VALUES (${marcas.join(', ')})`,
     valores: Object.values(todas),
   };
+}
+
+/** Las sentencias del pago `CONFIRMADO` que necesita un ingreso con `pago_id` y alumno; `null` si la fila no es de ese tipo. */
+function pagoDeSoporteDe(
+  tabla: Tabla006,
+  academiaId: string,
+  columnas: Columnas,
+): { sql: string; valores: unknown[] }[] | null {
+  if (tabla !== 'movimientos_caja' || columnas['tipo'] !== 'INGRESO') return null;
+  const { pago_id: pagoId, alumno_id: alumnoId, registrado_por: usuarioId } = columnas;
+  if (typeof pagoId !== 'string' || typeof alumnoId !== 'string' || typeof usuarioId !== 'string') return null;
+  return sentenciasDelPagoDeSoporte({
+    academiaId,
+    pagoId,
+    alumnoId,
+    metodo: columnas['metodo'] as MetodoPago,
+    monto: String(columnas['monto']),
+    concepto: String(columnas['concepto']),
+    usuarioId,
+    registradoEn: columnas['registrado_en'] as Date | string,
+  });
 }
 
 /**
@@ -226,8 +255,15 @@ export async function insertarFilaCaja(
   columnas: Columnas,
   opciones: OpcionesDeEscritura = {},
 ): Promise<string | undefined> {
-  const { sql, valores } = sqlDeInsercion(tabla, academiaId, columnas);
-  await conMensajeDeFuncionalidad(() => ejecutarComo(rol, sql, valores, contextoDe(academiaId, opciones)));
+  const { sql, valores } = sqlDeInsercionCaja(tabla, academiaId, columnas);
+  const soporte = pagoDeSoporteDe(tabla, academiaId, columnas);
+  await conMensajeDeFuncionalidad(() =>
+    soporte === null
+      ? ejecutarComo(rol, sql, valores, contextoDe(academiaId, opciones)).then(() => undefined)
+      : // Desde la 007 el ingreso necesita su pago CONFIRMADO en la misma transacción (criterio 5). El movimiento va primero: si él falla
+        // (RLS, llaves, CHECK, índices o el trigger de la caja cerrada), falla por su propia razón.
+        ejecutarTransaccion(rol, contextoDe(academiaId, opciones), [{ sql, valores }, ...soporte]),
+  );
   const id = columnas['id'];
   return typeof id === 'string' ? id : undefined;
 }
@@ -259,7 +295,7 @@ export async function actualizarFilasCaja(
 
 /** `INSERT` directo que NO se espera: abre su propia conexión y transacción (con el contexto de la academia) y se observa. */
 export function insertarFilaCajaSinEsperar(rol: RolPruebas, tabla: Tabla006, academiaId: string, columnas: Columnas) {
-  const { sql, valores } = sqlDeInsercion(tabla, academiaId, columnas);
+  const { sql, valores } = sqlDeInsercionCaja(tabla, academiaId, columnas);
   const promesa = (async () => {
     const cliente = new pg.Client({ connectionString: rol === 'app' ? urlAppPruebas() : urlPropietarioPruebas() });
     await cliente.connect();
@@ -1173,15 +1209,25 @@ export async function cobroImitado(baseDatos: BaseDatosPrueba, opciones: CobroIm
           opciones.marca,
         );
       }
-      return caja.registrarIngresoEnCaja(
-        tx,
-        {
-          ...opciones.ingreso,
-          usuarioId: opciones.ingreso.usuarioId ?? opciones.actor.id,
-          ip: opciones.ingreso.ip ?? null,
-        },
-        opciones.ahora,
-      );
+      const ingreso = {
+        ...opciones.ingreso,
+        usuarioId: opciones.ingreso.usuarioId ?? opciones.actor.id,
+        ip: opciones.ingreso.ip ?? null,
+      };
+      const registrado = await caja.registrarIngresoEnCaja(tx, ingreso, opciones.ahora);
+      // Desde la 007 el ingreso necesita su pago CONFIRMADO en la misma transacción (criterio 5), después de `registrarIngresoEnCaja`.
+      if (!registrado.repetido) {
+        await insertarPagoDeSoporteEnTransaccion(tx, {
+          pagoId: ingreso.pagoId,
+          alumnoId: ingreso.alumnoId,
+          metodo: ingreso.metodo,
+          monto: ingreso.monto.toFixed(2),
+          concepto: ingreso.concepto,
+          usuarioId: ingreso.usuarioId,
+          registradoEn: registrado.registradoEn,
+        });
+      }
+      return registrado;
     });
     return { ok: true, movimiento };
   } catch (error) {

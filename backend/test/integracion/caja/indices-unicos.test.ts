@@ -1,4 +1,8 @@
 // spec: 006-caja (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterios 1, 3 y 5 y «Pruebas protegidas anteriores que amplía la 007a»): las utilidades de la 006 crean ahora el pago
+// `CONFIRMADO` de todo ingreso con `pago_id` en la misma transacción. CAMBIO APROBADO POR EL ORQUESTADOR (no solo suma, DT-19): la prueba «en B se aceptan la
+// misma clave, el mismo numero y el mismo pago_id que en A» quita la parte del `pago_id` (con la llave compuesta hacia `pagos` y `pagos.id` como llave primaria,
+// el mismo pago no puede existir en las dos academias, criterio 3 de la 007) y quedan la de la clave y la del numero.
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { RolPruebas } from '../../utilidades/base-datos';
@@ -157,11 +161,10 @@ describe('criterio 5: índices únicos', () => {
       expect(await leerMovimientos(e.A.id)).toHaveLength(1);
     });
 
-    it('criterio 5: en B se aceptan la misma clave, el mismo numero y el mismo pago_id que en A', async () => {
+    it('criterio 5: en B se aceptan la misma clave y el mismo numero que en A', async () => {
       const clave = randomUUID();
-      const pago = randomUUID();
       await insertar(egreso(1, { clave_idempotencia: clave }));
-      await insertar(ingreso(2, { pago_id: pago }));
+      await insertar(ingreso(2));
 
       await expect(
         insertarFilaCaja(
@@ -176,7 +179,7 @@ describe('criterio 5: índices únicos', () => {
           rol,
           'movimientos_caja',
           e.B.id,
-          filaIngresoValida(B.caja.id, e.secretariaB.id, B.alumnoId, 2, { pago_id: pago }),
+          filaIngresoValida(B.caja.id, e.secretariaB.id, B.alumnoId, 2),
         ),
       ).resolves.toBeDefined();
     });

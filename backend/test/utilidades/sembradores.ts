@@ -1,6 +1,9 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
+// Actualizada por la 007 (spec 007-pagos, criterios 1 y 5 y «Pruebas protegidas anteriores que amplía la 007a»): el sembrador de `movimientos_caja` crea, en la misma
+// transacción, el pago `CONFIRMADO` de su ingreso (la base lo exige desde la 007) y se suma el sembrador de `public.pagos`. No se quitó ni se cambió nada más.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ejecutarComo } from './base-datos';
+import { ejecutarTransaccion, filaPagoValida, insertarPago, sentenciasDelPagoDeSoporte } from './pagos';
 import { crearAlumnoSolo, filaValida, insertarFila, sembrarSolicitud } from './inscripciones';
 import { insertarClase, insertarPlan } from './planes-clases';
 
@@ -182,19 +185,40 @@ export const SEMBRADORES_POR_TABLA: Readonly<Record<string, Sembrador>> = {
   'public.movimientos_caja': async (academiaId) => {
     const { cajaId, usuarioId } = await sembrarCaja(academiaId, 'ABIERTA');
     const alumnoId = await crearAlumnoSolo(academiaId);
-    await ejecutarComo(
-      'propietario',
-      `INSERT INTO public.movimientos_caja (id, academia_id, caja_id, numero, tipo, concepto, metodo, monto, alumno_id, pago_id,
-                                           registrado_por, registrado_en)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 'INGRESO', 'INSCRIPCION', 'EFECTIVO', 42.00, $4::uuid, $5::uuid, $6::uuid, now())`,
-      [randomUUID(), academiaId, cajaId, alumnoId, randomUUID(), usuarioId],
-      { academiaId },
-    );
+    const pagoId = randomUUID();
+    await ejecutarTransaccion('propietario', { academiaId }, [
+      {
+        sql: `INSERT INTO public.movimientos_caja (id, academia_id, caja_id, numero, tipo, concepto, metodo, monto, alumno_id, pago_id,
+                                                 registrado_por, registrado_en)
+              VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 'INGRESO', 'INSCRIPCION', 'EFECTIVO', 42.00, $4::uuid, $5::uuid, $6::uuid, now())`,
+        valores: [randomUUID(), academiaId, cajaId, alumnoId, pagoId, usuarioId],
+      },
+      ...sentenciasDelPagoDeSoporte({
+        academiaId,
+        pagoId,
+        alumnoId,
+        metodo: 'EFECTIVO',
+        monto: '42.00',
+        concepto: 'INSCRIPCION',
+        usuarioId,
+        registradoEn: new Date(),
+      }),
+    ]);
     await ejecutarComo(
       'propietario',
       "UPDATE public.cajas SET estado = 'CERRADA' WHERE academia_id = $1::uuid AND id = $2::uuid",
       [academiaId, cajaId],
       { academiaId },
+    );
+  },
+  // Historia 007 (criterio 1: las pruebas de catálogo de la 001 siguen pasando con la tabla nueva). Un Yape pendiente de verificación de un cliente
+  // con su solicitud y su matrícula (lo mismo que el sembrador de `solicitudes_inscripcion`, más el pago).
+  'public.pagos': async (academiaId) => {
+    const cliente = await sembrarClienteConSolicitud(academiaId);
+    await insertarPago(
+      'propietario',
+      academiaId,
+      filaPagoValida(academiaId, { alumnoId: cliente.alumnoId, matriculaId: cliente.matriculaId }),
     );
   },
   // Un cierre vigente con todos los montos en cero (las cuentas cuadran).

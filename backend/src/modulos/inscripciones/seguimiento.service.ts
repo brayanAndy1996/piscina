@@ -1,22 +1,26 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type ConsultarSolicitud,
+  type EstadoSolicitud,
   PATRON_CODIGO,
   PATRON_TOKEN,
   type RespuestaConsultaSolicitud,
   type VistaSolicitud,
 } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
-import { BaseDatos, type AcademiaResuelta, type Fragmento, sql } from '../../infraestructura/prisma';
+import { aTextoMonto } from '../../comun/dinero';
+import { BaseDatos, type AcademiaResuelta, Decimal, type Fragmento, sql } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { leerConfiguracion } from '../configuracion/lectura';
+import { finDelMesEnLima } from '../matriculas';
+import { totalACobrar } from '../pagos/dominio/total';
 import { hashDeToken } from './dominio/codigos';
-import { estadoVisible } from './estado-visible';
+import { estadoVisible, unirUltimoPago } from './estado-visible';
 import { solicitudNoEncontrada } from './errores';
 
 interface FilaVista {
   codigo: string;
-  estado_solicitud: 'PENDIENTE_PAGO' | 'VENCIDA' | 'CANCELADA';
+  estado_solicitud: EstadoSolicitud;
   creada_en: Date;
   estado_matricula: 'RESERVADA' | 'VIGENTE' | 'FINALIZADA' | 'CANCELADA';
   reserva_vence_en: Date | null;
@@ -26,8 +30,19 @@ interface FilaVista {
   anio: number;
   mes: number;
   clases_totales: number;
-  monto: string;
+  monto_ajustado: string | null;
+  monto_calculado: string;
   es_proporcional: boolean;
+  /** El último pago de la matrícula (`unirUltimoPago`): todo nulo si no tiene. */
+  pago_metodo: 'EFECTIVO' | 'YAPE' | 'TRANSFERENCIA' | null;
+  pago_estado: 'PENDIENTE_VERIFICACION' | 'CONFIRMADO' | 'RECHAZADO' | null;
+  pago_monto: string | null;
+  pago_registrado_en: Date | null;
+  pago_verificado_en: Date | null;
+  pago_fecha_operacion: string | null;
+  pago_motivo_rechazo: string | null;
+  pago_numero_ticket: number | null;
+  hay_pago_pendiente: boolean | null;
   /** JSON de las clases (`jsonb` como texto): `[{ nivel, diaSemana, horaInicio, horaFin }]`. */
   clases: string;
 }
@@ -61,7 +76,11 @@ export class SeguimientoService {
         SELECT s.codigo, s.estado::text AS estado_solicitud, s.creado_en AS creada_en, m.estado::text AS estado_matricula,
                m.reserva_vence_en, a.nombres, (a.foto_clave IS NOT NULL) AS foto_cargada, p.nombre AS plan,
                m.anio::int AS anio, m.mes::int AS mes, m.clases_totales::int AS clases_totales,
-               coalesce(m.monto_ajustado, m.monto_calculado)::text AS monto, m.es_proporcional,
+               m.monto_ajustado::text AS monto_ajustado, m.monto_calculado::text AS monto_calculado, m.es_proporcional,
+               up.metodo::text AS pago_metodo, up.estado::text AS pago_estado, up.monto::text AS pago_monto,
+               up.registrado_en AS pago_registrado_en, up.verificado_en AS pago_verificado_en,
+               up.fecha_operacion::text AS pago_fecha_operacion, up.motivo_rechazo AS pago_motivo_rechazo,
+               up.numero_ticket AS pago_numero_ticket, up.hay_pendiente AS hay_pago_pendiente,
                (SELECT coalesce(jsonb_agg(jsonb_build_object('nivel', c.nivel::text, 'diaSemana', c.dia_semana::int,
                                                              'horaInicio', to_char(c.hora_inicio, 'HH24:MI'),
                                                              'horaFin', to_char(c.hora_fin, 'HH24:MI'))
@@ -73,6 +92,7 @@ export class SeguimientoService {
           JOIN alumnos a ON a.academia_id = s.academia_id AND a.id = s.alumno_id
           JOIN matriculas m ON m.academia_id = s.academia_id AND m.solicitud_id = s.id
           JOIN planes p ON p.academia_id = m.academia_id AND p.id = m.plan_id
+          ${unirUltimoPago}
          WHERE s.academia_id = ${tx.academiaId}::uuid AND ${busqueda}
          ORDER BY m.creado_en DESC
          LIMIT 1`;
@@ -102,14 +122,32 @@ export class SeguimientoService {
 }
 
 /**
- * La vista de seguimiento (criterios 32 y 58): completa mientras la solicitud espera el pago y reducida en `VENCIDA` y `CANCELADA`. En la
- * 005a la vigente del cliente es su única solicitud con otro estado visible, así que "no es la vigente" coincide con esos dos estados. La
- * vista reducida no lleva `nombres`, `fotoCargada` ni `reservaVenceEn`: las claves no se crean (no se borran después de armarlas con
- * datos), y el plan, las clases, el mes y el monto salen de la matrícula de esa solicitud, nunca de otra del mismo alumno (DR-14).
+ * La vista de seguimiento (criterios 32 y 58 de 005; 28 de 007): completa (con el primer nombre) mientras la solicitud espera el pago
+ * (`PENDIENTE_PAGO`), tiene un comprobante en revisión (`EN_VERIFICACION`), se rechazó y todavía se puede pagar (`PAGO_RECHAZADO`) o ya se
+ * confirmó (`CONFIRMADA`); reducida en `VENCIDA` y `CANCELADA`. La vigente del cliente es su única solicitud con otro estado visible, así
+ * que "no es la vigente" coincide con esos dos estados. La vista reducida no lleva `nombres`, `fotoCargada` ni `reservaVenceEn`: las claves
+ * no se crean (no se borran después de armarlas con datos), y el plan, las clases, el mes y el monto salen de la matrícula de esa solicitud,
+ * nunca de otra del mismo alumno (DR-14). El monto es el total a cobrar (`totalACobrar`). Ninguna lleva el DNI, los apellidos, el número de
+ * operación, el comprobante, quién verificó ni ids internos.
  */
 function vistaDe(fila: FilaVista, ahora: Date): VistaSolicitud {
-  const estado = estadoVisible(fila, ahora);
+  const estado = estadoVisible(
+    {
+      estado_solicitud: fila.estado_solicitud,
+      estado_matricula: fila.estado_matricula,
+      reserva_vence_en: fila.reserva_vence_en,
+      estado_ultimo_pago: fila.pago_estado,
+      hay_pago_pendiente: fila.hay_pago_pendiente,
+      anio: fila.anio,
+      mes: fila.mes,
+    },
+    ahora,
+  );
   const mes = String(fila.mes).padStart(2, '0');
+  const total = totalACobrar({
+    montoAjustado: fila.monto_ajustado === null ? null : new Decimal(fila.monto_ajustado),
+    montoCalculado: new Decimal(fila.monto_calculado),
+  });
   const base = {
     codigo: fila.codigo,
     creadaEn: fila.creada_en.toISOString(),
@@ -117,15 +155,67 @@ function vistaDe(fila: FilaVista, ahora: Date): VistaSolicitud {
     clases: JSON.parse(fila.clases) as VistaSolicitud['clases'],
     mes: `${fila.anio}-${mes}`,
     clasesTotales: fila.clases_totales,
-    monto: fila.monto,
+    monto: aTextoMonto(total),
     esProporcional: fila.es_proporcional,
   };
-  if (estado !== 'PENDIENTE_PAGO') return { ...base, estado };
+  if (estado === 'VENCIDA' || estado === 'CANCELADA') return { ...base, estado };
+  // El primer nombre de pila (DR-9, P2): nunca los demás nombres ni los apellidos.
+  const nombres = fila.nombres.trim().split(/\s+/)[0] ?? '';
+  if (estado === 'CONFIRMADA') {
+    // Una solicitud confirmada siempre tiene su pago confirmado (criterio 5): si falta, es un fallo interno, no un valor inventado.
+    const confirmadoEn = fila.pago_verificado_en ?? fila.pago_registrado_en;
+    if (
+      fila.pago_metodo === null ||
+      fila.pago_monto === null ||
+      fila.pago_numero_ticket === null ||
+      confirmadoEn === null
+    ) {
+      throw new Error('Una solicitud confirmada no tiene su pago confirmado.');
+    }
+    return {
+      ...base,
+      estado,
+      nombres,
+      pago: {
+        metodo: fila.pago_metodo,
+        monto: aTextoMonto(fila.pago_monto),
+        confirmadoEn: confirmadoEn.toISOString(),
+        numeroTicket: fila.pago_numero_ticket,
+      },
+    };
+  }
+  if (estado === 'EN_VERIFICACION') {
+    return {
+      ...base,
+      estado,
+      nombres,
+      fotoCargada: fila.foto_cargada,
+      pago: {
+        metodo: fila.pago_metodo ?? 'YAPE',
+        monto: aTextoMonto(fila.pago_monto ?? total),
+        fechaOperacion: fila.pago_fecha_operacion ?? '',
+        enviadoEn: (fila.pago_registrado_en ?? fila.creada_en).toISOString(),
+      },
+    };
+  }
+  if (estado === 'PAGO_RECHAZADO') {
+    return {
+      ...base,
+      estado,
+      nombres,
+      fotoCargada: fila.foto_cargada,
+      rechazo: {
+        motivo: fila.pago_motivo_rechazo ?? '',
+        rechazadoEn: (fila.pago_verificado_en ?? fila.pago_registrado_en ?? fila.creada_en).toISOString(),
+      },
+      // El fin del mes de la matrícula en Lima: hasta entonces se puede volver a pagar.
+      pagableHasta: finDelMesEnLima(new Date(Date.UTC(fila.anio, fila.mes - 1, 15, 12))).toISOString(),
+    };
+  }
   const vista: VistaSolicitud = {
     ...base,
     estado,
-    // El primer nombre de pila (DR-9, P2): nunca los demás nombres ni los apellidos.
-    nombres: fila.nombres.trim().split(/\s+/)[0] ?? '',
+    nombres,
     fotoCargada: fila.foto_cargada,
   };
   // Sin vencimiento (el pago ya está en verificación, historia 007) la clave no existe.
