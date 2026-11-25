@@ -17,6 +17,7 @@ import { formatearFechaHora, formatearMes } from '../../lib/fechas';
 import { mensajeGeneral } from '../../lib/errores';
 import { ESTADO_DE_PAGO_EN_PALABRAS, ESTADO_EN_PALABRAS } from '../../lib/estado-solicitud';
 import { ETIQUETA_METODO } from '../caja/montos';
+import { DialogoFoto } from '../foto/DialogoFoto';
 import { useUsuario } from '../sesion/contexto';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
@@ -61,6 +62,7 @@ function ContenidoSolicitudes() {
   const [aCancelar, setACancelar] = useState<SolicitudPanel | null>(null);
   const [aCobrar, setACobrar] = useState<SolicitudPanel | null>(null);
   const [aAjustar, setAAjustar] = useState<SolicitudPanel | null>(null);
+  const [aFotografiar, setAFotografiar] = useState<SolicitudPanel | null>(null);
   const [hecho, setHecho] = useState<string | null>(null);
   const consulta = useSolicitudes(filtro);
   useAlPerderSesion(consulta.error);
@@ -133,6 +135,10 @@ function ContenidoSolicitudes() {
                       setHecho(null);
                       setAAjustar(solicitud);
                     }}
+                    alAgregarFoto={() => {
+                      setHecho(null);
+                      setAFotografiar(solicitud);
+                    }}
                   />
                 </li>
               ))}
@@ -184,6 +190,20 @@ function ContenidoSolicitudes() {
           }}
         />
       ) : null}
+
+      {aFotografiar ? (
+        <DialogoFoto
+          key={aFotografiar.id}
+          titulo="Agregar foto"
+          destino={{ tipo: 'solicitud', id: aFotografiar.id }}
+          nombre={`${aFotografiar.nombres} ${aFotografiar.apellidos}`}
+          alCerrar={() => setAFotografiar(null)}
+          alGuardar={() => {
+            setHecho(`Se guardó la foto de la solicitud ${aFotografiar.codigo}.`);
+            setAFotografiar(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -195,6 +215,7 @@ interface PropiedadesTarjeta {
   alCancelar: () => void;
   alCobrar: () => void;
   alAjustar: () => void;
+  alAgregarFoto: () => void;
 }
 
 function TarjetaSolicitud({
@@ -204,6 +225,7 @@ function TarjetaSolicitud({
   alCancelar,
   alCobrar,
   alAjustar,
+  alAgregarFoto,
 }: PropiedadesTarjeta) {
   const estado = ESTADO_EN_PALABRAS[solicitud.estado];
   const sePuedeCancelar = solicitud.estado === 'PENDIENTE_PAGO' || solicitud.estado === 'VENCIDA';
@@ -212,6 +234,8 @@ function TarjetaSolicitud({
   // Con un comprobante en revisión no se cobra ni se cancela: se aprueba o se rechaza en la bandeja de pagos.
   const enRevision = solicitud.estado === 'EN_VERIFICACION';
   const sePuedeAjustar = solicitud.estado === 'PENDIENTE_PAGO';
+  // La foto se agrega mientras la solicitud está activa o ya confirmada (criterio 23 de 008b); una vencida o cancelada ya no la admite.
+  const sePuedeFotografiar = sePuedeCobrar || enRevision || solicitud.estado === 'CONFIRMADA';
   const ticket = solicitud.estado === 'CONFIRMADA' && solicitud.pago?.estado === 'CONFIRMADO' ? solicitud.pago : null;
   return (
     <article
@@ -287,7 +311,7 @@ function TarjetaSolicitud({
         <dd className="text-slate-900">{formatearFechaHora(solicitud.creadaEn)}</dd>
       </dl>
 
-      {sePuedeCobrar || sePuedeCancelar || ticket || (enRevision && puedeVerificar) ? (
+      {sePuedeCobrar || sePuedeCancelar || sePuedeFotografiar || ticket || (enRevision && puedeVerificar) ? (
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           {sePuedeCancelar ? (
             <button
@@ -297,6 +321,16 @@ function TarjetaSolicitud({
               className={ESTILO_BOTON.secundario}
             >
               Cancelar
+            </button>
+          ) : null}
+          {sePuedeFotografiar ? (
+            <button
+              type="button"
+              onClick={alAgregarFoto}
+              aria-label={`Agregar la foto de la solicitud ${solicitud.codigo}`}
+              className={ESTILO_BOTON.secundario}
+            >
+              Agregar foto
             </button>
           ) : null}
           {sePuedeAjustar && puedeAjustar ? (

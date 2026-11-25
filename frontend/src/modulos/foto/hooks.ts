@@ -1,5 +1,8 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useClavesCarnet } from '../carnet/hooks';
+import { useConfirmarSesion } from '../sesion/hooks';
+import { useClavesSolicitudes } from '../solicitudes/hooks';
 import * as api from './api';
 import { avisoDeArchivo } from './validacion';
 
@@ -56,5 +59,27 @@ export function useSubirFoto(
     // En la propia mutación y no en cada `mutate`: siguen corriendo aunque la página cambie mientras la subida espera.
     ...(alTerminar ? { onSuccess: alTerminar } : {}),
     ...(alFallar ? { onError: alFallar } : {}),
+  });
+}
+
+/**
+ * Sube la foto de un alumno o de una solicitud desde el panel (criterios 22, 23 y 28 de 008). Antes confirma que la sesión sigue siendo la de
+ * la página. Pase lo que pase vuelve a pedir el carnet y las solicitudes: un 404 o un 409 dicen que lo que se veía ya no es lo que hay.
+ */
+export function useSubirFotoDelPanel() {
+  const cliente = useQueryClient();
+  const clavesCarnet = useClavesCarnet();
+  const clavesSolicitudes = useClavesSolicitudes();
+  const confirmarSesion = useConfirmarSesion();
+  return useMutation({
+    mutationFn: async ({ destino, imagen }: { destino: api.DestinoDeFoto; imagen: Blob }) => {
+      await confirmarSesion();
+      return api.subirFotoDelPanel(destino, imagen);
+    },
+    onSettled: () =>
+      Promise.all([
+        cliente.invalidateQueries({ queryKey: clavesCarnet.todas }),
+        cliente.invalidateQueries({ queryKey: clavesSolicitudes.todas }),
+      ]),
   });
 }
