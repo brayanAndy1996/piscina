@@ -1,7 +1,10 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { DetalleCaja } from '../modulos/caja/DetalleCaja';
+import { PaginaCarnetAlumno } from '../modulos/alumnos/PaginaCarnetAlumno';
+import { PaginaAlumnos } from '../modulos/alumnos/PaginaAlumnos';
 import { PaginaCaja } from '../modulos/caja/PaginaCaja';
 import { PaginaHistorialCajas } from '../modulos/caja/PaginaHistorialCajas';
+import { PaginaMiCarnet } from '../modulos/carnet/PaginaMiCarnet';
 import { PaginaClases } from '../modulos/clases/PaginaClases';
 import { PaginaConfiguracion } from '../modulos/configuracion/PaginaConfiguracion';
 import { Inicio } from '../modulos/inicio/Inicio';
@@ -47,6 +50,9 @@ export function Rutas() {
         <Route path="/panel/caja" element={<PaginaCaja />} />
         <Route path="/panel/cajas" element={<PaginaHistorialCajas />} />
         <Route path="/panel/cajas/:id" element={<DetalleCaja />} />
+        <Route path="/panel/alumnos" element={<PaginaAlumnos />} />
+        <Route path="/panel/alumnos/:id" element={<PaginaCarnetAlumno />} />
+        <Route path="/panel/mi-carnet" element={<PaginaMiCarnet />} />
       </Route>
       <Route path="*" element={<PaginaNoEncontrada />} />
     </Routes>

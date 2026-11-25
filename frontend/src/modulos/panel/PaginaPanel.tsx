@@ -1,12 +1,15 @@
-import { type Permiso, puede } from '@aquagestion/contratos';
+import { type Alcance, type Permiso, puede } from '@aquagestion/contratos';
 import { Link } from 'react-router';
 import { ESTILO_BOTON } from '../../componentes/ui';
+import { alcanceDe } from '../../lib/permisos';
 import { useUsuario } from '../sesion/contexto';
 import { ETIQUETA_ROL } from '../sesion/etiquetas';
 import { RUTA_CAMBIAR_CLAVE } from '../sesion/hooks';
 
 interface Opcion {
   permiso: Permiso;
+  /** Si se indica, la opción solo es para el rol cuya celda de la matriz tiene este alcance (por ejemplo, «Mi carnet» es del `PROPIO`). */
+  alcance?: Alcance;
   texto: string;
   descripcion: string;
   /** Una dirección que se abre en otra pestaña (el formulario público), en vez de una página del panel. */
@@ -32,6 +35,20 @@ const OPCIONES: readonly Opcion[] = [
     descripcion:
       'Revisa los comprobantes de Yape y transferencia que enviaron los clientes: apruébalos para confirmar la inscripción o recházalos con un motivo.',
     ruta: () => '/panel/pagos',
+  },
+  {
+    permiso: 'VER_CARNET',
+    alcance: 'TODO',
+    texto: 'Alumnos y carnets',
+    descripcion: 'Busca a un alumno por DNI o nombre, mira su carnet, descárgalo en PDF o regenera su QR.',
+    ruta: () => '/panel/alumnos',
+  },
+  {
+    permiso: 'VER_CARNET',
+    alcance: 'PROPIO',
+    texto: 'Mi carnet',
+    descripcion: 'Muestra tu carnet con el QR para entrar a la piscina y descárgalo en PDF.',
+    ruta: () => '/panel/mi-carnet',
   },
   {
     permiso: 'REGISTRAR_INSCRIPCION_Y_COBRO',
@@ -89,7 +106,11 @@ const OPCIONES: readonly Opcion[] = [
 /** `/panel`: inicio con la sesión y el menú según el rol (criterio 48). */
 export function PaginaPanel() {
   const usuario = useUsuario();
-  const opciones = OPCIONES.filter((opcion) => puede(usuario.rol, opcion.permiso));
+  const opciones = OPCIONES.filter(
+    (opcion) =>
+      puede(usuario.rol, opcion.permiso) &&
+      (opcion.alcance === undefined || alcanceDe(usuario.rol, opcion.permiso) === opcion.alcance),
+  );
 
   return (
     <div className="space-y-6">
