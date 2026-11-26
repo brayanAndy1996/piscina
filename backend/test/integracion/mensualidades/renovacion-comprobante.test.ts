@@ -156,7 +156,7 @@ describe('el registro de la renovación con comprobante (criterio 7)', () => {
           numero_ticket: null,
           clave_idempotencia: cuerpo['claveIdempotencia'],
         });
-        expect(pago?.numero_operacion_normalizado).toBe('AB12');
+        expect(pago?.numero_operacion_normalizado).toBe(normalizadoDeReferencia('ab-0012'));
         expect(pago?.comprobante_clave).toMatch(
           new RegExp(
             `^academias/${esc.e.A.id}/pagos/${resultado.pago.id}/comprobante-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.jpg$`,

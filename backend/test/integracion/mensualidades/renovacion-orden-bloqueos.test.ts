@@ -167,10 +167,15 @@ describe.each(VIAS)('el orden de bloqueos de la renovación por %s (criterio 13)
       expect(delOrden(resultados, 'otra').status, delOrden(resultados, 'otra').texto).toBe(201);
       expect(await cuantasDelMes(esc.e.A.id, alumno.alumnoId, DICIEMBRE)).toBe(1);
       if (via === 'EFECTIVO') {
-        const ingresos = (await leerMovimientos(esc.e.A.id)).filter(
-          (m) => m.tipo === 'INGRESO' && m.concepto === 'MENSUALIDAD',
-        );
-        expect(ingresos.length).toBeGreaterThanOrEqual(2);
+        const ingresos = (await leerMovimientos(esc.e.A.id)).filter((m) => m.tipo === 'INGRESO');
+        expect(
+          ingresos.filter((m) => m.concepto === 'MENSUALIDAD'),
+          'la renovación',
+        ).toHaveLength(1);
+        expect(
+          ingresos.filter((m) => m.concepto === 'INSCRIPCION'),
+          'el cobro de la solicitud',
+        ).toHaveLength(1);
       }
     });
 
@@ -192,7 +197,15 @@ describe.each(VIAS)('el orden de bloqueos de la renovación por %s (criterio 13)
 
         expect(delOrden(resultados, 'renovacion').status, delOrden(resultados, 'renovacion').texto).toBe(201);
         expect(delOrden(resultados, 'otra').status, delOrden(resultados, 'otra').texto).toBe(200);
-        expect((await leerMovimientos(esc.e.A.id)).filter((m) => m.concepto === 'MENSUALIDAD')).toHaveLength(2);
+        const movimientos = await leerMovimientos(esc.e.A.id);
+        expect(
+          movimientos.filter((m) => m.concepto === 'MENSUALIDAD'),
+          'la renovación',
+        ).toHaveLength(1);
+        expect(
+          movimientos.filter((m) => m.concepto === 'INSCRIPCION'),
+          'la aprobación de la solicitud',
+        ).toHaveLength(1);
       });
     }
 
