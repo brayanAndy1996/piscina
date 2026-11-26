@@ -807,6 +807,7 @@ model Inasistencia {
   clase      Clase       @relation(fields: [academiaId, claseId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   asistencia Asistencia? @relation(fields: [academiaId, asistenciaId, alumnoId, fecha], references: [academiaId, id, alumnoId, fecha], onDelete: Restrict, onUpdate: Restrict)
 
+  @@unique([academiaId, id])
   @@unique([academiaId, alumnoId, claseId, fecha], map: "inasistencias_una_por_clase_key")
   @@index([academiaId, alumnoId, fecha])
   @@index([academiaId, matriculaId])
