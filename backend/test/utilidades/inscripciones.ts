@@ -1,5 +1,8 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
 // Actualizada por la 007 (spec 007-pagos, criterio 7): `TIPO_DE_COLUMNA` suma `registrada_por` (uuid) para escribir esa columna de `solicitudes_inscripcion`. No se quitó ni se cambió nada más.
+// Actualizada por la 010a (spec 010-mensualidades, criterio 1: `CHECK matriculas_renovacion_sin_vencimiento`, una matrícula sin solicitud nunca tiene `reserva_vence_en`): `filaValida('matriculas')` queda sin vencimiento
+// (la fila ya no tiene solicitud, así que no puede tener reserva) y `sqlLlenarClase`, cuando llena con matrículas `RESERVADA` con vencimiento, siembra también la solicitud de cada una. No cambia lo que comprueban las pruebas
+// que usan estas utilidades.
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -1089,7 +1092,8 @@ export async function filaValida(tabla: Tabla005, padres: Partial<PadresDeFila>)
         clases_por_mes_plan: 12,
         monto_calculado: '100.00',
         estado: 'RESERVADA',
-        reserva_vence_en: new Date(ahora.getTime() + VEINTICUATRO_HORAS),
+        // Sin solicitud no hay reserva de 24 horas (010a, criterio 1): una `RESERVADA` sin vencimiento es un pago en verificación.
+        reserva_vence_en: null,
         creado_en: ahora,
         actualizado_en: ahora,
       };
@@ -1274,8 +1278,21 @@ export function sqlLlenarClase(
   const dos = (n: number) => String(n).padStart(2, '0');
   const ultimo = new Date(Date.UTC(opciones.mes.anio, opciones.mes.mes, 0)).getUTCDate();
   const estado = opciones.estado ?? 'VIGENTE';
-  return {
-    sql: `WITH a AS (
+  const conReserva =
+    estado === 'RESERVADA' && opciones.reservaVenceEn !== null && opciones.reservaVenceEn !== undefined;
+  const comunes = [
+    academiaId,
+    [...dnis],
+    planId,
+    opciones.mes.anio,
+    opciones.mes.mes,
+    `${opciones.mes.anio}-${dos(opciones.mes.mes)}-01`,
+    `${opciones.mes.anio}-${dos(opciones.mes.mes)}-${dos(ultimo)}`,
+    estado,
+  ];
+  if (!conReserva) {
+    return {
+      sql: `WITH a AS (
             INSERT INTO alumnos (id, academia_id, dni, nombres, apellidos, fecha_nacimiento, telefono, nivel, estado, creado_en, actualizado_en)
             SELECT gen_random_uuid(), $1::uuid, d, 'Relleno', 'Para el aforo', DATE '2000-01-15', '987654321', 'BASICO'::nivel_natacion,
                    'CLIENTE'::estado_alumno, now(), now()
@@ -1286,23 +1303,45 @@ export function sqlLlenarClase(
                                     es_proporcional, precio_plan, clases_por_mes_plan, monto_calculado, estado, reserva_vence_en,
                                     creado_en, actualizado_en)
             SELECT gen_random_uuid(), $1::uuid, a.id, $3::uuid, $4::smallint, $5::smallint, $6::date, $7::date, 12, 0,
-                   false, 120.00, 12, 120.00, $8::estado_matricula, $9::timestamptz, now(), now()
+                   false, 120.00, 12, 120.00, $8::estado_matricula, NULL, now(), now()
               FROM a
             RETURNING id)
           INSERT INTO matricula_clases (academia_id, matricula_id, clase_id)
-          SELECT $1::uuid, m.id, $10::uuid FROM m`,
-    parametros: [
-      academiaId,
-      [...dnis],
-      planId,
-      opciones.mes.anio,
-      opciones.mes.mes,
-      `${opciones.mes.anio}-${dos(opciones.mes.mes)}-01`,
-      `${opciones.mes.anio}-${dos(opciones.mes.mes)}-${dos(ultimo)}`,
-      estado,
-      estado === 'RESERVADA' ? (opciones.reservaVenceEn ?? null) : null,
-      claseId,
-    ],
+          SELECT $1::uuid, m.id, $9::uuid FROM m`,
+      parametros: [...comunes, claseId],
+    };
+  }
+  // 010a: una matrícula `RESERVADA` con vencimiento solo existe con su solicitud (`matriculas_renovacion_sin_vencimiento`): se siembra una por cada una.
+  const codigos = dnis.map(() => codigoAleatorio());
+  const hashes = dnis.map(() => sha256(tokenAleatorio()).toString('hex'));
+  return {
+    sql: `WITH f AS (
+            SELECT gen_random_uuid() AS alumno_id, gen_random_uuid() AS solicitud_id, d.dni, d.codigo, d.hash
+              FROM unnest($2::text[], $10::text[], $11::text[]) AS d(dni, codigo, hash)),
+          a AS (
+            INSERT INTO alumnos (id, academia_id, dni, nombres, apellidos, fecha_nacimiento, telefono, nivel, estado, creado_en, actualizado_en)
+            SELECT f.alumno_id, $1::uuid, f.dni, 'Relleno', 'Para el aforo', DATE '2000-01-15', '987654321', 'BASICO'::nivel_natacion,
+                   'CLIENTE'::estado_alumno, now(), now()
+              FROM f
+            RETURNING id),
+          s AS (
+            INSERT INTO solicitudes_inscripcion (id, academia_id, alumno_id, codigo, token_hash, clave_idempotencia, estado, ip_origen,
+                                                 creado_en, actualizado_en)
+            SELECT f.solicitud_id, $1::uuid, f.alumno_id, f.codigo, decode(f.hash, 'hex'), gen_random_uuid(),
+                   'PENDIENTE_PAGO'::estado_solicitud, '198.51.100.9'::inet, now(), now()
+              FROM f
+            RETURNING id),
+          m AS (
+            INSERT INTO matriculas (id, academia_id, alumno_id, plan_id, solicitud_id, anio, mes, fecha_inicio, fecha_fin, clases_totales,
+                                    clases_usadas, es_proporcional, precio_plan, clases_por_mes_plan, monto_calculado, estado,
+                                    reserva_vence_en, creado_en, actualizado_en)
+            SELECT gen_random_uuid(), $1::uuid, f.alumno_id, $3::uuid, f.solicitud_id, $4::smallint, $5::smallint, $6::date, $7::date,
+                   12, 0, false, 120.00, 12, 120.00, $8::estado_matricula, $12::timestamptz, now(), now()
+              FROM f
+            RETURNING id)
+          INSERT INTO matricula_clases (academia_id, matricula_id, clase_id)
+          SELECT $1::uuid, m.id, $9::uuid FROM m`,
+    parametros: [...comunes, claseId, codigos, hashes, opciones.reservaVenceEn],
   };
 }
 
