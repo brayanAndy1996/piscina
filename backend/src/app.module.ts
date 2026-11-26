@@ -1,5 +1,6 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import type { DestinationStream } from 'pino';
 import { FiltroErrores } from './comun/filtros/filtro-errores';
@@ -11,7 +12,7 @@ import { crearOpcionesRegistro } from './infraestructura/registro';
 import { RelojModule } from './infraestructura/reloj';
 import { AcademiasModule } from './modulos/academias';
 import { AlumnosModule } from './modulos/alumnos';
-import { AsistenciaModule } from './modulos/asistencia';
+import { AsistenciaModule, TareasAsistenciaModule } from './modulos/asistencia';
 import { AuditoriaModule } from './modulos/auditoria';
 import { AutenticacionModule } from './modulos/autenticacion';
 import { CajaModule } from './modulos/caja';
@@ -62,6 +63,8 @@ export class AppModule {
         AlumnosModule,
         AsistenciaModule,
         SaludModule,
+        // Las tareas programadas (las faltas de la 009b) solo se cargan con `TAREAS_PROGRAMADAS=activas`; las pruebas las apagan (criterio 33).
+        ...(entorno.TAREAS_PROGRAMADAS === 'activas' ? [ScheduleModule.forRoot(), TareasAsistenciaModule] : []),
       ],
       // El filtro también es un proveedor normal: el middleware de `/api/plataforma` lo reutiliza para sus respuestas.
       providers: [FiltroErrores, { provide: APP_FILTER, useExisting: FiltroErrores }],
