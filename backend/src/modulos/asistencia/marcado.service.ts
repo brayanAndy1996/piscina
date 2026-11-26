@@ -15,15 +15,18 @@ import { ALMACEN_ARCHIVOS, type AlmacenArchivos } from '../../infraestructura/al
 import { BaseDatos, restriccionDeUnicidadViolada, type TransaccionAcademia } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { alumnoNoEncontrado, leerFotoComoData } from '../alumnos';
+import { AuditoriaService } from '../auditoria';
 import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
 import type { SesionVerificada } from '../autenticacion/tipos';
 import { leerConfiguracion } from '../configuracion/lectura';
-import { decidirMarcado } from './dominio/validaciones';
+import { decidirMarcado, decidirPosterior } from './dominio/validaciones';
 import { dentroDeLaVentana, diaIsoEnLima, ventanaDeLaClase } from './dominio/ventana';
 import { claveYaUsada, qrNoReconocido, rechazoDeAsistencia } from './errores';
 import {
   bloquearAlumnoPorId,
   bloquearAlumnoPorToken,
+  bloquearClasesDeLaMatricula,
+  bloquearFaltasDelDia,
   bloquearMatriculaDelDia,
   cubreElDia,
   type FilaDeAsistencia,
@@ -37,9 +40,20 @@ import {
   leerClasesDelDia,
 } from './lectura';
 
-/** De dónde sale el alumno: el contenido del QR (el token sale solo de él) o el id de la búsqueda (criterios 2 y 5). */
+/**
+ * De dónde sale el alumno y qué se registra: el contenido del QR (el token sale solo de él), el id de la búsqueda (criterios 2 y 5) o, en el registro
+ * posterior de la 009b (criterio 28), el id del alumno con el día que se corrige, la hora a la que llegó y el motivo.
+ */
 export type EntradaDeMarcado =
-  { readonly tipo: 'QR'; readonly contenido: string } | { readonly tipo: 'MANUAL'; readonly alumnoId: string };
+  | { readonly tipo: 'QR'; readonly contenido: string }
+  | { readonly tipo: 'MANUAL'; readonly alumnoId: string }
+  | {
+      readonly tipo: 'POSTERIOR';
+      readonly alumnoId: string;
+      readonly fecha: string;
+      readonly horaLlegada: string;
+      readonly motivo: string;
+    };
 
 /** Lo que responde el marcado: el resultado y si se creó ahora (201) o ya estaba (200, un reintento con la misma clave). */
 export interface ResultadoDelMarcado {
@@ -91,12 +105,18 @@ type SalidaDeLaTransaccion =
  *    dos peticiones con la misma clave esperaron aquí y la segunda debe responder 200, no 409 (criterio 13).
  * 5. «Ahora» (después de todos los bloqueos, DT-16), la tolerancia de la academia (`leerConfiguracion(tx)`), la asistencia de hoy, el pago en
  *    verificación y la clase del día; `decidirMarcado` (puro) elige el código del criterio 7 o «registrar».
- * 6. Si registra: `INSERT` de la asistencia y `UPDATE` de `clases_usadas`. Nunca se bloquea `clases` (la asistencia no mueve cupo).
+ * 6. Si registra: `INSERT` de la asistencia y `UPDATE` de `clases_usadas`. La asistencia no mueve cupo: nunca se toma `clases` con `FOR UPDATE` ni `FOR SHARE`.
+ *
+ * Desde la 009b (criterio 37, DT-22), entre la matrícula y «ahora» se toman las clases de la matrícula con `FOR KEY SHARE` (el mismo modo de la llave
+ * foránea del `INSERT`): una espera detrás de un cobro, una cancelación o una inscripción que cruza el fin de la clase responde `FUERA_DE_HORARIO` y no
+ * registra con la hora de antes. El registro posterior (criterio 28, D-16) usa el mismo caso de uso con la fecha D en lugar de hoy, y toma además la
+ * falta de esa clase y fecha con `FOR UPDATE`, que cubre con su asistencia; sí audita (`ASISTENCIA_POSTERIOR_REGISTRADA`, criterio 29). La clave de
+ * idempotencia solo repite un registro del mismo alumno **y** del mismo tipo (marcado o posterior, criterio 36).
  *
  * La transacción devuelve un valor (registro o rechazo) y no lanza el rechazo: la foto se lee **después** de cerrarla (DT-11) y recién entonces se
  * arma el 201, el 200 o el 409 con `detalles`. Un choque de unicidad (`asistencias_un_dia_key` o la clave) se resuelve con el nombre de la
  * restricción, después del `ROLLBACK`, volviendo a decidir con lo que la otra transacción confirmó. No audita: la fila ya dice quién, cuándo y
- * cómo (criterio 18). Nunca se escribe en el registro técnico el contenido del QR, el token ni el DNI (criterio 17).
+ * cómo (criterio 18); el posterior sí. Nunca se escribe en el registro técnico el contenido del QR, el token ni el DNI (criterio 17).
  */
 @Injectable()
 export class MarcadoService {
@@ -105,6 +125,7 @@ export class MarcadoService {
     @Inject(RELOJ) private readonly reloj: Reloj,
     @Inject(ALMACEN_ARCHIVOS) private readonly almacen: AlmacenArchivos,
     private readonly registro: PinoLogger,
+    private readonly auditoria: AuditoriaService,
   ) {
     this.registro.setContext(MarcadoService.name);
   }
@@ -146,62 +167,85 @@ export class MarcadoService {
     clave: string,
     ip: string | null,
   ): Promise<SalidaDeLaTransaccion> {
+    const posterior = entrada.tipo === 'POSTERIOR';
+
     // 1. El actor sigue vigente: su 401 gana a cualquier 404 o 409 (criterio 6).
     await bloquearActorVigente(tx, { id: actor.id, versionToken: actor.versionToken }, { registro: this.registro, ip });
 
     // 2. El alumno, con `FOR SHARE` (criterio 14).
     const alumno = await this.bloquearAlumno(tx, entrada, token);
 
-    // 3. La clave ya usada (fila c del criterio 7).
+    // 3. La clave ya usada (fila c del criterio 7): del mismo alumno y del mismo tipo de registro, 200; si no, 409 (criterio 36).
     const previa = await leerAsistenciaPorClave(tx, clave);
-    if (previa) return this.repetir(tx, alumno, previa);
+    if (previa) return this.repetir(tx, alumno, previa, posterior);
 
-    // 4. La matrícula del día, con `FOR UPDATE`. El día se elige con un «ahora» provisional; el definitivo se lee después del bloqueo.
-    const bloqueada = await bloquearMatriculaDelDia(tx, alumno.id, hoyEnLima(this.reloj.ahora()));
+    // 4. La matrícula del día, con `FOR UPDATE`. El día se elige con un «ahora» provisional (o es la fecha del posterior); el definitivo se lee después.
+    const diaProvisional = entrada.tipo === 'POSTERIOR' ? entrada.fecha : hoyEnLima(this.reloj.ahora());
+    const bloqueada = await bloquearMatriculaDelDia(tx, alumno.id, diaProvisional);
     if (bloqueada) {
       // Quien esperaba esta matrícula pudo ser una petición con la misma clave: lo que confirmó ya se ve (lectura comprometida).
       const confirmada = await leerAsistenciaPorClave(tx, clave);
-      if (confirmada) return this.repetir(tx, alumno, confirmada);
+      if (confirmada) return this.repetir(tx, alumno, confirmada, posterior);
+      // Las clases de la matrícula con `FOR KEY SHARE`, antes de leer «ahora»: el `INSERT` ya no espera ninguna fila después de la hora (criterio 37).
+      await bloquearClasesDeLaMatricula(tx, bloqueada.id);
+      // La falta de esa clase y fecha, para cubrirla (criterio 28).
+      if (entrada.tipo === 'POSTERIOR') await bloquearFaltasDelDia(tx, alumno.id, entrada.fecha);
     }
 
     // 5. «Ahora», después de todos los bloqueos (DT-16): si el día cambió durante la espera, la matrícula bloqueada ya no es la del día.
     const ahora = this.reloj.ahora();
     const hoy = hoyEnLima(ahora);
-    const matricula = bloqueada && cubreElDia(bloqueada, hoy) ? bloqueada : null;
+    const dia = entrada.tipo === 'POSTERIOR' ? entrada.fecha : hoy;
+    const matricula = bloqueada && cubreElDia(bloqueada, dia) ? bloqueada : null;
     const configuracion = await leerConfiguracion(tx, { registro: this.registro });
-    const asistenciaDeHoy = await leerAsistenciaDeHoy(tx, alumno.id, hoy);
-    const pagoEnVerificacion = matricula === null && (await hayPagoEnVerificacion(tx, alumno.id, hoy));
-    const clasesDelDia = matricula ? await leerClasesDelDia(tx, matricula.id, diaIsoEnLima(hoy)) : [];
-    const clase = elegirClase(clasesDelDia, hoy, ahora);
+    const asistenciaDelDia = await leerAsistenciaDeHoy(tx, alumno.id, dia);
+    const pagoEnVerificacion = !posterior && matricula === null && (await hayPagoEnVerificacion(tx, alumno.id, dia));
+    const clasesDelDia = matricula ? await leerClasesDelDia(tx, matricula.id, diaIsoEnLima(dia)) : [];
+    const clase = elegirClase(clasesDelDia, dia, ahora);
+    const datosDeLaMatricula = matricula
+      ? {
+          clasesTotales: matricula.clases_totales,
+          clasesUsadas: matricula.clases_usadas,
+          creadaEn: matricula.creado_en,
+        }
+      : null;
+    const claseDelRechazo = clase ? { horaInicio: clase.hora_inicio, horaFin: clase.hora_fin } : null;
 
-    const decision = decidirMarcado({
-      ahora,
-      hoy,
-      toleranciaMinutos: configuracion.toleranciaTardanzaMinutos,
-      alumnoInactivo: alumno.estado === 'INACTIVO',
-      yaMarcoHoy: asistenciaDeHoy !== null,
-      matricula: matricula
-        ? {
-            clasesTotales: matricula.clases_totales,
-            clasesUsadas: matricula.clases_usadas,
-            creadaEn: matricula.creado_en,
-          }
-        : null,
-      pagoEnVerificacion,
-      claseDeHoy: clase ? { horaInicio: clase.hora_inicio, horaFin: clase.hora_fin } : null,
-    });
+    const decision =
+      entrada.tipo === 'POSTERIOR'
+        ? decidirPosterior({
+            ahora,
+            hoy,
+            fecha: entrada.fecha,
+            horaLlegada: entrada.horaLlegada,
+            toleranciaMinutos: configuracion.toleranciaTardanzaMinutos,
+            alumnoInactivo: alumno.estado === 'INACTIVO',
+            yaTieneAsistencia: asistenciaDelDia !== null,
+            matricula: datosDeLaMatricula,
+            clase: claseDelRechazo,
+          })
+        : decidirMarcado({
+            ahora,
+            hoy,
+            toleranciaMinutos: configuracion.toleranciaTardanzaMinutos,
+            alumnoInactivo: alumno.estado === 'INACTIVO',
+            yaMarcoHoy: asistenciaDelDia !== null,
+            matricula: datosDeLaMatricula,
+            pagoEnVerificacion,
+            claseDeHoy: claseDelRechazo,
+          });
 
     if (decision.tipo === 'RECHAZO') {
       return {
         tipo: 'RECHAZO',
         alumno,
         codigo: decision.codigo,
-        claseDeHoy: clase ? { horaInicio: clase.hora_inicio, horaFin: clase.hora_fin } : null,
-        asistenciaDeHoy: asistenciaDeHoy
+        claseDeHoy: claseDelRechazo,
+        asistenciaDeHoy: asistenciaDelDia
           ? {
-              horaLlegada: horaEnLima(asistenciaDeHoy.llegada_en),
-              estadoLlegada: asistenciaDeHoy.estado_llegada,
-              metodo: asistenciaDeHoy.metodo,
+              horaLlegada: horaEnLima(asistenciaDelDia.llegada_en),
+              estadoLlegada: asistenciaDelDia.estado_llegada,
+              metodo: asistenciaDelDia.metodo,
             }
           : null,
         clases: matricula ? contar(matricula.clases_usadas, matricula.clases_totales) : null,
@@ -211,12 +255,15 @@ export class MarcadoService {
     // 6. Registrar: la fila y el descuento, en la misma transacción.
     if (matricula === null || clase === null)
       throw new Error('Una asistencia se registra con la matrícula y la clase del día.');
+    const llegadaEn: Date = decision.llegadaEn ?? ahora;
+    const metodo = entrada.tipo === 'QR' ? 'QR' : 'MANUAL';
+    const motivo = entrada.tipo === 'POSTERIOR' ? entrada.motivo : null;
     const filas = await tx.cliente.$queryRaw<{ id: string }[]>`
       INSERT INTO asistencias (academia_id, alumno_id, matricula_id, clase_id, fecha, llegada_en, registrado_en, metodo, estado_llegada,
-                               registrado_por, clave_idempotencia)
-      VALUES (${tx.academiaId}::uuid, ${alumno.id}::uuid, ${matricula.id}::uuid, ${clase.id}::uuid, ${hoy}::date, ${ahora}::timestamptz,
-              ${ahora}::timestamptz, ${entrada.tipo}::metodo_asistencia, ${decision.estadoLlegada}::estado_llegada, ${actor.id}::uuid,
-              ${clave}::uuid)
+                               registrado_por, registro_posterior, motivo, clave_idempotencia)
+      VALUES (${tx.academiaId}::uuid, ${alumno.id}::uuid, ${matricula.id}::uuid, ${clase.id}::uuid, ${dia}::date, ${llegadaEn}::timestamptz,
+              ${ahora}::timestamptz, ${metodo}::metodo_asistencia, ${decision.estadoLlegada}::estado_llegada, ${actor.id}::uuid,
+              ${posterior}::boolean, ${motivo}::text, ${clave}::uuid)
       RETURNING id::text AS id`;
     const asistenciaId = filas[0]?.id;
     if (asistenciaId === undefined) throw new Error('El INSERT de la asistencia no devolvió la fila.');
@@ -227,18 +274,44 @@ export class MarcadoService {
     const despues = descontadas[0];
     if (!despues) throw new Error('El UPDATE de la matrícula no devolvió la fila.');
 
+    if (entrada.tipo === 'POSTERIOR') {
+      // Si la tarea ya registró la falta de esa clase y fecha, queda cubierta por esta asistencia (criterio 28); la auditoría nace en la misma transacción (criterio 29).
+      const cubiertas = await tx.cliente.$queryRaw<{ id: string }[]>`
+        UPDATE inasistencias SET asistencia_id = ${asistenciaId}::uuid, cubierta_en = ${ahora}::timestamptz
+         WHERE academia_id = ${tx.academiaId}::uuid AND alumno_id = ${alumno.id}::uuid AND clase_id = ${clase.id}::uuid
+           AND fecha = ${dia}::date AND asistencia_id IS NULL
+         RETURNING id::text AS id`;
+      await this.auditoria.registrarEnAcademia(tx, {
+        actorTipo: 'USUARIO',
+        actorId: actor.id,
+        accion: 'ASISTENCIA_POSTERIOR_REGISTRADA',
+        entidad: 'asistencia',
+        entidadId: asistenciaId,
+        motivo: entrada.motivo,
+        datosDespues: {
+          alumnoId: alumno.id,
+          claseId: clase.id,
+          fecha: dia,
+          horaLlegada: horaEnLima(llegadaEn),
+          estadoLlegada: decision.estadoLlegada,
+          faltaCubierta: cubiertas.length > 0,
+        },
+        ip,
+      });
+    }
+
     return {
       tipo: 'REGISTRO',
       alumno,
       creado: true,
       asistencia: {
         id: asistenciaId,
-        fecha: hoy,
-        horaLlegada: horaEnLima(ahora),
-        llegadaEn: ahora.toISOString(),
+        fecha: dia,
+        horaLlegada: horaEnLima(llegadaEn),
+        llegadaEn: llegadaEn.toISOString(),
         estadoLlegada: decision.estadoLlegada,
-        metodo: entrada.tipo,
-        registroPosterior: false,
+        metodo,
+        registroPosterior: posterior,
       },
       clase: datosDeLaClase(clase),
       clases: contar(despues.clases_usadas, despues.clases_totales),
@@ -262,13 +335,17 @@ export class MarcadoService {
     return alumno;
   }
 
-  /** El reintento con una clave que ya registró una asistencia: de otro alumno, 409; del mismo, el mismo resultado (criterio 13). */
+  /**
+   * El reintento con una clave que ya registró una asistencia: de otro alumno o de otro tipo de registro (marcado contra posterior), 409; del mismo alumno
+   * y del mismo tipo, el mismo resultado (criterios 13 y 36). Entre QR y manual vale el 200: los dos son marcado.
+   */
   private async repetir(
     tx: TransaccionAcademia,
     alumno: FilaDelAlumno,
     previa: FilaDeAsistencia,
+    posterior: boolean,
   ): Promise<SalidaDeLaTransaccion> {
-    if (previa.alumno_id !== alumno.id) throw claveYaUsada();
+    if (previa.alumno_id !== alumno.id || previa.registro_posterior !== posterior) throw claveYaUsada();
     const clase = await leerClase(tx, previa.clase_id);
     const matricula = await leerClasesDeLaMatricula(tx, previa.matricula_id);
     if (!clase || !matricula) throw new Error('La asistencia guardada no tiene su clase o su matrícula.');

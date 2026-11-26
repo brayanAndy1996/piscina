@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditoriaModule } from '../auditoria';
 import { AsistenciaController } from './asistencia.controller';
 import { FaltasService } from './faltas.service';
 import { MarcadoService } from './marcado.service';
@@ -8,6 +9,7 @@ import { MarcadoService } from './marcado.service';
  * programada está en `TareasAsistenciaModule`), el registro posterior y la consulta del mes. El reloj, el almacén de archivos y la base son globales.
  */
 @Module({
+  imports: [AuditoriaModule],
   controllers: [AsistenciaController],
   providers: [MarcadoService, FaltasService],
   exports: [MarcadoService, FaltasService],

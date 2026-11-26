@@ -29,6 +29,10 @@ export const MOTIVO_DE_RECHAZO: Readonly<Record<CodigoRechazoAsistencia, string>
   FUERA_DE_HORARIO: 'Está fuera del horario de su clase.',
   CLASE_NO_INCLUIDA: 'La clase de hoy no está incluida en su mensualidad.',
   ASISTENCIA_YA_REGISTRADA: 'Ya registró su asistencia de hoy.',
+  // Los tres del registro posterior (009b, criterio 28): los usa el diálogo de la sección «Asistencia» del alumno.
+  FECHA_NO_PERMITIDA: 'La fecha debe ser de este mes y no puede ser posterior a hoy.',
+  CLASE_NO_TERMINADA: 'La clase todavía no terminó: durante la clase se marca con el QR o de forma manual.',
+  HORA_FUERA_DE_LA_CLASE: 'La hora de llegada debe estar dentro de la clase.',
 };
 
 /**
