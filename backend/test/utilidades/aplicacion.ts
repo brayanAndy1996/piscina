@@ -1,4 +1,6 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
+// Actualizada por la 009b (spec 009-asistencia, criterios 23 y 33 y «TAREAS_PROGRAMADAS ... inactivas en las pruebas»): el entorno de pruebas fija `TAREAS_PROGRAMADAS=inactivas`, para que ninguna aplicación de
+// pruebas programe la tarea de faltas y escriba en la base compartida (las pruebas de las faltas llaman a `FaltasService.registrarFaltas(ahora)` directamente, DT-9). `variables` puede reemplazarla (criterio 33). No se quitó ni se cambió nada más.
 import type { Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
@@ -36,6 +38,7 @@ export function crearEntornoDePruebas(variables: Record<string, string | undefin
     JWT_SECRETO: JWT_SECRETO_PRUEBAS,
     PUERTO_API: '3000',
     NODE_ENV: 'test',
+    TAREAS_PROGRAMADAS: 'inactivas',
     // Compatibilidad con la historia 000: su `validarEntorno` anterior exige `DATABASE_URL`. La 001 lo ignora (la API
     // ya no lo lee, criterio 5). Es siempre una URL válida, para que ninguna prueba falle por esta variable.
     DATABASE_URL: esUrlPostgres(urlApp) ? urlApp : (process.env['DATABASE_URL_PRUEBAS'] ?? URL_SIN_USO),

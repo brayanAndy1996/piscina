@@ -96,3 +96,22 @@ export function formatearMes(mes: string): string {
   const nombre = partes ? NOMBRE_MES[Number(partes[2]) - 1] : undefined;
   return partes && nombre ? `${nombre} de ${partes[1]}` : mes;
 }
+
+/** El mes `AAAA-MM` de hoy en America/Lima, sin depender de la zona del navegador. */
+export function mesActualEnLima(instante: Date = new Date()): string {
+  return hoyEnLima(instante).slice(0, 7);
+}
+
+/** El mes anterior a `mes` (`AAAA-MM`): `2026-01` da `2025-12`. Es texto: no pasa por zona horaria. */
+export function mesAnterior(mes: string): string {
+  const [anio = 0, numero = 1] = mes.split('-').map(Number);
+  const [anioAnterior, mesAnteriorNumero] = numero === 1 ? [anio - 1, 12] : [anio, numero - 1];
+  return `${String(anioAnterior).padStart(4, '0')}-${String(mesAnteriorNumero).padStart(2, '0')}`;
+}
+
+/** El día de la semana (1 lunes a 7 domingo) de una fecha de calendario `AAAA-MM-DD`. Es texto: no pasa por zona horaria. */
+export function diaDeLaSemanaDeFecha(fecha: string): DiaSemana {
+  const [anio = 0, mes = 1, dia = 1] = fecha.split('-').map(Number);
+  const diaJs = new Date(Date.UTC(anio, mes - 1, dia)).getUTCDay();
+  return diaIsoDeAbreviatura(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][diaJs] ?? '');
+}

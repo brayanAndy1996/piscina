@@ -298,7 +298,7 @@ La historia 007 (la 007a y la 007b) está en [`specs/007-pagos/`](specs/007-pago
 La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-carnet-qr/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
 
-**009a · Asistencia por QR y manual** está construida, lista para unirse a `main` (26/11/2026). Pasó las pruebas protegidas, el ataque adversarial (una ronda, sin fallas críticas ni altas), la suite completa, el E2E, el lint, el formato, los tipos y el build. Falta el PR para unirse a `main`. Trae:
+**009a · Asistencia por QR y manual** está unida a `main` (PR #18, 26/11/2026). Pasó las pruebas protegidas, el ataque adversarial (una ronda, sin fallas críticas ni altas), la suite completa, el E2E, el lint, el formato, los tipos y el build. Trae:
 
 - **Marcar la asistencia** en `/panel/asistencia`, con la opción **Asistencia** del inicio del panel, para el administrador y la secretaria. **Escanear** lee el QR del carnet con la lectora USB (el campo **Lectora de QR**, que se vacía en cada lectura) o con **Usar la cámara**. **Buscar alumno** busca por DNI o nombre y, en cada resultado, ofrece **Registrar asistencia**.
 - **El resultado** ocupa la pantalla. En verde, **Asistencia registrada**, con la foto (o «Foto pendiente»), el nombre, el nivel, la clase de hoy, **Puntual** o **Tarde**, «Llegó a las HH:MM» y «Le quedan X de Y». En rojo, **No puede ingresar** y el motivo, como «No tiene una mensualidad vigente.». En amarillo, **Atención**, con el motivo y el detalle, como «Su clase empieza a las 18:00.» o «Marcó a las 18:05 (Puntual, con el QR).».
@@ -308,10 +308,21 @@ La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-
 - **Auditoría:** el marcado normal no se audita: la fila de la asistencia guarda quién, cuándo y cómo. `HEAD` sobre `/api/asistencias` responde 404.
 - **Dependencia nueva:** `html5-qrcode` (2.3.8) en la web, que se carga solo al encender la cámara. Migración `20261125190000_asistencias`.
 - **Datos de ejemplo:** la semilla no cambia. Para probarla hace falta una clase en curso (ver la guía).
-- **Lo que todavía no trae:** el registro de faltas, el registro posterior y la consulta del mes (009b); la asistencia en el panel del alumno (011); las recuperaciones (018), las clases particulares (016) y la asistencia en otro horario (020). Las dos fallas medias de la ronda 1 del ataque (R1-1 y R1-2) se corrigen en la 009b, y el resto de la deuda está en `specs/backlog.md`.
+- **Lo que todavía no trae:** las faltas, el registro posterior y la consulta del mes, que son de la 009b (abajo); la asistencia en el panel del alumno (011); las recuperaciones (018), las clases particulares (016) y la asistencia en otro horario (020). Las dos fallas medias de la ronda 1 del ataque (R1-1 y R1-2) las corrige la 009b, y el resto de la deuda está en `specs/backlog.md`.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria y pulsa **Asistencia**. El paso a paso está en la guía, en «Probar la asistencia».
 
-La historia 009 (la 009a, y la 009b, pendiente) está en [`specs/009-asistencia/`](specs/009-asistencia/spec.md). Su estado está en
+**009b · Faltas, registro posterior y consulta del mes** está construida, lista para unirse a `main` (26/11/2026). Pasó las pruebas protegidas, el ataque adversarial (una ronda, sin fallas críticas ni altas), la revisión, el E2E, el lint, los tipos y el build. La suite completa la corre la integración continua del PR sobre la versión final, porque la última corrida local compartió la base con otra. Trae:
+
+- **Faltas.** Al terminar cada clase, el sistema registra la falta de quien no vino, sin descontar clases. Lo hace una tarea programada cada 5 minutos y al encender la API, para las clases de ayer y de hoy, en la hora de Lima. No hay falta si el alumno marcó ese día, si ya no tenía clases o estaba inactivo, o si se inscribió o pagó después de que empezó la clase.
+- **Asistencia del mes** (`/panel/alumnos/{id}`, sección **Asistencia**, para el administrador y la secretaria): el mes en curso o el anterior, en **Mes**. Cada día de clase aparece con **Puntual**, **Tarde** o **Falta**, la clase («Clase de 18:00 a 19:00») y la hora de llegada («Llegó a las 18:05», con «· Manual» si se marcó buscando al alumno o «· Posterior» si se registró después). Arriba están los totales: **Puntual**, **Tarde**, **Faltas** y **Clases restantes**.
+- **Registrar asistencia posterior** (solo en el mes en curso): el botón abre el diálogo con **Día de la clase** (las faltas del mes, o **Otro día de este mes** con la **Fecha de la clase**), la **Hora de llegada**, dentro de la clase, y el **Motivo**, de 3 a 200 caracteres, que queda en la auditoría. Descuenta una clase y, si había falta, la cubre. Al registrar, dice «Se registró la asistencia del 27/11/2026 a las 18:05 (Puntual).». Un doble clic no registra dos veces.
+- **Rechazos.** La API decide, y el diálogo muestra su motivo debajo del campo que falla, o arriba si no es de un campo: «La fecha debe ser de este mes y no puede ser posterior a hoy.», «La clase todavía no terminó: durante la clase se marca con el QR o de forma manual.», «La hora de llegada debe estar dentro de la clase.» o «El alumno ya tiene su asistencia registrada ese día.».
+- **Consulta del mes:** `GET /api/alumnos/{id}/asistencias?mes=AAAA-MM`, para el personal de recepción. No trae DNI ni motivos. El entrenador y el alumno reciben 403 por ahora.
+- **Dependencias y migraciones:** `@nestjs/schedule` en la API. Migraciones `20261126120000_inasistencias` y `20261126130000_inasistencias_unico_id`. La variable `TAREAS_PROGRAMADAS` (`activas` por defecto; `inactivas` apaga la tarea, como en las pruebas).
+- **Lo que todavía no trae:** la asistencia en el panel del alumno y del apoderado (011), la del entrenador (012), las recuperaciones (018), la asistencia en otro horario (020) y el día de cierre (017). La deuda de la 009b, con F1 a resolver antes de correr varias instancias, está en `specs/backlog.md`.
+- **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria, abre un alumno en **Alumnos y carnets** y baja a la sección **Asistencia**. El paso a paso está en la guía, en «Probar la asistencia».
+
+La historia 009 (la 009a, unida, y la 009b, lista para unirse) está en [`specs/009-asistencia/`](specs/009-asistencia/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
 
 ## Cómo levantarlo en Windows
@@ -446,7 +457,7 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 - [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, cómo
-  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día, el historial de caja con su PDF, y el cobro en efectivo con su ticket y su ajuste de monto, el pago por Yape o transferencia, el carnet con su QR, la foto desde el panel y con la cámara, y la asistencia con la lectora, la cámara o la búsqueda.
+  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día, el historial de caja con su PDF, y el cobro en efectivo con su ticket y su ajuste de monto, el pago por Yape o transferencia, el carnet con su QR, la foto desde el panel y con la cámara, y la asistencia con la lectora, la cámara o la búsqueda, la consulta del mes de un alumno y el registro posterior.
 
 ## Forma de trabajo
 

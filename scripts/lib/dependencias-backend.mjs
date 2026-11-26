@@ -22,6 +22,7 @@ export const DEPENDENCIAS_BACKEND_PERMITIDAS = Object.freeze([
   '@nestjs/common',
   '@nestjs/core',
   '@nestjs/platform-express',
+  '@nestjs/schedule',
   '@nestjs/throttler',
   '@node-rs/argon2',
   '@prisma/adapter-pg',

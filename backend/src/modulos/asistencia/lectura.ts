@@ -3,7 +3,8 @@ import type { TransaccionAcademia } from '../../infraestructura/prisma';
 
 /**
  * Lecturas del marcado de asistencia (spec 009a), sin Nest, con la `tx` de quien llama. Las dos que bloquean (`bloquearAlumno…` y
- * `bloquearMatriculaDelDia`) van en el orden del criterio 14: alumno `FOR SHARE` → matrícula `FOR UPDATE`. Nunca se bloquea `clases`.
+ * `bloquearMatriculaDelDia`) van en el orden del criterio 14: alumno `FOR SHARE` → matrícula `FOR UPDATE` → (009b, criterio 37) las clases de la matrícula con
+ * `FOR KEY SHARE` → (registro posterior) la falta del día con `FOR UPDATE`. Nunca se bloquea `clases` con `FOR UPDATE` ni con `FOR SHARE`.
  */
 
 export interface FilaDelAlumno {
@@ -172,4 +173,30 @@ export async function leerClasesDeLaMatricula(
     SELECT clases_totales::int AS clases_totales, clases_usadas::int AS clases_usadas
       FROM matriculas WHERE academia_id = ${tx.academiaId}::uuid AND id = ${matriculaId}::uuid`;
   return filas[0] ?? null;
+}
+
+/**
+ * Las clases de la matrícula con `FOR KEY SHARE` (spec 009b, criterio 37, DT-22): el mismo modo que toma la llave foránea del `INSERT` en `asistencias`, pero
+ * antes de leer «ahora». Si un cobro, una cancelación o una inscripción tiene la clase con `FOR UPDATE` (`bloquearClasesParaCupo`), el marcado espera aquí y
+ * lee la hora después de la espera; no espera a otros marcados ni a una edición de la clase que no cambie su llave. Todas las clases de la matrícula, en una
+ * sola sentencia ordenada por `clases.id`, y no solo la del día (el día definitivo sale de «ahora», DT-18).
+ */
+export async function bloquearClasesDeLaMatricula(tx: TransaccionAcademia, matriculaId: string): Promise<void> {
+  await tx.cliente.$queryRaw`
+    SELECT 1 AS bloqueada
+      FROM clases
+     WHERE academia_id = ${tx.academiaId}::uuid
+       AND id IN (SELECT clase_id FROM matricula_clases WHERE academia_id = ${tx.academiaId}::uuid AND matricula_id = ${matriculaId}::uuid)
+     ORDER BY id
+       FOR KEY SHARE`;
+}
+
+/** Las faltas del alumno de ese día con `FOR UPDATE` (el registro posterior las cubre, criterio 28): después de la matrícula y de sus clases. */
+export async function bloquearFaltasDelDia(tx: TransaccionAcademia, alumnoId: string, fecha: string): Promise<void> {
+  await tx.cliente.$queryRaw`
+    SELECT 1 AS bloqueada
+      FROM inasistencias
+     WHERE academia_id = ${tx.academiaId}::uuid AND alumno_id = ${alumnoId}::uuid AND fecha = ${fecha}::date
+     ORDER BY id
+       FOR UPDATE`;
 }

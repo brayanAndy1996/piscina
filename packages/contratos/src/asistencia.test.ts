@@ -2,9 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   ALERTAS,
+  asistenciaDelMesSchema,
   CODIGOS_RECHAZO_ASISTENCIA,
+  mesDeAsistenciaSchema,
   rechazoAsistenciaSchema,
   registrarAsistenciaManualSchema,
+  registrarAsistenciaPosteriorSchema,
   registrarAsistenciaQrSchema,
   resultadoAsistenciaSchema,
 } from './index';
@@ -52,6 +55,9 @@ describe('contratos de la asistencia (009a)', () => {
       SIN_CLASES_RESTANTES: 'ROJA',
       FUERA_DE_HORARIO: 'AMARILLA',
       CLASE_NO_INCLUIDA: 'AMARILLA',
+      FECHA_NO_PERMITIDA: 'AMARILLA',
+      CLASE_NO_TERMINADA: 'AMARILLA',
+      HORA_FUERA_DE_LA_CLASE: 'AMARILLA',
     });
     for (const alerta of Object.values(CODIGOS_RECHAZO_ASISTENCIA)) expect(ALERTAS).toContain(alerta);
   });
@@ -82,5 +88,74 @@ describe('contratos de la asistencia (009a)', () => {
     expect(rechazoAsistenciaSchema.safeParse(rechazo).success).toBe(true);
     expect(rechazoAsistenciaSchema.safeParse({ ...rechazo, alerta: 'VERDE' }).success).toBe(false);
     expect(rechazoAsistenciaSchema.safeParse({ ...rechazo, dni: '1' }).success).toBe(false);
+  });
+});
+
+describe('contratos de las faltas, el registro posterior y la consulta del mes (009b)', () => {
+  const posterior = {
+    alumnoId: randomUUID(),
+    fecha: '2026-11-16',
+    horaLlegada: '18:05',
+    motivo: 'La secretaria no estaba en la entrada',
+    claveIdempotencia: randomUUID(),
+  };
+
+  it('el registro posterior es estricto: UUID, fecha AAAA-MM-DD, hora HH:MM y un motivo de 3 a 200 caracteres visibles', () => {
+    expect(registrarAsistenciaPosteriorSchema.safeParse(posterior).success).toBe(true);
+    for (const cambio of [
+      { alumnoId: 'no-es-uuid' },
+      { fecha: '16/11/2026' },
+      { fecha: '2026-02-30' },
+      { horaLlegada: '18:5' },
+      { horaLlegada: '24:00' },
+      { horaLlegada: '18:05:00' },
+      { motivo: 'ab' },
+      { motivo: 'm'.repeat(201) },
+      { motivo: '\u2800\u2800\u2800\u2800' },
+      { claveIdempotencia: 'x' },
+      { academiaId: randomUUID() },
+    ]) {
+      expect(
+        registrarAsistenciaPosteriorSchema.safeParse({ ...posterior, ...cambio }).success,
+        JSON.stringify(cambio),
+      ).toBe(false);
+    }
+  });
+
+  it('el mes de la consulta va de 2000-01 a 9999-12', () => {
+    for (const mes of ['2000-01', '2026-11', '9999-12'])
+      expect(mesDeAsistenciaSchema.safeParse(mes).success, mes).toBe(true);
+    for (const mes of ['1999-12', '10000-01', '2026-13', '2026-00', '2026-1', '2026-11-01', '2026-11x'])
+      expect(mesDeAsistenciaSchema.safeParse(mes).success, mes).toBe(false);
+  });
+
+  it('la consulta del mes es estricta: asistencias y faltas por fecha, sin DNI ni motivo', () => {
+    const clase = { horaInicio: '18:00', horaFin: '19:00' };
+    const consulta = {
+      mes: '2026-11',
+      matricula: { clasesTotales: 12, clasesUsadas: 1, clasesRestantes: 11 },
+      registros: [
+        {
+          tipo: 'ASISTENCIA',
+          fecha: '2026-11-02',
+          clase,
+          horaLlegada: '18:03',
+          estadoLlegada: 'PUNTUAL',
+          metodo: 'QR',
+          registroPosterior: false,
+          faltaCubierta: false,
+        },
+        { tipo: 'FALTA', fecha: '2026-11-09', clase },
+      ],
+    };
+    expect(asistenciaDelMesSchema.safeParse(consulta).success).toBe(true);
+    expect(asistenciaDelMesSchema.safeParse({ ...consulta, matricula: null, registros: [] }).success).toBe(true);
+    expect(asistenciaDelMesSchema.safeParse({ ...consulta, dni: '1' }).success).toBe(false);
+    expect(
+      asistenciaDelMesSchema.safeParse({
+        ...consulta,
+        registros: [{ tipo: 'FALTA', fecha: '2026-11-09', clase, motivo: 'x' }],
+      }).success,
+    ).toBe(false);
   });
 });

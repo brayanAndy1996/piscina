@@ -1,14 +1,17 @@
 import {
+  type AsistenciaDelMes,
   CODIGOS_RECHAZO_ASISTENCIA,
   type CodigoRechazoAsistencia,
   type RechazoAsistencia,
   type RegistrarAsistenciaManual,
+  type RegistrarAsistenciaPosterior,
   type RegistrarAsistenciaQr,
   type ResultadoAsistencia,
+  asistenciaDelMesSchema,
   rechazoAsistenciaSchema,
   resultadoAsistenciaSchema,
 } from '@aquagestion/contratos';
-import { ErrorDeApi, enviarJson } from '../../api/cliente';
+import { ErrorDeApi, enviarJson, pedirJson } from '../../api/cliente';
 
 /** Llamadas de la asistencia (spec 009a, criterios 2, 5, 7 y 15). La academia sale de la sesión: ninguna ruta la lleva. */
 
@@ -55,4 +58,18 @@ export function marcarPorQr(datos: RegistrarAsistenciaQr): Promise<SalidaDeMarca
 /** `POST /api/asistencias/manual`: el alumno elegido en la búsqueda. */
 export function marcarManual(datos: RegistrarAsistenciaManual): Promise<SalidaDeMarcado> {
   return marcar('/api/asistencias/manual', datos);
+}
+
+/** `GET /api/alumnos/{id}/asistencias?mes=AAAA-MM` (009b, criterio 31): las asistencias y faltas de un alumno en un mes, para el personal. */
+export async function obtenerAsistenciaDelMes(alumnoId: string, mes: string): Promise<AsistenciaDelMes> {
+  const ruta = `/api/alumnos/${encodeURIComponent(alumnoId)}/asistencias?mes=${encodeURIComponent(mes)}`;
+  return (await pedirJson(ruta, asistenciaDelMesSchema)).datos;
+}
+
+/**
+ * `POST /api/asistencias/posterior` (009b, criterio 28): la asistencia de una clase ya terminada del mes en curso. 201, o 200 con `repetida: true` si
+ * repite la clave. Un rechazo (409 con su código) se lanza como `ErrorDeApi`: el diálogo lo muestra con los textos de `mensajes.ts`.
+ */
+export async function registrarAsistenciaPosterior(datos: RegistrarAsistenciaPosterior): Promise<ResultadoAsistencia> {
+  return (await enviarJson('POST', '/api/asistencias/posterior', datos, resultadoAsistenciaSchema, [200, 201])).datos;
 }

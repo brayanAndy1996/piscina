@@ -17,6 +17,7 @@ const servidor = servidorDePruebas();
 // `matriculas` y `matricula_clases`) y la 006, tres: `cajas`, `movimientos_caja` y `cierres_caja`. Cada historia con tablas nuevas agrega
 // las suyas aquí. Actualizada por la 007 (spec 007-pagos, criterio 1): suma `pagos`.
 // Actualizada por la 009 (spec 009-asistencia, criterio 1): suma `asistencias`. No se quitó ni se cambió nada más.
+// Actualizada por la 009b (spec 009-asistencia, criterio 22): suma `inasistencias`. No se quitó ni se cambió nada más.
 const TABLAS_DESPUES_DE_MIGRAR = [
   '_prisma_migrations',
   'academias',
@@ -31,6 +32,7 @@ const TABLAS_DESPUES_DE_MIGRAR = [
   'configuraciones',
   'consentimientos',
   'fichas_medicas',
+  'inasistencias',
   'matricula_clases',
   'matriculas',
   'movimientos_caja',

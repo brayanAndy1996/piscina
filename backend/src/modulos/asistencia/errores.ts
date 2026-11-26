@@ -22,6 +22,9 @@ const MENSAJES_DE_RECHAZO: Readonly<Record<CodigoRechazoAsistencia, string>> = {
   SIN_CLASES_RESTANTES: 'El alumno no tiene clases restantes en su mensualidad.',
   FUERA_DE_HORARIO: 'El alumno está fuera del horario de su clase.',
   CLASE_NO_INCLUIDA: 'La clase de hoy no está incluida en la mensualidad del alumno.',
+  FECHA_NO_PERMITIDA: 'La fecha debe ser de este mes y no puede ser posterior a hoy.',
+  CLASE_NO_TERMINADA: 'La clase todavía no terminó.',
+  HORA_FUERA_DE_LA_CLASE: 'La hora de llegada no está dentro de la clase.',
 };
 
 /** Un rechazo de negocio del marcado (criterio 7): 409 con el código y los `detalles` de `rechazoAsistenciaSchema`. */

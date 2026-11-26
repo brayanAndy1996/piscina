@@ -7,15 +7,17 @@ import { BotonDescargarPdf } from '../carnet/BotonDescargarPdf';
 import { useCarnetDelAlumno } from '../carnet/hooks';
 import { mensajeDeCarnet } from '../carnet/mensajes';
 import { VistaCarnet } from '../carnet/VistaCarnet';
+import { alcanceDe } from '../../lib/permisos';
 import { useUsuario } from '../sesion/contexto';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
 import { DialogoFoto } from '../foto/DialogoFoto';
+import { AsistenciaDelMes } from './AsistenciaDelMes';
 import { DialogoRegenerarQr } from './DialogoRegenerarQr';
 
 /**
  * `/panel/alumnos/{id}`: el carnet de un alumno para el personal (HU-13, criterio 19 de 008), con «Descargar PDF» y, para quien puede cobrar
- * (`REGISTRAR_INSCRIPCION_Y_COBRO`), «Regenerar QR» y «Cambiar foto» o «Agregar foto» (archivo o cámara, criterio 28 de 008b). `ADMIN` y `SECRETARIA`.
+ * (`REGISTRAR_INSCRIPCION_Y_COBRO`), «Regenerar QR» y «Cambiar foto» o «Agregar foto» (archivo o cámara, criterio 28 de 008b) y la sección «Asistencia» del mes (009b, criterio 32). `ADMIN` y `SECRETARIA`.
  */
 export function PaginaCarnetAlumno() {
   return (
@@ -35,6 +37,8 @@ function ContenidoCarnetAlumno() {
   const [hecho, setHecho] = useState<string | null>(null);
   const carnet = consulta.data;
   const puedeRegenerar = puede(usuario.rol, 'REGISTRAR_INSCRIPCION_Y_COBRO');
+  // La asistencia del mes es de `VER_REPORTES_ASISTENCIA` con alcance `TODO` (009b, criterio 31): el entrenador y el alumno no la ven.
+  const veAsistencia = alcanceDe(usuario.rol, 'VER_REPORTES_ASISTENCIA') === 'TODO';
 
   return (
     <div className="space-y-4">
@@ -86,6 +90,13 @@ function ContenidoCarnetAlumno() {
               </>
             }
           />
+          {veAsistencia ? (
+            <AsistenciaDelMes
+              alumnoId={carnet.alumno.id}
+              nombre={`${carnet.alumno.nombres} ${carnet.alumno.apellidos}`}
+              puedeRegistrar={puede(usuario.rol, 'REGISTRAR_ASISTENCIA')}
+            />
+          ) : null}
           {dialogoFoto ? (
             <DialogoFoto
               titulo={carnet.foto ? 'Cambiar foto' : 'Agregar foto'}

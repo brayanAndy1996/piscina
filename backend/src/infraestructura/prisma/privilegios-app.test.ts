@@ -4,6 +4,7 @@
 // `alumnos.usuario_id` y el de `matriculas.monto_ajustado` y `matriculas.motivo_ajuste`. No se quitó ni se cambió nada de lo anterior.
 // Actualizada por la 008 (spec 008-carnet-qr, criterio 1): la lista exacta suma el UPDATE de `alumnos.qr_token`, `alumnos.qr_generado_en` y `alumnos.qr_clave_idempotencia`. No se quitó ni se cambió nada más.
 // Actualizada por la 009 (spec 009-asistencia, criterio 1 e «Impacto en especificaciones anteriores»; cambio aprobado por Bryan el 25/11/2026): la lista exacta suma `asistencias` (SELECT e INSERT, sin UPDATE ni DELETE) y el UPDATE de `matriculas.clases_usadas`. No se quitó ni se cambió nada de lo anterior.
+// Actualizada por la 009b (spec 009-asistencia, criterio 22): la lista exacta suma `inasistencias` (SELECT, INSERT y UPDATE solo de `asistencia_id` y `cubierta_en`, sin DELETE). No se quitó ni se cambió nada de lo anterior.
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -153,6 +154,10 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
   // Historia 009, criterio 1: la lista exacta suma `asistencias` (una asistencia no cambia ni se borra: sin UPDATE ni DELETE).
   efectivo('asistencias', null, 'SELECT'),
   efectivo('asistencias', null, 'INSERT'),
+  // Historia 009b, criterio 22: la lista exacta suma `inasistencias` (una falta no se borra ni se corrige: solo se cubre, una vez, con la asistencia del día).
+  efectivo('inasistencias', null, 'SELECT'),
+  efectivo('inasistencias', null, 'INSERT'),
+  ...['asistencia_id', 'cubierta_en'].map((c) => efectivo('inasistencias', c, 'UPDATE')),
 ];
 
 async function cargarDeLaApi(): Promise<Modulo> {

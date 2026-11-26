@@ -84,6 +84,7 @@ model Academia {
   cierresCaja     CierreCaja[]
   pagos           Pago[]
   asistencias     Asistencia[]
+  inasistencias   Inasistencia[]
 
   @@map("academias")
 }
@@ -244,6 +245,7 @@ model Clase {
   entrenador      Usuario          @relation(fields: [academiaId, entrenadorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   matriculaClases MatriculaClase[]
   asistencias     Asistencia[]
+  inasistencias   Inasistencia[]
 
   @@unique([academiaId, id])
   @@index([academiaId, diaSemana, horaInicio])
@@ -374,6 +376,7 @@ model Alumno {
   movimientosCaja MovimientoCaja[]
   pagos           Pago[]
   asistencias     Asistencia[]
+  inasistencias   Inasistencia[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
@@ -501,13 +504,14 @@ model Matricula {
   creadoEn         DateTime        @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn    DateTime        @default(now()) @map("actualizado_en") @db.Timestamptz(3)
 
-  academia  Academia              @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  alumno    Alumno                @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
-  plan      Plan                  @relation(fields: [academiaId, planId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
-  solicitud SolicitudInscripcion? @relation(fields: [academiaId, solicitudId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
-  clases      MatriculaClase[]
-  pagos       Pago[]
-  asistencias Asistencia[]
+  academia      Academia              @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno        Alumno                @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  plan          Plan                  @relation(fields: [academiaId, planId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  solicitud     SolicitudInscripcion? @relation(fields: [academiaId, solicitudId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  clases        MatriculaClase[]
+  pagos         Pago[]
+  asistencias   Asistencia[]
+  inasistencias Inasistencia[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, id, alumnoId])
@@ -767,11 +771,12 @@ model Asistencia {
   motivo            String?
   claveIdempotencia String           @map("clave_idempotencia") @db.Uuid
 
-  academia      Academia  @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  alumno        Alumno    @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
-  matricula     Matricula @relation(fields: [academiaId, matriculaId, alumnoId], references: [academiaId, id, alumnoId], onDelete: Restrict, onUpdate: Restrict)
-  clase         Clase     @relation(fields: [academiaId, claseId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
-  registradoPor Usuario   @relation("AsistenciaRegistradaPor", fields: [academiaId, registradoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  academia      Academia       @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno        Alumno         @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  matricula     Matricula      @relation(fields: [academiaId, matriculaId, alumnoId], references: [academiaId, id, alumnoId], onDelete: Restrict, onUpdate: Restrict)
+  clase         Clase          @relation(fields: [academiaId, claseId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor Usuario        @relation("AsistenciaRegistradaPor", fields: [academiaId, registradoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  inasistencias Inasistencia[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, id, alumnoId, fecha])
@@ -779,4 +784,32 @@ model Asistencia {
   @@index([academiaId, matriculaId])
   @@index([academiaId, fecha])
   @@map("asistencias")
+}
+
+/// Una falta: la registra la tarea programada al terminar la clase de quien no marcó (D-08) y no descuenta clases (RN-14). No se borra ni se corrige: solo
+/// se cubre, una vez, con la asistencia del mismo alumno y del mismo día (registro posterior de D-16): `asistenciaId` y `cubiertaEn` pasan de nulos a no nulos.
+/// El rol de la API solo tiene `SELECT`, `INSERT` y `UPDATE (asistencia_id, cubierta_en)`; un trigger (`inasistencias_se_cubre_una_vez`), el CHECK
+/// `inasistencias_cubierta_coherente` y las políticas de RLS van a mano en la migración.
+model Inasistencia {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId   String    @map("academia_id") @db.Uuid
+  alumnoId     String    @map("alumno_id") @db.Uuid
+  matriculaId  String    @map("matricula_id") @db.Uuid
+  claseId      String    @map("clase_id") @db.Uuid
+  fecha        DateTime  @db.Date
+  registradaEn DateTime  @map("registrada_en") @db.Timestamptz(3)
+  asistenciaId String?   @map("asistencia_id") @db.Uuid
+  cubiertaEn   DateTime? @map("cubierta_en") @db.Timestamptz(3)
+
+  academia   Academia    @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno     Alumno      @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  matricula  Matricula   @relation(fields: [academiaId, matriculaId, alumnoId], references: [academiaId, id, alumnoId], onDelete: Restrict, onUpdate: Restrict)
+  clase      Clase       @relation(fields: [academiaId, claseId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  asistencia Asistencia? @relation(fields: [academiaId, asistenciaId, alumnoId, fecha], references: [academiaId, id, alumnoId, fecha], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, alumnoId, claseId, fecha], map: "inasistencias_una_por_clase_key")
+  @@index([academiaId, alumnoId, fecha])
+  @@index([academiaId, matriculaId])
+  @@map("inasistencias")
 }

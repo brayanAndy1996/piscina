@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  diaDeLaSemanaDeFecha,
   diaDeLaSemanaEnLima,
   diaIsoDeAbreviatura,
   formatearFecha,
@@ -8,6 +9,8 @@ import {
   formatearHora,
   formatearMes,
   hoyEnLima,
+  mesActualEnLima,
+  mesAnterior,
 } from './fechas';
 
 describe('fechas en America/Lima', () => {
@@ -64,5 +67,23 @@ describe('hoy en Lima', () => {
     expect(hoyEnLima(new Date('2026-11-22T04:59:59.000Z'))).toBe('2026-11-21');
     expect(hoyEnLima(new Date('2026-11-22T05:00:00.000Z'))).toBe('2026-11-22');
     expect(hoyEnLima(new Date('2026-11-23T04:30:00.000Z'))).toBe('2026-11-22');
+  });
+});
+
+describe('el mes y el día de una fecha de calendario (009b)', () => {
+  it('el mes actual sigue a Lima, no a UTC', () => {
+    expect(mesActualEnLima(new Date('2026-12-01T04:59:00.000Z'))).toBe('2026-11');
+    expect(mesActualEnLima(new Date('2026-12-01T05:00:00.000Z'))).toBe('2026-12');
+  });
+
+  it('el mes anterior cruza el cambio de año', () => {
+    expect(mesAnterior('2026-11')).toBe('2026-10');
+    expect(mesAnterior('2026-01')).toBe('2025-12');
+  });
+
+  it('el día de la semana de una fecha de calendario no depende de la zona', () => {
+    expect(diaDeLaSemanaDeFecha('2026-11-23')).toBe(1);
+    expect(diaDeLaSemanaDeFecha('2026-11-29')).toBe(7);
+    expect(diaDeLaSemanaDeFecha('2026-11-25')).toBe(3);
   });
 });

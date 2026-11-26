@@ -24,8 +24,8 @@ function partesDeLaHora(hora: string): { horas: number; minutos: number; segundo
   return { horas: Number(coincidencia[1]), minutos: Number(coincidencia[2]), segundos: Number(coincidencia[3] ?? 0) };
 }
 
-/** El instante de `fecha` a `hora` en America/Lima. */
-function instanteEnLima(fecha: string, hora: string): Date {
+/** El instante de `fecha` a `hora` en America/Lima (por ejemplo, la hora de llegada de un registro posterior). */
+export function instanteEnLima(fecha: string, hora: string): Date {
   const { anio, mes, dia } = partesDeLaFecha(fecha);
   const { horas, minutos, segundos } = partesDeLaHora(hora);
   return new Date(new TZDate(anio, mes - 1, dia, horas, minutos, segundos, ZONA_LIMA).getTime());

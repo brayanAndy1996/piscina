@@ -2,6 +2,7 @@
 // Actualizada por la 007 (spec 007-pagos, criterios 1 y 5 y «Pruebas protegidas anteriores que amplía la 007a»): el sembrador de `movimientos_caja` crea, en la misma
 // transacción, el pago `CONFIRMADO` de su ingreso (la base lo exige desde la 007) y se suma el sembrador de `public.pagos`. No se quitó ni se cambió nada más.
 // Actualizada por la 009 (spec 009-asistencia, criterio 1 y «Impacto en especificaciones anteriores»): se suma el sembrador de `public.asistencias`, para que la prueba de RLS de todas las tablas (criterio 133 de la 001) la cubra. No se quitó ni se cambió nada más.
+// Actualizada por la 009b (spec 009-asistencia, criterio 22): se suma el sembrador de `public.inasistencias`, para que la misma prueba de RLS de todas las tablas la cubra. No se quitó ni se cambió nada más.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ejecutarComo } from './base-datos';
 import { ejecutarTransaccion, filaPagoValida, insertarPago, sentenciasDelPagoDeSoporte } from './pagos';
@@ -242,6 +243,25 @@ export const SEMBRADORES_POR_TABLA: Readonly<Record<string, Sembrador>> = {
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, DATE '2026-11-16', TIMESTAMPTZ '2026-11-16 18:05:00-05',
                TIMESTAMPTZ '2026-11-16 18:05:00-05', 'QR', 'NORMAL', 'PUNTUAL', $6::uuid, false, NULL, $7::uuid)`,
       [randomUUID(), academiaId, cliente.alumnoId, cliente.matriculaId, claseId, usuarioId, randomUUID()],
+      { academiaId },
+    );
+  },
+  // Historia 009b (criterio 22: las pruebas de catálogo de la 001 siguen pasando con la tabla nueva). Una falta sin cubrir de un alumno con su matrícula y la clase
+  // de esa matrícula (la de `sembrarClienteConSolicitud`). Cada llamada crea todo nuevo: el alumno es distinto, así que ninguna choca con `inasistencias_una_por_clase_key`.
+  'public.inasistencias': async (academiaId) => {
+    const cliente = await sembrarClienteConSolicitud(academiaId);
+    const { rows } = await ejecutarComo(
+      'propietario',
+      'SELECT clase_id FROM public.matricula_clases WHERE academia_id = $1::uuid AND matricula_id = $2::uuid',
+      [academiaId, cliente.matriculaId],
+      { academiaId },
+    );
+    const claseId = (rows[0] as { clase_id: string }).clase_id;
+    await ejecutarComo(
+      'propietario',
+      `INSERT INTO public.inasistencias (id, academia_id, alumno_id, matricula_id, clase_id, fecha, registrada_en, asistencia_id, cubierta_en)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, DATE '2026-11-16', TIMESTAMPTZ '2026-11-16 19:05:00-05', NULL, NULL)`,
+      [randomUUID(), academiaId, cliente.alumnoId, cliente.matriculaId, claseId],
       { academiaId },
     );
   },

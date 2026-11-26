@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { diaSemanaSchema, fechaSchema, nivelNatacionSchema } from './horario';
+import { textoVisibleSchema } from './texto';
 
 /**
  * Asistencia por QR y manual (spec 009a, criterios 2, 5, 7 y 15; HU-14, HU-15, RN-14 a RN-16, D-07, D-11, D-16). La asistencia la marca el
@@ -23,7 +24,7 @@ export type Alerta = z.infer<typeof alertaSchema>;
 
 /**
  * Los códigos de un rechazo 409 de la asistencia y su alerta (criterio 7). El orden es el de las validaciones: la primera que falla decide.
- * `CLAVE_YA_USADA` (fila c) no está aquí: es un conflicto de la clave de idempotencia, sin alerta ni `detalles`.
+ * Los tres últimos son del registro posterior (009b, criterio 28). `CLAVE_YA_USADA` (fila c) no está aquí: es un conflicto de la clave de idempotencia, sin alerta ni `detalles`.
  */
 export const CODIGOS_RECHAZO_ASISTENCIA = {
   ALUMNO_INACTIVO: 'ROJA',
@@ -33,6 +34,10 @@ export const CODIGOS_RECHAZO_ASISTENCIA = {
   SIN_CLASES_RESTANTES: 'ROJA',
   FUERA_DE_HORARIO: 'AMARILLA',
   CLASE_NO_INCLUIDA: 'AMARILLA',
+  // 009b, registro posterior (criterio 28): la fecha no es del mes en curso o es posterior a hoy, la clase no terminó y la hora de llegada no cae en la clase.
+  FECHA_NO_PERMITIDA: 'AMARILLA',
+  CLASE_NO_TERMINADA: 'AMARILLA',
+  HORA_FUERA_DE_LA_CLASE: 'AMARILLA',
 } as const satisfies Record<string, Alerta>;
 export type CodigoRechazoAsistencia = keyof typeof CODIGOS_RECHAZO_ASISTENCIA;
 export const codigoRechazoAsistenciaSchema = z.enum(
@@ -56,6 +61,19 @@ export const registrarAsistenciaManualSchema = z.strictObject({
   claveIdempotencia: z.uuid('La clave del intento no es válida.'),
 });
 export type RegistrarAsistenciaManual = z.infer<typeof registrarAsistenciaManualSchema>;
+
+/**
+ * `POST /api/asistencias/posterior` (009b, criterio 28; D-16): la asistencia de una clase que ya terminó, del mes en curso. `fecha` es `AAAA-MM-DD`, `horaLlegada`
+ * es la hora de Lima a la que llegó el alumno (`HH:MM`, dentro de su clase) y el motivo, de 3 a 200 caracteres visibles, queda en la auditoría.
+ */
+export const registrarAsistenciaPosteriorSchema = z.strictObject({
+  alumnoId: z.uuid('El alumno no es válido.'),
+  fecha: fechaSchema,
+  horaLlegada: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'La hora debe tener el formato HH:MM.'),
+  motivo: textoVisibleSchema({ sujeto: 'El motivo', min: 3, max: 200 }),
+  claveIdempotencia: z.uuid('La clave del intento no es válida.'),
+});
+export type RegistrarAsistenciaPosterior = z.infer<typeof registrarAsistenciaPosteriorSchema>;
 
 const horaSchema = z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'La hora debe tener el formato HH:MM.');
 const contadorSchema = z.number().int().min(0);
@@ -119,3 +137,41 @@ export const rechazoAsistenciaSchema = z.strictObject({
   clases: clasesDeAsistenciaSchema.nullable(),
 });
 export type RechazoAsistencia = z.infer<typeof rechazoAsistenciaSchema>;
+
+/** El mes de la consulta (`?mes=AAAA-MM`, criterio 31): del 2000-01 al 9999-12. */
+export const mesDeAsistenciaSchema = z
+  .string()
+  .regex(/^[2-9][0-9]{3}-(0[1-9]|1[0-2])$/, 'El mes debe tener el formato AAAA-MM.');
+
+const claseDelRegistroSchema = z.strictObject({ horaInicio: horaSchema, horaFin: horaSchema });
+
+/** Una asistencia en la consulta del mes (criterio 31): sin DNI, motivo ni quién la registró. `faltaCubierta`: cubrió la falta de esa clase y fecha. */
+export const registroDeAsistenciaSchema = z.strictObject({
+  tipo: z.literal('ASISTENCIA'),
+  fecha: fechaSchema,
+  clase: claseDelRegistroSchema,
+  horaLlegada: horaSchema,
+  estadoLlegada: estadoLlegadaSchema,
+  metodo: metodoAsistenciaSchema,
+  registroPosterior: z.boolean(),
+  faltaCubierta: z.boolean(),
+});
+export type RegistroDeAsistencia = z.infer<typeof registroDeAsistenciaSchema>;
+
+/** Una falta sin cubrir en la consulta del mes: una falta cubierta aparece solo como su asistencia. */
+export const registroDeFaltaSchema = z.strictObject({
+  tipo: z.literal('FALTA'),
+  fecha: fechaSchema,
+  clase: claseDelRegistroSchema,
+});
+export type RegistroDeFalta = z.infer<typeof registroDeFaltaSchema>;
+
+/** `GET /api/alumnos/{id}/asistencias?mes=AAAA-MM` (009b, criterio 31): las clases de la matrícula del mes y sus asistencias y faltas, por fecha. */
+export const asistenciaDelMesSchema = z.strictObject({
+  mes: mesDeAsistenciaSchema,
+  matricula: z
+    .strictObject({ clasesTotales: contadorSchema, clasesUsadas: contadorSchema, clasesRestantes: contadorSchema })
+    .nullable(),
+  registros: z.array(z.discriminatedUnion('tipo', [registroDeAsistenciaSchema, registroDeFaltaSchema])),
+});
+export type AsistenciaDelMes = z.infer<typeof asistenciaDelMesSchema>;
