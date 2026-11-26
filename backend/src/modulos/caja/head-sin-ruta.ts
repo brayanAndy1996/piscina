@@ -4,8 +4,20 @@ import { FiltroErrores } from '../../comun/filtros/filtro-errores';
 import { responderError } from '../../comun/filtros/responder-error';
 import { noEncontrado } from './errores';
 
-/** Las direcciones bajo `/api` sin `HEAD`: la caja (006), los pagos (007b, DT-9 de 006), los alumnos y el carnet (008a, criterio 18) y la asistencia (009a, criterio 18). */
-export const PREFIJOS_SIN_HEAD: readonly string[] = ['/cajas', '/pagos', '/alumnos', '/mi-carnet', '/asistencias'];
+/**
+ * Las direcciones bajo `/api` sin `HEAD`: la caja (006), los pagos (007b, DT-9 de 006), los alumnos y el carnet (008a, criterio 18; también la
+ * renovación de la 010a, que cuelga de `/alumnos`), la asistencia (009a, criterio 18) y las mensualidades y las matrículas (010: el listado y el
+ * cambio de horario de la 010b y la 010c).
+ */
+export const PREFIJOS_SIN_HEAD: readonly string[] = [
+  '/cajas',
+  '/pagos',
+  '/alumnos',
+  '/mi-carnet',
+  '/asistencias',
+  '/mensualidades',
+  '/matriculas',
+];
 
 /**
  * Cada prefijo y lo que cuelga de él, con o sin barra final, sin distinguir mayúsculas (como el enrutador). Los caracteres especiales de las
