@@ -2,6 +2,7 @@
 // Actualizada por la 007 (spec 007-pagos, criterio 2 y «Pruebas protegidas anteriores que amplía la 007a»): la lista exacta de `PRIVILEGIOS_APP` suma `pagos` (SELECT, INSERT y UPDATE solo de `estado`, `verificado_por`, `verificado_en`, `motivo_rechazo`, `numero_ticket` y `actualizado_en`), `alumnos.estado`, `alumnos.usuario_id`, `matriculas.monto_ajustado` y `matriculas.motivo_ajuste`. No se quitó ni se cambió nada de lo anterior.
 // Actualizada por la 008 (spec 008-carnet-qr, criterio 1): la lista exacta suma `alumnos.qr_token`, `alumnos.qr_generado_en` y `alumnos.qr_clave_idempotencia` (UPDATE). No se quitó ni se cambió nada más.
 // Actualizada por la 009 (spec 009-asistencia, criterio 1 e «Impacto en especificaciones anteriores»; cambio aprobado por Bryan el 25/11/2026): la lista exacta suma `asistencias` (SELECT e INSERT) y `matriculas.clases_usadas` (UPDATE). No se quitó ni se cambió nada de lo anterior.
+// Actualizada por la 009b (spec 009-asistencia, criterio 22): la lista exacta suma `inasistencias` (SELECT, INSERT y UPDATE de `asistencia_id` y `cubierta_en`). No se quitó ni se cambió nada de lo anterior.
 // Pruebas unitarias de la ronda 3 del ataque sobre `scripts/lib/rol-app.mjs` (solo modulos `node:*`) y las sentencias del hook de
 // sesion:
 //  - Criterio 103, precision P-19: `problemasDeConfiguracionApp({ rolconfig, bases })` con `rolconfig: string[] | null` (de
@@ -254,6 +255,11 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       // Historia 009, criterio 1: `asistencias` (una asistencia no cambia ni se borra: sin UPDATE ni DELETE).
       'asistencias|*|SELECT',
       'asistencias|*|INSERT',
+      // Historia 009b, criterio 22: `inasistencias` (una falta no se borra: solo se cubre una vez con `asistencia_id` y `cubierta_en`).
+      'inasistencias|*|SELECT',
+      'inasistencias|*|INSERT',
+      'inasistencias|asistencia_id|UPDATE',
+      'inasistencias|cubierta_en|UPDATE',
     ];
     expect([...PRIVILEGIOS_APP].map(clave).sort()).toEqual([...esperada].sort());
   });
