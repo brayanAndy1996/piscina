@@ -9,3 +9,4 @@ export { CarnetService, type CriterioDeCarnet } from './carnet.service';
 export { nuevoTokenQr } from './dominio/token-qr';
 export { type DatosPdfCarnet, GENERADOR_PDF_CARNET, type GeneradorPdfCarnet, generarPdfCarnet } from './pdf/carnet-pdf';
 export { leerFotoComoData } from './foto-como-data';
+export { alumnoNoEncontrado } from './errores';
