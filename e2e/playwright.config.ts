@@ -93,6 +93,8 @@ export default defineConfig({
         DATABASE_URL_APP: urlAppSobrePruebas(),
         JWT_SECRETO: JWT_SECRETO_E2E,
         ALMACEN_DIRECTORIO: ALMACEN_E2E,
+        // La tarea de faltas no corre en las pruebas (DT-9 de 009): escribiría `inasistencias` en momentos no deterministas.
+        TAREAS_PROGRAMADAS: 'inactivas',
       },
       reuseExistingServer: false,
       timeout: 120_000,
