@@ -77,3 +77,46 @@ export async function contarInscritos(
   for (const fila of filas) mapa.set(fila.clase_id, fila.ocupacion);
   return mapa;
 }
+
+/**
+ * Cuántos titulares de prioridad tiene cada clase (spec 010a, criterio 9 y definición «Reservas de prioridad»; D-06, DT-3, DT-4): los alumnos
+ * (no `CLIENTE`) con una matrícula del mes en curso `mesEnCurso` que incluye la clase y que está `VIGENTE` o en verificación (`RESERVADA` sin
+ * vencimiento: una reserva de 24 horas sin pago no da prioridad), y que todavía **no** tienen una matrícula del mes siguiente que ocupe cupo
+ * (`VIGENTE`, o `RESERVADA` sin vencer con «ahora»). Son los lugares apartados para el mes siguiente: no se guardan, se calculan al leer, y el
+ * día 1 (cuando el mes siguiente pasa a ser el mes en curso) dejan de existir solos (D-06: «el día 1 se liberan»).
+ *
+ * Como `contarOcupacion`, cuenta sin bloquear: quien llama ya bloqueó las clases con `bloquearClasesParaCupo`. Devuelve una entrada por cada id
+ * válido de la academia de `tx` (0 si no tiene titulares); los ids de otra academia o que no son UUID no cuentan nada.
+ */
+export async function contarReservasDePrioridad(
+  tx: TransaccionAcademia,
+  claseIds: readonly string[],
+  mesEnCurso: { anio: number; mes: number },
+  ahora: Date,
+): Promise<Map<string, number>> {
+  const ids = idsValidos(claseIds);
+  const mapa = new Map<string, number>(ids.map((id) => [id, 0]));
+  if (ids.length === 0) return mapa;
+  const siguiente =
+    mesEnCurso.mes === 12 ? { anio: mesEnCurso.anio + 1, mes: 1 } : { anio: mesEnCurso.anio, mes: mesEnCurso.mes + 1 };
+  const filas = await tx.cliente.$queryRaw<FilaOcupacion[]>`
+    SELECT mc.clase_id::text AS clase_id, count(DISTINCT m.alumno_id)::int AS ocupacion
+      FROM matricula_clases mc
+      JOIN matriculas m ON m.academia_id = mc.academia_id AND m.id = mc.matricula_id
+      JOIN alumnos a ON a.academia_id = m.academia_id AND a.id = m.alumno_id
+     WHERE mc.academia_id = ${tx.academiaId}::uuid AND mc.clase_id = ANY(${ids}::uuid[])
+       AND m.anio = ${mesEnCurso.anio}::smallint AND m.mes = ${mesEnCurso.mes}::smallint
+       AND (m.estado = 'VIGENTE'::estado_matricula
+            OR (m.estado = 'RESERVADA'::estado_matricula AND m.reserva_vence_en IS NULL))
+       AND a.estado <> 'CLIENTE'::estado_alumno
+       AND NOT EXISTS (
+             SELECT 1 FROM matriculas s
+              WHERE s.academia_id = m.academia_id AND s.alumno_id = m.alumno_id
+                AND s.anio = ${siguiente.anio}::smallint AND s.mes = ${siguiente.mes}::smallint
+                AND (s.estado = 'VIGENTE'::estado_matricula
+                     OR (s.estado = 'RESERVADA'::estado_matricula
+                         AND (s.reserva_vence_en IS NULL OR s.reserva_vence_en > ${ahora}::timestamptz))))
+     GROUP BY mc.clase_id`;
+  for (const fila of filas) mapa.set(fila.clase_id, fila.ocupacion);
+  return mapa;
+}
