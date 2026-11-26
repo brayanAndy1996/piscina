@@ -386,6 +386,22 @@ npm run dev
 - `npm run dev` necesita PostgreSQL encendido. Si Docker Desktop estaba apagado, enciéndelo y ejecuta `docker compose up -d` antes (ver "Día a día").
 - La cámara solo funciona en `localhost` o con HTTPS. En tu PC, abre la web con `http://localhost:5173` para usarla. Desde otro equipo o desde el celular, con la IP de la PC (por ejemplo, `http://192.168.x.x:5173`), el navegador no deja usarla: en ese caso, usa **Elegir un archivo**.
 
+## Después de traer la historia 009a
+
+Si ya tenías el proyecto con la historia 008b, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm ci
+npm run db:preparar
+npm run dev
+```
+
+- La 009a tiene una migración nueva, `20261125190000_asistencias`, que crea la tabla `asistencias` (cada marcado de entrada) y permite a la API descontar una clase de la matrícula. `npm run db:preparar` la aplica a las dos bases, la de desarrollo y la de pruebas.
+- `npm ci` instala la dependencia `html5-qrcode` (2.3.8) en la web. La biblioteca solo se carga cuando enciendes la cámara.
+- No hay variables nuevas, así que `npm run env:completar` no hace falta. La semilla no cambia: repetir `npm run db:preparar` no duplica nada (ver "Probar la asistencia").
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -931,6 +947,48 @@ La foto de un alumno se pone o se cambia en su carnet, y la de una solicitud, en
 6. Las solicitudes **Vencidas** y **Canceladas** no tienen el botón. Si una cambia mientras tienes el diálogo abierto, la web lo dice y actualiza la lista.
 7. El botón dice **Agregar foto** aunque la solicitud ya tenga foto: por ahora, la lista no trae ese dato (deuda de la 008b en `specs/backlog.md`).
 8. Cada cambio queda en la auditoría de la academia, con quién lo hizo, cuándo y si fue desde el carnet o desde la solicitud. La foto se guarda en la carpeta de `ALMACEN_DIRECTORIO` (ver "Dónde se guardan las fotos" más arriba).
+
+## Probar la asistencia
+
+La asistencia (historia 009a) la marcan el administrador y la secretaria, en **Asistencia** del inicio del panel (`/panel/asistencia`). El entrenador y el alumno no la ven, y la API responde 403 si la piden. Marcar solo funciona mientras dura la clase del alumno: para probarla hace falta una clase en curso a la hora actual, y el alumno tiene que estar inscrito y cobrado **antes** de que empiece esa clase. Si se inscribe cuando la clase ya empezó, esa clase no se cobra y la asistencia responde en amarillo «La clase de hoy no está incluida en su mensualidad.»: es lo esperado.
+
+Con `npm run dev` encendido:
+
+**Preparar la clase y el alumno**
+
+1. Mira la hora de Lima. En `delfines`, de lunes a viernes hay una clase de Básico a las 18:00 (ver "Probar planes y clases"). Si todavía no son las 18:00, esa es la clase de prueba: inscribe y cobra al alumno antes de las 18:00, y marca desde las 18:00 hasta las 19:00. Si es sábado o domingo, o ya no hay tiempo, pide al administrador (`10000001`) una clase nueva con **Nueva clase**, en un bloque que empiece después de la inscripción.
+2. Entra como la secretaria (`10000002`) en **http://localhost:5173/a/delfines/ingresar** y abre la caja de hoy en **Caja** (ver "Probar la caja del día"). Sin caja abierta no se cobra.
+3. En el inicio del panel, pulsa **Nueva inscripción**, que abre el formulario público en otra pestaña. Llénalo como en "Probar la inscripción pública", con el plan que incluya el día de la clase: en `delfines`, **2 veces por semana** para martes y jueves, o **3 veces por semana** para lunes, miércoles y viernes. Elige la clase de 18:00 y pulsa **Enviar inscripción**.
+4. Cobra la inscripción en efectivo desde **Solicitudes de inscripción** (ver "Probar el cobro en efectivo, el ajuste y el ticket"). Con el cobro, la matrícula queda vigente.
+
+**Marcar con la lectora USB**
+
+5. Antes de la primera prueba, revisa la lectora (ver "La lectora USB" más abajo).
+6. En el inicio del panel, pulsa **Asistencia**. Queda seleccionado **Escanear**, con el campo **Lectora de QR** listo para leer. Para tener el QR del alumno, abre **Alumnos y carnets**, busca su DNI y pulsa su tarjeta: el carnet muestra el QR (el alumno también puede mostrarlo desde **Mi carnet** en su celular). Acerca el QR a la lectora: escribe su contenido y lo envía con Enter, y la web marca la asistencia.
+7. Con la tolerancia por defecto (10 minutos), una marca hasta las 18:10 es **Puntual**, y después de las 18:10 es **Tarde**. El resultado es verde, con **Asistencia registrada**, la foto o «Foto pendiente», el nombre, el nivel, la clase, «Llegó a las …» y «Le quedan X de Y», que ya descuenta esta clase.
+8. Vuelve a acercar el mismo QR en seguida. Dentro de los 5 segundos, la web lo ignora y, con la lectora, avisa «Ese QR se acaba de leer. Espera unos segundos para leerlo otra vez.». Después, el mismo alumno responde en amarillo, **Atención**: «Ya registró su asistencia de hoy.» y «Marcó a las HH:MM (Puntual, con el QR).».
+
+**Marcar con la cámara**
+
+9. Pulsa **Usar la cámara** y acepta el permiso del navegador. Muestra el QR a la cámara. **Apagar la cámara** la apaga, y al salir de la página o cambiar de modo también se apaga. La cámara solo funciona desde `localhost` o con HTTPS: en tu PC, usa `http://localhost:5173`. Desde otro equipo, con la IP de la PC, la web dice «La cámara solo funciona desde localhost o con HTTPS. Usa la lectora o busca al alumno.».
+
+**Buscar al alumno**
+
+10. Pulsa **Buscar alumno**, escribe en **Buscar por DNI o nombre** los 8 dígitos del DNI o al menos 3 letras, y pulsa **Buscar**. En la tarjeta del alumno, pulsa **Registrar asistencia**. Una segunda marca del mismo día muestra el método de la primera: «con el QR» o «de forma manual».
+
+**Los demás resultados**
+
+11. Busca o escanea a un alumno antes de las 18:00, cuando la clase todavía no empezó: en amarillo, **Atención**, «Está fuera del horario de su clase.» y «Su clase empieza a las 18:00.».
+12. Busca un alumno que no tiene clase hoy (por ejemplo, uno de lunes, miércoles y viernes, un martes): en amarillo, «Está fuera del horario de su clase.» y «Hoy no tiene clase.».
+13. Un QR regenerado (ver "Probar el carnet y el QR", paso 7) o inventado no marca a nadie: la web dice «El QR no corresponde a ningún alumno de esta academia.».
+
+**La lectora USB**
+
+La lectora escribe como un teclado: el campo **Lectora de QR** recibe el texto que escribe y lo envía con Enter. Por eso la lectora tiene que usar **la misma distribución de teclado que la PC**, la que tienes en la configuración de idioma de Windows. El contenido del QR tiene letras, números, guion (`-`) y guion bajo (`_`), y empieza por `AQ1:`. Si la lectora escribe otros símbolos, el QR no se reconoce, y la web dice «El QR no corresponde a ningún alumno de esta academia.», aunque el alumno sea de la academia.
+
+Para comprobarlo, abre el Bloc de notas, lee el QR de un carnet y revisa que aparezca `AQ1:` seguido de 43 caracteres, sin espacios ni símbolos extraños. Si no es así, cambia la distribución de la lectora (su manual explica cómo; muchas se configuran leyendo unos códigos de configuración) o la de Windows. La lectora también tiene que enviar Enter al final de cada lectura. Si la lectora falla, **Buscar alumno** sirve de respaldo.
+
+Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
 
 ## Día a día
 

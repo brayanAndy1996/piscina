@@ -3,6 +3,7 @@
 // UPDATE solo de `estado`, `verificado_por`, `verificado_en`, `motivo_rechazo`, `numero_ticket` y `actualizado_en`), el UPDATE de `alumnos.estado` y
 // `alumnos.usuario_id` y el de `matriculas.monto_ajustado` y `matriculas.motivo_ajuste`. No se quitó ni se cambió nada de lo anterior.
 // Actualizada por la 008 (spec 008-carnet-qr, criterio 1): la lista exacta suma el UPDATE de `alumnos.qr_token`, `alumnos.qr_generado_en` y `alumnos.qr_clave_idempotencia`. No se quitó ni se cambió nada más.
+// Actualizada por la 009 (spec 009-asistencia, criterio 1 e «Impacto en especificaciones anteriores»; cambio aprobado por Bryan el 25/11/2026): la lista exacta suma `asistencias` (SELECT e INSERT, sin UPDATE ni DELETE) y el UPDATE de `matriculas.clases_usadas`. No se quitó ni se cambió nada de lo anterior.
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -127,7 +128,7 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
   ...['estado', 'actualizado_en'].map((c) => efectivo('solicitudes_inscripcion', c, 'UPDATE')),
   efectivo('matriculas', null, 'SELECT'),
   efectivo('matriculas', null, 'INSERT'),
-  ...['estado', 'reserva_vence_en', 'actualizado_en', 'monto_ajustado', 'motivo_ajuste'].map((c) =>
+  ...['estado', 'reserva_vence_en', 'actualizado_en', 'monto_ajustado', 'motivo_ajuste', 'clases_usadas'].map((c) =>
     efectivo('matriculas', c, 'UPDATE'),
   ),
   efectivo('matricula_clases', null, 'SELECT'),
@@ -149,6 +150,9 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
   ...['estado', 'verificado_por', 'verificado_en', 'motivo_rechazo', 'numero_ticket', 'actualizado_en'].map((c) =>
     efectivo('pagos', c, 'UPDATE'),
   ),
+  // Historia 009, criterio 1: la lista exacta suma `asistencias` (una asistencia no cambia ni se borra: sin UPDATE ni DELETE).
+  efectivo('asistencias', null, 'SELECT'),
+  efectivo('asistencias', null, 'INSERT'),
 ];
 
 async function cargarDeLaApi(): Promise<Modulo> {

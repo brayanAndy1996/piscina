@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router';
 import { DetalleCaja } from '../modulos/caja/DetalleCaja';
 import { PaginaCarnetAlumno } from '../modulos/alumnos/PaginaCarnetAlumno';
 import { PaginaAlumnos } from '../modulos/alumnos/PaginaAlumnos';
+import { PaginaAsistencia } from '../modulos/asistencia/PaginaAsistencia';
 import { PaginaCaja } from '../modulos/caja/PaginaCaja';
 import { PaginaHistorialCajas } from '../modulos/caja/PaginaHistorialCajas';
 import { PaginaMiCarnet } from '../modulos/carnet/PaginaMiCarnet';
@@ -52,6 +53,7 @@ export function Rutas() {
         <Route path="/panel/cajas/:id" element={<DetalleCaja />} />
         <Route path="/panel/alumnos" element={<PaginaAlumnos />} />
         <Route path="/panel/alumnos/:id" element={<PaginaCarnetAlumno />} />
+        <Route path="/panel/asistencia" element={<PaginaAsistencia />} />
         <Route path="/panel/mi-carnet" element={<PaginaMiCarnet />} />
       </Route>
       <Route path="*" element={<PaginaNoEncontrada />} />

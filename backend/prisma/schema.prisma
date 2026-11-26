@@ -83,6 +83,7 @@ model Academia {
   movimientosCaja MovimientoCaja[]
   cierresCaja     CierreCaja[]
   pagos           Pago[]
+  asistencias     Asistencia[]
 
   @@map("academias")
 }
@@ -185,6 +186,7 @@ model Usuario {
   cierresReabiertos      CierreCaja[]           @relation("CierreReabiertoPor")
   pagosRegistrados       Pago[]                 @relation("PagoRegistradoPor")
   pagosVerificados       Pago[]                 @relation("PagoVerificadoPor")
+  asistenciasRegistradas Asistencia[]           @relation("AsistenciaRegistradaPor")
   solicitudesRegistradas SolicitudInscripcion[] @relation("SolicitudRegistradaPor")
 
   @@unique([academiaId, id])
@@ -241,6 +243,7 @@ model Clase {
   academia        Academia         @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   entrenador      Usuario          @relation(fields: [academiaId, entrenadorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   matriculaClases MatriculaClase[]
+  asistencias     Asistencia[]
 
   @@unique([academiaId, id])
   @@index([academiaId, diaSemana, horaInicio])
@@ -370,6 +373,7 @@ model Alumno {
   matriculas      Matricula[]
   movimientosCaja MovimientoCaja[]
   pagos           Pago[]
+  asistencias     Asistencia[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, dni])
@@ -501,8 +505,9 @@ model Matricula {
   alumno    Alumno                @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   plan      Plan                  @relation(fields: [academiaId, planId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
   solicitud SolicitudInscripcion? @relation(fields: [academiaId, solicitudId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
-  clases    MatriculaClase[]
-  pagos     Pago[]
+  clases      MatriculaClase[]
+  pagos       Pago[]
+  asistencias Asistencia[]
 
   @@unique([academiaId, id])
   @@unique([academiaId, id, alumnoId])
@@ -709,4 +714,69 @@ model Pago {
   @@unique([academiaId, numeroTicket])
   @@index([academiaId, estado, registradoEn])
   @@map("pagos")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Historia 009a · Asistencia por QR y manual (D-07, D-11, D-16, D-23; HU-14, HU-15, RN-14 a RN-16). Los tres CHECK (la fecha de Lima, el registro
+// después de la llegada, el registro posterior coherente), el único parcial `asistencias_un_dia_key`, las políticas de RLS y los privilegios van a
+// mano en la migración `asistencias`. La API escribe con SQL (`$queryRaw` y `$executeRaw`): el modelo existe para que Prisma conozca la tabla y
+// sus llaves compuestas.
+// ---------------------------------------------------------------------------------------------------------------------
+
+enum MetodoAsistencia {
+  QR
+  MANUAL
+
+  @@map("metodo_asistencia")
+}
+
+/// D-07: la 009 solo escribe `NORMAL`; los otros tres los usan las historias de recuperación (018), otro horario (020) y particulares (016).
+enum TipoAsistencia {
+  NORMAL
+  RECUPERACION
+  FUERA_HORARIO
+  PARTICULAR
+
+  @@map("tipo_asistencia")
+}
+
+/// D-11: puntual hasta la tolerancia de la academia (se compara por minuto) y tarde después.
+enum EstadoLlegada {
+  PUNTUAL
+  TARDE
+
+  @@map("estado_llegada")
+}
+
+/// Una asistencia: no cambia ni se borra (el rol de la API solo tiene `SELECT` e `INSERT`). Cada una descuenta una clase de la matrícula (RN-14).
+/// `fecha` es la fecha de Lima de `llegadaEn`; una asistencia por alumno y día salvo las `PARTICULAR` (RN-16).
+model Asistencia {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academiaId        String           @map("academia_id") @db.Uuid
+  alumnoId          String           @map("alumno_id") @db.Uuid
+  matriculaId       String           @map("matricula_id") @db.Uuid
+  claseId           String           @map("clase_id") @db.Uuid
+  fecha             DateTime         @db.Date
+  llegadaEn         DateTime         @map("llegada_en") @db.Timestamptz(3)
+  registradoEn      DateTime         @map("registrado_en") @db.Timestamptz(3)
+  metodo            MetodoAsistencia
+  tipo              TipoAsistencia   @default(NORMAL)
+  estadoLlegada     EstadoLlegada    @map("estado_llegada")
+  registradoPorId   String           @map("registrado_por") @db.Uuid
+  registroPosterior Boolean          @default(false) @map("registro_posterior")
+  motivo            String?
+  claveIdempotencia String           @map("clave_idempotencia") @db.Uuid
+
+  academia      Academia  @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  alumno        Alumno    @relation(fields: [academiaId, alumnoId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  matricula     Matricula @relation(fields: [academiaId, matriculaId, alumnoId], references: [academiaId, id, alumnoId], onDelete: Restrict, onUpdate: Restrict)
+  clase         Clase     @relation(fields: [academiaId, claseId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+  registradoPor Usuario   @relation("AsistenciaRegistradaPor", fields: [academiaId, registradoPorId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([academiaId, id])
+  @@unique([academiaId, id, alumnoId, fecha])
+  @@unique([academiaId, claveIdempotencia])
+  @@index([academiaId, matriculaId])
+  @@index([academiaId, fecha])
+  @@map("asistencias")
 }

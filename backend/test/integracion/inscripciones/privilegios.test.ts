@@ -5,6 +5,9 @@
 // estado» del título de la prueba de `alumnos`. El DNI, la `academia_id`, el `id` y `creado_en` siguen prohibidos y comprobados; el nuevo
 // `UPDATE_EXACTO` sigue fijando los privilegios exactos.
 // Actualizada por la 008 (spec 008-carnet-qr, criterio 1): `UPDATE_EXACTO` suma `qr_token`, `qr_generado_en` y `qr_clave_idempotencia` en `alumnos`. No se quitó ni se cambió nada más.
+// Actualizada por la 009 (spec 009-asistencia, criterio 1 e «Impacto en especificaciones anteriores»; CAMBIO APROBADO POR BRYAN el 25/11/2026): `UPDATE_EXACTO` suma `clases_usadas` en `matriculas` (cada asistencia descuenta una clase en la misma
+// transacción del marcado). Se quita el intento de `clases_usadas` que esperaba 42501 y se agrega, en su lugar, que la app sí puede subirla y que el CHECK de la 005 sigue impidiendo pasar de `clases_totales` (23514). El precio, los montos, las clases
+// totales, el año, el mes, el alumno, el plan y la `academia_id` siguen prohibidos y comprobados; el nuevo `UPDATE_EXACTO` sigue fijando los privilegios exactos.
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { crearAcademiaDePrueba } from '../../utilidades/academias';
@@ -53,7 +56,7 @@ const UPDATE_EXACTO: Record<Tabla005, string[]> = {
     'usuario_id',
   ],
   solicitudes_inscripcion: ['actualizado_en', 'estado'],
-  matriculas: ['actualizado_en', 'estado', 'monto_ajustado', 'motivo_ajuste', 'reserva_vence_en'],
+  matriculas: ['actualizado_en', 'clases_usadas', 'estado', 'monto_ajustado', 'motivo_ajuste', 'reserva_vence_en'],
   consentimientos: [],
   matricula_clases: [],
   apoderados: ['actualizado_en', 'apellidos', 'correo', 'dni', 'nombres', 'parentesco', 'telefono'],
@@ -195,7 +198,6 @@ describe('criterio 2: lo que el rol de la app puede y no puede escribir', () => 
       ['precio_plan', 'UPDATE matriculas SET precio_plan = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['monto_calculado', 'UPDATE matriculas SET monto_calculado = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['clases_totales', 'UPDATE matriculas SET clases_totales = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
-      ['clases_usadas', 'UPDATE matriculas SET clases_usadas = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['anio', 'UPDATE matriculas SET anio = 2027 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['mes', 'UPDATE matriculas SET mes = 12 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['alumno_id', 'UPDATE matriculas SET alumno_id = gen_random_uuid() WHERE id = $1::uuid', [cliente.matriculaId]],
@@ -298,6 +300,18 @@ describe('criterio 2: lo que el rol de la app puede y no puede escribir', () => 
       [cliente.alumnoId],
     );
     expect((await leerApoderados(A.id))[0]).toMatchObject({ nombres: 'Otro', dni: '11112222' });
+  });
+
+  it('criterio 2 (009): sí puede subir clases_usadas de una matrícula, pero no por encima de clases_totales (23514)', async () => {
+    await comoApp(
+      'UPDATE matriculas SET clases_usadas = clases_usadas + 1, actualizado_en = now() WHERE id = $1::uuid',
+      [cliente.matriculaId],
+    );
+
+    expect((await leerMatriculas(A.id))[0]).toMatchObject({ clases_usadas: 1 });
+    await expect(
+      comoApp('UPDATE matriculas SET clases_usadas = clases_totales + 1 WHERE id = $1::uuid', [cliente.matriculaId]),
+    ).rejects.toMatchObject({ code: '23514' });
   });
 
   it('criterio 2: sí puede cambiar el estado de una solicitud y de una matrícula y el vencimiento de la reserva', async () => {

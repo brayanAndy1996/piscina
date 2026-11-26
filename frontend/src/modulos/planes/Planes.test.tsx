@@ -181,6 +181,7 @@ describe('menú y permiso (criterio 26)', () => {
       '/panel/solicitudes',
       '/panel/pagos',
       '/panel/alumnos',
+      '/panel/asistencia',
       '/a/delfines/inscripcion',
       '/panel/caja',
       '/panel/cajas',

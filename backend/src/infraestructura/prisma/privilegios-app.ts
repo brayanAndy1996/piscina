@@ -116,6 +116,8 @@ export const PRIVILEGIOS_APP: readonly PrivilegioApp[] = Object.freeze(
     { tabla: 'matriculas', columna: 'actualizado_en', privilegio: 'UPDATE' },
     { tabla: 'matriculas', columna: 'monto_ajustado', privilegio: 'UPDATE' },
     { tabla: 'matriculas', columna: 'motivo_ajuste', privilegio: 'UPDATE' },
+    // Historia 009 (criterio 1): cada asistencia descuenta una clase de la matrícula.
+    { tabla: 'matriculas', columna: 'clases_usadas', privilegio: 'UPDATE' },
     { tabla: 'matricula_clases', columna: null, privilegio: 'SELECT' },
     { tabla: 'matricula_clases', columna: null, privilegio: 'INSERT' },
     // Historia 006 (criterio 2): las tres tablas de la caja. Nada se borra y los movimientos no cambian (sin UPDATE). En `cajas` solo
@@ -142,6 +144,9 @@ export const PRIVILEGIOS_APP: readonly PrivilegioApp[] = Object.freeze(
     { tabla: 'pagos', columna: 'motivo_rechazo', privilegio: 'UPDATE' },
     { tabla: 'pagos', columna: 'numero_ticket', privilegio: 'UPDATE' },
     { tabla: 'pagos', columna: 'actualizado_en', privilegio: 'UPDATE' },
+    // Historia 009 (criterio 1): `asistencias` (una asistencia no cambia ni se borra: sin UPDATE ni DELETE).
+    { tabla: 'asistencias', columna: null, privilegio: 'SELECT' },
+    { tabla: 'asistencias', columna: null, privilegio: 'INSERT' },
   ].map((privilegio) => Object.freeze(privilegio)),
 );
 

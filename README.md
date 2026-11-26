@@ -90,8 +90,8 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
   dice cuántos minutos faltan. El bloqueo del superadmin sigue fijo (5 intentos y 15 minutos).
 - **API:** `GET` y `PATCH /api/configuracion` (solo el administrador) y `GET /api/mi-academia` (nombre, nombre corto y
   teléfono de la academia de la sesión). Cada cambio guardado queda en la auditoría de la academia.
-- **Lo que todavía no usa nada:** la tolerancia de tardanza, los días por vencer y la prioridad de renovación se guardan,
-  pero las historias 009 y 010 todavía no los leen. El teléfono se ve en el panel y, desde la 005a, en las páginas públicas.
+- **Lo que todavía no usa nada:** los días por vencer y la prioridad de renovación se guardan,
+  pero la 010 todavía no los lee. La tolerancia de tardanza la lee la asistencia desde la 009a. El teléfono se ve en el panel y, desde la 005a, en las páginas públicas.
 - **Datos de ejemplo:** la semilla deja un teléfono de ejemplo en `delfines`; `tiburones` queda con los valores por
   defecto.
 
@@ -298,6 +298,22 @@ La historia 007 (la 007a y la 007b) está en [`specs/007-pagos/`](specs/007-pago
 La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-carnet-qr/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
 
+**009a · Asistencia por QR y manual** está construida, lista para unirse a `main` (26/11/2026). Pasó las pruebas protegidas, el ataque adversarial (una ronda, sin fallas críticas ni altas), la suite completa, el E2E, el lint, el formato, los tipos y el build. Falta el PR para unirse a `main`. Trae:
+
+- **Marcar la asistencia** en `/panel/asistencia`, con la opción **Asistencia** del inicio del panel, para el administrador y la secretaria. **Escanear** lee el QR del carnet con la lectora USB (el campo **Lectora de QR**, que se vacía en cada lectura) o con **Usar la cámara**. **Buscar alumno** busca por DNI o nombre y, en cada resultado, ofrece **Registrar asistencia**.
+- **El resultado** ocupa la pantalla. En verde, **Asistencia registrada**, con la foto (o «Foto pendiente»), el nombre, el nivel, la clase de hoy, **Puntual** o **Tarde**, «Llegó a las HH:MM» y «Le quedan X de Y». En rojo, **No puede ingresar** y el motivo, como «No tiene una mensualidad vigente.». En amarillo, **Atención**, con el motivo y el detalle, como «Su clase empieza a las 18:00.» o «Marcó a las 18:05 (Puntual, con el QR).».
+- **Las reglas:** la asistencia solo se marca mientras dura la clase del alumno, desde su hora de inicio (incluida) hasta la de fin (excluida), en la hora de Lima. Una por día. Es puntual hasta la tolerancia de la academia (10 minutos por defecto) y tarde después. Cada asistencia descuenta una clase de la mensualidad. Sin mensualidad vigente, sin clases restantes, con el alumno inactivo o con el pago en verificación, no se registra.
+- **El QR:** un QR de otra academia, inventado o regenerado responde siempre igual: «El QR no corresponde a ningún alumno de esta academia.».
+- **Sin duplicados:** un doble clic o un reintento con la misma clave no registra dos veces. `POST /api/asistencias/qr` y `POST /api/asistencias/manual` responden 201, o 200 con `repetida: true`. La web ignora la misma lectura durante 5 segundos.
+- **Auditoría:** el marcado normal no se audita: la fila de la asistencia guarda quién, cuándo y cómo. `HEAD` sobre `/api/asistencias` responde 404.
+- **Dependencia nueva:** `html5-qrcode` (2.3.8) en la web, que se carga solo al encender la cámara. Migración `20261125190000_asistencias`.
+- **Datos de ejemplo:** la semilla no cambia. Para probarla hace falta una clase en curso (ver la guía).
+- **Lo que todavía no trae:** el registro de faltas, el registro posterior y la consulta del mes (009b); la asistencia en el panel del alumno (011); las recuperaciones (018), las clases particulares (016) y la asistencia en otro horario (020). Las dos fallas medias de la ronda 1 del ataque (R1-1 y R1-2) se corrigen en la 009b, y el resto de la deuda está en `specs/backlog.md`.
+- **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria y pulsa **Asistencia**. El paso a paso está en la guía, en «Probar la asistencia».
+
+La historia 009 (la 009a, y la 009b, pendiente) está en [`specs/009-asistencia/`](specs/009-asistencia/spec.md). Su estado está en
+[`specs/backlog.md`](specs/backlog.md).
+
 ## Cómo levantarlo en Windows
 
 La guía paso a paso, escrita para quien no es experto, está en
@@ -430,7 +446,7 @@ La arquitectura objetivo (módulos, aislamiento entre academias, archivos y corr
 - [`docs/decisiones.md`](docs/decisiones.md): decisiones tomadas con el cliente y cambios de requerimientos posteriores
   al v1.4. **Cuando contradicen al documento, mandan las decisiones.**
 - [`docs/guia-local-windows.md`](docs/guia-local-windows.md): cómo levantar el sistema en Windows, paso a paso, cómo
-  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día, el historial de caja con su PDF, y el cobro en efectivo con su ticket y su ajuste de monto, el pago por Yape o transferencia, el carnet con su QR, y la foto desde el panel y con la cámara.
+  entrar a la plataforma, y cómo probar la inscripción pública, la foto, el panel de solicitudes, los planes, las clases, la caja del día, el historial de caja con su PDF, y el cobro en efectivo con su ticket y su ajuste de monto, el pago por Yape o transferencia, el carnet con su QR, la foto desde el panel y con la cámara, y la asistencia con la lectora, la cámara o la búsqueda.
 
 ## Forma de trabajo
 
