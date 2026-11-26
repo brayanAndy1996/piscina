@@ -115,8 +115,8 @@ export function registraElMes(matricula: Pick<MatriculaDelAlumno, 'estado'>): bo
 }
 
 /**
- * Las clases de la mensualidad de un mes en las que el alumno es titular de prioridad (D-06, DT-3): las de su matrícula `VIGENTE` o en verificación
- * (`RESERVADA` sin vencimiento) de `mes`. Sin bloquear. Quien llama decide si el alumno ya tiene la matrícula del mes siguiente (entonces no es titular).
+ * Las clases de la mensualidad de un mes en las que el alumno es titular de prioridad (D-06, DT-3, DR-12, criterio 45): las de su matrícula `VIGENTE` (pago
+ * confirmado) de `mes`; una `RESERVADA` en verificación no da prioridad. Sin bloquear. Quien llama decide si el alumno ya tiene la matrícula del mes siguiente (entonces no es titular).
  */
 export async function clasesDeLaTitularidad(
   tx: TransaccionAcademia,
@@ -129,8 +129,7 @@ export async function clasesDeLaTitularidad(
       JOIN matricula_clases mc ON mc.academia_id = m.academia_id AND mc.matricula_id = m.id
      WHERE m.academia_id = ${tx.academiaId}::uuid AND m.alumno_id = ${alumnoId}::uuid
        AND m.anio = ${mes.anio}::smallint AND m.mes = ${mes.mes}::smallint
-       AND (m.estado = 'VIGENTE'::estado_matricula
-            OR (m.estado = 'RESERVADA'::estado_matricula AND m.reserva_vence_en IS NULL))
+       AND m.estado = 'VIGENTE'::estado_matricula
      ORDER BY mc.clase_id`;
   return filas.map((fila) => fila.clase_id);
 }

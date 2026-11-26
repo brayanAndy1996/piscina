@@ -79,9 +79,9 @@ export async function contarInscritos(
 }
 
 /**
- * Cuántos titulares de prioridad tiene cada clase (spec 010a, criterio 9 y definición «Reservas de prioridad»; D-06, DT-3, DT-4): los alumnos
- * (no `CLIENTE`) con una matrícula del mes en curso `mesEnCurso` que incluye la clase y que está `VIGENTE` o en verificación (`RESERVADA` sin
- * vencimiento: una reserva de 24 horas sin pago no da prioridad), y que todavía **no** tienen una matrícula del mes siguiente que ocupe cupo
+ * Cuántos titulares de prioridad tiene cada clase (spec 010a, criterios 9 y 45 y definición «Reservas de prioridad»; D-06, DT-3, DT-4): los alumnos
+ * (no `CLIENTE`) con una matrícula del mes en curso `mesEnCurso` que incluye la clase y que está `VIGENTE` (pago confirmado, DR-12 y
+ * criterio 45: una matrícula `RESERVADA`, con su pago en verificación o con una reserva de 24 horas, no da prioridad), y que todavía **no** tienen una matrícula del mes siguiente que ocupe cupo
  * (`VIGENTE`, o `RESERVADA` sin vencer con «ahora»). Son los lugares apartados para el mes siguiente: no se guardan, se calculan al leer, y el
  * día 1 (cuando el mes siguiente pasa a ser el mes en curso) dejan de existir solos (D-06: «el día 1 se liberan»).
  *
@@ -106,8 +106,7 @@ export async function contarReservasDePrioridad(
       JOIN alumnos a ON a.academia_id = m.academia_id AND a.id = m.alumno_id
      WHERE mc.academia_id = ${tx.academiaId}::uuid AND mc.clase_id = ANY(${ids}::uuid[])
        AND m.anio = ${mesEnCurso.anio}::smallint AND m.mes = ${mesEnCurso.mes}::smallint
-       AND (m.estado = 'VIGENTE'::estado_matricula
-            OR (m.estado = 'RESERVADA'::estado_matricula AND m.reserva_vence_en IS NULL))
+       AND m.estado = 'VIGENTE'::estado_matricula
        AND a.estado <> 'CLIENTE'::estado_alumno
        AND NOT EXISTS (
              SELECT 1 FROM matriculas s
