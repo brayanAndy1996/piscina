@@ -20,9 +20,11 @@
   puntual o tarde, descuento de una clase y registro de faltas), aislamiento entre academias (QR, ids, tarea
   programada) y permisos (solo recepción marca; la consulta del mes lleva datos de menores). La maqueta de las
   pantallas no es crítica.
-- **Estado:** aprobada por Bryan el 25/11/2026; 009a en curso. Bryan aceptó la propuesta de las seis preguntas de
-  negocio (P1 a P6, que son DR-1 a DR-6 de esta spec, en «Resueltas») y el cambio de privilegio `UPDATE (clases_usadas)`
-  en `matriculas`, con su ajuste a la prueba protegida de la 005. El orquestador aceptó DT-1 a DT-16 y la división.
+- **Estado:** aprobada por Bryan el 25/11/2026. **009a lista para unir** (26/11/2026: una ronda adversarial sin críticas ni
+  altas; ver [`rondas.md`](rondas.md)). Bryan aceptó la propuesta de las seis preguntas de negocio (P1 a P6, que son
+  DR-1 a DR-6 de esta spec, en «Resueltas») y el cambio de privilegio `UPDATE (clases_usadas)` en `matriculas`, con su
+  ajuste a la prueba protegida de la 005. El orquestador aceptó DT-1 a DT-16 y la división, y DT-17 a DT-21 el
+  26/11/2026.
 - **División (D-31, aceptada por el orquestador el 25/11/2026):** dos entregas desde esta carpeta, cada una con sus pruebas protegidas, su ataque y su
   PR (ver «División en 009a y 009b»):
   - **009a · Marcado por QR y manual** (primero): criterios 1 a 21 y la parte de `html5-qrcode` del 34.
@@ -412,7 +414,8 @@ y la spec completa en una sola entrega se acercaría a las 3 rondas con dos supe
 **Esquemas compartidos** (`packages/contratos/src/asistencia.ts`, reexportados en el índice):
 
 - `registrarAsistenciaQrSchema = { contenido: string (≤ 200), claveIdempotencia: uuid }` y
-  `registrarAsistenciaManualSchema = { alumnoId: uuid, claveIdempotencia: uuid }` (estrictos).
+  `registrarAsistenciaManualSchema = { alumnoId: texto, claveIdempotencia: uuid }` (estrictos; un `alumnoId` que no es
+  UUID responde 404 `NO_ENCONTRADO`, criterio 5).
 - **[009b]** `registrarAsistenciaPosteriorSchema = { alumnoId: uuid, fecha: 'AAAA-MM-DD', horaLlegada: 'HH:MM',
   motivo: textoVisibleSchema(3 a 200), claveIdempotencia: uuid }` (estricto).
 - `ESTADOS_LLEGADA = ['PUNTUAL', 'TARDE']`, `METODOS_ASISTENCIA = ['QR', 'MANUAL']`, `ALERTAS = ['ROJA', 'AMARILLA']`
@@ -510,8 +513,9 @@ Errores: 400 `SOLICITUD_INVALIDA`; 401 `NO_AUTENTICADO`; 403 `SIN_PERMISO`, `CAM
 
 ## Decisiones
 
-Técnicas: DT-1 a DT-16, aceptadas por el orquestador el 25/11/2026 tal como se propusieron. Las decisiones del
-responsable (DR-1 a DR-6) están en «Resueltas».
+Técnicas: DT-1 a DT-16, aceptadas por el orquestador el 25/11/2026 tal como se propusieron, y DT-17 a DT-21, añadidas por
+el orquestador el 26/11/2026 con la ronda 1 de la 009a. Las decisiones del responsable (DR-1 a DR-6) están en
+«Resueltas».
 
 - **DT-1. Dos entregas (009a y 009b).** Descartado: una sola, con dos frentes de ataque distintos y cerca de las 800
   líneas.
@@ -549,6 +553,21 @@ responsable (DR-1 a DR-6) están en «Resueltas».
 - **DT-15. Sin cambios en la semilla:** la guía explica cómo probar con una clase en la hora actual.
 - **DT-16. «Ahora» se lee después de los bloqueos** (como DT-10 de 007): una lectura que espera un bloqueo y cruza el fin
   de la clase responde `FUERA_DE_HORARIO`.
+- **DT-17. La clave se vuelve a mirar tras tomar la matrícula.** Con la matrícula del día bloqueada (DT-5), una petición
+  con la misma clave que esperó ese bloqueo responde 200 con la asistencia ya confirmada, no 409 (criterio 13). Si el
+  choque de unicidad llega igual (`asistencias_un_dia_key` o la clave), se vuelve a decidir con lo confirmado: hasta 2
+  intentos ante un choque de unicidad.
+- **DT-18. La matrícula se elige con un «ahora» provisional.** La matrícula del día se busca con un «ahora» leído justo
+  antes de tomarla. Después se lee «ahora» otra vez (DT-16): si el día cambió durante la espera, la matrícula bloqueada ya
+  no cubre el día y el marcado se rechaza como sin matrícula del día (filas f o g del criterio 7).
+- **DT-19. Dos clases el mismo día.** Si la matrícula tuviera dos clases que caen el mismo día (no debería, DR-4 de 005),
+  la clase de hoy es la que está en curso o, si ninguna lo está, la más temprana.
+- **DT-20. `claseDeHoy` y `asistenciaDeHoy` van siempre que existen.** Los rechazos con `detalles` llevan la clase de hoy y
+  la asistencia de hoy cuando existen, sea cual sea el código, para que la pantalla pueda decir la hora de la clase o la
+  de la asistencia ya registrada.
+- **DT-21. La redacción «empieza a las» o «fue de» la decide la web.** Para `FUERA_DE_HORARIO` y `CLASE_NO_INCLUIDA`, la
+  web compara la hora de Lima del reloj del equipo con la clase de hoy. La API decide si se puede marcar; la web solo
+  elige el texto. La deuda de la 009a propone que la API envíe el momento (`specs/backlog.md`).
 
 ## Preguntas abiertas
 

@@ -270,11 +270,30 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **009 · Asistencia y faltas.** QR y manual, validaciones, una por día, solo mientras dura la clase, puntual o
   tarde, descuento de clase, registro de faltas por tarea programada (HU-14, HU-15, RN-14 a RN-16, D-08, D-11,
   D-16).
-  - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-6 y el privilegio `UPDATE (clases_usadas)`; DT-1 a DT-16), en
-    [`specs/009-asistencia/`](009-asistencia/spec.md). Dos entregas: 009a (marcado por QR y manual, criterios 1 a 21; en curso) y 009b
-    (faltas, registro posterior y consulta del mes, criterios 22 a 35).
-  - Nota de 003: la tolerancia de tardanza (`toleranciaTardanzaMinutos`) la leerá `leerConfiguracion(tx)` dentro de la
-    transacción de la asistencia, sin caché (ver "Configuración de la academia (003)" en `docs/arquitectura.md`).
+  - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-6 y el privilegio `UPDATE (clases_usadas)`; DT-1 a DT-21), en
+    [`specs/009-asistencia/`](009-asistencia/spec.md). Dos entregas: 009a (marcado por QR y manual, criterios 1 a 21; **lista
+    para unir**, 26/11/2026, tras una ronda adversarial sin críticas ni altas; ver [`rondas.md`](009-asistencia/rondas.md)) y
+    009b (faltas, registro posterior y consulta del mes, criterios 22 a 35; pendiente).
+  - **Para la 009b** (ronda 1 de la 009a, 26/11/2026; se corrigen en la 009b con su prueba protegida):
+    - **R1-1** (media): si la clave la usó un registro posterior del mismo alumno, el marcado responde 200 en lugar de 409
+      `CLAVE_YA_USADA` (criterio 13).
+    - **R1-2** (media): el `INSERT` espera `FOR KEY SHARE` sobre la clase después de leer «ahora»; si la espera cruza el fin
+      de la clase, se registra con la hora de antes (criterio 14 y DT-16).
+  - **Deuda de la 009a** (ronda 1, 26/11/2026; las medias y las bajas no abren ronda, D-31; el detalle está en
+    [`rondas.md`](009-asistencia/rondas.md)):
+    - **R1-3** (baja): el 200 repetido recalcula las clases en lugar de repetir el cuerpo del 201.
+    - **Menores de la revisión** (T12):
+      - el 409 `ASISTENCIA_YA_REGISTRADA` del segundo choque de unicidad sale sin `detalles` (`marcado.service.ts:133`);
+      - la redacción «empieza a las» o «fue de» depende del reloj del equipo (mejor un momento desde la API);
+      - `marcar.variables` de la mutación de la web conserva el contenido del QR;
+      - el formato de `schema.prisma` en el modelo `Matricula` no pasa `prisma format`;
+      - `diaIsoEnLima` está duplicado entre `asistencia/dominio/ventana.ts` y `matriculas/dominio/cobro.ts`;
+      - el `SELECT` repetido en `lectura.ts`;
+      - el comentario de `alumnos/index.ts`.
+    - **Del tester** (T12): confirmar que la integración continua ejecuta sin saltar las pruebas de roles, RLS y privilegios
+      (95 se saltaron en el contenedor).
+  - Nota de 003: la tolerancia de tardanza (`toleranciaTardanzaMinutos`) la lee `leerConfiguracion(tx)` dentro de la
+    transacción del marcado, sin caché, desde la 009a (ver "Configuración de la academia (003)" en `docs/arquitectura.md`).
 - **010 · Mensualidades.** Estados al día, por vencer, vencido y pendiente (HU-11), renovación con prioridad de
   horario (HU-12, D-06), cierre de mes y clases no usadas (RN-23), cambio de horario por la secretaria (HU-03,
   RN-08).
