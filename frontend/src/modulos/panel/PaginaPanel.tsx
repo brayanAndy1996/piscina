@@ -44,6 +44,12 @@ const OPCIONES: readonly Opcion[] = [
     ruta: () => '/panel/alumnos',
   },
   {
+    permiso: 'REGISTRAR_ASISTENCIA',
+    texto: 'Asistencia',
+    descripcion: 'Registra la asistencia escaneando el QR del carnet con la lectora o la cámara, o buscando al alumno.',
+    ruta: () => '/panel/asistencia',
+  },
+  {
     permiso: 'VER_CARNET',
     alcance: 'PROPIO',
     texto: 'Mi carnet',
