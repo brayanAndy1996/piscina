@@ -246,6 +246,11 @@ export const PRIVILEGIOS_APP = Object.freeze(
     // Historia 009 (criterio 1): `asistencias` (una asistencia no cambia ni se borra: sin UPDATE ni DELETE).
     { tabla: 'asistencias', columna: null, privilegio: 'SELECT' },
     { tabla: 'asistencias', columna: null, privilegio: 'INSERT' },
+    // Historia 009b (criterio 22): `inasistencias` (una falta no se borra: solo se cubre, una vez, con la asistencia del día).
+    { tabla: 'inasistencias', columna: null, privilegio: 'SELECT' },
+    { tabla: 'inasistencias', columna: null, privilegio: 'INSERT' },
+    { tabla: 'inasistencias', columna: 'asistencia_id', privilegio: 'UPDATE' },
+    { tabla: 'inasistencias', columna: 'cubierta_en', privilegio: 'UPDATE' },
   ].map((privilegio) => Object.freeze(privilegio)),
 );
 
