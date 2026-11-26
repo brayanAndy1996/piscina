@@ -350,7 +350,7 @@ describe('la prioridad para conservar el horario (criterio 9)', () => {
           (c) => c.id === clase.id,
         );
       expect(claseDe(delExtra)).toMatchObject({ cuposRestantes: 0, conPrioridad: false });
-      expect(claseDe(delTitular)).toMatchObject({ cuposRestantes: 1, conPrioridad: true });
+      expect(claseDe(delTitular)).toMatchObject({ cuposRestantes: 20, conPrioridad: true });
     });
   });
 

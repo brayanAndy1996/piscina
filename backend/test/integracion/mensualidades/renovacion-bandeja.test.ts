@@ -133,6 +133,8 @@ describe('la bandeja de verificación con renovaciones (criterio 14)', () => {
       total: '20.00',
       fechaOperacion: '2026-11-27',
     });
+    // La bandeja desempata por id (un UUID al azar) si dos pagos se registran en el mismo instante: la de diciembre se registra unos segundos después.
+    ctx.reloj.fijar(new Date(INSTANTES.viernes27.getTime() + 5_000));
     const diciembre = await registrarRenovacion(ctx, esc, 'YAPE', cookies.secretaria, deDiciembre.alumnoId);
     expect(noviembre.respuesta.status, noviembre.respuesta.texto).toBe(201);
     expect(diciembre.respuesta.status, diciembre.respuesta.texto).toBe(201);
