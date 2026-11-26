@@ -104,3 +104,108 @@ export function avisarPagoRechazado(
     );
   }
 }
+
+/** Los nombres de los meses para el texto del correo (el mes de una renovación, `2026-12` → «diciembre de 2026»). */
+const MESES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+/** El aviso de una renovación (spec 010a, criterio 15, DR-7): a quién, y el mes y el plan de la matrícula. */
+export interface AvisoDeRenovacion {
+  readonly correos: readonly string[];
+  /** `AAAA-MM`. */
+  readonly mes: string;
+  readonly plan: string;
+}
+
+/**
+ * A quién avisar de una renovación y qué mes y plan lleva: el correo actual del alumno y, si es menor, el de su apoderado, sin repetir
+ * (`destinatariosDelAviso`), más el mes y el plan de la matrícula. Se lee dentro de la transacción y se envía **después** de confirmarla.
+ */
+export async function avisoDeRenovacion(
+  tx: TransaccionAcademia,
+  alumnoId: string,
+  matriculaId: string,
+  ahora: Date,
+): Promise<AvisoDeRenovacion> {
+  const { correos } = await destinatariosDelAviso(tx, alumnoId, '', ahora);
+  const filas = await tx.cliente.$queryRaw<{ anio: number; mes: number; plan: string }[]>`
+    SELECT m.anio::int AS anio, m.mes::int AS mes, pl.nombre AS plan
+      FROM matriculas m
+      JOIN planes pl ON pl.academia_id = m.academia_id AND pl.id = m.plan_id
+     WHERE m.academia_id = ${tx.academiaId}::uuid AND m.id = ${matriculaId}::uuid`;
+  const fila = filas[0];
+  if (!fila) throw new Error('La matrícula de la renovación no existe.');
+  return { correos, mes: `${fila.anio}-${String(fila.mes).padStart(2, '0')}`, plan: fila.plan };
+}
+
+function datosDeLaRenovacion(academia: AcademiaDelAviso, aviso: AvisoDeRenovacion): Record<string, string> {
+  const [anio = '', mes = ''] = aviso.mes.split('-');
+  return {
+    nombreAcademia: academia.nombre,
+    mes: aviso.mes,
+    mesTexto: `${MESES[Number(mes) - 1] ?? mes} de ${anio}`,
+    plan: aviso.plan,
+  };
+}
+
+/** `RENOVACION_CONFIRMADA` (criterio 15): la academia, el mes y el plan; sin DNI, token ni credenciales. Sin esperar, como los demás. */
+export function avisarRenovacionConfirmada(
+  correo: EnviadorCorreo,
+  registro: PinoLogger,
+  academia: AcademiaDelAviso,
+  aviso: AvisoDeRenovacion,
+): void {
+  for (const para of aviso.correos) {
+    enviarSinEsperar(
+      correo,
+      {
+        academiaId: academia.id,
+        para,
+        plantilla: 'RENOVACION_CONFIRMADA',
+        datos: {
+          ...datosDeLaRenovacion(academia, aviso),
+          aviso: 'Tu pago fue verificado y tu mensualidad está confirmada.',
+        },
+      },
+      registro,
+    );
+  }
+}
+
+/** `RENOVACION_RECHAZADA` (criterio 15): lo mismo, con el motivo y la indicación de acercarse a recepción. */
+export function avisarRenovacionRechazada(
+  correo: EnviadorCorreo,
+  registro: PinoLogger,
+  academia: AcademiaDelAviso,
+  aviso: AvisoDeRenovacion,
+  motivo: string,
+): void {
+  for (const para of aviso.correos) {
+    enviarSinEsperar(
+      correo,
+      {
+        academiaId: academia.id,
+        para,
+        plantilla: 'RENOVACION_RECHAZADA',
+        datos: {
+          ...datosDeLaRenovacion(academia, aviso),
+          motivo,
+          indicacion: 'Acércate a recepción con tu comprobante para registrar otra vez tu renovación.',
+        },
+      },
+      registro,
+    );
+  }
+}

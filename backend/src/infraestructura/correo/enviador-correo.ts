@@ -3,9 +3,11 @@ export const ENVIADOR_CORREO = Symbol('ENVIADOR_CORREO');
 
 /**
  * Las plantillas de correo que existen: la 005 trae la del seguimiento de la solicitud; la 007 suma `PAGO_CONFIRMADO` (con `nombreAcademia`,
- * `codigo` y `enlaceDeIngreso`) y, en su segunda entrega, `PAGO_RECHAZADO`; la 010 suma las suyas.
+ * `codigo` y `enlaceDeIngreso`) y, en su segunda entrega, `PAGO_RECHAZADO`; la 010a suma `RENOVACION_CONFIRMADA` y
+ * `RENOVACION_RECHAZADA` (con `nombreAcademia`, `mes`, `mesTexto` y `plan`, y el `motivo` en el rechazo).
  */
-export type PlantillaDeCorreo = 'SEGUIMIENTO_SOLICITUD' | 'PAGO_CONFIRMADO' | 'PAGO_RECHAZADO';
+export type PlantillaDeCorreo =
+  'SEGUIMIENTO_SOLICITUD' | 'PAGO_CONFIRMADO' | 'PAGO_RECHAZADO' | 'RENOVACION_CONFIRMADA' | 'RENOVACION_RECHAZADA';
 
 export interface MensajeDeCorreo {
   /** La academia que envía: el proveedor real arma el remitente y el nombre con ella. */
