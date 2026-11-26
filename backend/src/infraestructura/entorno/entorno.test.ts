@@ -34,6 +34,8 @@ describe('validarEntorno', () => {
       PUERTO_API: 3000,
       NODE_ENV: undefined,
       ALMACEN_DIRECTORIO: RAIZ_ALMACEN_POR_DEFECTO,
+      // 009b (criterio 23): sin la variable, las tareas programadas están activas; las pruebas la fijan en `inactivas` (faltas-entorno.test.ts).
+      TAREAS_PROGRAMADAS: 'activas',
     });
   });
 

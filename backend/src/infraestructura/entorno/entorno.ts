@@ -18,7 +18,16 @@ export interface Entorno {
    * toma desde la raíz del repositorio (donde está el `.env`). Por defecto, `backend/almacenamiento`, que git ignora.
    */
   readonly ALMACEN_DIRECTORIO: string;
+  /**
+   * Si la API programa sus tareas periódicas (por ahora, el registro de faltas de la 009b, D-08): `activas` (por defecto) o `inactivas`. Las pruebas la
+   * fijan en `inactivas` y llaman a la tarea directamente.
+   */
+  readonly TAREAS_PROGRAMADAS: TareasProgramadas;
 }
+
+/** Los dos valores de `TAREAS_PROGRAMADAS`. */
+export const VALORES_DE_TAREAS_PROGRAMADAS = ['activas', 'inactivas'] as const;
+export type TareasProgramadas = (typeof VALORES_DE_TAREAS_PROGRAMADAS)[number];
 
 /** Error de configuración: agrupa los problemas encontrados. Los mensajes nombran la variable, nunca su valor. */
 export class ErrorEntorno extends Error {
@@ -214,6 +223,14 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
   if ('problema' in almacen) problemas.push(almacen.problema);
   else almacenDirectorio = almacen.directorio;
 
+  const tareasTexto = env['TAREAS_PROGRAMADAS']?.trim();
+  let tareasProgramadas: TareasProgramadas = 'activas';
+  if (tareasTexto) {
+    const valor = VALORES_DE_TAREAS_PROGRAMADAS.find((posible) => posible === tareasTexto);
+    if (valor) tareasProgramadas = valor;
+    else problemas.push('La variable TAREAS_PROGRAMADAS debe ser activas o inactivas.');
+  }
+
   if (problemas.length > 0 || !urlApp || !secreto) throw new ErrorEntorno(problemas);
   return {
     DATABASE_URL_APP: urlApp,
@@ -222,5 +239,6 @@ export function validarEntorno(env: Readonly<Record<string, string | undefined>>
     PUERTO_API: puerto,
     NODE_ENV: nodeEnv,
     ALMACEN_DIRECTORIO: almacenDirectorio,
+    TAREAS_PROGRAMADAS: tareasProgramadas,
   };
 }
