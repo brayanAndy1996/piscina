@@ -125,7 +125,7 @@ function ContenidoPagos() {
           alCerrar={() => setAccion(null)}
           alRechazar={(rechazado) => {
             setHecho(
-              `Pago de ${rechazado.cliente.nombres} ${rechazado.cliente.apellidos} (${rechazado.solicitud.codigo}) rechazado. El cliente verá el motivo en su seguimiento.`,
+              `Pago de ${rechazado.cliente.nombres} ${rechazado.cliente.apellidos} (${rechazado.solicitud?.codigo ?? 'Renovación'}) rechazado. El cliente verá el motivo en su seguimiento.`,
             );
             setAccion(null);
           }}
@@ -146,14 +146,16 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
   const nombre = `${pago.cliente.nombres} ${pago.cliente.apellidos}`;
   return (
     <article
-      aria-label={`Pago de la solicitud ${pago.solicitud.codigo}`}
+      aria-label={`Pago de la solicitud ${pago.solicitud?.codigo ?? 'Renovación'}`}
       className={`space-y-3 rounded-2xl bg-white p-4 shadow-sm sm:p-5 ${
         pago.mesTerminado ? 'ring-2 ring-amber-400' : 'ring-1 ring-sky-100'
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-mono text-lg font-semibold tracking-wider text-slate-900">{pago.solicitud.codigo}</p>
+          <p className="font-mono text-lg font-semibold tracking-wider text-slate-900">
+            {pago.solicitud?.codigo ?? 'Renovación'}
+          </p>
           <p className="break-words text-lg font-semibold text-slate-900">{nombre}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -188,7 +190,7 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
         <button
           type="button"
           onClick={alVer}
-          aria-label={`Ver el comprobante de la solicitud ${pago.solicitud.codigo}`}
+          aria-label={`Ver el comprobante de la solicitud ${pago.solicitud?.codigo ?? 'Renovación'}`}
           className={ESTILO_BOTON.secundario}
         >
           Ver comprobante
@@ -196,7 +198,7 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
         <button
           type="button"
           onClick={alRechazar}
-          aria-label={`Rechazar el pago de la solicitud ${pago.solicitud.codigo}`}
+          aria-label={`Rechazar el pago de la solicitud ${pago.solicitud?.codigo ?? 'Renovación'}`}
           className={ESTILO_BOTON.secundario}
         >
           Rechazar
@@ -204,7 +206,7 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
         <button
           type="button"
           onClick={alAprobar}
-          aria-label={`Aprobar el pago de la solicitud ${pago.solicitud.codigo}`}
+          aria-label={`Aprobar el pago de la solicitud ${pago.solicitud?.codigo ?? 'Renovación'}`}
           className={ESTILO_BOTON.primario}
         >
           Aprobar

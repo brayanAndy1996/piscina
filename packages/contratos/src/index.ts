@@ -251,6 +251,7 @@ export {
 } from './consentimientos';
 export {
   clasePublicaSchema,
+  claseIdsSchema,
   consentimientosVigentesSchema,
   correoSchema,
   cotizacionSchema,
@@ -437,3 +438,25 @@ export {
   type RegistroDeFalta,
   type ResultadoAsistencia,
 } from './asistencia';
+export {
+  CABECERA_DATOS_RENOVACION,
+  claseDeLaOfertaSchema,
+  claseDeMensualidadSchema,
+  cotizarRenovacionSchema,
+  DATOS_RENOVACION_LARGO_MAXIMO,
+  datosRenovacionComprobanteSchema,
+  ofertaRenovacionSchema,
+  renovacionRegistradaSchema,
+  renovarEnEfectivoSchema,
+  respuestaCotizacionRenovacionSchema,
+  respuestaRenovacionSchema,
+  type ClaseDeLaOferta,
+  type ClaseDeMensualidad,
+  type CotizarRenovacion,
+  type DatosRenovacionComprobante,
+  type OfertaRenovacion,
+  type RenovacionRegistrada,
+  type RenovarEnEfectivo,
+  type RespuestaCotizacionRenovacion,
+  type RespuestaRenovacion,
+} from './mensualidades';

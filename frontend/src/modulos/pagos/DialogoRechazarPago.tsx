@@ -73,7 +73,7 @@ export function DialogoRechazarPago({ pago, alCerrar, alRechazar }: Propiedades)
     erroresPorCampo(rechazar.error).length === 0;
 
   return (
-    <Modal titulo={`Rechazar el pago: ${pago.solicitud.codigo}`} alCerrar={cerrar}>
+    <Modal titulo={`Rechazar el pago: ${pago.solicitud?.codigo ?? 'Renovación'}`} alCerrar={cerrar}>
       <form onSubmit={(evento) => void handleSubmit(alEnviar)(evento)} noValidate className="mt-2 space-y-4">
         <div className="space-y-1 text-slate-700">
           <p>

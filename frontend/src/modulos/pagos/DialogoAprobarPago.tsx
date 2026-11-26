@@ -53,7 +53,7 @@ export function DialogoAprobarPago({ pago, alCerrar }: Propiedades) {
 
   if (aprobado) {
     return (
-      <Modal titulo={`Pago aprobado: ${pago.solicitud.codigo}`} alCerrar={cerrar}>
+      <Modal titulo={`Pago aprobado: ${pago.solicitud?.codigo ?? 'Renovación'}`} alCerrar={cerrar}>
         <div className="mt-2 space-y-4">
           <p role="status" className="rounded-2xl bg-emerald-50 p-4 text-emerald-900 ring-1 ring-emerald-200">
             Se aprobó el pago de {formatearSoles(aprobado.monto)} de {nombre}.
@@ -77,7 +77,7 @@ export function DialogoAprobarPago({ pago, alCerrar }: Propiedades) {
   }
 
   return (
-    <Modal titulo={`Aprobar el pago: ${pago.solicitud.codigo}`} alCerrar={cerrar}>
+    <Modal titulo={`Aprobar el pago: ${pago.solicitud?.codigo ?? 'Renovación'}`} alCerrar={cerrar}>
       <div className="mt-2 space-y-4">
         <div className="space-y-1 text-slate-700">
           <p>

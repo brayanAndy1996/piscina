@@ -174,7 +174,8 @@ export const pagoPendienteSchema = z.strictObject({
   fechaOperacion: fechaSchema,
   /** Cuándo se subió el comprobante. */
   enviadoEn: z.iso.datetime(),
-  solicitud: z.strictObject({ id: z.uuid(), codigo: z.string() }),
+  /** `null` en una renovación (010a, DT-10): la matrícula no tiene solicitud. */
+  solicitud: z.strictObject({ id: z.uuid(), codigo: z.string() }).nullable(),
   cliente: z.strictObject({ nombres: z.string(), apellidos: z.string(), dni: dniSchema }),
   /** `AAAA-MM` de la matrícula. */
   mes: z.string().regex(/^[0-9]{4}-(0[1-9]|1[0-2])$/),
