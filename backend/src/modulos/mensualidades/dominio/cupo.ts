@@ -1,9 +1,11 @@
 /**
- * El cupo libre de una clase para un alumno (spec 010a, definición «Cupo libre»; D-06, RN-11, DT-4). Pura: recibe los números ya contados
- * (después de `bloquearClasesParaCupo`) y no toca la base.
+ * El cupo libre de una clase para un alumno (spec 010a, definición «Cupo libre» y criterio 44; D-06, RN-11, DT-4). Pura: recibe los números ya
+ * contados (después de `bloquearClasesParaCupo`) y no toca la base.
  *
  * - Mes en curso: `aforo − ocupación`. Las reservas de prioridad no restan: el lugar apartado es para el mes siguiente.
- * - Mes siguiente: `aforo − ocupación − reservas`, más 1 si el alumno es titular de prioridad en la clase (su propio lugar apartado).
+ * - Mes siguiente, titular de la clase: `aforo − ocupación`. Las reservas no le restan: los titulares compiten solo entre ellos por los lugares que
+ *   quedan y gana el primero que llega (con más titulares que lugares, los últimos reciben `SIN_CUPO`).
+ * - Mes siguiente, no titular: `aforo − ocupación − reservas`; no puede tomar un lugar apartado.
  *
  * Puede dar menos de 0 si el administrador bajó el aforo por debajo de los inscritos (DR-5 de 004): quien muestra el cupo lo recorta a 0.
  * El alumno puede tomar la clase si el cupo libre es 1 o más, y así la ocupación del mes nunca pasa del aforo.
@@ -22,8 +24,8 @@ export interface EntradaDelCupo {
 
 export function cupoLibre(entrada: EntradaDelCupo): number {
   const { aforo, ocupacion, reservas, esTitular, esMesSiguiente } = entrada;
-  if (!esMesSiguiente) return aforo - ocupacion;
-  return aforo - ocupacion - reservas + (esTitular ? 1 : 0);
+  if (!esMesSiguiente || esTitular) return aforo - ocupacion;
+  return aforo - ocupacion - reservas;
 }
 
 /** ¿Hay lugar para el alumno? Cupo libre de 1 o más. */

@@ -12,10 +12,17 @@ describe('cupoLibre', () => {
     expect(cupoLibre({ ...base, ocupacion: 15, reservas: 5 })).toBe(0);
   });
 
-  it('mes siguiente: el titular suma su propio lugar apartado', () => {
-    expect(cupoLibre({ ...base, reservas: 20, esTitular: true })).toBe(1);
+  it('mes siguiente: al titular las reservas no le restan (criterio 44): aforo − ocupación', () => {
+    expect(cupoLibre({ ...base, reservas: 20, esTitular: true })).toBe(20);
+    expect(cupoLibre({ ...base, ocupacion: 1, reservas: 20, esTitular: true })).toBe(19);
     expect(cupoLibre({ ...base, reservas: 20 })).toBe(0);
-    expect(cupoLibre({ ...base, ocupacion: 20, reservas: 0, esTitular: true })).toBe(1);
+    expect(cupoLibre({ ...base, ocupacion: 20, reservas: 0, esTitular: true })).toBe(0);
+  });
+
+  it('mes siguiente: con más titulares que lugares (20 titulares, 19 lugares) el titular entra mientras quede un lugar', () => {
+    expect(hayCupo({ ...base, ocupacion: 19, reservas: 20, esTitular: true })).toBe(true);
+    expect(hayCupo({ ...base, ocupacion: 20, reservas: 20, esTitular: true })).toBe(false);
+    expect(hayCupo({ ...base, ocupacion: 1, reservas: 20 })).toBe(false);
   });
 
   it('mes en curso: aforo − ocupación; ni las reservas ni la titularidad cuentan', () => {
@@ -26,9 +33,9 @@ describe('cupoLibre', () => {
   });
 
   it('con el aforo bajado por debajo de los inscritos (DR-5) puede dar menos de 0 y no hay cupo para nadie', () => {
-    // Aforo 20, 20 matrículas de diciembre, 10 titulares sin renovar: 20 − 20 − 10 + 1 = −9.
-    const entrada = { ...base, ocupacion: 20, reservas: 10, esTitular: true };
-    expect(cupoLibre(entrada)).toBe(-9);
+    // Aforo 20 con 25 matrículas de diciembre y 10 titulares sin renovar: 20 − 25 = −5 (al titular no le restan las reservas).
+    const entrada = { ...base, ocupacion: 25, reservas: 10, esTitular: true };
+    expect(cupoLibre(entrada)).toBe(-5);
     expect(hayCupo(entrada)).toBe(false);
     expect(cuposParaMostrar(entrada)).toBe(0);
   });
