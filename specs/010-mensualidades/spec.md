@@ -18,7 +18,8 @@
   sus permisos y su aislamiento.
 - **Estado:** aprobada por Bryan el 26/11/2026; 010a en curso. Bryan aceptó la propuesta de las once preguntas de
   negocio (P1 a P11, que son DR-1 a DR-11 de esta spec, en «Resueltas») y los cambios a pruebas protegidas A1 y A2. El
-  orquestador aceptó DT-1 a DT-21 y la partición en 010a, 010b, 010c y 010d el mismo día.
+  orquestador aceptó DT-1 a DT-21 y la partición en 010a, 010b, 010c y 010d el mismo día. La ronda adversarial 1 de la
+  010a (26/11/2026) agregó el criterio 44 y ajustó la definición de «Cupo libre» y DT-4 (detalle en `rondas.md`).
 
 ## Objetivo
 
@@ -36,7 +37,7 @@ Llevan pruebas protegidas y ataque adversarial los criterios marcados _(crítico
 - **Cobro, caja y pagos (1, 5 a 8, 12, 14, 15):** el monto sale de D-03 y se redondea una vez; ningún cobro sin caja
   abierta de hoy; un Yape queda en verificación y entra a la caja al aprobarlo; número de operación sin duplicados;
   idempotencia.
-- **Aforo y prioridad (3, 9, 10, 13, 35, 36, 39):** nunca más inscritos que el aforo, también con el último cupo
+- **Aforo y prioridad (3, 9, 10, 13, 35, 36, 39, 44):** nunca más inscritos que el aforo, también con el último cupo
   simultáneo; el lugar de los alumnos vigentes queda apartado durante la ventana (D-06, RN-11).
 - **Asistencia (16, 38):** una renovación en verificación no deja marcar; un cambio de horario no descuenta ni registra
   faltas de clases que no eran suyas.
@@ -55,7 +56,7 @@ criterios llevan la marca de su entrega. Los commits de pruebas protegidas dicen
 
 | Entrega | Qué trae | Críticos | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- | --- |
-| **010a** · renovación con prioridad | oferta, cotización, renovación en efectivo y con comprobante, prioridad, bandeja, aprobación y rechazo | 1, 3, 5 a 10, 12 a 19 | 2, 4, 11, 20, 21, 22 | 23 |
+| **010a** · renovación con prioridad | oferta, cotización, renovación en efectivo y con comprobante, prioridad, bandeja, aprobación y rechazo | 1, 3, 5 a 10, 12 a 19, 44 | 2, 4, 11, 20, 21, 22 | 23 |
 | **010b** · estados y cierre de mes | estado de la mensualidad, listado HU-11, tarea del cierre de mes y estado del alumno | 26 a 29 | 24, 25, 30, 31, 32 | 33 |
 | **010c** · cambio de horario | cambio de clases de una matrícula, su efecto en la asistencia y las faltas | 34 a 36, 38 a 41 | 37, 42 | 43 |
 
@@ -85,12 +86,18 @@ sus criterios se agregan a esta spec cuando se planifique.
   sin pago (un cliente de la 005) no da prioridad.
 - **Reservas de prioridad de c:** cuántos titulares de prioridad tiene c. Solo cuentan para el mes M+1, y dejan de
   existir solas el día 1, cuando M+1 pasa a ser el mes en curso (D-06: «el día 1 se liberan»). No se guardan.
-- **Cupo libre de c para el alumno A en el mes X:**
+- **Cupo libre de c para el alumno A en el mes X** (ajustada por la ronda adversarial 1 de la 010a, criterio 44):
   - X = M: `aforo − ocupación(c, M)`;
-  - X = M+1: `aforo − ocupación(c, M+1) − reservas(c)`, más 1 si A es titular en c (su propio lugar apartado).
+  - X = M+1 y A es titular en c: `aforo − ocupación(c, M+1)`. Las reservas no le restan: los titulares de c compiten
+    solo entre ellos por los lugares que quedan en M+1, y gana el primero que llega;
+  - X = M+1 y A no es titular en c: `aforo − ocupación(c, M+1) − reservas(c)`; no puede tomar un lugar apartado.
 
-  En los dos casos no cuenta la matrícula que A está cambiando (010c). A puede tomar c si el cupo libre es 1 o más. Así
-  la ocupación de X nunca pasa del aforo (DT-4).
+  En todos los casos no cuenta la matrícula que A está cambiando (010c). A puede tomar c si el cupo libre es 1 o más. Así
+  la ocupación de X nunca pasa del aforo (DT-4). Cuando `ocupación(c, M+1) + reservas(c) ≤ aforo` (el caso normal), un
+  titular encuentra lugar con cualquiera de las dos fórmulas; cuando hay más titulares que lugares (un no titular tomó
+  un lugar libre antes de que alguien recuperara la prioridad, o el aforo bajó, DR-5), entran los primeros titulares
+  hasta llenar el aforo y los últimos reciben `SIN_CUPO`. Los `cuposRestantes` de la oferta (criterio 2) son este cupo
+  libre, recortado a 0 si es negativo: para un titular, `aforo − ocupación(c, M+1)`.
 - **Renovación:** una matrícula sin solicitud (`solicitud_id` nula) de un alumno que no es `CLIENTE`, para M o M+1, con
   su pago de concepto `MENSUALIDAD`. La registra recepción (DR-1).
 - **Meses permitidos:** M (renovación tardía de quien no tiene la de M, DR-4) y, si «ahora» está dentro de la ventana,
@@ -117,7 +124,7 @@ sus criterios se agregan a esta spec cuando se planifique.
    `ventana` (`desde` y `hasta`), la mensualidad actual
    (mes, plan y clases de su matrícula de M, o `null`), los planes que puede elegir para ese mes (activos, vigentes en
    la `fecha_inicio` del mes, DT-5, y que aplican a su nivel) y las clases activas de su nivel con `cuposRestantes`
-   (el cupo libre para él, definición) y `conPrioridad` (es titular en ella). Un `mes` que no está en `mesesPermitidos`
+   (el cupo libre para él, definición, nunca negativo) y `conPrioridad` (es titular en ella). Un `mes` que no está en `mesesPermitidos`
    responde la oferta con `planes` y `clases` vacíos. No bloquea, no escribe ni audita. _(prueba obligatoria)_ (HU-12,
    D-06)
 3. **[010a] Mes destino y ventana.** El registro responde 409 `MES_NO_PERMITIDO` con `detalles.mesesPermitidos` si el
@@ -261,6 +268,32 @@ sus criterios se agregan a esta spec cuando se planifique.
     de bloqueos y bandeja), la guía de Windows (cómo probar la ventana con la configuración) y la nota de la 010 en
     `specs/backlog.md`. _(revisor)_
 
+#### Ronda adversarial 1 de la 010a
+
+44. **[010a] Más titulares que lugares en el mes siguiente (ataque ronda 1, R1-1).** Con la definición de «Cupo libre»:
+    en M+1, un titular de c toma c si `aforo − ocupación(c, M+1) ≥ 1`, sin restarle las reservas; entre titulares gana
+    el primero que llega; quien no es titular sigue necesitando `aforo − ocupación(c, M+1) − reservas(c) ≥ 1`. Pruebas
+    deterministas con `RELOJ` fijo en la ventana (27/11/2026, N = 5) y una clase c de los sábados:
+    - **a) Renovación tardía.** c de aforo 20 con 19 titulares en noviembre. X, vencido y sin prioridad, renueva
+      diciembre en c (201; queda 1 de 20). Y, sin matrícula de noviembre, hace la renovación tardía de noviembre en c
+      (201) y pasa a ser titular: hay 20 titulares para 19 lugares. Un alumno sin prioridad recibe `SIN_CUPO` para c en
+      diciembre, y en la oferta de diciembre c muestra `cuposRestantes` 19 a un titular y 0 a ese alumno. Los 19
+      titulares de antes renuevan c, cada uno con 201; después Y recibe `SIN_CUPO`. Con Y primero, Y entra (201) y el
+      último de los otros recibe `SIN_CUPO`.
+    - **b) Yape rechazado.** c de aforo 20 con 20 titulares. T0 renueva diciembre por Yape en otras clases, sin c; X,
+      sin prioridad, toma c en diciembre (201); se rechaza el Yape de T0 y T0 vuelve a ser titular en c. Un alumno sin
+      prioridad recibe `SIN_CUPO`. Los otros 19 titulares renuevan c, cada uno con 201; después T0 recibe `SIN_CUPO`.
+    - **c) Aforo bajado (DR-5).** c de aforo 30 con 30 titulares, que el administrador baja a 20 antes de que nadie
+      renueve. Un alumno sin prioridad recibe `SIN_CUPO`. Los titulares renuevan c uno tras otro: los primeros 20, con
+      201; del 21 al 30, `SIN_CUPO`.
+    - **d) Dos titulares a la vez por el último lugar.** Como en c, con 19 titulares ya renovados (diciembre en 19 de
+      20): dos de los titulares que faltan renuevan c a la vez (espera comprobada en `pg_locks`); uno 201 y el otro
+      `SIN_CUPO`, sin `40P01`.
+
+    En cada caso, diciembre termina con la ocupación de c igual al aforo (20 de 20) y ninguna renovación deja la
+    ocupación de un mes por encima del aforo vigente (en el caso c, noviembre conserva sus 30 de antes, DR-5 de 004).
+    _(crítico)_ (D-06, RN-11, HU-12, DR-5, DT-4)
+
 ### 010b · Estados de la mensualidad y cierre de mes
 
 24. **[010b] Estado de la mensualidad.** `estadoDeMensualidad` (pura) decide, para un alumno y un mes X no posterior a
@@ -385,9 +418,11 @@ sus criterios se agregan a esta spec cuando se planifique.
 - **Clase de 19:00 a 20:00 el último día del mes:** la mensualidad de ese mes sigue vigente hasta las 23:59:59.999 de
   Lima; el cierre no la toca antes (criterio 28).
 - **Titular que renueva en otras clases:** deja libre su lugar en las que no eligió; si después le rechazan el Yape,
-  recupera la prioridad en sus clases solo si queda lugar (DT-4).
-- **Cliente que se inscribe y paga durante la ventana:** es titular desde que paga, pero solo encuentra lugar en el mes
-  siguiente si queda (DT-4).
+  vuelve a ser titular en sus clases. Si mientras tanto alguien sin prioridad tomó ese lugar, hay más titulares que
+  lugares: los titulares que renuevan primero entran y el último recibe `SIN_CUPO` (DT-4, criterio 44).
+- **Cliente que se inscribe y paga durante la ventana:** es titular desde que paga y compite con los demás titulares por
+  los lugares que quedan en el mes siguiente; si no alcanzan, el último titular en renovar se queda sin lugar (DT-4,
+  criterio 44).
 - **Cambio de horario dentro de la ventana:** la prioridad pasa a las clases nuevas, con la misma regla (DT-4).
 - **Mes con más ocurrencias que el plan** (13 lunes, miércoles y viernes para 12 clases): tope del plan, precio
   completo. Una renovación desde el día 1 casi nunca es proporcional, porque cada día de la semana aparece al menos 4
@@ -396,7 +431,8 @@ sus criterios se agregan a esta spec cuando se planifique.
   aparece en el listado del mes en curso (DR-8).
 - **Renovación en verificación al terminar su mes:** se puede aprobar (DR-2 de 007); el cierre la finaliza en la vuelta
   siguiente.
-- **Aforo reducido por debajo de los inscritos:** en el mes siguiente se aplica el aforo nuevo (DR-5).
+- **Aforo reducido por debajo de los inscritos:** en el mes siguiente se aplica el aforo nuevo; entran los primeros
+  titulares hasta llenarlo (DR-5, criterio 44).
 - **Alumno `INACTIVO`:** no renueva (`ALUMNO_INACTIVO`); ninguna historia lo produce todavía.
 - **Intercambio de dos alumnos entre dos clases llenas:** ninguno de los dos cambios entra; se hace con un lugar libre
   intermedio (criterio 36).
@@ -493,8 +529,9 @@ Errores nuevos: 409 `MES_NO_PERMITIDO`, `MENSUALIDAD_YA_REGISTRADA`, `FECHA_OPER
 ## Riesgos aceptados
 
 - **Prioridad que no siempre alcanza (DT-4):** nunca se pasa del aforo; en carreras poco frecuentes (cliente que paga
-  durante la ventana, rechazo de un Yape a otras clases, cambio de horario en la ventana, aforo reducido) un titular
-  puede no encontrar lugar. Mitiga: la web muestra los cupos y la secretaria elige otra clase.
+  durante la ventana, renovación tardía del mes en curso, rechazo de un Yape a otras clases, cambio de horario en la
+  ventana, aforo reducido) una clase puede tener más titulares que lugares, y los últimos titulares en renovar no
+  encuentran lugar; los primeros, sí (criterio 44). Mitiga: la web muestra los cupos y la secretaria elige otra clase.
 - **Recepción ve el comprobante que le muestra el alumno** (DR-1): la identidad del alumno ya es conocida; el pago igual
   pasa por la bandeja (RN-04).
 - **El cierre corre cada 15 minutos:** el estado del alumno cambia hasta 15 minutos después de las 00:00; la asistencia y
@@ -516,9 +553,12 @@ aprobaciones A1 y A2 están en «Resueltas».
   suma un estado, un vencimiento, una cancelación y otro frente de ataque.
 - **DT-3. La matrícula en verificación también da prioridad;** la reserva de 24 horas, no. Así la aprobación no cambia
   las reservas y no necesita bloquear clases.
-- **DT-4. Prioridad dentro del aforo.** El cupo libre resta las reservas y suma el lugar propio del titular; nunca
-  admite a nadie por encima del aforo. Descartado: admitir siempre al titular (podría pasar del aforo) o fijar los
-  titulares al empezar la ventana (más datos y reglas para casos raros).
+- **DT-4. Prioridad dentro del aforo** (ajustada por la ronda adversarial 1 de la 010a, R1-1, criterio 44). A quien no
+  es titular, el cupo libre del mes siguiente le resta las reservas; al titular, no: compite solo con la ocupación del
+  mes siguiente y, entre titulares, gana el primero que llega. Nunca admite a nadie por encima del aforo. Descartado:
+  admitir siempre al titular (podría pasar del aforo); fijar los titulares al empezar la ventana (más datos y reglas
+  para casos raros); restar las reservas también al titular y sumarle su propio lugar (la fórmula original), que con más
+  titulares que lugares deja sin lugar a todos los titulares y no solo a los últimos (R1-1).
 - **DT-5. La vigencia del plan se mira en la `fecha_inicio` del mes destino** (un plan de verano de enero se puede
   elegir en la ventana de diciembre). Descartado: hoy (lo impediría).
 - **DT-6. El mes siguiente se cotiza con `clasesRestantes` desde las 00:00 del día 1,** la misma función de la 005.

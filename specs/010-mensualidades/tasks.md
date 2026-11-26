@@ -38,6 +38,16 @@ las de la 010c, con la 010b unida.
 - [ ] T13 · frontend · Sección «Mensualidad» y diálogo «Renovar» en `/panel/alumnos/{id}`; textos de la bandeja;
   pruebas de componentes (criterios 20 y 22)
 - [ ] T14 · adversarial · Ataque de la 010a (hasta 3 rondas, D-31; registro en `rondas.md`)
+  - [x] Ronda 1 (26/11/2026): R1-1, alta, pasa a ser el criterio 44.
+  - [ ] T36 · test-writer · Prueba protegida en rojo de la ronda 1: más titulares que lugares en el mes siguiente, con
+    los casos a (renovación tardía), b (Yape rechazado), c (aforo bajado), d (dos titulares a la vez por el último lugar),
+    la oferta de un titular y de un no titular, y la ocupación final sin pasar del aforo; el tester confirma el rojo y
+    se hace el commit «Pruebas protegidas (010): 010a, ronda 1 … (en rojo)» (criterio 44)
+  - [ ] T37 · backend · Corrección de R1-1: en `mensualidades/dominio/cupo.ts`, `cupoLibre` sin restar las reservas al
+    titular en el mes siguiente (`aforo − ocupación`) y con `aforo − ocupación − reservas` para el no titular; la oferta
+    (`cuposRestantes` en `renovacion.service.ts`) y el registro (`nucleo.ts`) la usan sin cambios de firma; se actualizan
+    las pruebas unitarias de `cupo.test.ts` que fijan la fórmula original y el comentario de `cupo.ts` (criterios 2, 9 y
+    44)
 - [ ] T15 · revisor y tester (a la vez) · Revisión contra la spec; suite completa, lint y tipos
 - [ ] T16 · documentador · `docs/arquitectura.md`, guía de Windows y nota del backlog de la 010a; marcar tareas
   (criterio 23)
