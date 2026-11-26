@@ -23,8 +23,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ✅ |
 | 008a | Carnet digital y QR | En parte | ✅ |
 | 008b | Foto desde el panel y cámara | En parte | ✅ |
-| 009 | Asistencia y faltas | Sí | 🟨 |
-| 010 | Mensualidades y renovación | En parte | ⬜ |
+| 009 | Asistencia y faltas | Sí | ✅ |
+| 010 | Mensualidades y renovación | En parte | 🟨 |
 | 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
 
 ### Notas
@@ -273,7 +273,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-6 y el privilegio `UPDATE (clases_usadas)`; DT-1 a DT-30), en
     [`specs/009-asistencia/`](009-asistencia/spec.md). Dos entregas: 009a (marcado por QR y manual, criterios 1 a 21; unida a
     main el 26/11/2026, [PR #18](https://github.com/brayanAndy1996/piscina/pull/18), tras una ronda adversarial sin críticas ni altas; ver [`rondas.md`](009-asistencia/rondas.md)) y
-    009b (faltas, registro posterior y consulta del mes, criterios 22 a 37): lista para unir (26/11/2026, una ronda adversarial sin críticas ni altas); ver [`rondas.md`](009-asistencia/rondas.md).
+    009b (faltas, registro posterior y consulta del mes, criterios 22 a 37): unida a main el 26/11/2026, [PR #19](https://github.com/brayanAndy1996/piscina/pull/19), tras una ronda adversarial sin críticas ni altas; ver [`rondas.md`](009-asistencia/rondas.md).
   - **Corregidas en la 009b** (R1-1 y R1-2 de la ronda 1 de la 009a, medias): R1-1 con el criterio 36 y R1-2 con el
     criterio 37, cada una con su prueba protegida (`7641ca1`) y su corrección (`ddeeec8`).
   - **Deuda de la 009a** (ronda 1, 26/11/2026; las medias y las bajas no abren ronda, D-31; el detalle está en
@@ -312,6 +312,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **010 · Mensualidades.** Estados al día, por vencer, vencido y pendiente (HU-11), renovación con prioridad de
   horario (HU-12, D-06), cierre de mes y clases no usadas (RN-23), cambio de horario por la secretaria (HU-03,
   RN-08).
+  - Estado: spec aprobada por Bryan el 26/11/2026 (DR-1 a DR-11, cambios A1 y A2 a pruebas protegidas; DT-1 a DT-21), en
+    [`specs/010-mensualidades/`](010-mensualidades/spec.md). Cuatro entregas: 010a renovación con prioridad (criterios 1 a 23;
+    en curso), 010b estados y cierre de mes (24 a 33), 010c cambio de horario (34 a 43) y 010d inscripción pública al mes
+    siguiente (DR-10; se especifica con la 010c unida).
   - Nota de 003: "por vencer" (`diasPorVencer`) y la prioridad de renovación (`diasPrioridadRenovacion`) los leerá
     `leerConfiguracion(tx)` dentro de la transacción de la operación, sin caché. Son valores aparte: cambiar uno no cambia
     el otro (DR-3 de 003).

@@ -1,0 +1,93 @@
+# 010 · Tareas
+
+Cada tarea indica su rol y los criterios de aceptación que cubre. Las de la 010b empiezan con la 010a unida a `main`, y
+las de la 010c, con la 010b unida.
+
+## Aprobación
+
+- [x] T0 · orquestador y responsable · Aprobar la spec, responder P1 a P11 (Bryan), aceptar DT-1 a DT-21 (orquestador) y
+  aprobar A1 y A2 (Bryan). **Hecho (26/11/2026):** Bryan aprobó la spec, las propuestas de P1 a P11 (DR-1 a DR-11) y
+  A1 y A2; el orquestador aceptó DT-1 a DT-21 y la partición en 010a, 010b, 010c y 010d. Por DR-10, el orquestador
+  anota la 010d en `specs/backlog.md`.
+
+## 010a · Renovación con prioridad
+
+- [ ] T1 · test-writer · Pruebas protegidas del modelo (`CHECK matriculas_renovacion_sin_vencimiento`, como app y como
+  dueño) (criterio 1)
+- [ ] T2 · test-writer · Pruebas protegidas del registro: mes y ventana con `RELOJ` y `TZ=Asia/Tokyo`, monto y redondeo,
+  efectivo con caja abierta, cerrada y de otro día, comprobante (orden de comprobaciones, cabecera, imagen, monto,
+  número de operación, fecha, archivo borrado o conservado), orden de los errores, idempotencia y choques por nombre de
+  restricción (criterios 3, 5 a 8 y 12)
+- [ ] T3 · test-writer · Pruebas protegidas de prioridad y concurrencia: titulares y no titulares, día 1, aforo reducido,
+  último cupo simultáneo, `[c1, c2]` y `[c2, c1]`, orden de bloqueos sin `40P01` (criterios 9, 10 y 13)
+- [ ] T4 · test-writer · Pruebas protegidas de bandeja, aprobación, rechazo, correos, estado del alumno, asistencia con
+  la renovación en verificación, permisos, aislamiento y auditoría (criterios 14 a 19)
+- [ ] T5 · tester · Confirmar que T1 a T4 fallan por la razón esperada; commit «Pruebas protegidas (010): 010a, … (en
+  rojo)»
+- [ ] T6 · backend · Contratos `packages/contratos/src/mensualidades.ts` y `solicitud` nula en `pagoPendienteSchema`
+  (criterios 2, 5 a 7, 11 y 14)
+- [ ] T7 · backend · Migración `<marca>_renovaciones` y `schema.prisma` (criterio 1)
+- [ ] T8 · backend · Dominio puro: `ventana.ts`, `cotizacion.ts` y `cupo.ts`, con sus pruebas unitarias (criterios 3, 5,
+  9 y 21)
+- [ ] T9 · backend · `contarReservasDePrioridad` en `matriculas/ocupacion.ts` (criterio 9)
+- [ ] T10 · backend · Módulo `mensualidades/`: oferta, cotización y renovación en efectivo; paso a `ALUMNO_ACTIVO` en
+  `confirmarPagoEnTransaccion`; `PREFIJOS_SIN_HEAD` (criterios 2 a 6, 8 a 13, 17 a 19)
+- [ ] T11 · backend · Renovación con comprobante, reutilizando el lector binario, la recodificación y la relectura
+  (criterios 7, 8 y 12)
+- [ ] T12 · backend · Bandeja con `LEFT JOIN`, avisos de renovación al aprobar y al rechazar (criterios 14 y 15)
+- [ ] T13 · frontend · Sección «Mensualidad» y diálogo «Renovar» en `/panel/alumnos/{id}`; textos de la bandeja;
+  pruebas de componentes (criterios 20 y 22)
+- [ ] T14 · adversarial · Ataque de la 010a (hasta 3 rondas, D-31; registro en `rondas.md`)
+- [ ] T15 · revisor y tester (a la vez) · Revisión contra la spec; suite completa, lint y tipos
+- [ ] T16 · documentador · `docs/arquitectura.md`, guía de Windows y nota del backlog de la 010a; marcar tareas
+  (criterio 23)
+
+## 010b · Estados de la mensualidad y cierre de mes
+
+- [ ] T17 · test-writer · Pruebas protegidas del cierre: academias activas y suspendidas, bloqueo consultivo, error
+  aislado, matrículas y estado del alumno, bordes de Lima, Yape aprobado tarde, faltas con la matrícula finalizada,
+  concurrencia sin `40P01` (criterios 27 a 29)
+- [ ] T18 · test-writer · Pruebas protegidas de permisos y aislamiento del listado (criterio 26); ajuste aprobado (A1)
+  de la prueba del criterio 33 de 009 (criterio 30)
+- [ ] T19 · tester · Confirmar el rojo de T17 y T18; commit «Pruebas protegidas (010): 010b, … (en rojo)»
+- [ ] T20 · backend · `estado.ts` con sus pruebas unitarias; listado `GET /api/mensualidades` (criterios 24 a 26)
+- [ ] T21 · backend · `CierreDeMesService` y `CierreDeMesTarea` en el módulo condicionado por `TAREAS_PROGRAMADAS`
+  (criterios 27 a 30)
+- [ ] T22 · frontend · `/panel/mensualidades` y el estado en `/panel/alumnos/{id}`; pruebas de componentes (criterios 31
+  y 32)
+- [ ] T23 · adversarial · Ataque de la 010b (hasta 3 rondas)
+- [ ] T24 · revisor y tester (a la vez) · Revisión; suite completa, lint y tipos
+- [ ] T25 · documentador · `docs/arquitectura.md`, `.env.example` y nota del backlog; marcar tareas (criterio 33)
+
+## 010c · Cambio de horario
+
+- [ ] T26 · test-writer · Pruebas protegidas del modelo (`agregada_en`, política y privilegio de `DELETE`, trigger) y
+  ajuste aprobado (A2) de las pruebas de los criterios 1 y 2 de 005 (criterio 34)
+- [ ] T27 · test-writer · Pruebas protegidas del cambio: matrículas que se pueden cambiar, cupo y último cupo,
+  asistencia y faltas después del cambio con `RELOJ`, orden de bloqueos, auditoría, permisos y aislamiento (criterios 35,
+  36 y 38 a 41)
+- [ ] T28 · tester · Confirmar el rojo de T26 y T27; commit «Pruebas protegidas (010): 010c, … (en rojo)»
+- [ ] T29 · backend · Migración `<marca>_cambio_horario`, `schema.prisma`, `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs`
+  (criterio 34)
+- [ ] T30 · backend · `HorarioService` y su ruta; `agregada_en` en el marcado, el registro posterior y la tarea de faltas
+  (criterios 35 a 41)
+- [ ] T31 · frontend · «Cambiar horario» en `/panel/alumnos/{id}`; pruebas de componentes (criterio 42)
+- [ ] T32 · adversarial · Ataque de la 010c (hasta 3 rondas)
+- [ ] T33 · revisor y tester (a la vez) · Revisión; suite completa, lint y tipos
+- [ ] T34 · documentador · `docs/arquitectura.md`, guía de Windows y nota del backlog; marcar tareas (criterio 43)
+
+## Solo ruta crítica
+
+- [ ] 010a: pruebas escritas por test-writer y confirmadas en rojo
+- [ ] 010a: pruebas en verde tras la implementación
+- [ ] 010a: ataque adversarial sin fallas críticas ni altas abiertas
+- [ ] 010b: pruebas escritas por test-writer y confirmadas en rojo
+- [ ] 010b: pruebas en verde tras la implementación
+- [ ] 010b: ataque adversarial sin fallas críticas ni altas abiertas
+- [ ] 010c: pruebas escritas por test-writer y confirmadas en rojo
+- [ ] 010c: pruebas en verde tras la implementación
+- [ ] 010c: ataque adversarial sin fallas críticas ni altas abiertas
+
+## 010d · Inscripción pública al mes siguiente (DR-10)
+
+- [ ] T35 · especificador · Agregar a `spec.md` los criterios de la 010d, con la 010c unida, y sus tareas a este archivo
