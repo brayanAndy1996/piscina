@@ -8,7 +8,7 @@ import { erroresPorCampo } from '../../lib/errores';
 import { ETIQUETA_METODO } from '../caja/montos';
 import { esErrorDeCambioDeSesion, useAlPerderSesion } from '../sesion/hooks';
 import { useRechazarPago } from './hooks';
-import { esRechazoSinSalida, mensajeDeRechazo } from './mensajes';
+import { esRechazoSinSalida, esRenovacion, mensajeDeRechazo, rotuloDelPago } from './mensajes';
 
 interface Propiedades {
   pago: PagoPendiente;
@@ -36,6 +36,7 @@ export function DialogoRechazarPago({ pago, alCerrar, alRechazar }: Propiedades)
   useAlPerderSesion(rechazar.error);
   const pendiente = rechazar.isPending;
   const sinSalida = rechazar.isError && esRechazoSinSalida(rechazar.error);
+  const renovacion = esRenovacion(pago);
 
   const cerrar = () => {
     if (!pendiente) alCerrar();
@@ -73,11 +74,11 @@ export function DialogoRechazarPago({ pago, alCerrar, alRechazar }: Propiedades)
     erroresPorCampo(rechazar.error).length === 0;
 
   return (
-    <Modal titulo={`Rechazar el pago: ${pago.solicitud?.codigo ?? 'Renovación'}`} alCerrar={cerrar}>
+    <Modal titulo={`Rechazar el pago: ${rotuloDelPago(pago)}`} alCerrar={cerrar}>
       <form onSubmit={(evento) => void handleSubmit(alEnviar)(evento)} noValidate className="mt-2 space-y-4">
         <div className="space-y-1 text-slate-700">
           <p>
-            Cliente:{' '}
+            {renovacion ? 'Alumno' : 'Cliente'}:{' '}
             <strong className="break-words text-slate-900">
               {pago.cliente.nombres} {pago.cliente.apellidos}
             </strong>
@@ -87,8 +88,9 @@ export function DialogoRechazarPago({ pago, alCerrar, alRechazar }: Propiedades)
             <span className="break-all font-mono text-slate-900">{pago.numeroOperacion}</span>
           </p>
           <p className="text-sm">
-            El cliente verá este motivo en su seguimiento y en el correo que le enviamos. Se libera el cupo, y puede
-            enviar otro comprobante mientras el mes siga abierto.
+            {renovacion
+              ? 'La renovación queda cancelada y se libera el cupo. El motivo va en el correo que le enviamos al alumno (y a su apoderado, si es menor), y se puede registrar otra renovación del mismo mes.'
+              : 'El cliente verá este motivo en su seguimiento y en el correo que le enviamos. Se libera el cupo, y puede enviar otro comprobante mientras el mes siga abierto.'}
           </p>
         </div>
         <fieldset disabled={pendiente || sinSalida} className="min-w-0">

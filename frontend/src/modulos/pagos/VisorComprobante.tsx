@@ -5,7 +5,7 @@ import { formatearSoles } from '../../lib/dinero';
 import { formatearFechaCalendario } from '../../lib/fechas';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { ETIQUETA_METODO } from '../caja/montos';
-import { mensajeDeImagen } from './mensajes';
+import { mensajeDeImagen, rotuloDelPago } from './mensajes';
 import { useImagenDelComprobante } from './hooks';
 
 interface Propiedades {
@@ -26,7 +26,7 @@ export function VisorComprobante({ pago, alCerrar }: Propiedades) {
   const nombre = `${pago.cliente.nombres} ${pago.cliente.apellidos}`;
 
   return (
-    <Modal titulo={`Comprobante de ${pago.solicitud?.codigo ?? 'Renovación'}`} alCerrar={alCerrar} ancho="amplio">
+    <Modal titulo={`Comprobante de ${rotuloDelPago(pago)}`} alCerrar={alCerrar} ancho="amplio">
       <div className="mt-2 space-y-3">
         <p className="break-words text-slate-700">
           <strong className="text-slate-900">{nombre}</strong> · {ETIQUETA_METODO[pago.metodo]} por{' '}

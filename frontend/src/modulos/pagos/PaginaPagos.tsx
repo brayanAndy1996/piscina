@@ -12,6 +12,7 @@ import { RequierePermiso } from '../sesion/RequierePermiso';
 import { DialogoAprobarPago } from './DialogoAprobarPago';
 import { DialogoRechazarPago } from './DialogoRechazarPago';
 import { usePagosPendientes } from './hooks';
+import { descripcionDelPago, esRenovacion, rotuloDelPago } from './mensajes';
 import { VisorComprobante } from './VisorComprobante';
 
 /**
@@ -53,9 +54,9 @@ function ContenidoPagos() {
         </button>
       </div>
       <p className="text-slate-700">
-        Comprobantes de Yape y transferencia que enviaron los clientes. Compara la imagen y el número de operación con
-        tu Yape o tu estado de cuenta y apruébalos (el ingreso entra a la caja abierta de hoy) o recházalos con un
-        motivo. Mientras un comprobante está en revisión, su cupo sigue reservado.
+        Comprobantes de Yape y transferencia que enviaron los clientes y renovaciones que registró recepción. Compara la
+        imagen y el número de operación con tu Yape o tu estado de cuenta y apruébalos (el ingreso entra a la caja
+        abierta de hoy) o recházalos con un motivo. Mientras un comprobante está en revisión, su cupo sigue reservado.
       </p>
 
       {hecho ? (
@@ -124,8 +125,11 @@ function ContenidoPagos() {
           pago={accion.pago}
           alCerrar={() => setAccion(null)}
           alRechazar={(rechazado) => {
+            const nombre = `${rechazado.cliente.nombres} ${rechazado.cliente.apellidos}`;
             setHecho(
-              `Pago de ${rechazado.cliente.nombres} ${rechazado.cliente.apellidos} (${rechazado.solicitud?.codigo ?? 'Renovación'}) rechazado. El cliente verá el motivo en su seguimiento.`,
+              esRenovacion(rechazado)
+                ? `Pago de ${nombre} (${rotuloDelPago(rechazado).toLowerCase()}) rechazado. Se liberó el cupo y el alumno puede renovar de nuevo ese mes.`
+                : `Pago de ${nombre} (${rechazado.solicitud?.codigo ?? ''}) rechazado. El cliente verá el motivo en su seguimiento.`,
             );
             setAccion(null);
           }}
@@ -144,17 +148,18 @@ interface PropiedadesTarjeta {
 
 function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta) {
   const nombre = `${pago.cliente.nombres} ${pago.cliente.apellidos}`;
+  const renovacion = esRenovacion(pago);
   return (
     <article
-      aria-label={`Pago de la solicitud ${pago.solicitud?.codigo ?? 'Renovación'}`}
+      aria-label={`Pago de ${descripcionDelPago(pago)}`}
       className={`space-y-3 rounded-2xl bg-white p-4 shadow-sm sm:p-5 ${
         pago.mesTerminado ? 'ring-2 ring-amber-400' : 'ring-1 ring-sky-100'
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-mono text-lg font-semibold tracking-wider text-slate-900">
-            {pago.solicitud?.codigo ?? 'Renovación'}
+          <p className={`text-lg font-semibold text-slate-900 ${renovacion ? '' : 'font-mono tracking-wider'}`}>
+            {rotuloDelPago(pago)}
           </p>
           <p className="break-words text-lg font-semibold text-slate-900">{nombre}</p>
         </div>
@@ -166,8 +171,9 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
 
       {pago.mesTerminado ? (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
-          Es de {formatearMes(pago.mes)}, un mes que ya terminó. Se puede aprobar o rechazar; si lo rechazas, el cliente
-          ya no podrá volver a pagar.
+          {renovacion
+            ? `Es de ${formatearMes(pago.mes)}, un mes que ya terminó. Se puede aprobar o rechazar.`
+            : `Es de ${formatearMes(pago.mes)}, un mes que ya terminó. Se puede aprobar o rechazar; si lo rechazas, el cliente ya no podrá volver a pagar.`}
         </p>
       ) : null}
 
@@ -190,7 +196,7 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
         <button
           type="button"
           onClick={alVer}
-          aria-label={`Ver el comprobante de la solicitud ${pago.solicitud?.codigo ?? 'Renovación'}`}
+          aria-label={`Ver el comprobante de ${descripcionDelPago(pago)}`}
           className={ESTILO_BOTON.secundario}
         >
           Ver comprobante
@@ -198,7 +204,7 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
         <button
           type="button"
           onClick={alRechazar}
-          aria-label={`Rechazar el pago de la solicitud ${pago.solicitud?.codigo ?? 'Renovación'}`}
+          aria-label={`Rechazar el pago de ${descripcionDelPago(pago)}`}
           className={ESTILO_BOTON.secundario}
         >
           Rechazar
@@ -206,7 +212,7 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
         <button
           type="button"
           onClick={alAprobar}
-          aria-label={`Aprobar el pago de la solicitud ${pago.solicitud?.codigo ?? 'Renovación'}`}
+          aria-label={`Aprobar el pago de ${descripcionDelPago(pago)}`}
           className={ESTILO_BOTON.primario}
         >
           Aprobar
