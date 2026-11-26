@@ -1,6 +1,7 @@
 # Integración continua (spec 000, criterios 3, 25, 42 y 49; spec 001, criterio 64).
-# Tres trabajos: Linux con PostgreSQL 16 real, Windows (D-26: detecta lo que no funcione en la PC del responsable)
-# y verificación de pruebas protegidas. Cualquier paso que falle deja el check en rojo.
+# Trabajos: Linux con PostgreSQL 16 real (todo menos la integración del backend), la integración del backend repartida
+# en 4 trabajos en paralelo (D-31), Windows (D-26: detecta lo que no funcione en la PC del responsable) y verificación de
+# pruebas protegidas. Cualquier paso que falle deja el check en rojo.
 name: CI
 
 on:
@@ -25,9 +26,9 @@ jobs:
   linux:
     name: Linux
     runs-on: ubuntu-latest
-    # En el PR #13 la suite tardó 51 de 60 minutos; con las pruebas de la 007b se sube a 90. El arreglo de fondo
-    # (repartir la integración en varios trabajos en paralelo, D-31) va en su propio PR.
-    timeout-minutes: 90
+    # La integración del backend (`backend-integracion`), que es casi todo el tiempo de la suite, corre aparte en
+    # `integracion` (4 trabajos). Aquí quedan los demás proyectos de Vitest, la compilación y el E2E.
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:16
@@ -68,8 +69,10 @@ jobs:
         run: npm run typecheck
       - name: Preparar las bases de datos
         run: npm run db:preparar
-      - name: Pruebas
-        run: npm test
+      - name: Pruebas (todos los proyectos menos backend-integracion)
+        run: >-
+          npx vitest run --project contratos --project eslint --project scripts --project frontend
+          --project backend-unit --project scripts-integracion --project scripts-aislado --project backend-aislado
       - name: Compilar
         run: npm run build
       - name: Instalar Chromium para las pruebas E2E
@@ -86,6 +89,51 @@ jobs:
             e2e/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  integracion:
+    # `backend-integracion` repartido en 4 trabajos con `--shard` de Vitest (D-31). Cada uno tiene su propio PostgreSQL,
+    # así que los archivos no comparten base. Entre `linux` e `integracion` se ejecutan todos los proyectos de `npm test`.
+    name: Integración (${{ matrix.parte }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        parte: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aquagestion
+          POSTGRES_PASSWORD: aquagestion
+          POSTGRES_DB: aquagestion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aquagestion"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Los mismos valores de desarrollo inventados del trabajo `linux`.
+      DATABASE_URL: postgresql://aquagestion:aquagestion@127.0.0.1:5432/aquagestion
+      DATABASE_URL_PRUEBAS: postgresql://aquagestion:aquagestion@127.0.0.1:5432/aquagestion_pruebas
+      DATABASE_URL_APP: postgresql://aquagestion_app:aquagestion_app@127.0.0.1:5432/aquagestion
+      JWT_SECRETO: solo-desarrollo-cambia-este-secreto-de-ejemplo-0001
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Compilar los contratos
+        run: npm run build -w @aquagestion/contratos
+      - name: Preparar las bases de datos
+        run: npm run db:preparar
+      - name: Pruebas de integración (parte ${{ matrix.parte }} de 4)
+        run: npx vitest run --project backend-integracion --shard=${{ matrix.parte }}/4
 
   windows:
     name: Windows
