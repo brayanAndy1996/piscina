@@ -251,6 +251,7 @@ const COLOR_INSIGNIA = {
   ambar: 'bg-amber-100 text-amber-900',
   gris: 'bg-slate-100 text-slate-800',
   azul: 'bg-sky-100 text-sky-900',
+  rojo: 'bg-red-100 text-red-900',
 } as const;
 
 /** Etiqueta pequeña de estado ("Activo", "Bloqueado"…). El texto lleva el significado; el color solo lo refuerza. */

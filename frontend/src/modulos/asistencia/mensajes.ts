@@ -1,8 +1,9 @@
-import type {
-  CodigoRechazoAsistencia,
-  EstadoLlegada,
-  MetodoAsistencia,
-  RechazoAsistencia,
+import {
+  CODIGOS_RECHAZO_ASISTENCIA,
+  type CodigoRechazoAsistencia,
+  type EstadoLlegada,
+  type MetodoAsistencia,
+  type RechazoAsistencia,
 } from '@aquagestion/contratos';
 import { ErrorDeApi, esErrorDeApi } from '../../api/cliente';
 import { mensajeGeneral } from '../../lib/errores';
@@ -72,4 +73,50 @@ export function mensajeDeMarcado(error: unknown): string {
 export function esMarcadoReintentable(error: unknown): boolean {
   if (esErrorDeCambioDeSesion(error)) return false;
   return !(error instanceof ErrorDeApi && error.estado < 500);
+}
+
+/** Los textos de la consulta del mes de un alumno (009b, criterio 31). */
+export function mensajeDeAsistenciaDelMes(error: unknown): string {
+  if (esErrorDeApi(error, 404)) return 'No encontramos a este alumno. Puede que ya no esté en tu academia.';
+  if (esErrorDeApi(error, 403)) return 'No tienes permiso para ver la asistencia de este alumno.';
+  return mensajeGeneral(error);
+}
+
+export const ETIQUETA_REGISTRO = {
+  PUNTUAL: 'Puntual',
+  TARDE: 'Tarde',
+  FALTA: 'Falta',
+} as const;
+
+/**
+ * El motivo de un rechazo del registro posterior (009b, criterio 28). Los que en la pantalla de recepción hablan de «hoy» se dicen aquí del día
+ * elegido; el resto son los de `MOTIVO_DE_RECHAZO`.
+ */
+const MOTIVO_DE_RECHAZO_POSTERIOR: Readonly<Partial<Record<CodigoRechazoAsistencia, string>>> = {
+  ASISTENCIA_YA_REGISTRADA: 'El alumno ya tiene su asistencia registrada ese día.',
+  MENSUALIDAD_NO_VIGENTE: 'El alumno no tenía una mensualidad vigente ese día.',
+  FUERA_DE_HORARIO: 'El alumno no tiene clase ese día.',
+  CLASE_NO_INCLUIDA: 'La clase de ese día no está incluida en su mensualidad.',
+};
+
+/** El campo del diálogo al que pertenece un rechazo: la fecha, la hora o ninguno (se muestra arriba, para todo el diálogo). */
+export function campoDeRechazoPosterior(codigo: CodigoRechazoAsistencia): 'fecha' | 'horaLlegada' | null {
+  if (codigo === 'FECHA_NO_PERMITIDA' || codigo === 'FUERA_DE_HORARIO' || codigo === 'CLASE_NO_TERMINADA')
+    return 'fecha';
+  if (codigo === 'HORA_FUERA_DE_LA_CLASE') return 'horaLlegada';
+  return null;
+}
+
+/** El código de un 409 del registro posterior, o `null` si el error es otro (la red, un 403, un 404…). */
+export function codigoDeRechazoPosterior(error: unknown): CodigoRechazoAsistencia | null {
+  if (!(error instanceof ErrorDeApi) || error.estado !== 409) return null;
+  return Object.hasOwn(CODIGOS_RECHAZO_ASISTENCIA, error.codigo) ? (error.codigo as CodigoRechazoAsistencia) : null;
+}
+
+export function mensajeDeRegistroPosterior(error: unknown): string {
+  const codigo = codigoDeRechazoPosterior(error);
+  if (codigo) return MOTIVO_DE_RECHAZO_POSTERIOR[codigo] ?? MOTIVO_DE_RECHAZO[codigo];
+  if (esErrorDeApi(error, 404)) return 'No encontramos a este alumno. Puede que ya no esté en tu academia.';
+  if (esErrorDeApi(error, 403)) return 'No tienes permiso para registrar asistencias.';
+  return mensajeGeneral(error);
 }
