@@ -53,18 +53,38 @@ function ContenidoAsistencia() {
   const ultimoIntento = useRef<IntentoDeMarcado | null>(null);
   const enCurso = useRef(false);
 
+  // El contenido leído solo se guarda lo que dura el antirrebote: pasado ese tiempo se olvida.
+  const olvidar = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (olvidar.current) clearTimeout(olvidar.current);
+    },
+    [],
+  );
+  const recordarLectura = (contenido: string, en: number) => {
+    ultimaLectura.current = { contenido, en };
+    if (olvidar.current) clearTimeout(olvidar.current);
+    olvidar.current = setTimeout(() => {
+      ultimaLectura.current = null;
+    }, VENTANA_ANTIRREBOTE_MS);
+  };
+
   const enviar = (intento: IntentoDeMarcado) => {
     enCurso.current = true;
     ultimoIntento.current = intento;
     setAviso(null);
     marcar.mutate(intento, {
       onSuccess: (salida) => {
+        ultimoIntento.current = null;
         setFalla(null);
         setRespuesta(salida);
       },
       onError: (error) => {
+        const reintentable = esMarcadoReintentable(error);
+        // Solo un fallo que se puede reintentar conserva el intento (y con él el contenido leído).
+        if (!reintentable) ultimoIntento.current = null;
         setRespuesta(null);
-        setFalla({ mensaje: mensajeDeMarcado(error), reintentable: esMarcadoReintentable(error) });
+        setFalla({ mensaje: mensajeDeMarcado(error), reintentable });
       },
       onSettled: () => {
         enCurso.current = false;
@@ -72,24 +92,27 @@ function ContenidoAsistencia() {
     });
   };
 
-  /** Devuelve `false` solo si no se pudo atender porque hay otra lectura en curso. */
-  const leerQr = (contenido: string, origen: OrigenDeLectura): boolean => {
+  /** Una lectura que llega con otra en curso o dentro de los 5 s del mismo contenido se ignora; con la lectora se avisa. */
+  const leerQr = (contenido: string, origen: OrigenDeLectura) => {
     const ahora = Date.now();
     const previa = ultimaLectura.current;
     if (previa && previa.contenido === contenido && ahora - previa.en < VENTANA_ANTIRREBOTE_MS) {
       if (origen === 'LECTORA') setAviso('Ese QR se acaba de leer. Espera unos segundos para leerlo otra vez.');
-      return true;
+      return;
     }
-    if (enCurso.current) return false;
+    if (enCurso.current) {
+      if (origen === 'LECTORA')
+        setAviso('Todavía se está registrando otra asistencia. Vuelve a acercar el QR en un momento.');
+      return;
+    }
     const intento = registrarAsistenciaQrSchema.safeParse({ contenido, claveIdempotencia: nuevaClaveUuid() });
-    ultimaLectura.current = { contenido, en: ahora };
+    recordarLectura(contenido, ahora);
     if (!intento.success) {
       setRespuesta(null);
       setFalla({ mensaje: MENSAJE_QR_INVALIDO, reintentable: false });
-      return true;
+      return;
     }
     enviar({ via: 'QR', contenido: intento.data.contenido, claveIdempotencia: intento.data.claveIdempotencia });
-    return true;
   };
 
   const registrarManual = (alumno: AlumnoEncontrado) => {
@@ -185,7 +208,7 @@ function ContenidoAsistencia() {
               >
                 {camaraEncendida ? 'Apagar la cámara' : 'Usar la cámara'}
               </button>
-              {camaraEncendida ? <LectorCamara alLeer={(contenido) => void leerQr(contenido, 'CAMARA')} /> : null}
+              {camaraEncendida ? <LectorCamara alLeer={(contenido) => leerQr(contenido, 'CAMARA')} /> : null}
             </div>
           </section>
           {zonaResultado}

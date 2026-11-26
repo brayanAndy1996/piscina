@@ -168,6 +168,37 @@ describe('la lectora USB como teclado (criterio 19, DT-12)', () => {
     expect(rutaActual()).toBe('/panel/asistencia');
   });
 
+  it('con otra lectura en curso el campo se vacía igual, la lectura se ignora con un aviso y la siguiente no se pega', async () => {
+    let terminar: () => void = () => undefined;
+    const api = servidor({
+      'POST /api/asistencias/qr': () =>
+        new Promise((resolver) => {
+          terminar = () => resolver({ estado: 201, cuerpo: registrada() });
+        }),
+    });
+    mostrar('/panel/asistencia');
+    await screen.findByRole('textbox', { name: 'Lectora de QR' });
+    await leerConLectora(CONTENIDO);
+    await waitFor(() => expect(llamadas(api, 'POST /api/asistencias/qr')).toHaveLength(1));
+    expect(await screen.findByText('Registrando asistencia…')).toBeInTheDocument();
+
+    await leerConLectora(OTRO_CONTENIDO);
+    const campo = screen.getByRole('textbox', { name: 'Lectora de QR' });
+    expect(campo).toHaveValue('');
+    expect(document.body.innerHTML).not.toContain(OTRO_CONTENIDO);
+    expect(await screen.findByText(/Todavía se está registrando otra asistencia/)).toBeInTheDocument();
+    expect(llamadas(api, 'POST /api/asistencias/qr')).toHaveLength(1);
+
+    act(() => terminar());
+    await screen.findByRole('article', { name: 'Resultado: Asistencia registrada' });
+    expect(campo).toHaveValue('');
+    // La lectura siguiente llega limpia: manda solo su contenido, sin restos de la ignorada.
+    await leerConLectora(OTRO_CONTENIDO);
+    await waitFor(() => expect(llamadas(api, 'POST /api/asistencias/qr')).toHaveLength(2));
+    expect(llamadas(api, 'POST /api/asistencias/qr')[1]).toMatchObject({ contenido: OTRO_CONTENIDO });
+    act(() => terminar());
+  });
+
   it('un Enter con el campo vacío no manda nada', async () => {
     const api = servidor();
     mostrar('/panel/asistencia');

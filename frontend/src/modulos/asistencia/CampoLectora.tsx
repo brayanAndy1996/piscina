@@ -6,14 +6,14 @@ export interface ControlDeLectora {
 }
 
 interface Propiedades {
-  /** Recibe lo que escribió la lectora al terminar con Enter. Devuelve `false` si no pudo atenderlo (hay otra lectura en curso): el texto se queda. */
-  alLeer: (contenido: string) => boolean;
+  /** Recibe lo que escribió la lectora al terminar con Enter. Quien lo usa decide qué hacer con él (atenderlo o ignorarlo). */
+  alLeer: (contenido: string) => void;
   control?: Ref<ControlDeLectora>;
 }
 
 /**
  * La lectora USB (DT-12): para el navegador es un teclado que escribe el contenido del QR y termina con Enter. El campo recibe ese texto tal
- * cual, sin recortarlo ni cambiarlo (el QR lleva un token exacto), lo manda con Enter y se vacía para la lectura siguiente.
+ * cual, sin recortarlo ni cambiarlo (el QR lleva un token exacto), lo manda con Enter y se vacía siempre para la lectura siguiente.
  */
 export function CampoLectora({ alLeer, control }: Propiedades) {
   const entrada = useRef<HTMLInputElement>(null);
@@ -25,7 +25,10 @@ export function CampoLectora({ alLeer, control }: Propiedades) {
       onSubmit={(evento) => {
         evento.preventDefault();
         if (texto.trim() === '') return;
-        if (alLeer(texto)) setTexto('');
+        // El campo se vacía siempre: el contenido del QR no se queda a la vista ni se pega a la lectura siguiente.
+        const contenido = texto;
+        setTexto('');
+        alLeer(contenido);
       }}
       noValidate
     >
