@@ -35,3 +35,27 @@ en criterios de `spec.md`; las medias o bajas quedan como deuda en las notas de 
     leer «ahora», en el orden actor → alumno → matrícula → clase; una espera que cruza el fin responde 409
     `FUERA_DE_HORARIO` sin escribir. Se ajustan el criterio 14 (ya no dice «no bloquea `clases`»), el 28 (orden de
     bloqueos del posterior), la DT-16 y `plan.md`; se propone la DT-22.
+
+## Entrega 009b · Ronda 1
+
+- **Fecha:** 26/11/2026
+- **Qué se atacó:** lo nuevo de la 009b (las faltas, el registro posterior y la consulta del mes), con el adversarial sin
+  ver el razonamiento de quien lo implementó:
+  - estrés de la tarea con registros posteriores, marcados, cobros y regeneraciones de QR, con dos academias: ninguna
+    respuesta 5xx ni `40P01`;
+  - bordes de Lima con zonas horarias extremas;
+  - entradas del registro posterior;
+  - permisos y aislamiento;
+  - la consulta del mes;
+  - el trigger y la RLS de `inasistencias`.
+
+| Falla | Gravedad | Qué pasó | Decisión |
+| --- | --- | --- | --- |
+| F1 | media | Con relojes desfasados entre dos instancias, puede quedar una falta sin cubrir junto a una asistencia del mismo día, porque el marcado normal no cubre la falta. Con una sola instancia, los bloqueos lo impiden. | Deuda en el backlog («Deuda de la 009b», F1), a resolver antes de correr varias instancias. Arreglo propuesto: que el marcado normal también cubra la falta, o que la tarea use `now()` de la base o un margen. |
+| F2 | baja | La recuperación tras una caída mira las clases restantes de ahora y no las del día. | Deuda en el backlog («Deuda de la 009b», F2). |
+| F3 | baja | El 409 del registro posterior dice «de hoy». | Deuda en el backlog («Deuda de la 009b», F3). |
+
+- **Sin fallas en:** el resto de lo que se atacó.
+- **Cierre:** 1 de 3 rondas. El ataque de la 009b termina sin fallas críticas ni altas, así que no hace falta una segunda
+  ronda. F1 toca el invariante del criterio 27 (crítico) cuando hay varias instancias; se clasifica como media y hay que
+  resolverla antes de correr varias instancias.

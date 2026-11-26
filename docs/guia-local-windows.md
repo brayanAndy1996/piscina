@@ -402,6 +402,22 @@ npm run dev
 - `npm ci` instala la dependencia `html5-qrcode` (2.3.8) en la web. La biblioteca solo se carga cuando enciendes la cámara.
 - No hay variables nuevas, así que `npm run env:completar` no hace falta. La semilla no cambia: repetir `npm run db:preparar` no duplica nada (ver "Probar la asistencia").
 
+## Después de traer la historia 009b
+
+Si ya tenías el proyecto con la historia 009a, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm ci
+npm run db:preparar
+npm run dev
+```
+
+- La 009b tiene dos migraciones nuevas. `20261126120000_inasistencias` crea la tabla `inasistencias`, donde se guardan las faltas, y la regla de que una falta se cubre una sola vez. `20261126130000_inasistencias_unico_id` agrega un único que las demás tablas ya tienen. `npm run db:preparar` las aplica a las dos bases, la de desarrollo y la de pruebas.
+- `npm ci` instala `@nestjs/schedule` en la API: es el planificador que registra las faltas cada 5 minutos. Sin ese paso, la API no encuentra el paquete y no arranca.
+- **`TAREAS_PROGRAMADAS` en tu `.env`.** Decide si la API corre la tarea de faltas. Si no está en tu `.env`, vale `activas`, que es el valor por defecto: la API registra las faltas de las clases de ayer y de hoy cada 5 minutos y una vez al encender `npm run dev`. No hace falta agregarla. La línea está comentada en `.env.example`, así que `npm run env:completar` no la agrega sola. Si no quieres que aparezcan faltas mientras pruebas, abre `.env` con `notepad .env` y agrega la línea `TAREAS_PROGRAMADAS=inactivas`: con ese valor, la API no registra faltas por su cuenta, y el registro posterior sigue funcionando. Otro valor impide arrancar la API, que dice que la variable debe ser `activas` o `inactivas`. No copies `.env.example` encima: borrarías tus cambios.
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -950,7 +966,7 @@ La foto de un alumno se pone o se cambia en su carnet, y la de una solicitud, en
 
 ## Probar la asistencia
 
-La asistencia (historia 009a) la marcan el administrador y la secretaria, en **Asistencia** del inicio del panel (`/panel/asistencia`). El entrenador y el alumno no la ven, y la API responde 403 si la piden. Marcar solo funciona mientras dura la clase del alumno: para probarla hace falta una clase en curso a la hora actual, y el alumno tiene que estar inscrito y cobrado **antes** de que empiece esa clase. Si se inscribe cuando la clase ya empezó, esa clase no se cobra y la asistencia responde en amarillo «La clase de hoy no está incluida en su mensualidad.»: es lo esperado.
+La asistencia (historia 009a) la marcan el administrador y la secretaria, en **Asistencia** del inicio del panel (`/panel/asistencia`). El entrenador y el alumno no la ven, y la API responde 403 si la piden. La consulta del mes de un alumno (historia 009b) también es solo del administrador y la secretaria. Marcar solo funciona mientras dura la clase del alumno: para probarla hace falta una clase en curso a la hora actual, y el alumno tiene que estar inscrito y cobrado **antes** de que empiece esa clase. Si se inscribe cuando la clase ya empezó, esa clase no se cobra y la asistencia responde en amarillo «La clase de hoy no está incluida en su mensualidad.»: es lo esperado.
 
 Con `npm run dev` encendido:
 
@@ -988,7 +1004,22 @@ La lectora escribe como un teclado: el campo **Lectora de QR** recibe el texto q
 
 Para comprobarlo, abre el Bloc de notas, lee el QR de un carnet y revisa que aparezca `AQ1:` seguido de 43 caracteres, sin espacios ni símbolos extraños. Si no es así, cambia la distribución de la lectora (su manual explica cómo; muchas se configuran leyendo unos códigos de configuración) o la de Windows. La lectora también tiene que enviar Enter al final de cada lectura. Si la lectora falla, **Buscar alumno** sirve de respaldo.
 
-Las pruebas automáticas de esta historia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
+**Ver la asistencia del mes de un alumno (historia 009b)**
+
+14. Entra como la secretaria y busca al alumno en **Alumnos y carnets**, como en "Probar el carnet y el QR". En su carnet, baja hasta la sección **Asistencia**: muestra el mes en curso. Con **Mes** cambias al mes anterior.
+15. Cada día de clase aparece con **Puntual**, **Tarde** o **Falta**, la clase («Clase de 18:00 a 19:00») y la hora de llegada («Llegó a las 18:05»). Si se marcó buscando al alumno, dice «· Manual»; si lo registraste después, «· Posterior». Arriba están los totales: **Puntual**, **Tarde**, **Faltas** y **Clases restantes**. Si el mes no tuvo mensualidad, dice «No tuvo una mensualidad en …».
+
+**Registrar una asistencia posterior (historia 009b)**
+
+Sirve para una clase de este mes que ya terminó, a la que el alumno vino y no se marcó (por ejemplo, porque no se leyó su QR). Solo lo ven el administrador y la secretaria, y solo en el mes en curso.
+
+16. Para probarlo, hace falta una clase del alumno que ya terminó este mes y en la que no tenga asistencia, por ejemplo la clase de prueba de hoy, de 18:00 a 19:00, después de las 19:00. El sistema registra la falta cuando termina la clase, cada 5 minutos y también al encender `npm run dev`. Si el alumno se inscribió después de que empezó esa clase, no tiene falta por ella. Si la falta no aparece, espera unos minutos y recarga la página, o detén `npm run dev` con Ctrl+C y vuelve a encenderlo.
+17. Pulsa **Registrar asistencia posterior**; el botón aparece en el mes en curso. En **Día de la clase** elige la falta, por ejemplo «Vie 27/11 · 18:00 a 19:00 (falta)». Si la clase no aparece, elige **Otro día de este mes** y escribe la **Fecha de la clase**, que puede ser cualquier día de este mes hasta hoy. Si el alumno no tiene faltas, la fecha se escribe siempre.
+18. En **Hora de llegada**, escribe la hora de Lima a la que llegó el alumno, dentro de su clase (por ejemplo, 18:05 para la clase de 18:00 a 19:00). En **Motivo**, escribe de 3 a 200 caracteres, por ejemplo «No se leyó su QR en la puerta». Queda en la auditoría.
+19. Pulsa **Registrar asistencia**. La sección dice «Se registró la asistencia del 27/11/2026 a las 18:05 (Puntual).», el día pasa de **Falta** a **Puntual**, con «Llegó a las 18:05 · Posterior», y hay una falta menos y una clase menos en **Clases restantes**. Un doble clic no registra dos veces.
+20. Si la API no acepta el registro, el diálogo dice por qué, debajo de la fecha o de la hora, o arriba de los botones si no es de un campo: «La fecha debe ser de este mes y no puede ser posterior a hoy.», «La clase todavía no terminó: durante la clase se marca con el QR o de forma manual.», «La hora de llegada debe estar dentro de la clase.» o «El alumno ya tiene su asistencia registrada ese día.».
+
+Las pruebas automáticas de la asistencia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
 
 ## Día a día
 

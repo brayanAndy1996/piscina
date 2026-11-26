@@ -42,37 +42,47 @@ Cada tarea indica su rol y los criterios de aceptación que cubre. Las de la 009
 
 ## 009b · Faltas, registro posterior y consulta del mes
 
-- [ ] T14 · test-writer · [009b] Pruebas protegidas de `inasistencias`: llaves, único, `CHECK`, trigger, RLS y
-  privilegios (criterio 22)
-- [ ] T15 · test-writer · [009b] Pruebas protegidas de la tarea: academias activas y suspendidas, bloqueo consultivo,
+- [x] T14 · test-writer · [009b] Pruebas protegidas de `inasistencias`: llaves, único, `CHECK`, trigger, RLS y
+  privilegios (criterio 22) _(hecho: 99e8032 y 7641ca1)_
+- [x] T15 · test-writer · [009b] Pruebas protegidas de la tarea: academias activas y suspendidas, bloqueo consultivo,
   error aislado por academia, a quién se le registra falta, bordes de Lima, ventana de ayer y hoy, idempotencia y
-  concurrencia con el registro posterior (criterios 23 a 27)
-- [ ] T16 · test-writer · [009b] Pruebas protegidas del registro posterior, su auditoría, sus errores y de la consulta
+  concurrencia con el registro posterior (criterios 23 a 27) _(hecho: 99e8032 y 7641ca1)_
+- [x] T16 · test-writer · [009b] Pruebas protegidas del registro posterior, su auditoría, sus errores y de la consulta
   del mes (criterios 28 a 31); la clave de un marcado contra la de un registro posterior en los dos sentidos, en serie y
   determinista (criterio 36); el marcado que espera la clase retenida con `FOR UPDATE` y cruza las 19:00, y el cobro
-  de otro alumno de la misma clase sin `40P01` (criterio 37)
-- [ ] T17 · tester · [009b] Confirmar el rojo de T14 a T16; commit «Pruebas protegidas (009): 009b, … (en rojo)»
-- [ ] T18 · backend · [009b] Migración `<marca>_inasistencias` con el trigger; privilegios (criterio 22)
-- [ ] T19 · backend · [009b] `@nestjs/schedule` en `backend/package.json` y en `DEPENDENCIAS_BACKEND_PERMITIDAS`;
+  de otro alumno de la misma clase sin `40P01` (criterio 37) _(hecho: 99e8032 y 7641ca1)_
+- [x] T17 · tester · [009b] Confirmar el rojo de T14 a T16; commit «Pruebas protegidas (009): 009b, … (en rojo)»
+  _(hecho: confirmación del tester, sin commit propio)_
+- [x] T18 · backend · [009b] Migración `<marca>_inasistencias` con el trigger; privilegios (criterio 22)
+  _(hecho: 19cfea5 y 0558d49)_
+- [x] T19 · backend · [009b] `@nestjs/schedule` en `backend/package.json` y en `DEPENDENCIAS_BACKEND_PERMITIDAS`;
   `TAREAS_PROGRAMADAS` en el entorno y en `.env.example`; `ScheduleModule` condicionado (criterios 23, 33 y 34)
-- [ ] T20 · backend · [009b] `FaltasService` y `FaltasTarea` (criterios 23 a 27 y 33)
-- [ ] T21 · backend · [009b] Registro posterior en `MarcadoService` y su ruta, con la auditoría y la falta cubierta
+  _(hecho: 0a44be4)_
+- [x] T20 · backend · [009b] `FaltasService` y `FaltasTarea` (criterios 23 a 27 y 33) _(hecho: 52365ab)_
+- [x] T21 · backend · [009b] Registro posterior en `MarcadoService` y su ruta, con la auditoría y la falta cubierta
   (criterios 28 a 30); `repetir()` compara también `registro_posterior` en los tres puntos donde se mira la clave
   (criterio 36); las clases de la matrícula con `FOR KEY SHARE` después de la matrícula y antes de leer «ahora», en el
-  marcado y en el posterior (criterio 37)
-- [ ] T22 · backend · [009b] Consulta del mes `GET /api/alumnos/{id}/asistencias` (criterio 31)
-- [ ] T23 · frontend · [009b] Sección «Asistencia» en `/panel/alumnos/{id}` y el diálogo del registro posterior;
-  pruebas de componentes (criterio 32)
-- [ ] T24 · adversarial · [009b] Ataque de la 009b (hasta 3 rondas, D-31)
-- [ ] T25 · revisor y tester (a la vez) · [009b] Revisión; suite completa, lint y tipos
-- [ ] T26 · documentador · [009b] `docs/arquitectura.md`, guía de Windows y nota del backlog; marcar tareas
-  (criterio 35)
+  marcado y en el posterior (criterio 37) _(hecho: ddeeec8)_
+- [x] T22 · backend · [009b] Consulta del mes `GET /api/alumnos/{id}/asistencias` (criterio 31) _(hecho: 4785ff8)_
+- [x] T23 · frontend · [009b] Sección «Asistencia» en `/panel/alumnos/{id}` y el diálogo del registro posterior;
+  pruebas de componentes (criterio 32) _(hecho: 9f6401f)_
+- [x] T24 · adversarial · [009b] Ataque de la 009b (hasta 3 rondas, D-31) _(ronda 1, 26/11/2026: sin fallas críticas ni
+  altas. F1, media, y F2 y F3, bajas, en la deuda de [`specs/backlog.md`](../backlog.md); ver [`rondas.md`](rondas.md).
+  Cierra el ataque de la 009b en 1 de 3 rondas)_
+- [x] T25 · revisor y tester (a la vez) · [009b] Revisión; suite completa, lint y tipos _(hecho, 26/11/2026: el revisor no
+  encontró bloqueantes; el punto de la E2E con la tarea activa se corrigió en `97fd2bc`. La suite completa dio 17 854
+  pasan y 1 falla, `catalogo.test.ts` (criterio 131 de 001), porque `inasistencias` no tenía `UNIQUE (academia_id, id)`:
+  se corrigió en `0558d49`. E2E 6 de 6; lint, tipos, build y pruebas protegidas en verde. La corrida compartió la base con
+  otra ejecución, así que la suite limpia sobre el HEAD final la corre la CI del PR)_
+- [x] T26 · documentador · [009b] `docs/arquitectura.md`, guía de Windows y nota del backlog; marcar tareas
+  (criterio 35) _(hecho en este commit, «Cierre (009b): tareas, rondas, deuda y documentación de faltas y registro
+  posterior»)_
 
 ## Solo ruta crítica
 
 - [x] 009a: pruebas escritas por test-writer y confirmadas en rojo _(a4bf3f0 y 7ea0fec; T4)_
 - [x] 009a: pruebas en verde tras la implementación _(T12, 26/11/2026: pruebas protegidas en verde sobre `eea7ed2`; la corrección `4706d52` es solo de la web)_
 - [x] 009a: ataque adversarial sin fallas críticas ni altas abiertas _(ronda 1, 26/11/2026: R1-1 y R1-2, medias, y R1-3, baja, en la deuda de `specs/backlog.md`; ver [`rondas.md`](rondas.md))_
-- [ ] 009b: pruebas escritas por test-writer y confirmadas en rojo
-- [ ] 009b: pruebas en verde tras la implementación
-- [ ] 009b: ataque adversarial sin fallas críticas ni altas abiertas
+- [x] 009b: pruebas escritas por test-writer y confirmadas en rojo _(99e8032 y 7641ca1; T14 a T17)_
+- [x] 009b: pruebas en verde tras la implementación _(T25: pruebas protegidas en verde; la suite limpia del HEAD final la corre la CI del PR)_
+- [x] 009b: ataque adversarial sin fallas críticas ni altas abiertas _(ronda 1, 26/11/2026: F1, media, y F2 y F3, bajas, en la deuda de `specs/backlog.md`; ver [`rondas.md`](rondas.md))_

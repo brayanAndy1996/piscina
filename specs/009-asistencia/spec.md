@@ -20,11 +20,12 @@
   puntual o tarde, descuento de una clase y registro de faltas), aislamiento entre academias (QR, ids, tarea
   programada) y permisos (solo recepción marca; la consulta del mes lleva datos de menores). La maqueta de las
   pantallas no es crítica.
-- **Estado:** aprobada por Bryan el 25/11/2026. **009a lista para unir** (26/11/2026: una ronda adversarial sin críticas ni
-  altas; ver [`rondas.md`](rondas.md)). Bryan aceptó la propuesta de las seis preguntas de negocio (P1 a P6, que son
-  DR-1 a DR-6 de esta spec, en «Resueltas») y el cambio de privilegio `UPDATE (clases_usadas)` en `matriculas`, con su
-  ajuste a la prueba protegida de la 005. El orquestador aceptó DT-1 a DT-16 y la división, y DT-17 a DT-21 el
-  26/11/2026.
+- **Estado:** aprobada por Bryan el 25/11/2026. **009a unida a `main`** (PR #18, 26/11/2026, tras una ronda adversarial
+  sin críticas ni altas). **009b lista para unir** (26/11/2026: una ronda adversarial sin críticas ni altas; ver
+  [`rondas.md`](rondas.md)). Bryan aceptó la propuesta de las seis preguntas de negocio (P1 a P6, que son DR-1 a DR-6 de
+  esta spec, en «Resueltas») y el cambio de privilegio `UPDATE (clases_usadas)` en `matriculas`, con su ajuste a la prueba
+  protegida de la 005. El orquestador aceptó DT-1 a DT-16 y la división, DT-17 a DT-22 el 26/11/2026, y DT-23 a DT-30 el
+  mismo día, al cerrar la 009b.
 - **División (D-31, aceptada por el orquestador el 25/11/2026):** dos entregas desde esta carpeta, cada una con sus pruebas protegidas, su ataque y su
   PR (ver «División en 009a y 009b»):
   - **009a · Marcado por QR y manual** (primero): criterios 1 a 21 y la parte de `html5-qrcode` del 34.
@@ -559,9 +560,10 @@ Errores: 400 `SOLICITUD_INVALIDA`; 401 `NO_AUTENTICADO`; 403 `SIN_PERMISO`, `CAM
 
 ## Decisiones
 
-Técnicas: DT-1 a DT-16, aceptadas por el orquestador el 25/11/2026 tal como se propusieron, y DT-17 a DT-21, añadidas por
-el orquestador el 26/11/2026 con la ronda 1 de la 009a. DT-22 la propone el especificador con R1-2 de esa ronda,
-pendiente de aceptación. Las decisiones del responsable (DR-1 a DR-6) están en «Resueltas».
+Técnicas: DT-1 a DT-16, aceptadas por el orquestador el 25/11/2026 tal como se propusieron; DT-17 a DT-21, añadidas por
+el orquestador el 26/11/2026 con la ronda 1 de la 009a; DT-22, que propuso el especificador con R1-2 de esa ronda y el
+orquestador aceptó el 26/11/2026, y DT-23 a DT-30, añadidas por el orquestador el 26/11/2026 al cerrar la 009b. Las
+decisiones del responsable (DR-1 a DR-6) están en «Resueltas».
 
 - **DT-1. Dos entregas (009a y 009b).** Descartado: una sola, con dos frentes de ataque distintos y cerca de las 800
   líneas.
@@ -616,11 +618,42 @@ pendiente de aceptación. Las decisiones del responsable (DR-1 a DR-6) están en
   web compara la hora de Lima del reloj del equipo con la clase de hoy. La API decide si se puede marcar; la web solo
   elige el texto. La deuda de la 009a propone que la API envíe el momento (`specs/backlog.md`).
 - **DT-22. Las clases de la matrícula con `FOR KEY SHARE` explícito antes de «ahora»** (criterio 37, R1-2 de la ronda 1
-  de la 009a; propuesta del especificador el 26/11/2026, pendiente de aceptación del orquestador). `FOR KEY SHARE` es el
+  de la 009a; propuesta del especificador, aceptada por el orquestador el 26/11/2026). `FOR KEY SHARE` es el
   mismo modo que toma la llave foránea: no espera a otros marcados ni a una edición de la clase que no cambie su llave, y
   sí espera a `bloquearClasesParaCupo`. Respeta el orden general (alumno → matrícula → clases). Descartado: volver a leer
   «ahora» después del `INSERT` y deshacer si cruzó el fin (dos lecturas del reloj y una decisión partida); tomar las
   clases con `FOR SHARE` (esperaría a las ediciones de la clase) o con `FOR UPDATE` (además, a los otros marcados).
+
+- **DT-23. Los tres códigos del registro posterior, con alerta `AMARILLA`.** `FECHA_NO_PERMITIDA`, `CLASE_NO_TERMINADA` y
+  `HORA_FUERA_DE_LA_CLASE` van en `CODIGOS_RECHAZO_ASISTENCIA` con alerta `AMARILLA`, como `FUERA_DE_HORARIO` y
+  `CLASE_NO_INCLUIDA`. Son rechazos de horario, y HU-14 da la alerta amarilla a lo que está fuera de horario. Llegan con la
+  respuesta 409 y los `detalles` de DT-2.
+- **DT-24. Orden de las validaciones del registro posterior.** `decidirPosterior` (`dominio/validaciones.ts`, pura) decide
+  con la primera que falla, en este orden: la fecha no es del mes en curso o es posterior a hoy (`FECHA_NO_PERMITIDA`);
+  alumno inactivo (`ALUMNO_INACTIVO`); asistencia ya registrada ese día (`ASISTENCIA_YA_REGISTRADA`); sin matrícula de ese
+  día (`MENSUALIDAD_NO_VIGENTE`); sin clases restantes (`SIN_CLASES_RESTANTES`); sin clase ese día (`FUERA_DE_HORARIO`); la
+  clase no terminó (`CLASE_NO_TERMINADA`); la hora de llegada no cae en `[inicio, fin)` (`HORA_FUERA_DE_LA_CLASE`); y la
+  clase no está incluida en la mensualidad (`CLASE_NO_INCLUIDA`). Es el orden del marcado sin el pago en verificación, que
+  el registro posterior no mira, con la fecha al frente y la hora después de la clase.
+- **DT-25. `alumnoId` del registro posterior es un UUID.** `registrarAsistenciaPosteriorSchema` lo valida con `z.uuid()`: un
+  valor que no es UUID responde 400 `SOLICITUD_INVALIDA`. No sigue al marcado manual, que responde 404 `NO_ENCONTRADO` a
+  cualquier texto (criterio 5 de la 009a). La web valida con el mismo esquema antes de enviar.
+- **DT-26. El trigger de `inasistencias` solo deja cubrir una falta una vez.** `inasistencias_se_cubre_una_vez` rechaza con
+  23514 cualquier `UPDATE` que no sea de `asistencia_id` y `cubierta_en` de nulos a no nulos, también uno que no cambia nada
+  o que toca otra columna. Vale también para el dueño de las tablas, como las demás invariantes de la base (criterios 1 y
+  22).
+- **DT-27. Llave `(academia_id, alumno_id)` de `inasistencias` hacia `alumnos`.** Se suma a la llave a la matrícula, que ya
+  obliga a que el alumno sea el de la matrícula. Es la misma llave que tiene `asistencias` desde la 009a: deja explícito,
+  en una llave, que el alumno es de la academia.
+- **DT-28. La tarea solo se programa con `TAREAS_PROGRAMADAS=activas`.** `AppModule` carga `ScheduleModule.forRoot()` y
+  `TareasAsistenciaModule` (con `FaltasTarea`) solo si la variable vale `activas`, que es el valor por defecto. Con
+  `inactivas` no hay ningún `CronJob` registrado (criterio 33). `FaltasService` sí va en `AsistenciaModule`, porque las
+  pruebas lo llaman directamente (criterio 23). Un valor distinto de los dos impide arrancar la API (`validarEntorno`).
+- **DT-29. `UNIQUE (academia_id, id)` en `inasistencias`, en una migración aparte.**
+  `20261126130000_inasistencias_unico_id` añade el único que piden el criterio 12 y el 131 de 001: toda tabla con
+  `academia_id` e `id` lo tiene. La migración `20261126120000_inasistencias` ya estaba aplicada, así que no se edita.
+- **DT-30. La API de la E2E corre con `TAREAS_PROGRAMADAS=inactivas`.** `e2e/playwright.config.ts` fija la variable en el
+  servidor de la API de Playwright: la tarea escribiría `inasistencias` en momentos no deterministas (DT-9).
 
 ## Preguntas abiertas
 
