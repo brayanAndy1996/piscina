@@ -28,7 +28,8 @@
 - **División (D-31, aceptada por el orquestador el 25/11/2026):** dos entregas desde esta carpeta, cada una con sus pruebas protegidas, su ataque y su
   PR (ver «División en 009a y 009b»):
   - **009a · Marcado por QR y manual** (primero): criterios 1 a 21 y la parte de `html5-qrcode` del 34.
-  - **009b · Faltas, registro posterior y consulta del mes** (siguiente PR, con la 009a unida): criterios 22 a 35.
+  - **009b · Faltas, registro posterior y consulta del mes** (siguiente PR, con la 009a unida): criterios 22 a 35, más
+    el 36 y el 37, que corrigen R1-1 y R1-2 de la ronda 1 de la 009a.
 
 ## Objetivo
 
@@ -49,8 +50,9 @@ Llevan pruebas protegidas (escritas antes del código) y ataque adversarial los 
   nadie; el token no sale de su sitio (RN-06, D-23).
 - **Validaciones y alertas (6 a 10, 12 y 13):** vencido o sin clases, una por día, solo durante la clase y puntual o
   tarde, con los bordes de America/Lima (RN-15, RN-16, D-11, D-16).
-- **Descuento e idempotencia (11, 13 y 14):** un doble clic, un reintento o dos lecturas a la vez nunca descuentan dos
-  clases (RN-14).
+- **Descuento e idempotencia (11, 13, 14, 36 y 37):** un doble clic, un reintento o dos lecturas a la vez nunca
+  descuentan dos clases (RN-14); la clave de un marcado no repite un registro posterior, ni al revés; una espera que
+  cruza el fin de la clase no registra con la hora de antes (D-16).
 - **Permisos (6, 30 y 31):** solo el administrador y la secretaria marcan; la consulta del mes es del personal de
   recepción (sección 2.1, D-29).
 - **Faltas y registro posterior (23 a 30):** la tarea programada no mezcla academias, no duplica faltas y no deja una
@@ -68,7 +70,7 @@ Las dos entregas comparten esta spec, `plan.md` y `tasks.md`; los criterios y la
 | Entrega | Críticos (pruebas protegidas y ataque) | Prueba obligatoria | Revisor |
 | --- | --- | --- | --- |
 | **009a** · marcado por QR y manual | 1 a 17 | 18, 19 y 20 | 21 y 34 (`html5-qrcode`) |
-| **009b** · faltas, registro posterior y consulta | 22 a 31 | 32 y 33 | 34 (`@nestjs/schedule`) y 35 |
+| **009b** · faltas, registro posterior y consulta | 22 a 31, 36 y 37 | 32 y 33 | 34 (`@nestjs/schedule`) y 35 |
 
 La 009a deja `asistencias`, el descuento y las pantallas de recepción. La 009b suma la tabla `inasistencias`, la tarea
 programada con `@nestjs/schedule`, el registro posterior de D-16 y la consulta del mes. Motivo de la división: la tarea
@@ -204,13 +206,14 @@ y la spec completa en una sola entrega se acercaría a las 3 rondas con dos supe
 13. **Idempotencia con la clave.** Si la `claveIdempotencia` ya registró una asistencia de ese mismo alumno en la academia,
     responde 200 con el mismo cuerpo del 201 y `repetida: true`, aunque la clase ya haya terminado, sin otra fila, otro
     descuento ni otra auditoría. Dos peticiones a la vez con la misma clave dejan una fila (una 201 y una 200). La misma
-    clave usada con otro alumno, o por el registro posterior de la 009b, responde 409 `CLAVE_YA_USADA`; la misma clave en
-    otra academia no choca. La clave de un intento rechazado no queda guardada y se puede volver a usar. _(crítico)_
-    (`CLAUDE.md`, escrituras idempotentes)
+    clave usada con otro alumno, o por el registro posterior de la 009b (criterio 36), responde 409 `CLAVE_YA_USADA`; la
+    misma clave en otra academia no choca. La clave de un intento rechazado no queda guardada y se puede volver a usar.
+    _(crítico)_ (`CLAUDE.md`, escrituras idempotentes)
 14. **Orden de bloqueos.** En una sola transacción, en este orden: `bloquearActorVigente`; la fila del alumno con
-    `FOR SHARE` (por token o por id); la matrícula del día con `FOR UPDATE`; después se leen «ahora», la configuración,
-    las asistencias de hoy y las clases restantes, y al final se insertan la fila y el descuento. No bloquea `clases`
-    (la asistencia no mueve cupo). Pruebas deterministas sin `40P01`: una lectura a la vez que la confirmación de un pago
+    `FOR SHARE` (por token o por id); la matrícula del día con `FOR UPDATE`; desde la 009b, las clases de esa matrícula
+    con `FOR KEY SHARE` (criterio 37); después se leen «ahora», la configuración, las asistencias de hoy y las clases
+    restantes, y al final se insertan la fila y el descuento. Nunca toma `clases` con `FOR UPDATE` ni `FOR SHARE` (la
+    asistencia no mueve cupo). Pruebas deterministas sin `40P01`: una lectura a la vez que la confirmación de un pago
     del mismo alumno (007), que la foto del panel (008b) y que la regeneración del QR (criterio 4). _(crítico)_
     («Orden de bloqueos» de 005a y 006a)
 15. **Lo que lleva la respuesta.** `resultadoAsistenciaSchema` (estricto): `asistencia` (`id`, `fecha`, `horaLlegada`
@@ -325,8 +328,9 @@ y la spec completa en una sola entrega se acercaría a las 3 rondas con dos supe
     Inserta la fila con `metodo` `MANUAL`, `registro_posterior` `true`, el motivo, `llegada_en` = D + `horaLlegada` en
     Lima, `registrado_en` «ahora» y el estado de llegada con la tolerancia de hoy; descuenta una clase (criterio 11); si
     hay una falta de esa clase y fecha, la cubre (`asistencia_id`, `cubierta_en`). Orden de bloqueos: actor, alumno
-    `FOR SHARE`, matrícula `FOR UPDATE`, la falta `FOR UPDATE` si existe. Responde 201 con `resultadoAsistenciaSchema`
-    (`registroPosterior: true`). Idempotente con la clave (criterio 13). _(crítico)_ (D-16)
+    `FOR SHARE`, matrícula `FOR UPDATE`, sus clases `FOR KEY SHARE` (criterio 37), la falta `FOR UPDATE` si existe; «ahora»
+    se lee después. Responde 201 con `resultadoAsistenciaSchema` (`registroPosterior: true`). Idempotente con la clave
+    (criterios 13 y 36). _(crítico)_ (D-16)
 29. **[009b] Auditoría del registro posterior.** Cada registro posterior escribe una sola entrada
     `ASISTENCIA_POSTERIOR_REGISTRADA` (entidad `asistencia`, `entidadId` el id de la asistencia, actor `USUARIO`, `motivo`,
     IP, `datosDespues: { alumnoId, claseId, fecha, horaLlegada, estadoLlegada, faltaCubierta }`), sin DNI, nombres ni
@@ -361,6 +365,48 @@ y la spec completa en una sola entrega se acercaría a las 3 rondas con dos supe
     sus bloqueos y la ventana de ayer y hoy, el registro posterior y la consulta; la línea «tareas programadas» de la
     vista general), la guía de Windows (`TAREAS_PROGRAMADAS` en `.env.example`) y la nota de la 009 en
     `specs/backlog.md`. _(revisor)_
+36. **[009b] La clave de un marcado no repite un registro posterior, ni al revés.** _(Origen: ataque ronda 1 de la 009a,
+    R1-1.)_ Las asistencias del marcado (QR o manual, `registro_posterior` `false`) y las del registro posterior (`true`)
+    comparten el único `asistencias_academia_id_clave_idempotencia_key`. El 200 con `repetida: true` del criterio 13
+    exige que la clave sea del mismo alumno **y** del mismo tipo de registro:
+    - un `POST /api/asistencias/qr` o `/api/asistencias/manual` cuya clave ya usó un registro posterior del mismo alumno
+      responde 409 `CLAVE_YA_USADA`, con el mismo cuerpo que cuando la clave es de otro alumno (sin `detalles`), y no un
+      200 con esa asistencia;
+    - un `POST /api/asistencias/posterior` cuya clave ya usó un marcado por QR o manual del mismo alumno responde el
+      mismo 409.
+
+    Ninguno de los dos escribe, descuenta, cubre una falta ni audita. La regla vale en los tres puntos donde se mira la
+    clave: antes de tomar la matrícula, con la matrícula ya tomada (DT-17) y al volver a decidir tras un choque con
+    `asistencias_academia_id_clave_idempotencia_key`. Entre QR y manual del mismo alumno sigue el 200 del criterio 13
+    (los dos son marcado). Prueba: los dos sentidos en serie, con QR y con manual. Prueba determinista: un retenedor
+    toma la matrícula del alumno con `FOR UPDATE`; un marcado de la clase en curso y un registro posterior de una clase
+    ya terminada del mismo mes, con la misma clave, esperan los dos (comprobado en `pg_locks`); al soltar el retenedor,
+    uno responde 201 y el otro 409 `CLAVE_YA_USADA`, en cualquier orden, con una sola fila en `asistencias`,
+    `clases_usadas` sube 1 y hay una auditoría `ASISTENCIA_POSTERIOR_REGISTRADA` solo si el 201 fue el del posterior.
+    _(crítico: idempotencia de una escritura de asistencia; un 200 con la asistencia de otro registro hace creer a
+    recepción que el alumno se marcó hoy)_ (criterio 13, `CLAUDE.md`, escrituras idempotentes)
+37. **[009b] El marcado toma su clase antes de leer «ahora».** _(Origen: ataque ronda 1 de la 009a, R1-2.)_ El `INSERT`
+    en `asistencias` toma un `FOR KEY SHARE` implícito sobre la fila de la clase por la llave foránea. Si lo espera
+    después de leer «ahora» (por ejemplo, detrás de `bloquearClasesParaCupo` de un cobro, una cancelación o una
+    inscripción), la asistencia se registra con la hora de antes aunque la clase ya haya terminado. Por eso el marcado
+    por QR y manual toma, en este orden: actor → alumno (`FOR SHARE`) → matrícula del día (`FOR UPDATE`) → las clases de
+    esa matrícula (`matricula_clases`) con `FOR KEY SHARE`, en una sola sentencia sobre `clases` de `tx.academiaId`
+    ordenada por `clases.id`, todas y no solo las del día (el día definitivo sale de «ahora», DT-18). La segunda mirada
+    a la clave (DT-17) sigue después de la matrícula, y «ahora» se lee recién con la matrícula y sus clases tomadas
+    (DT-16). Sin matrícula del día no bloquea ninguna clase. Nunca toma `clases` con `FOR UPDATE` ni `FOR SHARE` (la
+    asistencia no mueve cupo): dos marcados de la misma clase no se esperan entre sí. El registro posterior
+    (criterio 28) toma sus clases del mismo modo, entre la matrícula y la falta. Así, una espera que cruza el fin de la
+    clase responde 409 `FUERA_DE_HORARIO`, sin escribir.
+
+    Prueba determinista, por QR y por manual: el alumno tiene matrícula `VIGENTE` y la clase del lunes de 18:00 a 19:00;
+    con `RELOJ` fijo en el lunes a las 18:59:59 de Lima, un retenedor, en una transacción de la misma academia, toma esa
+    clase con `SELECT … FROM clases … FOR UPDATE`, la misma sentencia de `bloquearClasesParaCupo` (o llamándola). Se
+    lanza el marcado y se comprueba en `pg_locks` que su conexión espera (un bloqueo con `granted = false`). Se mueve
+    `RELOJ` a las 19:00:05 y se suelta el retenedor. La respuesta es 409 `FUERA_DE_HORARIO` con `detalles.alerta`
+    `AMARILLA` y `detalles.claseDeHoy` `{ horaInicio: '18:00', horaFin: '19:00' }`; no hay fila en `asistencias`,
+    `clases_usadas` no cambia y no hay auditoría. La prueba de bloqueos sin `40P01` del criterio 14 suma un cobro de otro
+    alumno de la misma clase (`bloquearClasesParaCupo`) a la vez que el marcado. _(crítico: asistencia solo mientras
+    dura la clase, D-16, y descuento de una clase, RN-14)_ (criterio 14, DT-16, D-16)
 
 ## Casos límite
 
@@ -514,8 +560,8 @@ Errores: 400 `SOLICITUD_INVALIDA`; 401 `NO_AUTENTICADO`; 403 `SIN_PERMISO`, `CAM
 ## Decisiones
 
 Técnicas: DT-1 a DT-16, aceptadas por el orquestador el 25/11/2026 tal como se propusieron, y DT-17 a DT-21, añadidas por
-el orquestador el 26/11/2026 con la ronda 1 de la 009a. Las decisiones del responsable (DR-1 a DR-6) están en
-«Resueltas».
+el orquestador el 26/11/2026 con la ronda 1 de la 009a. DT-22 la propone el especificador con R1-2 de esa ronda,
+pendiente de aceptación. Las decisiones del responsable (DR-1 a DR-6) están en «Resueltas».
 
 - **DT-1. Dos entregas (009a y 009b).** Descartado: una sola, con dos frentes de ataque distintos y cerca de las 800
   líneas.
@@ -552,7 +598,8 @@ el orquestador el 26/11/2026 con la ronda 1 de la 009a. Las decisiones del respo
   (descontaría una clase que no se cobró).
 - **DT-15. Sin cambios en la semilla:** la guía explica cómo probar con una clase en la hora actual.
 - **DT-16. «Ahora» se lee después de los bloqueos** (como DT-10 de 007): una lectura que espera un bloqueo y cruza el fin
-  de la clase responde `FUERA_DE_HORARIO`.
+  de la clase responde `FUERA_DE_HORARIO`. Desde la 009b, entre esos bloqueos están las clases de la matrícula con
+  `FOR KEY SHARE` (criterio 37), para que el `INSERT` no espere ninguna fila después de leer «ahora».
 - **DT-17. La clave se vuelve a mirar tras tomar la matrícula.** Con la matrícula del día bloqueada (DT-5), una petición
   con la misma clave que esperó ese bloqueo responde 200 con la asistencia ya confirmada, no 409 (criterio 13). Si el
   choque de unicidad llega igual (`asistencias_un_dia_key` o la clave), se vuelve a decidir con lo confirmado: hasta 2
@@ -568,6 +615,12 @@ el orquestador el 26/11/2026 con la ronda 1 de la 009a. Las decisiones del respo
 - **DT-21. La redacción «empieza a las» o «fue de» la decide la web.** Para `FUERA_DE_HORARIO` y `CLASE_NO_INCLUIDA`, la
   web compara la hora de Lima del reloj del equipo con la clase de hoy. La API decide si se puede marcar; la web solo
   elige el texto. La deuda de la 009a propone que la API envíe el momento (`specs/backlog.md`).
+- **DT-22. Las clases de la matrícula con `FOR KEY SHARE` explícito antes de «ahora»** (criterio 37, R1-2 de la ronda 1
+  de la 009a; propuesta del especificador el 26/11/2026, pendiente de aceptación del orquestador). `FOR KEY SHARE` es el
+  mismo modo que toma la llave foránea: no espera a otros marcados ni a una edición de la clase que no cambie su llave, y
+  sí espera a `bloquearClasesParaCupo`. Respeta el orden general (alumno → matrícula → clases). Descartado: volver a leer
+  «ahora» después del `INSERT` y deshacer si cruzó el fin (dos lecturas del reloj y una decisión partida); tomar las
+  clases con `FOR SHARE` (esperaría a las ediciones de la clase) o con `FOR UPDATE` (además, a los otros marcados).
 
 ## Preguntas abiertas
 

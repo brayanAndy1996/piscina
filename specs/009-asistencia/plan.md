@@ -49,6 +49,10 @@ alumnoId }` y, en la 009b, `{ tipo: 'POSTERIOR', alumnoId, fecha, horaLlegada, m
       la matrícula `VIGENTE` del alumno de ese mes. Después se lee el «ahora» definitivo (DT-16) y todo se decide con él:
       si en la espera cambió el día (solo cerca de la medianoche, cuando no hay clases), la matrícula bloqueada deja de
       ser la del día y el resultado es un rechazo, nunca un registro. Si no hay matrícula, no se bloquea nada más.
+      **Desde la 009b (criterio 37, DT-22):** con la matrícula tomada, `SELECT 1 FROM clases WHERE academia_id = $a AND
+      id IN (SELECT clase_id FROM matricula_clases WHERE academia_id = $a AND matricula_id = $m) ORDER BY id FOR KEY
+      SHARE`, antes del «ahora» definitivo. En el paso 3, y en sus repeticiones, el 200 exige además el mismo valor de
+      `registro_posterior` (criterio 36).
    5. «Ahora» definitivo con `RELOJ`, `leerConfiguracion(tx)`, la asistencia del día (sin bloqueo; la matrícula ya
       ordena), el pago en verificación (solo si no hay matrícula del día), la clase del día (`matricula_clases` ⨝
       `clases` con `dia_semana` y `activo`).
@@ -70,9 +74,11 @@ alumnoId }` y, en la 009b, `{ tipo: 'POSTERIOR', alumnoId, fecha, horaLlegada, m
 `estadoDeLlegada(llegada, inicio, T)`: `PUNTUAL` si `floor(llegada al minuto) <= inicio + T minutos`, es decir,
 `llegada < inicio + (T + 1) minutos`. `diaIsoEnLima` usa la misma idea que `cobro.ts` (mediodía de Lima).
 
-**Por qué no se bloquea `clases`:** la asistencia no ocupa ni libera cupo (regla «Cupo de una clase» de 004). El
-`INSERT` toma `FOR KEY SHARE` implícito sobre la clase, que espera a un `bloquearClasesParaCupo` en curso sin formar
-ciclo (quien bloquea clases ya tomó antes su alumno y su matrícula).
+**Por qué las clases van con `FOR KEY SHARE` y no con `FOR UPDATE`:** la asistencia no ocupa ni libera cupo (regla
+«Cupo de una clase» de 004). En la 009a la clase no se bloqueaba y el `INSERT` tomaba el `FOR KEY SHARE` implícito de la
+llave foránea después de leer «ahora»; si esperaba a un `bloquearClasesParaCupo` en curso, registraba con la hora de
+antes (R1-2 de la ronda 1). Desde la 009b se toma explícito antes de «ahora» (criterio 37), sin formar ciclo: quien
+bloquea clases ya tomó antes su alumno y su matrícula.
 
 ### Faltas (009b, criterios 22 a 27)
 
@@ -94,7 +100,7 @@ ciclo (quien bloquea clases ya tomó antes su alumno y su matrícula).
         registro posterior mientras la tarea esperaba la matrícula (criterio 27).
      6. `info` `'Faltas registradas'` con `academiaId` y `cantidad`.
 - **Orden de bloqueos y ciclos:** el marcado y el posterior toman alumno (`FOR SHARE`) → matrícula (`FOR UPDATE`) →
-  falta; la tarea, alumnos (`FOR KEY SHARE`) → matrículas (`FOR UPDATE`) → insertar. El cobro de la 007 y el cambio de
+  sus clases (`FOR KEY SHARE`, criterio 37) → falta; la tarea, alumnos (`FOR KEY SHARE`) → matrículas (`FOR UPDATE`) → insertar. El cobro de la 007 y el cambio de
   horario de la 010 toman alumno (`FOR UPDATE`) → … → matrícula. Todos van alumno antes que matrícula, así que no hay
   ciclo. `FOR KEY SHARE` explícito en la tarea evita el ciclo que formaría el `FOR KEY SHARE` implícito de la llave
   foránea si se tomara después de la matrícula.
@@ -132,6 +138,7 @@ repetido).
 | Tarea cada 5 min, ayer y hoy, `pg_try_advisory_xact_lock` por academia (DT-9) | Cada minuto; cola de trabajos | Menos carga; varias instancias sin trabajo doble |
 | Rechazo devuelto por la transacción, foto después (DT-11) | Leer la foto dentro | Sin E/S de archivos dentro de una transacción |
 | Lectora USB como teclado y `html5-qrcode` (DT-12) | Solo cámara | HU-14 nombra la lectora |
+| Clases de la matrícula con `FOR KEY SHARE` antes de «ahora» (DT-22, criterio 37) | Releer «ahora» tras el `INSERT`; `FOR SHARE` o `FOR UPDATE` | Una sola lectura del reloj; no espera a otros marcados ni a ediciones de la clase |
 
 ## Migraciones
 

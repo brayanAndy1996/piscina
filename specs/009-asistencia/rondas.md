@@ -27,3 +27,11 @@ en criterios de `spec.md`; las medias o bajas quedan como deuda en las notas de 
 - **Cierre:** el ataque de la 009a termina en 1 de 3 rondas, sin fallas críticas ni altas. No hace falta una segunda
   ronda. R1-1 y R1-2 afectan a los criterios 13 y 14, que son críticos: se corrigen en la 009b, como decidió el
   orquestador el 26/11/2026.
+- **Paso a la 009b (26/11/2026):** Bryan decidió corregir R1-1 y R1-2 en la 009b, cada una con su prueba protegida.
+  Pasan a ser criterios _(críticos)_ de la 009b en `spec.md`:
+  - **R1-1 → criterio 36.** El 200 repetido exige el mismo alumno y el mismo tipo de registro (marcado o posterior);
+    en los dos sentidos responde 409 `CLAVE_YA_USADA`. Se ajusta la referencia del criterio 13.
+  - **R1-2 → criterio 37.** El marcado (y el posterior) toma las clases de la matrícula con `FOR KEY SHARE` antes de
+    leer «ahora», en el orden actor → alumno → matrícula → clase; una espera que cruza el fin responde 409
+    `FUERA_DE_HORARIO` sin escribir. Se ajustan el criterio 14 (ya no dice «no bloquea `clases`»), el 28 (orden de
+    bloqueos del posterior), la DT-16 y `plan.md`; se propone la DT-22.

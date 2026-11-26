@@ -48,14 +48,18 @@ Cada tarea indica su rol y los criterios de aceptación que cubre. Las de la 009
   error aislado por academia, a quién se le registra falta, bordes de Lima, ventana de ayer y hoy, idempotencia y
   concurrencia con el registro posterior (criterios 23 a 27)
 - [ ] T16 · test-writer · [009b] Pruebas protegidas del registro posterior, su auditoría, sus errores y de la consulta
-  del mes (criterios 28 a 31)
+  del mes (criterios 28 a 31); la clave de un marcado contra la de un registro posterior en los dos sentidos, en serie y
+  determinista (criterio 36); el marcado que espera la clase retenida con `FOR UPDATE` y cruza las 19:00, y el cobro
+  de otro alumno de la misma clase sin `40P01` (criterio 37)
 - [ ] T17 · tester · [009b] Confirmar el rojo de T14 a T16; commit «Pruebas protegidas (009): 009b, … (en rojo)»
 - [ ] T18 · backend · [009b] Migración `<marca>_inasistencias` con el trigger; privilegios (criterio 22)
 - [ ] T19 · backend · [009b] `@nestjs/schedule` en `backend/package.json` y en `DEPENDENCIAS_BACKEND_PERMITIDAS`;
   `TAREAS_PROGRAMADAS` en el entorno y en `.env.example`; `ScheduleModule` condicionado (criterios 23, 33 y 34)
 - [ ] T20 · backend · [009b] `FaltasService` y `FaltasTarea` (criterios 23 a 27 y 33)
 - [ ] T21 · backend · [009b] Registro posterior en `MarcadoService` y su ruta, con la auditoría y la falta cubierta
-  (criterios 28 a 30)
+  (criterios 28 a 30); `repetir()` compara también `registro_posterior` en los tres puntos donde se mira la clave
+  (criterio 36); las clases de la matrícula con `FOR KEY SHARE` después de la matrícula y antes de leer «ahora», en el
+  marcado y en el posterior (criterio 37)
 - [ ] T22 · backend · [009b] Consulta del mes `GET /api/alumnos/{id}/asistencias` (criterio 31)
 - [ ] T23 · frontend · [009b] Sección «Asistencia» en `/panel/alumnos/{id}` y el diálogo del registro posterior;
   pruebas de componentes (criterio 32)

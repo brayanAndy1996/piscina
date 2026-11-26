@@ -271,9 +271,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   tarde, descuento de clase, registro de faltas por tarea programada (HU-14, HU-15, RN-14 a RN-16, D-08, D-11,
   D-16).
   - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-6 y el privilegio `UPDATE (clases_usadas)`; DT-1 a DT-21), en
-    [`specs/009-asistencia/`](009-asistencia/spec.md). Dos entregas: 009a (marcado por QR y manual, criterios 1 a 21; **lista
-    para unir**, 26/11/2026, tras una ronda adversarial sin críticas ni altas; ver [`rondas.md`](009-asistencia/rondas.md)) y
-    009b (faltas, registro posterior y consulta del mes, criterios 22 a 35; pendiente).
+    [`specs/009-asistencia/`](009-asistencia/spec.md). Dos entregas: 009a (marcado por QR y manual, criterios 1 a 21; unida a
+    main el 26/11/2026, [PR #18](https://github.com/brayanAndy1996/piscina/pull/18), tras una ronda adversarial sin críticas ni altas; ver [`rondas.md`](009-asistencia/rondas.md)) y
+    009b (faltas, registro posterior y consulta del mes, criterios 22 a 37; en curso).
   - **Para la 009b** (ronda 1 de la 009a, 26/11/2026; se corrigen en la 009b con su prueba protegida):
     - **R1-1** (media): si la clave la usó un registro posterior del mismo alumno, el marcado responde 200 en lugar de 409
       `CLAVE_YA_USADA` (criterio 13).
