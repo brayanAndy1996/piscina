@@ -26,12 +26,14 @@ import {
 import { crearPlanDeDosVeces, crearPlanYClaseSabado, ocupacionDeClase } from '../../utilidades/inscripciones';
 import type { ClaseDePrueba, PlanDePrueba } from '../../utilidades/planes-clases';
 
+// Actualizada por la 010a, ronda 2, DR-12 (ajuste A3, aprobado por Bryan el 26/11/2026): el caso «titular con la matrícula de noviembre en verificación» esperaba la regla anterior (también daba prioridad) y se reescribió con la nueva (solo la matrícula de M `VIGENTE` da prioridad;
+// la de M en verificación no, criterio 45); los comentarios que citaban la regla o la fórmula anteriores se corrigieron. Lo demás que comprueba este archivo no cambió.
 // Criterio 9 (crítico, D-06, RN-11, HU-12): con `RELOJ` fijo en la ventana y una clase c de aforo 20 con 20 matrículas de noviembre `VIGENTE`: un alumno que no es titular en c recibe `SIN_CUPO` para c en diciembre; cada titular renueva c con 201, también el
-// último; un titular que renueva con otras clases conserva su prioridad solo en las clases que ya tenía y, al renovar, deja libre su lugar en las que no eligió. Un titular con la matrícula de noviembre en verificación también tiene prioridad; un cliente con una
-// reserva de 24 horas, no. El 1/12 a las 00:00:00.000 de Lima ya no hay reservas: con 15 renovados, una renovación tardía de otro alumno toma c. Si el administrador bajó el aforo de c por debajo de los inscritos (DR-5 de 004), un titular recibe `SIN_CUPO`
+// último; un titular que renueva con otras clases conserva su prioridad solo en las clases que ya tenía y, al renovar, deja libre su lugar en las que no eligió. Un alumno con la matrícula de noviembre en verificación no tiene prioridad hasta que se aprueba su pago (DR-12, criterio 45); un cliente con una
+// reserva de 24 horas, tampoco. El 1/12 a las 00:00:00.000 de Lima ya no hay reservas: con 15 renovados, una renovación tardía de otro alumno toma c. Si el administrador bajó el aforo de c por debajo de los inscritos (DR-5 de 004), un titular recibe `SIN_CUPO`
 // cuando diciembre ya está en el nuevo aforo (DR-5). La ocupación de cada mes nunca pasa del aforo.
-// Definiciones (spec): el titular de prioridad en c es un alumno (no `CLIENTE`) con una matrícula de M `VIGENTE` o en verificación que incluye c y que no tiene una matrícula de M+1 que ocupe cupo; las reservas de prioridad de c son sus titulares y solo cuentan para M+1;
-// el cupo libre para A en M+1 es `aforo − ocupación(c, M+1) − reservas(c)`, más 1 si A es titular en c; para M, `aforo − ocupación(c, M)`.
+// Definiciones (spec): el titular de prioridad en c es un alumno (no `CLIENTE`) con una matrícula de M `VIGENTE` (pago confirmado, DR-12) que incluye c y que no tiene una matrícula de M+1 que ocupe cupo; las reservas de prioridad de c son sus titulares y solo cuentan para M+1;
+// el cupo libre para un alumno sin prioridad en M+1 es `aforo − ocupación(c, M+1) − reservas(c)`; para un titular, `aforo − ocupación(c, M+1)` sin restar las reservas (criterio 44, ronda 1); para M, `aforo − ocupación(c, M)`.
 // Lecturas estrictas elegidas: (1) el caso del aforo reducido (el aforo mínimo es 20) se prueba con diciembre ya en el nuevo aforo (aforo 30 bajado a 20, con 20 de 20 ocupados y 10 titulares sin renovar) porque ahí las dos lecturas posibles de DR-5 (la fórmula de DT-4 o «los últimos titulares quedan sin lugar»)
 // dan `SIN_CUPO`; (2) «un titular en verificación» es una matrícula `RESERVADA` sin vencimiento con un pago `PENDIENTE_VERIFICACION` (definición de «Mensualidad en verificación»); (3) el 30/11 a las 23:59:59.999 todavía hay reservas y el 1/12 a las 00:00:00.000 ya
 // no; (4) las reservas no restan al mes en curso: una renovación tardía de noviembre con un solo cupo libre lo toma aunque haya titulares.
@@ -187,7 +189,7 @@ describe('la prioridad para conservar el horario (criterio 9)', () => {
   });
 
   describe('quién es titular y quién no', () => {
-    it('criterio 9: un titular con la matrícula de noviembre en verificación también tiene prioridad: con 19 titulares y uno en verificación, un alumno sin prioridad recibe SIN_CUPO y el de la verificación renueva (201)', async () => {
+    it('criterio 9 (DR-12): un alumno con la matrícula de noviembre en verificación no tiene prioridad: con 19 titulares y uno en verificación, el alumno sin prioridad toma el lugar que queda (201) y el de la verificación recibe SIN_CUPO', async () => {
       await sembrarTitulares(esc.e.A.id, plan.id, 19, { claseIds: [clase.id] });
       const enVerificacion = await sembrarEnVerificacion(esc.e, {
         planId: plan.id,
@@ -205,9 +207,14 @@ describe('la prioridad para conservar el horario (criterio 9)', () => {
       const sinPrioridad = await pedir('YAPE', cookies.secretaria, extra.alumnoId);
       const titular = await pedir('YAPE', cookies.secretaria, enVerificacion.alumnoId);
 
-      expect(resumen(sinPrioridad.respuesta), sinPrioridad.respuesta.texto).toEqual([409, 'SIN_CUPO']);
-      expect(titular.respuesta.status, titular.respuesta.texto).toBe(201);
-      expect(renovacionDe(titular.respuesta, 201).renovacion.conPrioridad).toEqual([clase.id]);
+      // Solo las 19 matrículas `VIGENTE` apartan lugar: 20 − 0 (diciembre) − 19 (reservas) = 1 para quien no tiene prioridad.
+      expect(sinPrioridad.respuesta.status, sinPrioridad.respuesta.texto).toBe(201);
+      expect(renovacionDe(sinPrioridad.respuesta, 201).renovacion.conPrioridad).toEqual([]);
+      // El de la verificación no es titular: 20 − 1 (diciembre) − 19 (reservas) = 0.
+      expect(resumen(titular.respuesta), titular.respuesta.texto).toEqual([409, 'SIN_CUPO']);
+      expect(detallesDe(titular.respuesta)['claseIds']).toEqual([clase.id]);
+      expect(await ocupacion(DICIEMBRE)).toBe(1);
+      expect(await ocupacion(NOVIEMBRE)).toBe(20);
     });
 
     it('criterio 9: un cliente con una reserva de 24 horas no es titular: con 19 titulares y un cliente con reserva, un alumno sin prioridad toma el cupo que queda (201) y el cliente no cuenta como reserva', async () => {
@@ -321,7 +328,7 @@ describe('la prioridad para conservar el horario (criterio 9)', () => {
       expect(await ocupacion(NOVIEMBRE), 'noviembre no expulsa a nadie: sigue con 30').toBe(30);
     });
 
-    it('criterio 9: con el aforo subido otra vez a 30, el mismo titular renueva con el último lugar (30 − 20 − 10 + 1 = 1): 201, y diciembre queda en 21 de 30', async () => {
+    it('criterio 9: con el aforo subido otra vez a 30, el mismo titular renueva (un titular compite solo con la ocupación de diciembre: 30 − 20 = 10 lugares, criterio 44): 201, y diciembre queda en 21 de 30', async () => {
       const titulares = await conElAforoBajado();
       const cookies = en(ctx, esc, INSTANTES.viernes27);
       const sinLugar = await pedir('YAPE', cookies.secretaria, titulares[20] ?? '');
@@ -336,7 +343,7 @@ describe('la prioridad para conservar el horario (criterio 9)', () => {
   });
 
   describe('la oferta muestra los cupos que calcula el registro (criterio 2, DT-4)', () => {
-    it('criterio 9: con 20 titulares y 0 de diciembre, la clase c ofrece 0 cupos y sin prioridad al alumno sin horario y 1 cupo con prioridad a un titular', async () => {
+    it('criterio 9: con 20 titulares y 0 de diciembre, la clase c ofrece 0 cupos y sin prioridad al alumno sin horario y 20 cupos con prioridad a un titular (un titular no resta las reservas, criterio 44)', async () => {
       const titulares = await sembrarTitulares(esc.e.A.id, plan.id, 20, { claseIds: [clase.id] });
       const extra = await crearAlumnoVencido(ctx, esc);
       const cookies = en(ctx, esc, INSTANTES.viernes27);

@@ -496,7 +496,7 @@ export interface OpcionesDeTitulares {
   claseIds: readonly string[];
   /** El mes de las matrículas (por defecto, noviembre de 2026). */
   mes?: { anio: number; mes: number };
-  /** `VIGENTE` (por defecto) o `RESERVADA` sin vencimiento (un pago en verificación: ocupa cupo y da prioridad). */
+  /** `VIGENTE` (por defecto) o `RESERVADA` sin vencimiento (un pago en verificación: ocupa cupo en su mes y, desde la 010a ronda 2 (DR-12), no da prioridad para el mes siguiente). */
   estado?: 'VIGENTE' | 'RESERVADA';
   /** `ALUMNO_ACTIVO` (por defecto) o el estado que pida el caso (un `CLIENTE` no es titular de prioridad). */
   estadoAlumno?: 'ALUMNO_ACTIVO' | 'ALUMNO_VENCIDO' | 'CLIENTE';

@@ -50,3 +50,48 @@ en criterios de `spec.md`; las medias o bajas quedan como deuda en las notas de 
   - correos;
   - aislamiento entre academias;
   - subida del comprobante.
+
+## Entrega 010a · Ronda 2
+
+- **Fecha:** 26/11/2026
+- **Qué se atacó:** la corrección de R1-1 (titulares que compiten solo con la ocupación del mes siguiente) con
+  matrículas en verificación; el último cupo con muchas peticiones a la vez sobre el aforo bajado; la caja; la
+  aprobación y el rechazo; el estado del alumno; los correos; el comprobante; el aislamiento entre academias.
+
+| Falla | Gravedad | Qué pasó | Decisión |
+| --- | --- | --- | --- |
+| R2-1 | media | Un alumno con la renovación tardía de M en verificación cuenta como titular (DT-3), renueva M+1 sin que las reservas le resten y conserva M+1 aunque después se rechace su pago de M; el último titular legítimo recibe `SIN_CUPO`. | Bryan (DR-12): criterio 45 de `spec.md`; se ajustan la definición de «Titular de prioridad», DT-3 y el criterio 9 |
+
+### R2-1 · Detalle
+
+- **Gravedad y por qué abre criterio.** Es media (nunca se pasa del aforo y hace falta un rechazo de pago en la
+  ventana), así que por la regla de D-31 quedaría como deuda; Bryan decidió el 26/11/2026 cambiar la regla de negocio
+  (DR-12), y el cambio se convierte en el criterio 45, crítico (aforo y prioridad).
+- **Causa.** `clasesDeLaTitularidad` (`backend/src/modulos/mensualidades/lectura.ts`) considera titular a quien tiene
+  la matrícula de M `VIGENTE` o `RESERVADA` sin vencimiento, como decía la definición de «Titular de prioridad» y DT-3
+  antes de esta ronda. `contarReservasDePrioridad` (`backend/src/modulos/matriculas/ocupacion.ts`) usa la misma
+  condición para contar las reservas, así que también hay que cambiarla para que las dos consultas no se contradigan.
+- **Reproducción (determinista).** Clase de los sábados, aforo 20, con 18 titulares (noviembre `VIGENTE`); X1 y X2, sin
+  prioridad, ya renovaron diciembre (2 de 20); Y, vencido, registra la renovación tardía de noviembre por Yape, que
+  queda en verificación. Y renueva diciembre en efectivo como titular (`20 − 2 = 18`): 201. Se rechaza el Yape de
+  noviembre de Y: noviembre pasa a `CANCELADA` y diciembre sigue `VIGENTE` (3 de 20). De los 18 titulares, 17 reciben
+  201 y el último, `SIN_CUPO`.
+- **Decisión de Bryan (DR-12, 26/11/2026).** Una matrícula de M `RESERVADA` que espera la verificación de su pago no da
+  prioridad para M+1; solo la da la de M `VIGENTE`. Una renovación de M+1 en verificación sigue contando para M+1
+  (ocupa cupo y su alumno ya no es titular), como dice DT-3.
+- **Efecto en las pruebas protegidas existentes:** el caso del criterio 9 «un titular con la matrícula de noviembre en
+  verificación también tiene prioridad» (`renovacion-prioridad.test.ts`) espera lo contrario de DR-12; cambiarlo es
+  A3, pregunta P12 de `spec.md`, que el orquestador lleva a Bryan. La nota de cabecera de ese archivo y el comentario
+  de `sembrarTitulares` en `backend/test/utilidades/escenario-renovacion.ts` citan la regla anterior. Los casos del
+  criterio 44 usan titulares con noviembre `VIGENTE` y la renovación tardía de Y en efectivo, así que siguen valiendo.
+
+- **Sin fallas en:**
+  - tormenta de 34 peticiones simultáneas sobre el aforo bajado (la ronda 1 había sido de 50), repetida 3 veces:
+    diciembre en 20 de 20 y caja cuadrada;
+  - caja cerrada, de otro día y reabierta;
+  - aprobar dos veces o aprobar un pago rechazado;
+  - paso a `ALUMNO_ACTIVO` en el mes correcto;
+  - correos;
+  - comprobante;
+  - mismo DNI en dos academias;
+  - bandeja aislada entre academias.

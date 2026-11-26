@@ -48,6 +48,20 @@ las de la 010c, con la 010b unida.
     (`cuposRestantes` en `renovacion.service.ts`) y el registro (`nucleo.ts`) la usan sin cambios de firma; se actualizan
     las pruebas unitarias de `cupo.test.ts` que fijan la fórmula original y el comentario de `cupo.ts` (criterios 2, 9 y
     44)
+  - [x] Ronda 2 (26/11/2026): R2-1, media; Bryan decidió cambiar la regla (DR-12) y pasa a ser el criterio 45.
+  - [ ] T38 · test-writer · Prueba protegida en rojo de la ronda 2: la matrícula de M en verificación no da prioridad,
+    con los casos a (Y no es titular: oferta con `conPrioridad: false` y `cuposRestantes` 0, `SIN_CUPO` sin escribir
+    nada, rechazo del Yape y los 18 titulares con 201), b (al aprobar el pago de M, Y es titular: oferta con 18, 201 y
+    los primeros 17 titulares con 201 y el último `SIN_CUPO`) y c (una renovación de M+1 en verificación ocupa cupo y
+    deja de contar como reserva), con la ocupación de noviembre y diciembre sin pasar del aforo. Si Bryan aprueba A3
+    (P12), en el mismo commit reescribe el caso del criterio 9 «titular en verificación» de `renovacion-prioridad.test.ts`
+    con la regla nueva, con la nota en la cabecera, y corrige los comentarios que citan la regla anterior (cabecera de
+    ese archivo y `sembrarTitulares` en `escenario-renovacion.ts`). El tester confirma el rojo y se hace el commit
+    «Pruebas protegidas (010): 010a, ronda 2 … (en rojo)» (criterios 9 y 45)
+  - [ ] T39 · backend · Corrección de R2-1: en `mensualidades/lectura.ts`, `clasesDeLaTitularidad` toma solo la
+    matrícula de M `VIGENTE` (sin la `RESERVADA` sin vencimiento), y en `matriculas/ocupacion.ts`,
+    `contarReservasDePrioridad` usa la misma condición; se actualizan sus comentarios (D-06, DT-3, DR-12). Sin cambios de
+    firma en la oferta ni en el registro (criterios 2, 9 y 45)
 - [ ] T15 · revisor y tester (a la vez) · Revisión contra la spec; suite completa, lint y tipos
 - [ ] T16 · documentador · `docs/arquitectura.md`, guía de Windows y nota del backlog de la 010a; marcar tareas
   (criterio 23)

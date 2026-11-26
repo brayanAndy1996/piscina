@@ -83,11 +83,14 @@ el aviso de renovación cuando `filas.solicitud === null`, con los destinatarios
 menor), después de confirmar.
 
 **Reservas de prioridad (SQL, sin bloquear).** Para cada clase c de la lista y el mes M de «ahora»: cuántos alumnos
-distintos tienen una matrícula de M que incluye c y está `VIGENTE` o `RESERVADA` con `reserva_vence_en` nula, y no
-tienen una matrícula de M+1 `VIGENTE` o `RESERVADA` sin vencer. `cupoLibre` no resta las reservas si el alumno que
-pide es uno de ellos en c (`aforo − ocupación`); a los demás, sí (`aforo − ocupación − reservas`). Ajuste de la ronda
-adversarial 1 (R1-1, criterio 44): la fórmula original, que restaba las reservas a todos y sumaba 1 al titular, dejaba
-sin lugar a todos los titulares cuando había más titulares que lugares.
+distintos tienen una matrícula de M que incluye c y está `VIGENTE`, y no tienen una matrícula de M+1 `VIGENTE` o
+`RESERVADA` sin vencer. `cupoLibre` no resta las reservas si el alumno que pide es uno de ellos en c (`aforo −
+ocupación`); a los demás, sí (`aforo − ocupación − reservas`). Ajuste de la ronda adversarial 1 (R1-1, criterio 44):
+la fórmula original, que restaba las reservas a todos y sumaba 1 al titular, dejaba sin lugar a todos los titulares
+cuando había más titulares que lugares. Ajuste de la ronda adversarial 2 (R2-1, DR-12, criterio 45): la matrícula de M
+`RESERVADA` en verificación ya no cuenta, ni en `contarReservasDePrioridad` (`matriculas/ocupacion.ts`) ni en
+`clasesDeLaTitularidad` (`mensualidades/lectura.ts`); las dos consultas usan la misma condición, solo `VIGENTE`, para
+que el alumno que pide y la cuenta de reservas no se contradigan.
 
 ### 010b · Estados y cierre de mes
 
@@ -127,6 +130,7 @@ la asistencia (la función que ya decide `CLASE_NO_INCLUIDA`) y en la consulta d
 | Renovación en una sola operación (DT-2) | Reserva de 24 h y pago aparte | Menos estados, sin vencimiento ni cancelación |
 | Prioridad dentro del aforo (DT-4) | Admitir siempre al titular | El aforo es la regla crítica; la prioridad cubre el caso normal |
 | El titular compite solo con la ocupación del mes siguiente (DT-4, R1-1) | Restarle las reservas y sumarle su lugar | Con más titulares que lugares, la fórmula original no dejaba entrar a ninguno |
+| Solo la matrícula de M `VIGENTE` da prioridad (DT-3, DR-12, R2-1) | También la de M en verificación | Quien no pagó M apartaba un lugar de M+1 y, si se rechazaba su pago, dejaba sin lugar a un titular legítimo |
 | Reservas calculadas al leer | Guardar las reservas en una tabla | No hay que liberarlas el día 1 ni mantenerlas en cada cambio |
 | Bloquear solo las clases elegidas (DT-7) | Bloquear también las clases del mes en curso del alumno | Una cuenta vieja de reservas solo puede sobrar |
 | Paso a `ALUMNO_ACTIVO` dentro de `confirmarPagoEnTransaccion` | Hacerlo en cada servicio | El efectivo y la aprobación lo comparten |
