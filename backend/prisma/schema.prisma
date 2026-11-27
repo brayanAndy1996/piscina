@@ -525,9 +525,11 @@ model Matricula {
 
 /// Las clases elegidas de cada matrícula; de aquí se cuenta la ocupación de una clase.
 model MatriculaClase {
-  academiaId  String @map("academia_id") @db.Uuid
-  matriculaId String @map("matricula_id") @db.Uuid
-  claseId     String @map("clase_id") @db.Uuid
+  academiaId  String    @map("academia_id") @db.Uuid
+  matriculaId String    @map("matricula_id") @db.Uuid
+  claseId     String    @map("clase_id") @db.Uuid
+  /// Historia 010c: el instante en que la clase entró a la matrícula con un cambio de horario (nulo en las filas de la inscripción y de la renovación).
+  agregadaEn  DateTime? @map("agregada_en") @db.Timestamptz(3)
 
   academia  Academia  @relation(fields: [academiaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   matricula Matricula @relation(fields: [academiaId, matriculaId], references: [academiaId, id], onDelete: Restrict, onUpdate: Restrict)
