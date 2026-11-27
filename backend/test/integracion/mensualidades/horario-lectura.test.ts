@@ -54,13 +54,7 @@ import {
   sembrarSolicitud,
   sinUuid,
 } from '../../utilidades/inscripciones';
-import {
-  actualizarFila,
-  type ClaseDePrueba,
-  crearClaseDePrueba,
-  crearEntrenadorDePrueba,
-  type Retenedor,
-} from '../../utilidades/planes-clases';
+import { actualizarFila, type ClaseDePrueba, type Retenedor } from '../../utilidades/planes-clases';
 import { cookieDeSesion } from '../../utilidades/superadmins';
 import { actualizarUsuario, fijarEstadoDeAcademia } from '../../utilidades/usuarios';
 
@@ -544,20 +538,14 @@ describe('la lectura del horario para el cambio (criterio 46)', () => {
 
   describe('clasesDelPlan: lo que se puede elegir', () => {
     it('criterio 46: son las clases activas del nivel del alumno en los días y franjas del plan, ordenadas por día, hora e id, con la forma de la oferta', async () => {
-      // Dos clases del lunes a las 18:00 del mismo nivel: el desempate es el id.
-      const otroEntrenador = await crearEntrenadorDePrueba(A());
-      const lunes18Bis = await crearClaseDePrueba(A(), otroEntrenador.id, {
-        nivel: 'BASICO',
-        dia_semana: 1,
-        hora_inicio: '18:00',
-        aforo: 20,
-      });
+      // Corrección del orquestador (27/11/2026): no puede haber dos clases activas del mismo nivel, día y hora
+      // (`clases_nivel_bloque_activo_key`), así que el desempate por id no se puede sembrar; se comprueba el orden por día y hora.
       const alumno = await crearAlumnoDeHorario(ctx, esc);
 
       const [matricula] = (await leerBien(alumno.alumnoId)).matriculas as [MatriculaDeLaLectura];
 
-      const esperadas = delPlan([1, 3, 5], ['17:00', '18:00', '19:00'], 'BASICO', [...todasLasClasesDeA(), lunes18Bis]);
-      expect(esperadas).toHaveLength(7);
+      const esperadas = delPlan([1, 3, 5], ['17:00', '18:00', '19:00'], 'BASICO', todasLasClasesDeA());
+      expect(esperadas).toHaveLength(6);
       expect(matricula.clasesDelPlan.map((c) => c.id)).toEqual(esperadas);
       const lunes17 = matricula.clasesDelPlan.find((c) => c.id === esc.e.lunes17.id);
       expect(lunes17).toEqual({
@@ -730,7 +718,9 @@ describe('la lectura del horario para el cambio (criterio 46)', () => {
       expect(cupos[esc.e.lunes17.id]).toBe(1);
       expect(cupos[esc.miercoles19.id]).toBe(0);
       expect(cupos[esc.e.viernes.id]).toBe(AFORO);
-      expect(clasesConPrioridad(matricula), 'no es titular de ninguna').toEqual([]);
+      // Corrección del orquestador (27/11/2026): `alumnoDeDiciembre()` lo hace titular de `sabado17` (está en su matrícula
+      // de noviembre VIGENTE), así que esa es la única con prioridad; no lo es de lunes17, miércoles19 ni viernes.
+      expect(clasesConPrioridad(matricula), 'solo es titular de sabado17').toEqual([esc.sabado17.id]);
     });
 
     it('criterio 46: quien es titular de la clase (la tiene en su matrícula de noviembre VIGENTE) no pierde los apartados: aforo menos la ocupación de diciembre, con conPrioridad true solo en esa clase', async () => {
