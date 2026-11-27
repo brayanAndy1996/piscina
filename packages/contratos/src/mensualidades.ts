@@ -3,6 +3,7 @@ import { diaSemanaSchema, fechaSchema, horaBloqueSchema, nivelNatacionSchema } f
 import { montoCotizadoSchema, montoSchema } from './dinero';
 import { claseIdsSchema, cotizacionSchema, mesSchema, planPublicoSchema } from './inscripcion';
 import { metodoConComprobanteSchema, numeroOperacionSchema, pagoSchema } from './pagos';
+import { textoVisibleSchema } from './texto';
 
 /**
  * Mensualidades y renovación (spec 010a; HU-12, D-03, D-04, D-06). Los montos viajan como texto, nunca como número. Todos los cuerpos
@@ -201,3 +202,31 @@ export const listadoMensualidadesSchema = z.strictObject({
   hayMas: z.boolean(),
 });
 export type ListadoMensualidades = z.infer<typeof listadoMensualidadesSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 010c · Cambio de horario (HU-03, RN-08)
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * `POST /api/matriculas/{id}/horario` (criterio 35): las clases que tendrá la matrícula (todas, no solo las que cambian) y el motivo, de 3 a 200
+ * caracteres visibles. Estricto: la academia, el alumno, el plan y los montos no se aceptan del cliente; la matrícula va en la dirección.
+ */
+export const cambiarHorarioSchema = z.strictObject({
+  claseIds: claseIdsSchema,
+  motivo: textoVisibleSchema({ sujeto: 'El motivo', min: 3, max: 200 }),
+});
+export type CambiarHorario = z.infer<typeof cambiarHorarioSchema>;
+
+/** La matrícula después del cambio. Sin DNI, nombres, plan ni pagos: el dinero y las clases del mes no cambian (criterio 37). */
+export const respuestaCambioHorarioSchema = z.strictObject({
+  matricula: z.strictObject({
+    id: z.uuid(),
+    mes: mesSchema,
+    clases: z.array(claseDeMensualidadSchema),
+    clasesTotales: z.number().int().min(0),
+    clasesUsadas: z.number().int().min(0),
+    /** Las clases del nuevo horario que quedan en el mes de la matrícula desde «ahora» (o desde el día 1 si es del mes siguiente). */
+    ocurrenciasRestantes: z.number().int().min(0),
+  }),
+});
+export type RespuestaCambioHorario = z.infer<typeof respuestaCambioHorarioSchema>;

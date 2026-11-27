@@ -284,3 +284,89 @@ export async function leerRespuestaDelPago(
   };
   return { renovacion, pago, repetida };
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 010c · Cambio de horario
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+export interface MatriculaParaElCambio {
+  readonly id: string;
+  readonly alumnoId: string;
+  readonly anio: number;
+  readonly mes: number;
+  readonly estado: MatriculaDelAlumno['estado'];
+  readonly reservaVenceEn: Date | null;
+  readonly planId: string;
+  readonly clasesTotales: number;
+  readonly clasesUsadas: number;
+}
+
+interface FilaParaElCambio {
+  id: string;
+  alumno_id: string;
+  anio: number;
+  mes: number;
+  estado: MatriculaDelAlumno['estado'];
+  reserva_vence_en: Date | null;
+  plan_id: string;
+  clases_totales: number;
+  clases_usadas: number;
+}
+
+function aMatriculaParaElCambio(fila: FilaParaElCambio): MatriculaParaElCambio {
+  return {
+    id: fila.id,
+    alumnoId: fila.alumno_id,
+    anio: fila.anio,
+    mes: fila.mes,
+    estado: fila.estado,
+    reservaVenceEn: fila.reserva_vence_en,
+    planId: fila.plan_id,
+    clasesTotales: fila.clases_totales,
+    clasesUsadas: fila.clases_usadas,
+  };
+}
+
+/**
+ * El alumno dueño de una matrícula, sin bloquear nada (el primer paso del cambio de horario, para poder bloquear el alumno antes que la matrícula): 404
+ * `NO_ENCONTRADO` si el id no es un UUID, no existe, es de otra academia o es de un `CLIENTE` (RN-05). El alumno de una matrícula no cambia nunca.
+ */
+export async function leerAlumnoDeLaMatricula(tx: TransaccionAcademia, matriculaIdPedido: string): Promise<string> {
+  if (!PATRON_UUID.test(matriculaIdPedido)) throw alumnoNoEncontrado();
+  const filas = await tx.cliente.$queryRaw<{ alumno_id: string }[]>`
+    SELECT m.alumno_id::text AS alumno_id
+      FROM matriculas m
+      JOIN alumnos a ON a.academia_id = m.academia_id AND a.id = m.alumno_id
+     WHERE m.academia_id = ${tx.academiaId}::uuid AND m.id = ${matriculaIdPedido.toLowerCase()}::uuid
+       AND a.estado <> 'CLIENTE'::estado_alumno`;
+  const fila = filas[0];
+  if (!fila) throw alumnoNoEncontrado();
+  return fila.alumno_id;
+}
+
+/** La matrícula del alumno con `FOR UPDATE` (después del alumno): 404 si dejó de existir. */
+export async function bloquearMatriculaParaElCambio(
+  tx: TransaccionAcademia,
+  matriculaId: string,
+  alumnoId: string,
+): Promise<MatriculaParaElCambio> {
+  const filas = await tx.cliente.$queryRaw<FilaParaElCambio[]>`
+    SELECT id::text AS id, alumno_id::text AS alumno_id, anio::int AS anio, mes::int AS mes, estado::text AS estado, reserva_vence_en,
+           plan_id::text AS plan_id, clases_totales::int AS clases_totales, clases_usadas::int AS clases_usadas
+      FROM matriculas
+     WHERE academia_id = ${tx.academiaId}::uuid AND id = ${matriculaId}::uuid AND alumno_id = ${alumnoId}::uuid
+       FOR UPDATE`;
+  const fila = filas[0];
+  if (!fila) throw alumnoNoEncontrado();
+  return aMatriculaParaElCambio(fila);
+}
+
+/** Los ids de las clases de la matrícula, ordenados, sin bloquear (quien llama ya tiene la matrícula con `FOR UPDATE`). */
+export async function leerClaseIdsDeLaMatricula(tx: TransaccionAcademia, matriculaId: string): Promise<string[]> {
+  const filas = await tx.cliente.$queryRaw<{ clase_id: string }[]>`
+    SELECT clase_id::text AS clase_id
+      FROM matricula_clases
+     WHERE academia_id = ${tx.academiaId}::uuid AND matricula_id = ${matriculaId}::uuid
+     ORDER BY clase_id`;
+  return filas.map((fila) => fila.clase_id);
+}

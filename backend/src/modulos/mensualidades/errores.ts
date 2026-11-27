@@ -38,3 +38,11 @@ export function fechaOperacionNoValida(): ErrorNegocio {
     'La fecha de la operación no puede ser futura ni anterior al inicio de la renovación.',
   );
 }
+
+/**
+ * 409 (criterio 35): la matrícula no se puede cambiar de horario: está `FINALIZADA` o `CANCELADA`, es de un mes que ya no es el en curso ni el siguiente, o es
+ * una reserva de 24 horas. Sin `detalles`: no distingue el motivo.
+ */
+export function matriculaNoModificable(): ErrorNegocio {
+  return new ErrorNegocio(409, 'MATRICULA_NO_MODIFICABLE', 'El horario de esta mensualidad ya no se puede cambiar.');
+}

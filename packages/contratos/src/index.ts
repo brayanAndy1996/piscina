@@ -439,6 +439,7 @@ export {
   type ResultadoAsistencia,
 } from './asistencia';
 export {
+  cambiarHorarioSchema,
   CABECERA_DATOS_RENOVACION,
   claseDeLaOfertaSchema,
   claseDeMensualidadSchema,
@@ -455,8 +456,10 @@ export {
   PRIMER_MES_DEL_LISTADO,
   renovacionRegistradaSchema,
   renovarEnEfectivoSchema,
+  respuestaCambioHorarioSchema,
   respuestaCotizacionRenovacionSchema,
   respuestaRenovacionSchema,
+  type CambiarHorario,
   type ClaseDeLaOferta,
   type ClaseDeMensualidad,
   type ConsultaListadoMensualidades,
@@ -469,6 +472,7 @@ export {
   type OfertaRenovacion,
   type RenovacionRegistrada,
   type RenovarEnEfectivo,
+  type RespuestaCambioHorario,
   type RespuestaCotizacionRenovacion,
   type RespuestaRenovacion,
 } from './mensualidades';
