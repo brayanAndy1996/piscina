@@ -126,6 +126,13 @@ que entran con `agregada_en` → auditoría. La regla de «ocurrencia incluida»
 `matriculas.creado_en` y, si `agregada_en` no es nula, también a `agregada_en`. Se cambia en un solo lugar del dominio de
 la asistencia (la función que ya decide `CLASE_NO_INCLUIDA`) y en la consulta de la tarea de faltas.
 
+**Lectura del horario (criterio 46, DT-38).** `GET /api/alumnos/{id}/horario` en `horario.controller.ts` (o un
+controlador hermano con el prefijo `alumnos`) y un método de lectura en `horario.service.ts`: en una transacción de la
+academia, sin bloqueos, el alumno (no `CLIENTE`), «ahora» y M, sus matrículas que `sePuedeCambiarElHorario` acepta, el
+plan de cada una (`leerPlan`), las clases activas que `validarSeleccion` admitiría por nivel, día y franja, y el cupo con
+las mismas piezas del cambio: `contarOcupacion` (restando 1 en las clases que la matrícula ya tiene),
+`contarReservasDePrioridad` y `clasesDeLaTitularidad` si es de M+1, y `cupoLibre` recortado a 0.
+
 ## Decisiones
 
 | Decisión | Alternativa descartada | Motivo |
@@ -187,6 +194,21 @@ cerrar la entrega, el 27/11/2026, verificadas en el código.
   `hayMas` es true si había más. No hay prueba con más de 500 filas (sembrar 501 alumnos con sus matrículas encarece la
   suite); las pruebas comprueban `hayMas: false`. Riesgo aceptado en `spec.md`. Descartado: paginación (no hace falta
   con los filtros, DT-14).
+
+### Decisiones técnicas de la 010c
+
+- **DT-38. Lectura propia para el cambio de horario** (decisión del orquestador, 27/11/2026; criterio 46). Motivo: la
+  web del criterio 42 no tenía de dónde sacar el id de la matrícula ni los cupos de un mes ya inscrito. Ninguna lectura
+  expone el id de la matrícula (`ofertaRenovacionSchema.mensualidadActual`, `filaDelListadoMensualidadesSchema`,
+  `carnetSchema.matricula` y `asistenciaDelMesSchema.matricula` no lo traen), y la oferta de renovación excluye los
+  meses ya inscritos y devuelve `clases: []`. Se agrega `GET /api/alumnos/{id}/horario` con
+  `MODIFICAR_HORARIO_ALUMNO`, que devuelve las matrículas que el criterio 35 deja cambiar, con su plan, sus clases y las
+  clases que el plan permite con `cuposRestantes` y `conPrioridad` calculados como el criterio 36 (sin contar la
+  matrícula que se cambia). El `estado` de cada matrícula es el de la matrícula (`VIGENTE` o `EN_VERIFICACION`, el
+  mismo enum de `renovacionRegistradaSchema`) y no el de la mensualidad de HU-11: es la condición que decide si se puede
+  cambiar, no depende de hoy ni de `diasPorVencer`, y no obliga a correr `estadoDeMensualidad` por matrícula. Es crítico
+  por permisos y aislamiento (D-23, sección 2.1). Descartado: ampliar la oferta de renovación con `matriculaId`, que no
+  resuelve los cupos de un mes ya inscrito y cambia una forma protegida (`ofertaRenovacionSchema`, criterio 2).
 
 ## Migraciones
 

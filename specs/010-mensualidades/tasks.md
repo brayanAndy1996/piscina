@@ -104,7 +104,17 @@ las de la 010c, con la 010b unida.
   (criterio 34)
 - [ ] T30 · backend · `HorarioService` y su ruta; `agregada_en` en el marcado, el registro posterior y la tarea de faltas
   (criterios 35 a 41)
-- [ ] T31 · frontend · «Cambiar horario» en `/panel/alumnos/{id}`; pruebas de componentes (criterio 42)
+- [ ] T40 · test-writer · Pruebas protegidas de la lectura del horario (DT-38): las claves exactas del JSON; qué
+  matrículas aparecen (M y M+1, `VIGENTE` o en verificación) y cuáles no (reserva de 24 horas, `FINALIZADA`,
+  `CANCELADA`, otro mes), y `matriculas: []`; `clasesDelPlan` por plan y nivel; `cuposRestantes` sin contar la
+  matrícula que se cambia, con las reservas en M+1, y `conPrioridad`, coherentes con el `SIN_CUPO` del cambio; que no
+  escribe ni audita; permisos, 404, `HEAD` y aislamiento entre A y B. El tester confirma el rojo y se hace el commit
+  «Pruebas protegidas (010): 010c, lectura del horario … (en rojo)» (criterio 46)
+- [ ] T41 · backend · `horarioDelAlumnoSchema` en `packages/contratos/src/mensualidades.ts`; la ruta `GET
+  /api/alumnos/{id}/horario` y su lectura en el módulo `mensualidades/`, con las mismas piezas de cupo del cambio
+  (criterio 46)
+- [ ] T31 · frontend · «Cambiar horario» en `/panel/alumnos/{id}` con los datos de `GET /api/alumnos/{id}/horario`;
+  pruebas de componentes (criterio 42)
 - [ ] T32 · adversarial · Ataque de la 010c (hasta 3 rondas)
 - [ ] T33 · revisor y tester (a la vez) · Revisión; suite completa, lint y tipos
 - [ ] T34 · documentador · `docs/arquitectura.md`, guía de Windows y nota del backlog; marcar tareas (criterio 43)
