@@ -1,11 +1,19 @@
-import { type ClaseDeMensualidad, NOMBRE_DIA, type OfertaRenovacion } from '@aquagestion/contratos';
+import {
+  type ClaseDeMensualidad,
+  type MatriculaDelHorario,
+  NOMBRE_DIA,
+  type OfertaRenovacion,
+  puede,
+} from '@aquagestion/contratos';
 import { useId, useState } from 'react';
 import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, ESTILO_BOTON, Insignia } from '../../componentes/ui';
 import { formatearFechaCalendario, formatearMes, hoyEnLima, mesActualEnLima, mesAnterior } from '../../lib/fechas';
 import { useAsistenciaDelMes } from '../asistencia/hooks';
 import { COLOR_ESTADO_ALUMNO, ETIQUETA_ESTADO_ALUMNO } from '../carnet/etiquetas';
+import { useUsuario } from '../sesion/contexto';
 import { useAlPerderSesion } from '../sesion/hooks';
+import { DialogoCambiarHorario } from './DialogoCambiarHorario';
 import { DialogoRenovar } from './DialogoRenovar';
 import {
   COLOR_ESTADO_MENSUALIDAD,
@@ -13,8 +21,8 @@ import {
   textoDeClasesPerdidas,
   textoDeClasesUsadas,
 } from './etiquetas';
-import { useEstadoDeMensualidadDelAlumno, useOfertaRenovacion } from './hooks';
-import { mensajeDeOferta } from './mensajes';
+import { useEstadoDeMensualidadDelAlumno, useHorarioDelAlumno, useOfertaRenovacion } from './hooks';
+import { mensajeDeHorario, mensajeDeOferta } from './mensajes';
 
 interface Propiedades {
   alumnoId: string;
@@ -100,12 +108,78 @@ function EstadoDeLaMensualidad({ alumnoId, oferta }: { alumnoId: string; oferta:
 }
 
 /**
+ * «Cambiar horario» (010c, criterio 42): una fila por cada matrícula que devuelve `GET /api/alumnos/{id}/horario` (la de M y la de M+1) con su plan,
+ * sus clases y el botón. Solo para `MODIFICAR_HORARIO_ALUMNO`; la sección decide si la muestra. Las matrículas y los cupos los da la API.
+ */
+function HorarioDeLasMatriculas({ alumnoId }: { alumnoId: string }) {
+  const consulta = useHorarioDelAlumno(alumnoId);
+  useAlPerderSesion(consulta.error);
+  // Se guarda la matrícula tal como estaba al abrir: si la lectura se renueva y ya no la trae (un 409), el diálogo sigue mostrando su error.
+  const [dialogo, setDialogo] = useState<MatriculaDelHorario | null>(null);
+  const matriculas = consulta.data?.matriculas ?? [];
+
+  return (
+    <div className="space-y-2" aria-label="Horario de las mensualidades" role="group">
+      <p className="text-sm font-medium text-slate-800">Horario</p>
+      {consulta.data ? (
+        matriculas.length > 0 ? (
+          <ul className="space-y-3">
+            {matriculas.map((matricula) => (
+              <li
+                key={matricula.id}
+                className="flex flex-col gap-2 rounded-lg bg-white p-3 ring-1 ring-slate-200 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 space-y-1">
+                  <p className="text-slate-900">
+                    {formatearMes(matricula.mes)} · <strong>{matricula.plan.nombre}</strong>
+                    {matricula.estado === 'EN_VERIFICACION' ? (
+                      <>
+                        {' '}
+                        <Insignia color="ambar">Pago por verificar</Insignia>
+                      </>
+                    ) : null}
+                  </p>
+                  <TextoDeClases clases={matricula.clases} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDialogo(matricula)}
+                  aria-label={`Cambiar horario de ${formatearMes(matricula.mes)}`}
+                  className={ESTILO_BOTON.secundario}
+                >
+                  Cambiar horario
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-slate-700">El alumno no tiene una mensualidad cuyo horario se pueda cambiar.</p>
+        )
+      ) : consulta.isError ? (
+        esErrorDeApi(consulta.error, 401) ? null : (
+          <Alerta>{mensajeDeHorario(consulta.error)}</Alerta>
+        )
+      ) : (
+        <p role="status" className="text-slate-700">
+          Consultando el horario…
+        </p>
+      )}
+      {dialogo ? (
+        <DialogoCambiarHorario alumnoId={alumnoId} matricula={dialogo} alCerrar={() => setDialogo(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * La sección «Mensualidad» de `/panel/alumnos/{id}` (010a, criterio 20): la mensualidad del mes en curso (plan y clases), los meses que se
  * pueden renovar ahora y el botón «Renovar». Solo para quien puede cobrar (`REGISTRAR_INSCRIPCION_Y_COBRO`); la página decide si la muestra.
  * Todo lo que dice sale de la oferta de la API: la web no calcula ventanas ni montos.
  */
 export function SeccionMensualidad({ alumnoId }: Propiedades) {
   const idTitulo = useId();
+  const usuario = useUsuario();
+  const puedeCambiarHorario = puede(usuario.rol, 'MODIFICAR_HORARIO_ALUMNO');
   const consulta = useOfertaRenovacion(alumnoId, null);
   useAlPerderSesion(consulta.error);
   const [dialogo, setDialogo] = useState(false);
@@ -186,6 +260,7 @@ export function SeccionMensualidad({ alumnoId }: Propiedades) {
               </p>
             ) : null}
           </div>
+          {puedeCambiarHorario ? <HorarioDeLasMatriculas alumnoId={alumnoId} /> : null}
         </>
       ) : consulta.isError ? (
         esErrorDeApi(consulta.error, 401) ? null : (

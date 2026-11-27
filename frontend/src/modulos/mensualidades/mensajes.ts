@@ -112,3 +112,43 @@ export function mensajeDeOferta(error: unknown): string {
   if (esErrorDeApi(error, 403)) return 'No tienes permiso para ver la mensualidad.';
   return `No pudimos cargar la mensualidad. ${mensajeGeneral(error)}`;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 010c · Cambio de horario
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/** Lo que se dice ante cada error del cambio de horario (criterios 35, 36 y 41 de 010). */
+export function mensajeDeCambioDeHorario(error: unknown): string {
+  if (esErrorDeApi(error, 409, 'MATRICULA_NO_MODIFICABLE')) {
+    return 'Esta mensualidad ya no se puede cambiar: terminó, se canceló o no es del mes en curso ni del siguiente. Actualizamos la sección.';
+  }
+  if (esErrorDeApi(error, 409, 'SIN_CUPO')) {
+    return 'Alguna de las clases elegidas se llenó mientras elegías. Las marcamos «Sin cupo» y las quitamos de lo elegido: elige otra opción.';
+  }
+  if (esErrorDeApi(error, 409, 'SELECCION_NO_VALIDA')) {
+    return 'Las clases elegidas no sirven para este plan y nivel. Revisa que sean una por día y de los horarios del plan.';
+  }
+  if (esErrorDeApi(error, 409, 'PLAN_NO_DISPONIBLE')) {
+    return 'El plan de esta mensualidad ya no está disponible, así que no se puede cambiar el horario.';
+  }
+  if (esErrorDeApi(error, 404)) return 'La mensualidad ya no existe o no es de tu academia. Actualizamos la sección.';
+  if (esErrorDeApi(error, 403)) return 'No tienes permiso para cambiar el horario de un alumno.';
+  return mensajeGeneral(error);
+}
+
+/** Un cambio al que no tiene sentido volver a enviar desde el mismo diálogo: lo que se veía ya no es lo que hay. */
+export function esCambioDeHorarioSinSalida(error: unknown): boolean {
+  return (
+    esErrorDeApi(error, 404) ||
+    esErrorDeApi(error, 403) ||
+    esErrorDeApi(error, 409, 'MATRICULA_NO_MODIFICABLE') ||
+    esErrorDeApi(error, 409, 'PLAN_NO_DISPONIBLE')
+  );
+}
+
+/** Lo que se dice si la lectura del horario no cargó. */
+export function mensajeDeHorario(error: unknown): string {
+  if (esErrorDeApi(error, 404)) return 'El alumno ya no existe o no es de tu academia.';
+  if (esErrorDeApi(error, 403)) return 'No tienes permiso para cambiar el horario de un alumno.';
+  return `No pudimos cargar el horario. ${mensajeGeneral(error)}`;
+}

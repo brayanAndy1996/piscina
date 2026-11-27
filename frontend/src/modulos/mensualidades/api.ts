@@ -2,10 +2,13 @@ import {
   CABECERA_DATOS_RENOVACION,
   type ConsultaListadoMensualidades,
   type CotizarRenovacion,
+  type CambiarHorario,
   type DatosRenovacionComprobante,
+  horarioDelAlumnoSchema,
   listadoMensualidadesSchema,
   ofertaRenovacionSchema,
   type RenovarEnEfectivo,
+  respuestaCambioHorarioSchema,
   respuestaCotizacionRenovacionSchema,
   respuestaRenovacionSchema,
 } from '@aquagestion/contratos';
@@ -67,4 +70,22 @@ export async function listarMensualidades(filtro: ConsultaListadoMensualidades) 
   const texto = parametros.toString();
   return (await pedirJson(texto ? `/api/mensualidades?${texto}` : '/api/mensualidades', listadoMensualidadesSchema))
     .datos;
+}
+
+/** `GET /api/alumnos/{id}/horario` (010c, criterio 46): las matrículas que se pueden cambiar, con sus clases y los cupos. Lo calcula la API. */
+export async function obtenerHorario(alumnoId: string) {
+  return (await pedirJson(`/api/alumnos/${encodeURIComponent(alumnoId)}/horario`, horarioDelAlumnoSchema)).datos;
+}
+
+/** `POST /api/matriculas/{id}/horario` (010c, criterio 35): 200 con la matrícula como queda; sin clave, es idempotente por su contenido. */
+export async function cambiarHorario(matriculaId: string, datos: CambiarHorario) {
+  return (
+    await enviarJson(
+      'POST',
+      `/api/matriculas/${encodeURIComponent(matriculaId)}/horario`,
+      datos,
+      respuestaCambioHorarioSchema,
+      [200],
+    )
+  ).datos;
 }

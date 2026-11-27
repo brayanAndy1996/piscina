@@ -1,4 +1,5 @@
 import type {
+  CambiarHorario,
   ConsultaListadoMensualidades,
   CotizarRenovacion,
   DatosRenovacionComprobante,
@@ -34,6 +35,7 @@ export function useClavesMensualidades() {
         filtro.claseId ?? null,
       ] as const,
     estadoDe: (alumnoId: string) => [...base, alumnoId, 'estado'] as const,
+    horarioDe: (alumnoId: string) => [...base, alumnoId, 'horario'] as const,
     oferta: (alumnoId: string, mes: string | null) => [...base, alumnoId, 'oferta', mes] as const,
     cotizacion: (alumnoId: string, datos: CotizarRenovacion) =>
       [...base, alumnoId, 'cotizacion', datos.mes, datos.planId, [...datos.claseIds].sort()] as const,
@@ -156,5 +158,45 @@ export function useRenovarConComprobante(alumnoId: string) {
       return api.subirComprobanteDeRenovacion(alumnoId, datos, archivo);
     },
     onSettled: refrescar,
+  });
+}
+
+/** Las matrículas de un alumno cuyo horario se puede cambiar (010c, criterio 46). Siempre se vuelve a pedir al entrar: los cupos cambian. */
+export function useHorarioDelAlumno(alumnoId: string) {
+  const claves = useClavesMensualidades();
+  return useQuery({
+    queryKey: claves.horarioDe(alumnoId),
+    queryFn: () => api.obtenerHorario(alumnoId),
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * Cambia el horario de una matrícula (010c, criterio 35). Antes confirma que la sesión sigue siendo la de la página. Pase lo que pase vuelve a
+ * pedir lo que cambia: el horario y los cupos, la oferta y el estado de la ficha, los listados, el carnet, la asistencia del mes y la ocupación de las
+ * clases (un 409 significa que lo que se veía ya no es lo que hay). El dinero y la caja no cambian.
+ */
+export function useCambiarHorario(alumnoId: string) {
+  const cliente = useQueryClient();
+  const claves = useClavesMensualidades();
+  const clavesCarnet = useClavesCarnet();
+  const clavesAsistencia = useClavesAsistenciaDelMes();
+  const clavesClases = useClavesClases();
+  const confirmarSesion = useConfirmarSesion();
+  return useMutation({
+    mutationFn: async ({ matriculaId, datos }: { matriculaId: string; datos: CambiarHorario }) => {
+      await confirmarSesion();
+      return api.cambiarHorario(matriculaId, datos);
+    },
+    onSettled: () =>
+      Promise.all([
+        cliente.invalidateQueries({ queryKey: claves.de(alumnoId) }),
+        cliente.invalidateQueries({ queryKey: claves.listados }),
+        cliente.invalidateQueries({ queryKey: clavesCarnet.de(alumnoId) }),
+        cliente.invalidateQueries({ queryKey: clavesAsistencia.de(alumnoId) }),
+        cliente.invalidateQueries({ queryKey: clavesClases.ocupacion }),
+      ]),
   });
 }
