@@ -125,7 +125,7 @@ describe('criterio 3: RLS y llaves compuestas de las tablas de la inscripción',
     // 010c (criterio 34): en `matricula_clases` el trigger BEFORE de la 010c responde 23514 antes que la RLS de inserción cuando la sesión no ve la matrícula de la fila.
     const codigoRechazo = tabla === 'matricula_clases' ? '23514' : '42501';
 
-    it('criterio 3: un INSERT con la academia_id de B en contexto de A falla con 42501 y B no recibe nada', async () => {
+    it(`criterio 3: un INSERT con la academia_id de B en contexto de A falla con ${codigoRechazo} y B no recibe nada`, async () => {
       const antes = await idsDe(tabla, { academiaId: B.academia.id });
       const fila = await filaNuevaDe(tabla, B);
 
@@ -136,7 +136,7 @@ describe('criterio 3: RLS y llaves compuestas de las tablas de la inscripción',
       expect(await idsDe(tabla, { academiaId: B.academia.id })).toEqual(antes);
     });
 
-    it('criterio 3: en contexto de plataforma o sin contexto, un INSERT falla con 42501 (con la academia de A o de B)', async () => {
+    it(`criterio 3: en contexto de plataforma o sin contexto, un INSERT falla con ${codigoRechazo} (con la academia de A o de B)`, async () => {
       for (const contexto of [{ plataforma: true }, {}] as const) {
         for (const d of [A, B]) {
           const fila = await filaNuevaDe(tabla, d);
@@ -293,7 +293,7 @@ describe('criterio 3: RLS y llaves compuestas de las tablas de la inscripción',
       },
     );
 
-    it('criterio 3: ninguna referencia entre academias se acepta: alumno, solicitud, matrícula y usuario de B en filas de A (23503)', async () => {
+    it('criterio 3: ninguna referencia entre academias se acepta: alumno, solicitud, matrícula y usuario de B en filas de A (23503; la de matricula_clases con la matrícula de B, 23514)', async () => {
       const usuarioB = await crearUsuarioDePrueba({ academiaId: B.academia.id, rol: 'ALUMNO' });
       const casos: [string, Tabla005, Record<string, unknown>][] = [
         [

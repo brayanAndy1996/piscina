@@ -310,3 +310,127 @@ export async function instantaneaDeHorario(esc: Pick<EscenarioDeAsistencia, 'e'>
   }
   return JSON.stringify({ base: await instantaneaDeFaltas(esc.e), clases });
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Lectura del horario para el cambio (criterio 46, DT-38): `GET /api/alumnos/{id}/horario`
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const rutaLecturaHorario = (alumnoId: string): string => `/api/alumnos/${alumnoId}/horario`;
+
+const RUTA_DE_LA_LECTURA = /^GET \/api\/alumnos\/:\w+\/horario$/;
+
+/**
+ * Falla con un mensaje claro si la ruta de la lectura no está registrada. Aparte de `exigirRutasDe010c` a propósito: las pruebas del cambio no dependen de la lectura
+ * (sin la ruta, un 401 sin sesión lo da igual el guardia global y una prueba pasaría por casualidad).
+ */
+export function exigirLecturaDeHorario(app: NestExpressApplication): void {
+  const registradas = rutasRegistradas(app).map(([metodo, ruta]) => `${metodo} ${ruta}`);
+  if (!registradas.some((ruta) => RUTA_DE_LA_LECTURA.test(ruta))) {
+    throw new Error(
+      `Falta la funcionalidad de la 010c: ninguna ruta registrada coincide con ${String(RUTA_DE_LA_LECTURA)} (lectura del horario, criterio 46).`,
+    );
+  }
+}
+
+export interface ContratoDeLectura {
+  horarioDelAlumnoSchema: EsquemaDePrueba;
+}
+
+/** `horarioDelAlumnoSchema` de `@aquagestion/contratos` (criterio 46). Falla con un mensaje claro si falta. */
+export async function cargarContratoDeLectura(): Promise<ContratoDeLectura> {
+  const modulo = (await import('@aquagestion/contratos')) as Record<string, unknown>;
+  if (modulo['horarioDelAlumnoSchema'] === undefined) {
+    throw new Error('Falta la funcionalidad de la 010c: @aquagestion/contratos no exporta horarioDelAlumnoSchema.');
+  }
+  return modulo as unknown as ContratoDeLectura;
+}
+
+/** El escenario del cambio de horario, con la comprobación de que la ruta y el esquema de la lectura existen. */
+export async function prepararEscenarioDeLectura(ctx: AppCarnet): Promise<EscenarioDeHorario> {
+  exigirLecturaDeHorario(ctx.app);
+  await cargarContratoDeLectura();
+  return prepararEscenarioDeHorario(ctx);
+}
+
+export const CLAVES_DE_LA_LECTURA = ['alumno', 'matriculas'];
+export const CLAVES_DEL_ALUMNO_DE_LA_LECTURA = ['id', 'nivel'];
+export const CLAVES_DE_LA_MATRICULA_DE_LA_LECTURA = [
+  'clases',
+  'clasesDelPlan',
+  'clasesTotales',
+  'clasesUsadas',
+  'estado',
+  'id',
+  'mes',
+  'plan',
+];
+export const CLAVES_DEL_PLAN_DE_LA_LECTURA = ['diasPermitidos', 'franjasPermitidas', 'id', 'nombre', 'vecesPorSemana'];
+export const CLAVES_DE_LA_CLASE_ACTUAL = ['diaSemana', 'horaFin', 'horaInicio', 'id'];
+export const CLAVES_DE_LA_CLASE_DEL_PLAN = [
+  'conPrioridad',
+  'cuposRestantes',
+  'diaSemana',
+  'horaFin',
+  'horaInicio',
+  'id',
+  'nivel',
+];
+
+export interface ClaseDeLaLectura {
+  id: string;
+  nivel: string;
+  diaSemana: number;
+  horaInicio: string;
+  horaFin: string;
+  cuposRestantes: number;
+  conPrioridad: boolean;
+}
+
+export interface MatriculaDeLaLectura {
+  id: string;
+  mes: string;
+  estado: string;
+  plan: { id: string; nombre: string; vecesPorSemana: number; diasPermitidos: number[]; franjasPermitidas: string[] };
+  clases: { id: string; diaSemana: number; horaInicio: string; horaFin: string }[];
+  clasesTotales: number;
+  clasesUsadas: number;
+  clasesDelPlan: ClaseDeLaLectura[];
+}
+
+export interface LecturaDelHorario {
+  alumno: { id: string; nivel: string };
+  matriculas: MatriculaDeLaLectura[];
+}
+
+/** `GET /api/alumnos/{id}/horario` (con `consulta` opcional, por ejemplo `?academiaId=…`). */
+export function leerHorario(
+  ctx: { http: { get(ruta: string, opciones?: { cookie?: string }): Promise<RespuestaApi> } },
+  cookie: string | undefined,
+  alumnoId: string,
+  consulta = '',
+): Promise<RespuestaApi> {
+  return ctx.http.get(`${rutaLecturaHorario(alumnoId)}${consulta}`, { cookie });
+}
+
+/** La lectura 200; si no lo es, falla con el estado y el cuerpo recibidos. */
+export function lecturaDe(respuesta: Pick<RespuestaApi, 'status' | 'body' | 'texto'>, estado = 200): LecturaDelHorario {
+  expect(
+    respuesta.status,
+    `se esperaba ${estado} y fue HTTP ${respuesta.status}: ${respuesta.texto.slice(0, 500)}`,
+  ).toBe(estado);
+  expect(respuesta.body, 'la respuesta no es un objeto JSON').toBeTruthy();
+  return respuesta.body as unknown as LecturaDelHorario;
+}
+
+/** Los `cuposRestantes` de las `clasesDelPlan` de una matrícula, por id de clase. */
+export function cuposPorClase(matricula: Pick<MatriculaDeLaLectura, 'clasesDelPlan'>): Record<string, number> {
+  return Object.fromEntries(matricula.clasesDelPlan.map((clase) => [clase.id, clase.cuposRestantes]));
+}
+
+/** Los ids de las `clasesDelPlan` con `conPrioridad` en `true`, ordenados. */
+export function clasesConPrioridad(matricula: Pick<MatriculaDeLaLectura, 'clasesDelPlan'>): string[] {
+  return matricula.clasesDelPlan
+    .filter((clase) => clase.conPrioridad)
+    .map((clase) => clase.id)
+    .sort();
+}
