@@ -95,3 +95,13 @@ en criterios de `spec.md`; las medias o bajas quedan como deuda en las notas de 
   - comprobante;
   - mismo DNI en dos academias;
   - bandeja aislada entre academias.
+
+## Cierre de la 010a
+
+- **Fecha:** 26/11/2026. El ataque se cerró en 2 de 3 rondas, sin fallas críticas ni altas abiertas. No quedan fallas
+  abiertas de las rondas; la deuda de la 010a (menores de la revisión y una prueba intermitente) está en
+  `specs/backlog.md`, en la nota de la 010.
+- **Commits.** Ronda 1: prueba en rojo `f83439f` (T36), corrección `a018732` (T37) y ajustes de pruebas protegidas
+  `8f80c9a`. Ronda 2: prueba en rojo `c98f159` (T38, con el ajuste A3 del criterio 9) y corrección `a87d940` (T39).
+- **P12 (A3).** Resuelta como consecuencia directa de DR-12, decidida por Bryan el 26/11/2026 (ver «Resueltas» en
+  `spec.md`).

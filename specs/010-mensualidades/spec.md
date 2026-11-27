@@ -16,12 +16,14 @@
 - **Ruta crítica:** en parte. Aforo y prioridad, cobro y caja, verificación de pagos, aislamiento, permisos, auditoría del
   cambio de horario y la tarea programada del cierre de mes. El listado de estados y las pantallas no son críticos, salvo
   sus permisos y su aislamiento.
-- **Estado:** aprobada por Bryan el 26/11/2026; 010a en curso. Bryan aceptó la propuesta de las once preguntas de
+- **Estado:** aprobada por Bryan el 26/11/2026; **010a lista para unir** (26/11/2026, dos rondas adversariales; criterios
+  44 y 45 nuevos). Bryan aceptó la propuesta de las once preguntas de
   negocio (P1 a P11, que son DR-1 a DR-11 de esta spec, en «Resueltas») y los cambios a pruebas protegidas A1 y A2. El
   orquestador aceptó DT-1 a DT-21 y la partición en 010a, 010b, 010c y 010d el mismo día. La ronda adversarial 1 de la
   010a (26/11/2026) agregó el criterio 44 y ajustó la definición de «Cupo libre» y DT-4; la ronda 2 (26/11/2026), con
   DR-12 de Bryan, agregó el criterio 45 y ajustó la definición de «Titular de prioridad», DT-3 y el criterio 9 (detalle
-  en `rondas.md`).
+  en `rondas.md`). Al cerrar la 010a, el orquestador anotó las desviaciones de la implementación como DT-22 a DT-30, y P12
+  (A3) quedó resuelta como consecuencia de DR-12.
 
 ## Objetivo
 
@@ -583,7 +585,8 @@ Errores nuevos: 409 `MES_NO_PERMITIDO`, `MENSUALIDAD_YA_REGISTRADA`, `FECHA_OPER
 
 Técnicas: DT-1 a DT-21, propuestas por el especificador y aceptadas por el orquestador el 26/11/2026 tal como se
 propusieron, junto con la partición en 010a, 010b, 010c y 010d; DT-3 y DT-4 se ajustaron después en las rondas
-adversariales de la 010a. Las decisiones del responsable (DR-1 a DR-12) y las aprobaciones A1 y A2 están en
+adversariales de la 010a. DT-22 a DT-30 son desviaciones de la implementación de la 010a, que el orquestador anota el
+26/11/2026 al cerrar la entrega. Las decisiones del responsable (DR-1 a DR-12) y las aprobaciones A1, A2 y A3 están en
 «Resueltas».
 
 - **DT-1. Tres entregas (010a, 010b, 010c)** y la 010d, aprobada con DR-10, que se especifica después. Descartado: dos entregas (la 010b
@@ -633,20 +636,30 @@ adversariales de la 010a. Las decisiones del responsable (DR-1 a DR-12) y las ap
 - **DT-19. Un alumno `INACTIVO` no renueva** (409 `ALUMNO_INACTIVO`, el mismo código de la 009).
 - **DT-20. El cambio de horario valida con el plan tal como está hoy** y con el nivel actual del alumno.
 - **DT-21. La cotización no comprueba el cupo;** lo decide el registro, con las clases bloqueadas (como la 005).
+- **DT-22. El registro bloquea todas las matrículas del alumno,** y no solo las de M y M+1 como pide el criterio 13
+  (`bloquearMatriculasDelAlumno`, en `nucleo.ts`). La revisión (T15) lo encontró válido y queda aquí como DT.
+- **DT-23. `MENSUALIDAD_YA_REGISTRADA` se decide con el índice único `matriculas_alumno_mes_ocupa_cupo_key`,** que cubre
+  las matrículas `VIGENTE` o `RESERVADA` del mes (`mensualidades/lectura.ts`).
+- **DT-24. Un reintento con la clave de un pago rechazado responde 409 `CLAVE_YA_USADA`,** y no vuelve a registrar nada.
+- **DT-25. El `conPrioridad` de un 200 repetido se lee de la auditoría** (`RENOVACION_REGISTRADA`, DT-18), no de la
+  prioridad actual.
+- **DT-26. `contarReservasDePrioridad` cuenta solo las matrículas `VIGENTE` del mes en curso** (DR-12) y excluye a los
+  alumnos `CLIENTE` (`matriculas/ocupacion.ts`). Un titular que ya tiene una matrícula del mes siguiente que ocupa cupo
+  deja de contar.
+- **DT-27. El paso de `ALUMNO_VENCIDO` a `ALUMNO_ACTIVO` está en `confirmarPagoEnTransaccion`,** la transacción que confirma
+  cualquier pago, y solo ocurre si la matrícula confirmada es la del mes en curso (DT-13).
+- **DT-28. `PREFIJOS_SIN_HEAD` suma `/mensualidades` y `/matriculas`** (`caja/head-sin-ruta.ts`): `HEAD` sobre esas rutas
+  responde 404.
+- **DT-29. Ajuste mínimo de la bandeja web** (`frontend/src/modulos/pagos/`) para que compile con `solicitud: null`
+  (DT-10). Los textos de la renovación van con la T13.
+- **DT-30. El `ALUMNO_INACTIVO` del comprobante sale en la transacción de escritura,** no en la lectura corta: después de
+  la imagen. Un alumno inactivo con una imagen que no sirve recibe 400 `IMAGEN_NO_VALIDA`; con una que sirve, el archivo
+  se guarda y se borra al rechazarse (paso 5 de `renovacion-comprobante.service.ts`). En ningún caso se registra nada.
 
 ## Preguntas abiertas
 
-Las once preguntas de negocio (P1 a P11) quedaron resueltas: ver «Resueltas». Queda una, que sale de DR-12:
-
-- **P12. Cambio a una prueba protegida (A3).** La prueba protegida del criterio 9 «un titular con la matrícula de
-  noviembre en verificación también tiene prioridad» (`backend/test/integracion/mensualidades/renovacion-prioridad.test.ts`:
-  19 titulares y uno en verificación; el alumno sin prioridad recibe `SIN_CUPO` y el de la verificación, 201) espera
-  lo contrario de DR-12. **Propuesta:** aprobar A3: el test-writer reescribe ese caso con la regla nueva (con 19
-  titulares y uno en verificación, el alumno sin prioridad toma el lugar que queda con 201 y el de la verificación
-  recibe `SIN_CUPO`) y actualiza la nota de cabecera del archivo y el comentario de `sembrarTitulares` en
-  `backend/test/utilidades/escenario-renovacion.ts` («da prioridad»), con la nota en la cabecera como en A1 y A2.
-  **Provisional, sin bloquear:** el test-writer lo prepara en el mismo commit en rojo del criterio 45 (T38); si Bryan
-  no lo aprueba, se revierte ese caso y DR-12 vuelve a él.
+Las once preguntas de negocio (P1 a P11) quedaron resueltas: ver «Resueltas». P12, que salió de DR-12 (cambio a una
+prueba protegida, A3), también quedó resuelta. No queda ninguna pregunta abierta.
 
 ## Resueltas
 
@@ -705,11 +718,17 @@ Decisiones del responsable. Bryan aprobó la propuesta de cada pregunta el 26/11
   ocupaba un lugar apartado de M+1 y, al rechazarse su pago, dejaba sin lugar al último titular legítimo. _(010a;
   definición de «Titular de prioridad», DT-3 y criterios 9 y 45.)_
 
-**Cambios a pruebas protegidas, aprobados por Bryan el 26/11/2026:**
+**Cambios a pruebas protegidas.** A1 y A2, aprobados por Bryan el 26/11/2026; A3, consecuencia directa de DR-12.
 
 - **A1 (010b).** La prueba del criterio 33 de 009 pasa de `['faltas']` a `['cierre-de-mes', 'faltas']`. _(Criterio 30.)_
 - **A2 (010c).** Las pruebas de los criterios 1 y 2 de 005 (`tablas.test.ts` y `privilegios.test.ts`) suman
   `agregada_en` y el `DELETE` en `matricula_clases`, con la nota en la cabecera. _(Criterio 34.)_
+- **A3 (010a, pregunta P12).** La prueba protegida del criterio 9 «un titular con la matrícula de noviembre en verificación
+  también tiene prioridad» (`backend/test/integracion/mensualidades/renovacion-prioridad.test.ts`) se reescribe con la regla
+  de DR-12: la matrícula de M en verificación no da prioridad para M+1. Lo aplicó el orquestador como consecuencia directa
+  de DR-12, decidida por Bryan el 26/11/2026, en el commit `c98f159`, con la nota en la cabecera del archivo y el comentario
+  de `sembrarTitulares` (`backend/test/utilidades/escenario-renovacion.ts`) corregidos. P12 queda resuelta. _(Criterios 9 y
+  45.)_
 
 ## Reglas para las historias siguientes
 
