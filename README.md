@@ -318,7 +318,7 @@ La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-
 - **Registrar asistencia posterior** (solo en el mes en curso): el botón abre el diálogo con **Día de la clase** (las faltas del mes, o **Otro día de este mes** con la **Fecha de la clase**), la **Hora de llegada**, dentro de la clase, y el **Motivo**, de 3 a 200 caracteres, que queda en la auditoría. Descuenta una clase y, si había falta, la cubre. Al registrar, dice «Se registró la asistencia del 27/11/2026 a las 18:05 (Puntual).». Un doble clic no registra dos veces.
 - **Rechazos.** La API decide, y el diálogo muestra su motivo debajo del campo que falla, o arriba si no es de un campo: «La fecha debe ser de este mes y no puede ser posterior a hoy.», «La clase todavía no terminó: durante la clase se marca con el QR o de forma manual.», «La hora de llegada debe estar dentro de la clase.» o «El alumno ya tiene su asistencia registrada ese día.».
 - **Consulta del mes:** `GET /api/alumnos/{id}/asistencias?mes=AAAA-MM`, para el personal de recepción. No trae DNI ni motivos. El entrenador y el alumno reciben 403 por ahora.
-- **Dependencias y migraciones:** `@nestjs/schedule` en la API. Migraciones `20261126120000_inasistencias` y `20261126130000_inasistencias_unico_id`. La variable `TAREAS_PROGRAMADAS` (`activas` por defecto; `inactivas` apaga la tarea, como en las pruebas).
+- **Dependencias y migraciones:** `@nestjs/schedule` en la API. Migraciones `20261126120000_inasistencias` y `20261126130000_inasistencias_unico_id`. La variable `TAREAS_PROGRAMADAS` (`activas` por defecto; `inactivas` apaga las tareas programadas, la de faltas y, desde la 010b, la del cierre de mes, como en las pruebas).
 - **Lo que todavía no trae:** la asistencia en el panel del alumno y del apoderado (011), la del entrenador (012), las recuperaciones (018), la asistencia en otro horario (020) y el día de cierre (017). La deuda de la 009b, con F1 a resolver antes de correr varias instancias, está en `specs/backlog.md`.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria, abre un alumno en **Alumnos y carnets** y baja a la sección **Asistencia**. El paso a paso está en la guía, en «Probar la asistencia».
 
@@ -495,7 +495,7 @@ adversariales y roles separados. Ver [`docs/metodologia.md`](docs/metodologia.md
 | Base de datos | PostgreSQL 16 |
 | Archivos | Disco local en desarrollo (`ALMACEN_DIRECTORIO`), detrás de una interfaz `AlmacenArchivos` (desde la 005b); el proveedor se decide con el hosting (D-21) |
 | QR, PDF y Excel | `qrcode`, `pdfkit`, `exceljs`; lectura del QR con `html5-qrcode` |
-| Tareas | Tareas programadas en el backend (registro de faltas) |
+| Tareas | Tareas programadas en el backend (registro de faltas y cierre de mes) |
 
 Las librerías de negocio se agregan con la historia que las usa.
 

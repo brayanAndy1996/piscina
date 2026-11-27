@@ -105,3 +105,27 @@ en criterios de `spec.md`; las medias o bajas quedan como deuda en las notas de 
   `8f80c9a`. Ronda 2: prueba en rojo `c98f159` (T38, con el ajuste A3 del criterio 9) y corrección `a87d940` (T39).
 - **P12 (A3).** Resuelta como consecuencia directa de DR-12, decidida por Bryan el 26/11/2026 (ver «Resueltas» en
   `spec.md`).
+
+## Entrega 010b · Ronda 1
+
+- **Fecha:** 27/11/2026
+- **Qué se atacó:** lo nuevo de la 010b en la ruta crítica (criterios 26 a 29): la tarea del cierre de mes por academia,
+  sus bordes en America/Lima y su orden de bloqueos frente al marcado, las faltas y la renovación; el aislamiento entre
+  academias del cierre y del listado; los permisos y la consulta del listado.
+
+| Falla | Gravedad | Qué pasó | Decisión |
+| --- | --- | --- | --- |
+| F1 | baja | El cierre leía la hora una sola vez para toda la vuelta: una vuelta que cruzara la medianoche del día 1 cerraría las últimas academias con el mes anterior. Se esperaba «ahora» leído después de los bloqueos de cada academia (definición de «Ahora»). | Corregida en `a57690c`: la hora se lee por academia, después de tomar su bloqueo (DT-35 de `plan.md`). Sin criterio nuevo |
+| F2 | baja | Una academia suspendida entre la lectura de la lista y su turno hacía fallar el bucle del cierre en lugar de saltarse (criterio 27: «una academia suspendida no se procesa»). | Corregida en `a57690c`: se salta con un registro de depuración y sigue con las demás (DT-34 de `plan.md`). Sin criterio nuevo |
+| F3 | baja | La consulta de `GET /api/mensualidades` aceptaba parámetros mal formados o repetidos, cuando el criterio 25 pide 400 `SOLICITUD_INVALIDA` con el campo. | Corregida en `a57690c`: la consulta es estricta, 400 si no valida (DT-36 de `plan.md`). Sin criterio nuevo |
+
+- **Sin fallas críticas ni altas** en los criterios 26 a 29.
+
+## Cierre de la 010b
+
+- **Fecha:** 27/11/2026. El ataque se cerró en 1 de 3 rondas, sin fallas críticas ni altas, así que no hubo rondas
+  adicionales ni criterios nuevos. Las tres fallas bajas quedaron corregidas en el commit `a57690c` y no quedan como
+  deuda.
+- **Fuera de las rondas.** El filtro `alumnoId` del listado (commit `2fa6d15`, DT-31 de `plan.md`) nació en la
+  implementación de la ficha del alumno; lo cubre la prueba no protegida
+  `backend/test/integracion/mensualidades/listado-consulta.test.ts`.
