@@ -8,3 +8,6 @@ export { registrarRenovacion } from './nucleo';
 export { cupoLibre, cuposParaMostrar, hayCupo } from './dominio/cupo';
 export { cotizarRenovacion } from './dominio/cotizacion';
 export { estaPorVencer, mesesPermitidos, ventanaDeRenovacion, type VentanaDeRenovacion } from './dominio/ventana';
+export { CierreDeMesService, type ResultadoDelCierre } from './cierre-de-mes.service';
+export { TareasMensualidadesModule } from './tareas-mensualidades.module';
+export { estadoDeMensualidad, type EntradaDeEstado } from './dominio/estado';

@@ -19,7 +19,7 @@ import { CajaModule } from './modulos/caja';
 import { ClasesModule } from './modulos/clases';
 import { ConfiguracionModule } from './modulos/configuracion';
 import { InscripcionesModule } from './modulos/inscripciones';
-import { MensualidadesModule } from './modulos/mensualidades';
+import { MensualidadesModule, TareasMensualidadesModule } from './modulos/mensualidades';
 import { PagosModule } from './modulos/pagos';
 import { PlanesModule } from './modulos/planes';
 import { SaludModule } from './modulos/salud/salud.module';
@@ -65,8 +65,10 @@ export class AppModule {
         AsistenciaModule,
         MensualidadesModule,
         SaludModule,
-        // Las tareas programadas (las faltas de la 009b) solo se cargan con `TAREAS_PROGRAMADAS=activas`; las pruebas las apagan (criterio 33).
-        ...(entorno.TAREAS_PROGRAMADAS === 'activas' ? [ScheduleModule.forRoot(), TareasAsistenciaModule] : []),
+        // Las tareas programadas (las faltas de la 009b y el cierre de mes de la 010b) solo se cargan con `TAREAS_PROGRAMADAS=activas`; las pruebas las apagan (criterio 33).
+        ...(entorno.TAREAS_PROGRAMADAS === 'activas'
+          ? [ScheduleModule.forRoot(), TareasAsistenciaModule, TareasMensualidadesModule]
+          : []),
       ],
       // El filtro también es un proveedor normal: el middleware de `/api/plataforma` lo reutiliza para sus respuestas.
       providers: [FiltroErrores, { provide: APP_FILTER, useExisting: FiltroErrores }],
