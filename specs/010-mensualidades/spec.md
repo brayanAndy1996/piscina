@@ -434,9 +434,9 @@ sus criterios se agregan a esta spec cuando se planifique.
     Con `RELOJ` fijo, un cambio a las 15:00 de un martes a la clase de ese martes a las 10:00: la tarea de faltas no
     registra falta por la ocurrencia de las 10:00 de ese día y el registro posterior de ese día responde
     `CLASE_NO_INCLUIDA`; un cambio hecho durante la clase (por ejemplo a las 10:30): el marcado de esa ocurrencia, también
-    por QR, responde `CLASE_NO_INCLUIDA`. En los dos casos la del martes siguiente se marca y descuenta. Una clase quitada ya no se marca
-    (`FUERA_DE_HORARIO`) ni genera faltas desde el cambio. Si ya marcó hoy en la clase anterior, la nueva de hoy responde
-    `ASISTENCIA_YA_REGISTRADA`. _(crítico)_ (RN-14, RN-16, D-16, D-08)
+    por QR, responde `CLASE_NO_INCLUIDA`. En los dos casos la del martes siguiente se marca y descuenta. Una clase
+    quitada ya no se marca (`FUERA_DE_HORARIO`) ni genera faltas desde el cambio. Si ya marcó hoy en la clase anterior,
+    la nueva de hoy responde `ASISTENCIA_YA_REGISTRADA`. _(crítico)_ (RN-14, RN-16, D-16, D-08)
 39. **[010c] Orden de bloqueos.** `bloquearActorVigente` → el alumno con `FOR UPDATE` → la matrícula con `FOR UPDATE` →
     `bloquearClasesParaCupo` con las clases que salen y las que entran, en una sola llamada → «ahora» → escrituras y
     auditoría. Pruebas deterministas sin `40P01`, a la vez que: el marcado del mismo alumno, la tarea de faltas, una
