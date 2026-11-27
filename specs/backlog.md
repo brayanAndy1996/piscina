@@ -314,8 +314,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   RN-08).
   - Estado: spec aprobada por Bryan el 26/11/2026 (DR-1 a DR-12, cambios A1, A2 y A3 a pruebas protegidas; DT-1 a DT-30), en
     [`specs/010-mensualidades/`](010-mensualidades/spec.md). Cuatro entregas: 010a renovación con prioridad (criterios 1 a 23,
-    44 y 45), unida a main el 26/11/2026, [PR #20](https://github.com/brayanAndy1996/piscina/pull/20), tras dos rondas adversariales (criterios 44 y 45 nuevos); 010b lista para unir (PR por abrir), 27/11/2026; 010b estados y cierre de
-    mes (24 a 33); 010c cambio de horario (34 a 43); y 010d inscripción pública al mes siguiente (DR-10; se especifica con la
+    44 y 45), unida a main el 26/11/2026, [PR #20](https://github.com/brayanAndy1996/piscina/pull/20), tras dos rondas adversariales (criterios 44 y 45 nuevos); 010b estados y cierre de
+    mes (24 a 33), unida a main el 27/11/2026, [PR #21](https://github.com/brayanAndy1996/piscina/pull/21), tras una ronda adversarial sin críticas ni altas; 010c cambio de horario (34 a 43), en curso desde el 27/11/2026; y 010d inscripción pública al mes siguiente (DR-10; se especifica con la
     010c unida).
   - **Deuda de la 010a** (revisión y suite completa, 26/11/2026; las medias y las bajas no abren ronda, D-31; las rondas no
     dejaron deuda abierta, y el detalle está en [`rondas.md`](010-mensualidades/rondas.md)):
