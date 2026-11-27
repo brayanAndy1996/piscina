@@ -260,7 +260,6 @@ export function SeccionMensualidad({ alumnoId }: Propiedades) {
               </p>
             ) : null}
           </div>
-          {puedeCambiarHorario ? <HorarioDeLasMatriculas alumnoId={alumnoId} /> : null}
         </>
       ) : consulta.isError ? (
         esErrorDeApi(consulta.error, 401) ? null : (
@@ -278,6 +277,9 @@ export function SeccionMensualidad({ alumnoId }: Propiedades) {
           Cargando la mensualidad…
         </p>
       )}
+
+      {/* La lectura del horario es independiente de la oferta: si la oferta falla, el cambio de horario sigue a la vista. */}
+      {puedeCambiarHorario ? <HorarioDeLasMatriculas alumnoId={alumnoId} /> : null}
 
       {dialogo && oferta ? (
         <DialogoRenovar alumnoId={alumnoId} ofertaInicial={oferta} alCerrar={() => setDialogo(false)} />

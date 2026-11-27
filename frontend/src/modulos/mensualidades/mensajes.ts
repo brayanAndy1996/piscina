@@ -128,9 +128,6 @@ export function mensajeDeCambioDeHorario(error: unknown): string {
   if (esErrorDeApi(error, 409, 'SELECCION_NO_VALIDA')) {
     return 'Las clases elegidas no sirven para este plan y nivel. Revisa que sean una por día y de los horarios del plan.';
   }
-  if (esErrorDeApi(error, 409, 'PLAN_NO_DISPONIBLE')) {
-    return 'El plan de esta mensualidad ya no está disponible, así que no se puede cambiar el horario.';
-  }
   if (esErrorDeApi(error, 404)) return 'La mensualidad ya no existe o no es de tu academia. Actualizamos la sección.';
   if (esErrorDeApi(error, 403)) return 'No tienes permiso para cambiar el horario de un alumno.';
   return mensajeGeneral(error);
@@ -138,12 +135,7 @@ export function mensajeDeCambioDeHorario(error: unknown): string {
 
 /** Un cambio al que no tiene sentido volver a enviar desde el mismo diálogo: lo que se veía ya no es lo que hay. */
 export function esCambioDeHorarioSinSalida(error: unknown): boolean {
-  return (
-    esErrorDeApi(error, 404) ||
-    esErrorDeApi(error, 403) ||
-    esErrorDeApi(error, 409, 'MATRICULA_NO_MODIFICABLE') ||
-    esErrorDeApi(error, 409, 'PLAN_NO_DISPONIBLE')
-  );
+  return esErrorDeApi(error, 404) || esErrorDeApi(error, 403) || esErrorDeApi(error, 409, 'MATRICULA_NO_MODIFICABLE');
 }
 
 /** Lo que se dice si la lectura del horario no cargó. */

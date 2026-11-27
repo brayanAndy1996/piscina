@@ -60,6 +60,10 @@ export function DialogoCambiarHorario({ alumnoId, matricula: inicial, alCerrar }
   });
   const pendiente = cambiar.isPending;
   const sinSalida = cambiar.isError && esCambioDeHorarioSinSalida(cambiar.error);
+  // Una clase actual que la lectura ya no ofrece (desactivada o de otro nivel): el servidor también valida las que se quedan, así que hay que poder quitarla.
+  const noDisponibles = inicial.clases.filter(
+    (actual) => !clasesDelPlan.some((candidata) => candidata.id === actual.id),
+  );
   const dias = [...new Set(clasesDelPlan.map((clase) => clase.diaSemana))];
   const completa = claseIds.length === plan.vecesPorSemana;
   const igualAlActual = completa && claseIds.length === actuales.size && claseIds.every((id) => actuales.has(id));
@@ -69,6 +73,12 @@ export function DialogoCambiarHorario({ alumnoId, matricula: inicial, alCerrar }
   };
 
   const elegirClase = (id: string) => {
+    // Las que ya no están disponibles solo se pueden desmarcar: no vuelven a entrar a la selección.
+    if (noDisponibles.some((clase) => clase.id === id)) {
+      setClaseIds((anteriores) => anteriores.filter((otra) => otra !== id));
+      cambiar.reset();
+      return;
+    }
     const clase = clasesDelPlan.find((candidata) => candidata.id === id);
     if (!clase) return;
     setClaseIds((anteriores) => alternarClase(anteriores, clase, clasesDelPlan, plan.vecesPorSemana));
@@ -146,6 +156,39 @@ export function DialogoCambiarHorario({ alumnoId, matricula: inicial, alCerrar }
             </p>
             {clasesDelPlan.length === 0 ? (
               <p className="text-sm text-slate-700">No hay clases para este plan y el nivel del alumno.</p>
+            ) : null}
+            {noDisponibles.length > 0 ? (
+              <div
+                role="group"
+                aria-label="Clases que ya no están disponibles"
+                className="rounded-lg bg-amber-50 p-3 ring-1 ring-amber-200"
+              >
+                <p className="text-sm font-semibold text-amber-900">Ya no disponibles</p>
+                <p className="text-sm text-amber-900">
+                  Estas clases del horario actual ya no se ofrecen. Quita la marca para cambiarlas.
+                </p>
+                {noDisponibles.map((clase) => {
+                  const marcada = claseIds.includes(clase.id);
+                  return (
+                    <label
+                      key={clase.id}
+                      className={`flex min-h-11 items-center gap-3 text-base ${marcada ? 'cursor-pointer text-slate-900' : 'cursor-not-allowed text-slate-500'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={marcada}
+                        disabled={!marcada}
+                        onChange={() => elegirClase(clase.id)}
+                        className="size-5 shrink-0 accent-sky-700"
+                      />
+                      <span className="flex flex-wrap items-center gap-2">
+                        {textoDeClase(clase)}
+                        <Insignia color="ambar">Ya no disponible</Insignia>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             ) : null}
             {dias.map((dia) => {
               const delDia = clasesDelPlan.filter((clase) => clase.diaSemana === dia);

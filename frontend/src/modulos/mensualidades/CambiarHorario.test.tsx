@@ -427,6 +427,45 @@ describe('/panel/alumnos/{id}: «Cambiar horario» (criterio 42)', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('una clase actual que ya no está en las clases del plan se ve como «Ya no disponible», se puede quitar y no vuelve a marcarse', async () => {
+    const sinMiercoles = CLASES_DEL_PLAN.filter((clase) => clase.id !== C_MIE);
+    const api = servidor('SECRETARIA', {
+      [RUTA_HORARIO]: () => ({
+        estado: 200,
+        cuerpo: horario([matricula(MATRICULA_NOV, '2026-11', 'VIGENTE', { clasesDelPlan: sinMiercoles })]),
+      }),
+      [RUTA_CAMBIO_NOV]: () => ({ estado: 200, cuerpo: respuestaCambio() }),
+    });
+    mostrar(`/panel/alumnos/${ID_ALUMNO}`);
+    const { usuario, dialogo } = await abrirDialogo();
+    const grupo = within(dialogo).getByRole('group', { name: 'Clases que ya no están disponibles' });
+    const antigua = within(grupo).getByRole('checkbox', { name: /Miércoles 18:00 a 19:00/ });
+    expect(within(grupo).getByText('Ya no disponible')).toBeInTheDocument();
+    expect(antigua).toBeChecked();
+    expect(within(dialogo).getByText('Elegiste 2 de 2.')).toBeInTheDocument();
+    // Con las dos elegidas no deja marcar otra; al quitar la que ya no existe, sí.
+    expect(casilla(dialogo, 'Viernes', '18:00')).toBeDisabled();
+    await usuario.click(antigua);
+    expect(antigua).not.toBeChecked();
+    expect(antigua).toBeDisabled();
+    expect(within(dialogo).getByText('Elegiste 1 de 2.')).toBeInTheDocument();
+    await usuario.click(casilla(dialogo, 'Viernes', '18:00'));
+    await usuario.type(within(dialogo).getByLabelText('Motivo'), 'Se cerró la clase');
+    await usuario.click(within(dialogo).getByRole('button', { name: 'Cambiar horario' }));
+    await screen.findByRole('dialog', { name: 'Horario cambiado' });
+    expect(llamadas(api, RUTA_CAMBIO_NOV)).toEqual([{ claseIds: [C_LUN, C_VIE], motivo: 'Se cerró la clase' }]);
+  });
+
+  it('si la oferta de renovación falla, el cambio de horario sigue a la vista', async () => {
+    servidor('SECRETARIA', { [RUTA_OFERTA]: () => error('ERROR_INTERNO', 500) });
+    mostrar(`/panel/alumnos/${ID_ALUMNO}`);
+    const region = await seccion();
+    expect(
+      await within(region).findByRole('button', { name: 'Cambiar horario de noviembre de 2026' }),
+    ).toBeInTheDocument();
+    expect(within(region).getByRole('button', { name: 'Cambiar horario de diciembre de 2026' })).toBeInTheDocument();
+  });
+
   it('SELECCION_NO_VALIDA y el 403 tienen su texto', async () => {
     let respuesta = error('SELECCION_NO_VALIDA', 409);
     servidor('SECRETARIA', { [RUTA_CAMBIO_NOV]: () => respuesta });
