@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { CambiarHorario, RespuestaCambioHorario } from '@aquagestion/contratos';
+import type { CambiarHorario, HorarioDelAlumno, RespuestaCambioHorario } from '@aquagestion/contratos';
 import { PinoLogger } from 'nestjs-pino';
 import { anioYMesEnLima } from '../../comun/fechas';
 import { BaseDatos, type TransaccionAcademia } from '../../infraestructura/prisma';
@@ -8,22 +8,27 @@ import { insertarEnAuditoriaDeAcademia } from '../auditoria/insercion';
 import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vigente';
 import type { SesionVerificada } from '../autenticacion/tipos';
 import { bloquearClasesParaCupo } from '../clases';
+import { ordenDeClases } from '../clases/dominio/clase';
 import { type ErrorDeSeleccion, validarSeleccion } from '../inscripciones/dominio/seleccion';
-import { leerClasesPorIds, leerPlan } from '../inscripciones/lectura';
-import { type ClaseElegida, clasesRestantes, contarOcupacion, contarReservasDePrioridad } from '../matriculas';
-import { hayCupo } from './dominio/cupo';
+import { leerClasesActivas, leerClasesPorIds, leerPlan } from '../inscripciones/lectura';
+import { type ClaseElegida, clasesRestantes } from '../matriculas';
+import { cuposDelHorario } from './cupo-del-horario';
 import { diferenciaDeClases, sePuedeCambiarElHorario } from './dominio/horario';
 import { inicioDelMesEnLima } from './dominio/ventana';
 import { matriculaNoModificable, planNoDisponible, seleccionNoValida, sinCupoParaRenovar } from './errores';
 import {
   bloquearMatriculaParaElCambio,
-  clasesDeLaTitularidad,
+  leerAlumno,
   leerAlumnoDeLaMatricula,
   leerClaseIdsDeLaMatricula,
   leerClasesDeLaMatricula,
+  leerMatriculasParaElCambio,
   type MatriculaParaElCambio,
 } from './lectura';
 import { bloquearAlumno } from './nucleo';
+
+/** El texto `AAAA-MM` de un mes. */
+const textoDelMes = (anio: number, mes: number): string => `${anio}-${String(mes).padStart(2, '0')}`;
 
 export const ACCION_HORARIO_CAMBIADO = 'MATRICULA_HORARIO_CAMBIADO';
 
@@ -54,6 +59,67 @@ export class HorarioService {
     private readonly registro: PinoLogger,
   ) {
     this.registro.setContext(HorarioService.name);
+  }
+
+  /**
+   * `GET /api/alumnos/{id}/horario` (criterio 46, DT-38): lo que la pantalla de «Cambiar horario» necesita. Una transacción de la academia de la sesión, sin
+   * bloquear, sin escribir y sin auditar. Las matrículas son las que `sePuedeCambiarElHorario` acepta con el «ahora» de `RELOJ`, por mes; de cada una, el plan
+   * tal como está hoy y las clases activas del nivel actual del alumno que ese plan deja elegir (`validarSeleccion`: día y franja), con el cupo de `cuposDelHorario`,
+   * la misma cuenta del cambio, recortado a 0. 404 si el alumno no existe, es de otra academia o es un `CLIENTE`.
+   */
+  async leer(academiaId: string, alumnoIdPedido: string): Promise<HorarioDelAlumno> {
+    return this.baseDatos.conAcademia(academiaId, async (tx) => {
+      const alumno = await leerAlumno(tx, alumnoIdPedido);
+      const ahora = this.reloj.ahora();
+      const mesEnCurso = anioYMesEnLima(ahora);
+      const matriculas = (await leerMatriculasParaElCambio(tx, alumno.id)).filter((matricula) =>
+        sePuedeCambiarElHorario(matricula, mesEnCurso),
+      );
+      const activas = (await leerClasesActivas(tx)).filter((clase) => clase.nivel === alumno.nivel).sort(ordenDeClases);
+
+      const salida: HorarioDelAlumno['matriculas'] = [];
+      for (const matricula of matriculas) {
+        const plan = await leerPlan(tx, matricula.planId);
+        if (!plan) throw new Error('La matrícula no tiene su plan.');
+        const clases = await leerClasesDeLaMatricula(tx, matricula.id);
+        const delPlan = activas.filter(
+          (clase) => plan.diasPermitidos.includes(clase.diaSemana) && plan.franjasPermitidas.includes(clase.horaInicio),
+        );
+        const { cupoLibrePorClase, esMesSiguiente, titulares } = await cuposDelHorario(tx, {
+          alumnoId: alumno.id,
+          mesDeLaMatricula: { anio: matricula.anio, mes: matricula.mes },
+          mesEnCurso,
+          ahora,
+          clases: delPlan,
+          propias: new Set(clases.map((clase) => clase.id)),
+        });
+        salida.push({
+          id: matricula.id,
+          mes: textoDelMes(matricula.anio, matricula.mes),
+          estado: matricula.estado === 'VIGENTE' ? 'VIGENTE' : 'EN_VERIFICACION',
+          plan: {
+            id: plan.id,
+            nombre: plan.nombre,
+            vecesPorSemana: plan.vecesPorSemana,
+            diasPermitidos: [...plan.diasPermitidos],
+            franjasPermitidas: [...plan.franjasPermitidas],
+          },
+          clases,
+          clasesTotales: matricula.clasesTotales,
+          clasesUsadas: matricula.clasesUsadas,
+          clasesDelPlan: delPlan.map((clase) => ({
+            id: clase.id,
+            nivel: clase.nivel,
+            diaSemana: clase.diaSemana,
+            horaInicio: clase.horaInicio,
+            horaFin: clase.horaFin,
+            cuposRestantes: Math.max(0, cupoLibrePorClase.get(clase.id) ?? 0),
+            conPrioridad: esMesSiguiente && titulares.has(clase.id),
+          })),
+        });
+      }
+      return { alumno: { id: alumno.id, nivel: alumno.nivel }, matriculas: salida };
+    });
   }
 
   async cambiar(
@@ -106,24 +172,17 @@ export class HorarioService {
     if (errores.length > 0) throw seleccionNoValida(erroresUniformes(errores));
 
     // El cupo de cada clase que entra, para este alumno y en el mes de la matrícula (criterio 36); las que se quedan no se vuelven a comprobar.
-    const mesDeLaMatricula = { anio: matricula.anio, mes: matricula.mes };
-    const esMesSiguiente = matricula.anio !== mesEnCurso.anio || matricula.mes !== mesEnCurso.mes;
-    const ocupacion = await contarOcupacion(tx, diferencia.entran, mesDeLaMatricula, ahora);
-    const reservas = esMesSiguiente
-      ? await contarReservasDePrioridad(tx, diferencia.entran, mesEnCurso, ahora)
-      : new Map<string, number>();
-    const titulares = new Set(esMesSiguiente ? await clasesDeLaTitularidad(tx, alumno.id, mesEnCurso) : []);
+    // La misma cuenta que la lectura del horario (criterio 46).
     const aforos = new Map(bloqueadas.map((clase) => [clase.id, clase.aforo]));
-    const sinLugar = diferencia.entran.filter(
-      (id) =>
-        !hayCupo({
-          aforo: aforos.get(id) ?? 0,
-          ocupacion: ocupacion.get(id) ?? 0,
-          reservas: reservas.get(id) ?? 0,
-          esTitular: titulares.has(id),
-          esMesSiguiente,
-        }),
-    );
+    const { cupoLibrePorClase } = await cuposDelHorario(tx, {
+      alumnoId: alumno.id,
+      mesDeLaMatricula: { anio: matricula.anio, mes: matricula.mes },
+      mesEnCurso,
+      ahora,
+      clases: diferencia.entran.map((id) => ({ id, aforo: aforos.get(id) ?? 0 })),
+      propias: new Set(actuales),
+    });
+    const sinLugar = diferencia.entran.filter((id) => (cupoLibrePorClase.get(id) ?? 0) < 1);
     if (sinLugar.length > 0) throw sinCupoParaRenovar(sinLugar);
 
     // Escrituras: las filas de las clases que salen se borran y las que entran se insertan con «ahora»; las que se quedan no cambian.
@@ -172,7 +231,7 @@ export class HorarioService {
     return {
       matricula: {
         id: matricula.id,
-        mes: `${matricula.anio}-${String(matricula.mes).padStart(2, '0')}`,
+        mes: textoDelMes(matricula.anio, matricula.mes),
         clases,
         clasesTotales: matricula.clasesTotales,
         clasesUsadas: matricula.clasesUsadas,

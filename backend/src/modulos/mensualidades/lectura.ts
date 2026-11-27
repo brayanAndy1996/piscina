@@ -370,3 +370,17 @@ export async function leerClaseIdsDeLaMatricula(tx: TransaccionAcademia, matricu
      ORDER BY clase_id`;
   return filas.map((fila) => fila.clase_id);
 }
+
+/** Todas las matrículas del alumno con lo que necesita el cambio de horario, ordenadas por mes, sin bloquear (la lectura del criterio 46). */
+export async function leerMatriculasParaElCambio(
+  tx: TransaccionAcademia,
+  alumnoId: string,
+): Promise<MatriculaParaElCambio[]> {
+  const filas = await tx.cliente.$queryRaw<FilaParaElCambio[]>`
+    SELECT id::text AS id, alumno_id::text AS alumno_id, anio::int AS anio, mes::int AS mes, estado::text AS estado, reserva_vence_en,
+           plan_id::text AS plan_id, clases_totales::int AS clases_totales, clases_usadas::int AS clases_usadas
+      FROM matriculas
+     WHERE academia_id = ${tx.academiaId}::uuid AND alumno_id = ${alumnoId}::uuid
+     ORDER BY anio, mes, id`;
+  return filas.map(aMatriculaParaElCambio);
+}

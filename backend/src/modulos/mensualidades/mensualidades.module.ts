@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { UsuariosModule } from '../usuarios';
 import { CierreDeMesService } from './cierre-de-mes.service';
+import { HorarioDelAlumnoController } from './horario-alumno.controller';
 import { HorarioController } from './horario.controller';
 import { HorarioService } from './horario.service';
 import { ListadoDeMensualidadesController } from './listado.controller';
@@ -16,7 +17,7 @@ import { RenovacionService } from './renovacion.service';
  */
 @Module({
   imports: [UsuariosModule],
-  controllers: [RenovacionController, ListadoDeMensualidadesController, HorarioController],
+  controllers: [RenovacionController, ListadoDeMensualidadesController, HorarioController, HorarioDelAlumnoController],
   providers: [
     RenovacionService,
     RenovacionComprobanteService,
