@@ -325,7 +325,7 @@ La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-
 La historia 009 (la 009a, unida, y la 009b, lista para unirse) está en [`specs/009-asistencia/`](specs/009-asistencia/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
 
-**010a · Renovación con prioridad** está construida, lista para unirse a `main` (26/11/2026). Pasó las pruebas protegidas, dos rondas del ataque adversarial (sin fallas críticas ni altas abiertas), la revisión, el E2E, el lint, los tipos y el build. La suite completa, que el tester corrió sobre `8f80c9a`, tuvo una sola falla intermitente por la carga de una prueba (está en la deuda); la integración continua del PR la corre sobre la versión final. Trae:
+**010a · Renovación con prioridad** está construida y unida a `main` (26/11/2026, PR #20). Pasó las pruebas protegidas, dos rondas del ataque adversarial (sin fallas críticas ni altas abiertas), la revisión, el E2E, el lint, los tipos y el build. La suite completa, que el tester corrió sobre `8f80c9a`, tuvo una sola falla intermitente por la carga de una prueba (está en la deuda); la integración continua del PR la corre sobre la versión final. Trae:
 
 - **La mensualidad del alumno** (`/panel/alumnos/{id}`, sección **Mensualidad**, para el administrador y la secretaria): el estado del alumno, la mensualidad del mes en curso con su plan y sus clases, y **Renovación**, con los meses que se pueden renovar. Si no hay ninguno, dice «No hay meses por renovar: el alumno ya tiene su mensualidad registrada, pagada o por verificar.».
 - **La ventana de prioridad.** En los últimos días del mes (5 por defecto; la configuración de la academia la cambia de 1 a 15), la sección dice, por ejemplo, «La renovación del mes siguiente está abierta del 26/11/2026 al 30/11/2026: el lugar de cada alumno vigente queda apartado para él hasta el día 1.». Quien tiene su mensualidad del mes en curso pagada conserva su lugar en sus clases para el mes siguiente, y el diálogo marca esas clases con **Su horario**. Si una clase no tiene lugar, dice **Llena**.
@@ -336,7 +336,15 @@ La historia 009 (la 009a, unida, y la 009b, lista para unirse) está en [`specs/
 - **Lo que todavía no trae:** el listado de estados y el cierre de mes (010b), el cambio de horario (010c), la inscripción pública al mes siguiente (010d) y los ajustes de monto (015). La deuda de la 010a (menores de la revisión y la prueba intermitente) está en `specs/backlog.md`.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria, abre un alumno en **Alumnos y carnets** y baja a **Mensualidad**. El paso a paso está en la guía, en «Probar la renovación de la mensualidad».
 
-La historia 010 (la 010a, lista para unirse, y las entregas 010b, 010c y 010d) está en [`specs/010-mensualidades/`](specs/010-mensualidades/spec.md). Su estado está en [`specs/backlog.md`](specs/backlog.md).
+**010c · Cambio de horario** está construida y pendiente de unir a `main` (27/11/2026). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas críticas ni altas abiertas), la revisión y la suite completa (18817 pasan, 0 fallan y 95 se saltan; el E2E, 6 de 6). Trae:
+
+- **Cambiar horario** (en **Alumnos y carnets**, en la sección **Mensualidad** de cada mensualidad, para el administrador y la secretaria): el diálogo **Cambiar horario** elige las clases del plan de esa mensualidad, pide un motivo de 3 a 200 caracteres y avisa si con el nuevo horario quedan menos clases de las que le faltan por usar. El cambio no cobra nada: el monto y las clases ya usadas no cambian.
+- **Las reglas del cambio:** solo la mensualidad del mes en curso o del siguiente, vigente o en verificación. Cada clase nueva necesita cupo, y el aforo nunca se pasa. Desde el cambio, la asistencia y las faltas siguen el horario nuevo: una clase agregada cuenta solo desde ese momento, y una quitada ya no se marca ni genera faltas. Cada cambio queda en la auditoría, con su motivo.
+- **Migraciones:** `20261127190000_cambio_horario` y `20261127200000_trigger_matricula_clases_bloqueo`. Un trigger impide cambiar las clases de una matrícula cerrada, también para el dueño de la base de datos. No hay dependencias ni variables nuevas.
+- **Lo que todavía no trae:** la inscripción pública al mes siguiente (010d). La deuda de la 010c está en `specs/backlog.md`, en la nota de la 010.
+- **Cómo probarlo en tu PC:** con `npm run dev` encendido, abre un alumno con su mensualidad en **Alumnos y carnets** y pulsa **Cambiar horario** en la sección **Mensualidad**. El paso a paso está en la guía, en «Probar el cambio de horario».
+
+La historia 010 (la 010a y la 010b, unidas a `main`; la 010c, pendiente de unir; y la 010d, por especificar) está en [`specs/010-mensualidades/`](specs/010-mensualidades/spec.md). Su estado está en [`specs/backlog.md`](specs/backlog.md).
 
 ## Cómo levantarlo en Windows
 

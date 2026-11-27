@@ -3,6 +3,7 @@
 // Actualizada por la 008 (spec 008-carnet-qr, criterio 1): la lista exacta suma `alumnos.qr_token`, `alumnos.qr_generado_en` y `alumnos.qr_clave_idempotencia` (UPDATE). No se quitó ni se cambió nada más.
 // Actualizada por la 009 (spec 009-asistencia, criterio 1 e «Impacto en especificaciones anteriores»; cambio aprobado por Bryan el 25/11/2026): la lista exacta suma `asistencias` (SELECT e INSERT) y `matriculas.clases_usadas` (UPDATE). No se quitó ni se cambió nada de lo anterior.
 // Actualizada por la 009b (spec 009-asistencia, criterio 22): la lista exacta suma `inasistencias` (SELECT, INSERT y UPDATE de `asistencia_id` y `cubierta_en`). No se quitó ni se cambió nada de lo anterior.
+// Actualizada por la 010c (spec 010-mensualidades, criterio 34 y A2, aprobado por Bryan el 26/11/2026): la lista exacta de `PRIVILEGIOS_APP` suma `matricula_clases` con `DELETE` (el cambio de horario borra las clases que salen; segunda excepción a «sin DELETE», junto a `apoderados`). No se quitó ni se cambió nada de lo anterior.
 // Pruebas unitarias de la ronda 3 del ataque sobre `scripts/lib/rol-app.mjs` (solo modulos `node:*`) y las sentencias del hook de
 // sesion:
 //  - Criterio 103, precision P-19: `problemasDeConfiguracionApp({ rolconfig, bases })` con `rolconfig: string[] | null` (de
@@ -230,6 +231,8 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP y privilegiosDeMas en scripts/lib
       'matriculas|clases_usadas|UPDATE',
       'matricula_clases|*|SELECT',
       'matricula_clases|*|INSERT',
+      // Historia 010c, criterio 34 (A2): el cambio de horario borra las clases que salen.
+      'matricula_clases|*|DELETE',
       // Historia 006, criterio 2: se suman los privilegios de las tres tablas de la caja (no se quita nada de lo anterior).
       // `movimientos_caja` no tiene UPDATE (los movimientos no cambian) y ninguna de las tres tiene DELETE.
       'cajas|*|SELECT',

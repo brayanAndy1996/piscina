@@ -219,6 +219,8 @@ export const PRIVILEGIOS_APP = Object.freeze(
     { tabla: 'matriculas', columna: 'clases_usadas', privilegio: 'UPDATE' },
     { tabla: 'matricula_clases', columna: null, privilegio: 'SELECT' },
     { tabla: 'matricula_clases', columna: null, privilegio: 'INSERT' },
+    // Historia 010c (criterio 34): el cambio de horario borra las clases que salen (segunda excepción a «sin DELETE», junto a `apoderados`).
+    { tabla: 'matricula_clases', columna: null, privilegio: 'DELETE' },
     // Historia 006 (criterio 2): las tres tablas de la caja. Nada se borra y los movimientos no cambian (sin UPDATE). En `cajas` solo
     // cambian el estado y `actualizado_en`; en `cierres_caja`, solo los datos de la reapertura (ningún monto de un cierre cambia).
     { tabla: 'cajas', columna: null, privilegio: 'SELECT' },

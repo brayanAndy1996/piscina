@@ -24,7 +24,10 @@
   DR-12 de Bryan, agregó el criterio 45 y ajustó la definición de «Titular de prioridad», DT-3 y el criterio 9 (detalle
   en `rondas.md`). Al cerrar la 010a, el orquestador anotó las desviaciones de la implementación como DT-22 a DT-30, y P12
   (A3) quedó resuelta como consecuencia de DR-12. **010b lista para unir** (27/11/2026, una ronda adversarial sin fallas
-  críticas ni altas, sin criterios nuevos); sus decisiones de implementación son DT-31 a DT-37, en `plan.md`.
+  críticas ni altas, sin criterios nuevos); sus decisiones de implementación son DT-31 a DT-37, en `plan.md`. **010c
+  implementada, pendiente de unir** (27/11/2026): criterio 46 nuevo (DT-38); la ronda adversarial 1 se cerró sin fallas
+  críticas ni altas ni criterios nuevos (detalle en `rondas.md`); sus decisiones de implementación son DT-38 a DT-48, en
+  `plan.md`.
 
 ## Objetivo
 
@@ -46,7 +49,8 @@ Llevan pruebas protegidas y ataque adversarial los criterios marcados _(crítico
   simultáneo; el lugar de los alumnos vigentes queda apartado durante la ventana (D-06, RN-11).
 - **Asistencia (16, 38):** una renovación en verificación no deja marcar; un cambio de horario no descuenta ni registra
   faltas de clases que no eran suyas.
-- **Permisos y aislamiento (17, 18, 26, 41):** matriz 2.1, D-14 (el alumno no renueva ni cambia su horario), D-23, D-29.
+- **Permisos y aislamiento (17, 18, 26, 41, 46):** matriz 2.1, D-14 (el alumno no renueva ni cambia su horario), D-23,
+  D-29.
 - **Auditoría (19, 40):** RN-22.
 - **Cierre de mes (27 a 29):** tarea programada por academia, sin mezclar academias, en los bordes de America/Lima.
 - **Modelo (1, 34):** invariantes en la base, también para el dueño de las tablas.
@@ -63,7 +67,7 @@ criterios llevan la marca de su entrega. Los commits de pruebas protegidas dicen
 | --- | --- | --- | --- | --- |
 | **010a** · renovación con prioridad | oferta, cotización, renovación en efectivo y con comprobante, prioridad, bandeja, aprobación y rechazo | 1, 3, 5 a 10, 12 a 19, 44, 45 | 2, 4, 11, 20, 21, 22 | 23 |
 | **010b** · estados y cierre de mes | estado de la mensualidad, listado HU-11, tarea del cierre de mes y estado del alumno | 26 a 29 | 24, 25, 30, 31, 32 | 33 |
-| **010c** · cambio de horario | cambio de clases de una matrícula, su efecto en la asistencia y las faltas | 34 a 36, 38 a 41 | 37, 42 | 43 |
+| **010c** · cambio de horario | cambio de clases de una matrícula, su efecto en la asistencia y las faltas | 34 a 36, 38 a 41, 46 | 37, 42 | 43 |
 
 Motivo de la división: la renovación (dinero, caja,
 prioridad), la tarea del cierre de mes y el cambio de horario (que toca la asistencia de la 009) son tres frentes de
@@ -429,12 +433,14 @@ sus criterios se agregan a esta spec cuando se planifique.
     los pagos y la caja no cambian (DR-9). Si las clases pedidas son las que ya tiene, responde 200 sin escribir ni
     auditar (un doble clic no duplica nada, DT-16). _(prueba obligatoria)_ (DR-9)
 38. **[010c] Asistencia y faltas después del cambio.** Una ocurrencia de una clase agregada está incluida en la
-    mensualidad solo si empieza después de `matriculas.creado_en` y de `agregada_en` (amplía DT-14 de 009). Con `RELOJ`
-    fijo, un cambio a las 15:00 de un martes a la clase de ese martes a las 10:00: el marcado de ese día responde
-    `CLASE_NO_INCLUIDA`, la tarea de faltas no registra falta por ella y el registro posterior de ese día responde
-    `CLASE_NO_INCLUIDA`; la del martes siguiente se marca y descuenta. Una clase quitada ya no se marca
-    (`FUERA_DE_HORARIO`) ni genera faltas desde el cambio. Si ya marcó hoy en la clase anterior, la nueva de hoy responde
-    `ASISTENCIA_YA_REGISTRADA`. _(crítico)_ (RN-14, RN-16, D-16, D-08)
+    mensualidad solo si empieza después de `matriculas.creado_en` y de `agregada_en` (amplía DT-14 de 009); «después» es
+    estricto: un cambio a las 10:00:00.000 deja fuera la ocurrencia de las 10:00 y uno a las 09:59:59.999 la deja dentro.
+    Con `RELOJ` fijo, un cambio a las 15:00 de un martes a la clase de ese martes a las 10:00: la tarea de faltas no
+    registra falta por la ocurrencia de las 10:00 de ese día y el registro posterior de ese día responde
+    `CLASE_NO_INCLUIDA`; un cambio hecho durante la clase (por ejemplo a las 10:30): el marcado de esa ocurrencia, también
+    por QR, responde `CLASE_NO_INCLUIDA`. En los dos casos la del martes siguiente se marca y descuenta. Una clase
+    quitada ya no se marca (`FUERA_DE_HORARIO`) ni genera faltas desde el cambio. Si ya marcó hoy en la clase anterior,
+    la nueva de hoy responde `ASISTENCIA_YA_REGISTRADA`. _(crítico)_ (RN-14, RN-16, D-16, D-08)
 39. **[010c] Orden de bloqueos.** `bloquearActorVigente` → el alumno con `FOR UPDATE` → la matrícula con `FOR UPDATE` →
     `bloquearClasesParaCupo` con las clases que salen y las que entran, en una sola llamada → «ahora» → escrituras y
     auditoría. Pruebas deterministas sin `40P01`, a la vez que: el marcado del mismo alumno, la tarea de faltas, una
@@ -446,9 +452,31 @@ sus criterios se agregan a esta spec cuando se planifique.
     (HU-03: el alumno no cambia su horario; D-14); las demás respuestas de acceso del criterio 17. Un `{id}` que no es
     UUID, inexistente, de otra academia o de un `CLIENTE`: 404 `NO_ENCONTRADO`; una clase de otra academia,
     `SELECCION_NO_VALIDA`. `HEAD` sobre `/api/matriculas` responde 404. _(crítico)_ (sección 2.1, D-23)
-42. **[010c] Web.** En `/panel/alumnos/{id}`, «Cambiar horario» en la mensualidad de M y en la de M+1 (para
-    `MODIFICAR_HORARIO_ALUMNO`): elige las clases con sus cupos, pide el motivo y avisa cuando las ocurrencias que
-    quedan son menos que las clases restantes. _(prueba obligatoria, componentes)_ (HU-03)
+46. **[010c] Lectura del horario para el cambio (DT-38, decisión del orquestador del 27/11/2026).** `GET
+    /api/alumnos/{id}/horario`, con `@Permiso('MODIFICAR_HORARIO_ALUMNO')`, responde 200 `horarioDelAlumnoSchema`
+    (estricto): `alumno` (`id`, `nivel`) y `matriculas`, las matrículas del alumno que el criterio 35 deja cambiar (de M
+    o de M+1, `VIGENTE` o en verificación; no una reserva de 24 horas, `FINALIZADA` ni `CANCELADA`), ordenadas por mes;
+    si no tiene ninguna, `matriculas: []`. Cada una: `id`, `mes`, `estado` (`VIGENTE` o `EN_VERIFICACION`: el de la
+    matrícula, como en `renovacionRegistradaSchema`), `plan` (`id`, `nombre`, `vecesPorSemana`, `diasPermitidos` y
+    `franjasPermitidas`, tal como está hoy, DT-20), `clases` (las actuales, con `claseDeMensualidadSchema`),
+    `clasesTotales`, `clasesUsadas` y `clasesDelPlan`: las clases activas del nivel actual del alumno en los días y
+    franjas del plan (las que el criterio 4 deja elegir), ordenadas por día, hora e id, con la forma de
+    `claseDeLaOfertaSchema`. Su `cuposRestantes` es el cupo libre de la clase para ese alumno en el mes de la matrícula,
+    sin contar la matrícula que se cambia (definición «Cupo libre», con las reservas de prioridad si es de M+1; nunca
+    negativo), y `conPrioridad` es `true` solo si la matrícula es de M+1 y la clase está en su matrícula de M `VIGENTE`.
+    Coincide con el criterio 36: con `RELOJ` fijo y sin otras peticiones a la vez, un cambio válido que agrega una clase
+    que la matrícula no tenía responde `SIN_CUPO` por ella si y solo si su `cuposRestantes` es 0. Una clase actual que
+    ya no cumple el plan o el nivel no aparece en `clasesDelPlan`. Sin datos de otros alumnos (solo cuentas), DNI, datos
+    médicos ni apoderado. «Ahora» de `RELOJ` y M en Lima; una transacción de la academia de la sesión, sin bloqueos, sin
+    escribir ni auditar. Accesos como el criterio 41: `ENTRENADOR` y `ALUMNO`, 403 `SIN_PERMISO`; las demás respuestas
+    de acceso del criterio 17; un `{id}` que no es UUID, inexistente, de otra academia o de un `CLIENTE`, 404
+    `NO_ENCONTRADO`; `?academiaId=` no cambia nada; `HEAD`, 404. Con A y B: el alumno de B con la sesión de A responde
+    404, y la ocupación y las reservas solo cuentan matrículas de A. _(crítico)_ (HU-03, sección 2.1, D-23, Ley 29733)
+42. **[010c] Web.** En `/panel/alumnos/{id}`, «Cambiar horario» en cada matrícula que devuelve `GET
+    /api/alumnos/{id}/horario` (criterio 46: la de M y la de M+1; para `MODIFICAR_HORARIO_ALUMNO`): la web toma de esa
+    lectura las matrículas, sus clases y los cupos, elige entre las `clasesDelPlan`, pide el motivo, envía el cambio a
+    `POST /api/matriculas/{id}/horario` con el `id` de la matrícula y avisa cuando las ocurrencias que quedan son menos
+    que las clases restantes. _(prueba obligatoria, componentes)_ (HU-03)
 43. **[010c] Documentación.** `docs/arquitectura.md` («Lo que construye la historia 010c» y la regla ampliada de
     «ocurrencia incluida»), la guía de Windows y la nota de la 010 en `specs/backlog.md`. _(revisor)_
 
@@ -505,7 +533,8 @@ sus criterios se agregan a esta spec cuando se planifique.
   `numeroOperacionSchema`, `cotizacionSchema` y `pagoSchema`.
 - `ESTADOS_MENSUALIDAD = ['AL_DIA', 'POR_VENCER', 'VENCIDO', 'PENDIENTE_VERIFICACION']`, `listadoMensualidadesSchema`
   (criterio 25).
-- `cambiarHorarioSchema` y `respuestaCambioHorarioSchema` (criterio 35).
+- `cambiarHorarioSchema` y `respuestaCambioHorarioSchema` (criterio 35); `horarioDelAlumnoSchema` (criterio 46), que
+  reutiliza `claseDeMensualidadSchema` y `claseDeLaOfertaSchema`.
 - `pagoPendienteSchema` (007b): `solicitud` pasa a `{ id, codigo } | null` (sigue obligatoria).
 
 **Endpoints** (academia siempre de la sesión):
@@ -518,6 +547,7 @@ sus criterios se agregan a esta spec cuando se planifique.
 | `PUT /api/alumnos/{id}/renovacion/comprobante` | `REGISTRAR_INSCRIPCION_Y_COBRO` | 201 / 200 renovación | 010a |
 | `GET /api/pagos/pendientes` (cambia) | `VERIFICAR_PAGOS` | 200, también renovaciones | 010a |
 | `GET /api/mensualidades?…` | `REGISTRAR_INSCRIPCION_Y_COBRO` | 200 listado | 010b |
+| `GET /api/alumnos/{id}/horario` | `MODIFICAR_HORARIO_ALUMNO` | 200 `horarioDelAlumnoSchema` | 010c |
 | `POST /api/matriculas/{id}/horario` | `MODIFICAR_HORARIO_ALUMNO` | 200 `{ matricula }` | 010c |
 
 Errores nuevos: 409 `MES_NO_PERMITIDO`, `MENSUALIDAD_YA_REGISTRADA`, `FECHA_OPERACION_NO_VALIDA` y
@@ -564,7 +594,17 @@ Errores nuevos: 409 `MES_NO_PERMITIDO`, `MENSUALIDAD_YA_REGISTRADA`, `FECHA_OPER
   posterior y la tarea de faltas. Las pruebas protegidas de la 009 no cambian (las filas existentes la tienen nula).
 - **005 (A2, aprobada por Bryan el 26/11/2026):** los criterios 1 y 2 de 005 (`tablas.test.ts` y `privilegios.test.ts`,
   protegidas) fijan las columnas de `matricula_clases` y esperan 42501 al borrar una fila. La 010c suma `agregada_en` y el
-  `DELETE`; hay que ajustar esas dos pruebas, con la nota en la cabecera, como hizo la 009 (DT-18 de 007).
+  `DELETE`; hay que ajustar esas dos pruebas, con la nota en la cabecera, como hizo la 009 (DT-18 de 007). Por el mismo
+  `DELETE` se ajustan también, con la nota en la cabecera, las tres pruebas protegidas que fijan la lista exacta de
+  privilegios de `aquagestion_app` (`backend/src/infraestructura/prisma/privilegios-app.test.ts`,
+  `scripts/test/rol-app-ronda3.test.mjs` y `backend/test/integracion/aislamiento/rol-app.test.ts`): la excepción a
+  «ninguna tabla tiene `DELETE`» suma `matricula_clases` (consecuencia directa de A2, decidida por el orquestador el
+  27/11/2026).
+- **Sembradores de pruebas de otras historias (010c, commit `8579373`):** por el trigger del criterio 34, que rechaza
+  agregar clases a una matrícula que no está `RESERVADA` ni `VIGENTE`, `sembrarSolicitud` (`inscripciones.ts`),
+  `sembrarEnMasa` (`inscripciones-005b.ts`) y `sembrarAlumno` (`escenario-cierre.ts`) insertan la matrícula abierta,
+  agregan sus clases y después la pasan a su estado final. `rls-llaves.test.ts` espera 23514 para `matricula_clases`.
+  Consecuencia de A2 y del criterio 34.
 - **008:** sin cambios. La matrícula del carnet (DT-12 de 008) ya elige la vigente de hoy o la más reciente, que con
   una renovación puede ser la del mes siguiente.
 - **003:** `diasPorVencer` y `diasPrioridadRenovacion` dejan de estar «sin usar» en `docs/arquitectura.md`.
@@ -589,8 +629,8 @@ Errores nuevos: 409 `MES_NO_PERMITIDO`, `MENSUALIDAD_YA_REGISTRADA`, `FECHA_OPER
 Técnicas: DT-1 a DT-21, propuestas por el especificador y aceptadas por el orquestador el 26/11/2026 tal como se
 propusieron, junto con la partición en 010a, 010b, 010c y 010d; DT-3 y DT-4 se ajustaron después en las rondas
 adversariales de la 010a. DT-22 a DT-30 son desviaciones de la implementación de la 010a, que el orquestador anota el
-26/11/2026 al cerrar la entrega. DT-31 a DT-37, de la implementación de la 010b (27/11/2026), están en «Decisiones» de
-`plan.md`. Las decisiones del responsable (DR-1 a DR-12) y las aprobaciones A1, A2 y A3 están en «Resueltas».
+26/11/2026 al cerrar la entrega. DT-31 a DT-37, de la implementación de la 010b (27/11/2026), y DT-38, de la 010c
+(27/11/2026, criterio 46), están en «Decisiones» de `plan.md`. Las decisiones del responsable (DR-1 a DR-12) y las aprobaciones A1, A2 y A3 están en «Resueltas».
 
 - **DT-1. Tres entregas (010a, 010b, 010c)** y la 010d, aprobada con DR-10, que se especifica después. Descartado: dos entregas (la 010b
   mezclaría la tarea programada con el cupo del cambio de horario) o una sola (pasaría de 800 líneas y de 3 rondas).
@@ -725,7 +765,12 @@ Decisiones del responsable. Bryan aprobó la propuesta de cada pregunta el 26/11
 
 - **A1 (010b).** La prueba del criterio 33 de 009 pasa de `['faltas']` a `['cierre-de-mes', 'faltas']`. _(Criterio 30.)_
 - **A2 (010c).** Las pruebas de los criterios 1 y 2 de 005 (`tablas.test.ts` y `privilegios.test.ts`) suman
-  `agregada_en` y el `DELETE` en `matricula_clases`, con la nota en la cabecera. _(Criterio 34.)_
+  `agregada_en` y el `DELETE` en `matricula_clases`, con la nota en la cabecera. Como consecuencia directa de A2 (el mismo
+  `DELETE` aprobado por Bryan el 26/11/2026), el orquestador decidió el 27/11/2026 ajustar también otras tres pruebas
+  protegidas que fijan la lista exacta de privilegios de `aquagestion_app`, con la nota en la cabecera de cada archivo: la
+  excepción a «ninguna tabla tiene `DELETE`» suma `matricula_clases` en
+  `backend/src/infraestructura/prisma/privilegios-app.test.ts`, `scripts/test/rol-app-ronda3.test.mjs` y
+  `backend/test/integracion/aislamiento/rol-app.test.ts`. _(Criterio 34.)_
 - **A3 (010a, pregunta P12).** La prueba protegida del criterio 9 «un titular con la matrícula de noviembre en verificación
   también tiene prioridad» (`backend/test/integracion/mensualidades/renovacion-prioridad.test.ts`) se reescribe con la regla
   de DR-12: la matrícula de M en verificación no da prioridad para M+1. Lo aplicó el orquestador como consecuencia directa

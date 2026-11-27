@@ -3,6 +3,7 @@ import { diaSemanaSchema, fechaSchema, horaBloqueSchema, nivelNatacionSchema } f
 import { montoCotizadoSchema, montoSchema } from './dinero';
 import { claseIdsSchema, cotizacionSchema, mesSchema, planPublicoSchema } from './inscripcion';
 import { metodoConComprobanteSchema, numeroOperacionSchema, pagoSchema } from './pagos';
+import { textoVisibleSchema } from './texto';
 
 /**
  * Mensualidades y renovación (spec 010a; HU-12, D-03, D-04, D-06). Los montos viajan como texto, nunca como número. Todos los cuerpos
@@ -201,3 +202,64 @@ export const listadoMensualidadesSchema = z.strictObject({
   hayMas: z.boolean(),
 });
 export type ListadoMensualidades = z.infer<typeof listadoMensualidadesSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 010c · Cambio de horario (HU-03, RN-08)
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * `POST /api/matriculas/{id}/horario` (criterio 35): las clases que tendrá la matrícula (todas, no solo las que cambian) y el motivo, de 3 a 200
+ * caracteres visibles. Estricto: la academia, el alumno, el plan y los montos no se aceptan del cliente; la matrícula va en la dirección.
+ */
+export const cambiarHorarioSchema = z.strictObject({
+  claseIds: claseIdsSchema,
+  motivo: textoVisibleSchema({ sujeto: 'El motivo', min: 3, max: 200 }),
+});
+export type CambiarHorario = z.infer<typeof cambiarHorarioSchema>;
+
+/** La matrícula después del cambio. Sin DNI, nombres, plan ni pagos: el dinero y las clases del mes no cambian (criterio 37). */
+export const respuestaCambioHorarioSchema = z.strictObject({
+  matricula: z.strictObject({
+    id: z.uuid(),
+    mes: mesSchema,
+    clases: z.array(claseDeMensualidadSchema),
+    clasesTotales: z.number().int().min(0),
+    clasesUsadas: z.number().int().min(0),
+    /** Las clases del nuevo horario que quedan en el mes de la matrícula desde «ahora» (o desde el día 1 si es del mes siguiente). */
+    ocurrenciasRestantes: z.number().int().min(0),
+  }),
+});
+export type RespuestaCambioHorario = z.infer<typeof respuestaCambioHorarioSchema>;
+
+/**
+ * `GET /api/alumnos/{id}/horario` (criterio 46, DT-38): las matrículas del alumno cuyo horario se puede cambiar (de M o de M+1, `VIGENTE` o en
+ * verificación), cada una con su plan tal como está hoy, sus clases actuales y las clases que el plan deja elegir con su cupo para este alumno (sin contar
+ * la matrícula que se cambia). Sin DNI, nombres, datos médicos, apoderado, montos ni datos de otros alumnos.
+ */
+export const matriculaDelHorarioSchema = z.strictObject({
+  id: z.uuid(),
+  mes: mesSchema,
+  /** El estado de la matrícula (no el de la mensualidad de HU-11): `VIGENTE`, o `EN_VERIFICACION` si espera la aprobación de su pago. */
+  estado: z.enum(['VIGENTE', 'EN_VERIFICACION']),
+  plan: z.strictObject({
+    id: z.uuid(),
+    nombre: z.string(),
+    vecesPorSemana: z.number().int(),
+    diasPermitidos: z.array(diaSemanaSchema),
+    franjasPermitidas: z.array(horaBloqueSchema),
+  }),
+  /** Las clases actuales de la matrícula, por día y hora. */
+  clases: z.array(claseDeMensualidadSchema),
+  clasesTotales: z.number().int().min(0),
+  clasesUsadas: z.number().int().min(0),
+  /** Las clases activas del nivel actual del alumno en los días y franjas del plan, por día, hora e id. */
+  clasesDelPlan: z.array(claseDeLaOfertaSchema),
+});
+export type MatriculaDelHorario = z.infer<typeof matriculaDelHorarioSchema>;
+
+export const horarioDelAlumnoSchema = z.strictObject({
+  alumno: z.strictObject({ id: z.uuid(), nivel: nivelNatacionSchema }),
+  /** Ordenadas por mes; vacío si el alumno no tiene ninguna que se pueda cambiar. */
+  matriculas: z.array(matriculaDelHorarioSchema),
+});
+export type HorarioDelAlumno = z.infer<typeof horarioDelAlumnoSchema>;

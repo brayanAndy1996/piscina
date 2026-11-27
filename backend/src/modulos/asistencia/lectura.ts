@@ -33,6 +33,8 @@ export interface FilaDeClase {
   dia_semana: number;
   hora_inicio: string;
   hora_fin: string;
+  /** Cuándo entró la clase a la matrícula con un cambio de horario (010c); nula si estuvo desde el principio. Solo la trae `leerClasesDelDia`. */
+  agregada_en?: Date | null;
 }
 
 export interface FilaDeAsistencia {
@@ -147,7 +149,7 @@ export async function leerClasesDelDia(
 ): Promise<FilaDeClase[]> {
   return tx.cliente.$queryRaw<FilaDeClase[]>`
     SELECT c.id::text AS id, c.nivel::text AS nivel, c.dia_semana::int AS dia_semana,
-           to_char(c.hora_inicio, 'HH24:MI') AS hora_inicio, to_char(c.hora_fin, 'HH24:MI') AS hora_fin
+           to_char(c.hora_inicio, 'HH24:MI') AS hora_inicio, to_char(c.hora_fin, 'HH24:MI') AS hora_fin, mc.agregada_en
       FROM matricula_clases mc
       JOIN clases c ON c.academia_id = mc.academia_id AND c.id = mc.clase_id
      WHERE mc.academia_id = ${tx.academiaId}::uuid AND mc.matricula_id = ${matriculaId}::uuid

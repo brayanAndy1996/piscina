@@ -5,6 +5,7 @@
 // Actualizada por la 008 (spec 008-carnet-qr, criterio 1): la lista exacta suma el UPDATE de `alumnos.qr_token`, `alumnos.qr_generado_en` y `alumnos.qr_clave_idempotencia`. No se quitó ni se cambió nada más.
 // Actualizada por la 009 (spec 009-asistencia, criterio 1 e «Impacto en especificaciones anteriores»; cambio aprobado por Bryan el 25/11/2026): la lista exacta suma `asistencias` (SELECT e INSERT, sin UPDATE ni DELETE) y el UPDATE de `matriculas.clases_usadas`. No se quitó ni se cambió nada de lo anterior.
 // Actualizada por la 009b (spec 009-asistencia, criterio 22): la lista exacta suma `inasistencias` (SELECT, INSERT y UPDATE solo de `asistencia_id` y `cubierta_en`, sin DELETE). No se quitó ni se cambió nada de lo anterior.
+// Actualizada por la 010c (spec 010-mensualidades, criterio 34 y A2, aprobado por Bryan el 26/11/2026): la lista exacta suma `matricula_clases` con `DELETE` (el cambio de horario borra las clases que salen; es la segunda excepción a «sin DELETE», junto a `apoderados`). No se quitó ni se cambió nada de lo anterior.
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -133,6 +134,7 @@ const LISTA_DEL_CRITERIO_2: PrivilegioApp[] = [
     efectivo('matriculas', c, 'UPDATE'),
   ),
   efectivo('matricula_clases', null, 'SELECT'),
+  efectivo('matricula_clases', null, 'DELETE'),
   efectivo('matricula_clases', null, 'INSERT'),
   // Historia 006, criterio 2: la lista exacta suma los privilegios de las tres tablas de la caja (no se quita nada de lo anterior).
   // `movimientos_caja` no tiene UPDATE (los movimientos no cambian) y ninguna de las tres tiene DELETE.
@@ -198,10 +200,12 @@ describe('criterio 102 (P-20): PRIVILEGIOS_APP', () => {
   it('criterio 102: ninguna entrada concede DELETE, TRUNCATE, REFERENCES ni TRIGGER', async () => {
     const { PRIVILEGIOS_APP } = await cargarDeLaApi();
 
-    // Historia 005: la única excepción es DELETE sobre `apoderados` (se borra al apoderado de quien vuelve a inscribirse como mayor).
+    // Historia 005: la excepción es DELETE sobre `apoderados` (se borra al apoderado de quien vuelve a inscribirse como mayor). Historia 010c (A2): también DELETE sobre `matricula_clases`.
     expect(
-      PRIVILEGIOS_APP.filter((p) => ['DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'].includes(p.privilegio)).map(clave),
-    ).toEqual(['apoderados|*|DELETE']);
+      PRIVILEGIOS_APP.filter((p) => ['DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'].includes(p.privilegio))
+        .map(clave)
+        .sort(),
+    ).toEqual(['apoderados|*|DELETE', 'matricula_clases|*|DELETE']);
   });
 
   it('criterio 102: la lista de la API y la de scripts/lib/rol-app.mjs son iguales', async () => {

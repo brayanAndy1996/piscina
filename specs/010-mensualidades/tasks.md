@@ -94,20 +94,35 @@ las de la 010c, con la 010b unida.
 
 ## 010c · Cambio de horario
 
-- [ ] T26 · test-writer · Pruebas protegidas del modelo (`agregada_en`, política y privilegio de `DELETE`, trigger) y
-  ajuste aprobado (A2) de las pruebas de los criterios 1 y 2 de 005 (criterio 34)
-- [ ] T27 · test-writer · Pruebas protegidas del cambio: matrículas que se pueden cambiar, cupo y último cupo,
+- [x] T26 · test-writer · Pruebas protegidas del modelo (`agregada_en`, política y privilegio de `DELETE`, trigger) y
+  ajuste aprobado (A2) de las pruebas de los criterios 1 y 2 de 005 (criterio 34) _(`d0b0e9c`)_
+- [x] T27 · test-writer · Pruebas protegidas del cambio: matrículas que se pueden cambiar, cupo y último cupo,
   asistencia y faltas después del cambio con `RELOJ`, orden de bloqueos, auditoría, permisos y aislamiento (criterios 35,
-  36 y 38 a 41)
-- [ ] T28 · tester · Confirmar el rojo de T26 y T27; commit «Pruebas protegidas (010): 010c, … (en rojo)»
-- [ ] T29 · backend · Migración `<marca>_cambio_horario`, `schema.prisma`, `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs`
-  (criterio 34)
-- [ ] T30 · backend · `HorarioService` y su ruta; `agregada_en` en el marcado, el registro posterior y la tarea de faltas
-  (criterios 35 a 41)
-- [ ] T31 · frontend · «Cambiar horario» en `/panel/alumnos/{id}`; pruebas de componentes (criterio 42)
-- [ ] T32 · adversarial · Ataque de la 010c (hasta 3 rondas)
-- [ ] T33 · revisor y tester (a la vez) · Revisión; suite completa, lint y tipos
-- [ ] T34 · documentador · `docs/arquitectura.md`, guía de Windows y nota del backlog; marcar tareas (criterio 43)
+  36 y 38 a 41) _(`d0b0e9c`)_
+- [x] T28 · tester · Confirmar el rojo de T26 y T27; commit «Pruebas protegidas (010): 010c, … (en rojo)» _(`d0b0e9c`)_
+- [x] T29 · backend · Migración `<marca>_cambio_horario`, `schema.prisma`, `PRIVILEGIOS_APP` y `scripts/lib/rol-app.mjs`
+  (criterio 34) _(`db7fd40`)_
+- [x] T30 · backend · `HorarioService` y su ruta; `agregada_en` en el marcado, el registro posterior y la tarea de faltas
+  (criterios 35 a 41) _(`9637a54`)_
+- [x] T40 · test-writer · Pruebas protegidas de la lectura del horario (DT-38): las claves exactas del JSON; qué
+  matrículas aparecen (M y M+1, `VIGENTE` o en verificación) y cuáles no (reserva de 24 horas, `FINALIZADA`,
+  `CANCELADA`, otro mes), y `matriculas: []`; `clasesDelPlan` por plan y nivel; `cuposRestantes` sin contar la
+  matrícula que se cambia, con las reservas en M+1, y `conPrioridad`, coherentes con el `SIN_CUPO` del cambio; que no
+  escribe ni audita; permisos, 404, `HEAD` y aislamiento entre A y B. El tester confirma el rojo y se hace el commit
+  «Pruebas protegidas (010): 010c, lectura del horario … (en rojo)» (criterio 46) _(`33c9084`; dos expectativas
+  imposibles corregidas por el orquestador en `d1bfb10`)_
+- [x] T41 · backend · `horarioDelAlumnoSchema` en `packages/contratos/src/mensualidades.ts`; la ruta `GET
+  /api/alumnos/{id}/horario` y su lectura en el módulo `mensualidades/`, con las mismas piezas de cupo del cambio
+  (criterio 46) _(`4d8fcbd`)_
+- [x] T31 · frontend · «Cambiar horario» en `/panel/alumnos/{id}` con los datos de `GET /api/alumnos/{id}/horario`;
+  pruebas de componentes (criterio 42) _(`329132e`; la revisión de la web, en `9380767`)_
+- [x] T32 · adversarial · Ataque de la 010c (hasta 3 rondas) _(cerrado en 1 de 3 rondas, 27/11/2026: F1, media,
+  corregida en `8c45c5b`; F2, F3 y la observación del trigger, bajas, en la deuda de la 010 en `specs/backlog.md`; ver
+  `rondas.md`)_
+- [x] T33 · revisor y tester (a la vez) · Revisión; suite completa, lint y tipos _(revisión en `9380767` y `bb58d79`;
+  suite completa: 18817 pasan, 0 fallan y 95 se saltan; e2e 6 de 6)_
+- [x] T34 · documentador · `docs/arquitectura.md`, guía de Windows y nota del backlog; marcar tareas (criterio 43)
+  _(este commit, el de cierre)_
 
 ## Solo ruta crítica
 
@@ -120,9 +135,11 @@ las de la 010c, con la 010b unida.
 - [x] 010b: pruebas escritas por test-writer y confirmadas en rojo _(523c911)_
 - [x] 010b: pruebas en verde tras la implementación _(suite completa en 2e6ae8f, 27/11/2026: 18530 pasan, 0 fallan)_
 - [x] 010b: ataque adversarial sin fallas críticas ni altas abiertas _(una ronda, 27/11/2026: F1 a F3 bajas)_
-- [ ] 010c: pruebas escritas por test-writer y confirmadas en rojo
-- [ ] 010c: pruebas en verde tras la implementación
-- [ ] 010c: ataque adversarial sin fallas críticas ni altas abiertas
+- [x] 010c: pruebas escritas por test-writer y confirmadas en rojo _(`d0b0e9c` y `33c9084`)_
+- [x] 010c: pruebas en verde tras la implementación _(`db7fd40`, `9637a54`, `4d8fcbd`, `329132e`, `8c45c5b` y `bb58d79`;
+  suite completa del 27/11/2026: 18817 pasan, 0 fallan y 95 se saltan; e2e 6 de 6; revisión en `9380767`)_
+- [x] 010c: ataque adversarial sin fallas críticas ni altas abiertas _(una ronda, 27/11/2026: F1, media, corregida en
+  `8c45c5b`; F2, F3 y la observación del trigger, bajas, en la deuda de la 010)_
 
 ## 010d · Inscripción pública al mes siguiente (DR-10)
 

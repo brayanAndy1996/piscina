@@ -1,4 +1,5 @@
 // spec: 001-academias-aislamiento (pruebas protegidas)
+// Actualizada por la 010c (spec 010-mensualidades, criterio 34 y A2, aprobado por Bryan el 26/11/2026): la excepción a «ninguna tabla tiene DELETE» suma `matricula_clases` (el cambio de horario borra las clases que salen), junto a `apoderados`. No se quitó ni se cambió nada más.
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { crearAppDePruebas } from '../../utilidades/aplicacion';
@@ -198,7 +199,12 @@ describe('criterio 2: privilegios exactos del rol de la app', () => {
       [ROL],
     );
     // Historia 005, criterio 2: la única excepción es DELETE sobre `apoderados` (su prueba exacta está en inscripciones/privilegios.test.ts).
-    expect(filas.filter((fila) => !(fila.tabla === 'apoderados' && fila.privilegio === 'DELETE'))).toEqual([]);
+    // Historia 010c (A2): también DELETE sobre `matricula_clases` (su prueba exacta está en inscripciones/privilegios.test.ts y mensualidades/horario-modelo.test.ts).
+    expect(
+      filas.filter(
+        (fila) => !(['apoderados', 'matricula_clases'].includes(fila.tabla) && fila.privilegio === 'DELETE'),
+      ),
+    ).toEqual([]);
   });
 });
 

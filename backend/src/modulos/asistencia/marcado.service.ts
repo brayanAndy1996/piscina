@@ -210,6 +210,10 @@ export class MarcadoService {
         }
       : null;
     const claseDelRechazo = clase ? { horaInicio: clase.hora_inicio, horaFin: clase.hora_fin } : null;
+    // Para decidir, la clase suma cuándo entró a la matrícula (010c, criterio 38); la respuesta no la lleva.
+    const claseParaDecidir = clase
+      ? { horaInicio: clase.hora_inicio, horaFin: clase.hora_fin, agregadaEn: clase.agregada_en ?? null }
+      : null;
 
     const decision =
       entrada.tipo === 'POSTERIOR'
@@ -222,7 +226,7 @@ export class MarcadoService {
             alumnoInactivo: alumno.estado === 'INACTIVO',
             yaTieneAsistencia: asistenciaDelDia !== null,
             matricula: datosDeLaMatricula,
-            clase: claseDelRechazo,
+            clase: claseParaDecidir,
           })
         : decidirMarcado({
             ahora,
@@ -232,7 +236,7 @@ export class MarcadoService {
             yaMarcoHoy: asistenciaDelDia !== null,
             matricula: datosDeLaMatricula,
             pagoEnVerificacion,
-            claseDeHoy: claseDelRechazo,
+            claseDeHoy: claseParaDecidir,
           });
 
     if (decision.tipo === 'RECHAZO') {

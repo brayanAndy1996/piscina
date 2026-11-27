@@ -314,9 +314,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   RN-08).
   - Estado: spec aprobada por Bryan el 26/11/2026 (DR-1 a DR-12, cambios A1, A2 y A3 a pruebas protegidas; DT-1 a DT-30), en
     [`specs/010-mensualidades/`](010-mensualidades/spec.md). Cuatro entregas: 010a renovación con prioridad (criterios 1 a 23,
-    44 y 45), unida a main el 26/11/2026, [PR #20](https://github.com/brayanAndy1996/piscina/pull/20), tras dos rondas adversariales (criterios 44 y 45 nuevos); 010b lista para unir (PR por abrir), 27/11/2026; 010b estados y cierre de
-    mes (24 a 33); 010c cambio de horario (34 a 43); y 010d inscripción pública al mes siguiente (DR-10; se especifica con la
-    010c unida).
+    44 y 45), unida a main el 26/11/2026, [PR #20](https://github.com/brayanAndy1996/piscina/pull/20), tras dos rondas adversariales (criterios 44 y 45 nuevos); 010b estados y cierre de
+    mes (24 a 33), unida a main el 27/11/2026, [PR #21](https://github.com/brayanAndy1996/piscina/pull/21), tras una ronda adversarial sin críticas ni altas; 010c cambio de horario (34 a 43 y 46), construida el 27/11/2026 y pendiente de unir, tras una ronda adversarial sin críticas
+    ni altas; y 010d inscripción pública al mes siguiente (DR-10; T35 en `tasks.md`, por especificar con la 010c unida).
   - **Deuda de la 010a** (revisión y suite completa, 26/11/2026; las medias y las bajas no abren ronda, D-31; las rondas no
     dejaron deuda abierta, y el detalle está en [`rondas.md`](010-mensualidades/rondas.md)):
     - **Menores de la revisión** (T15):
@@ -358,6 +358,23 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
       - no hay E2E del flujo inscripción → verificación del pago → carnet → asistencia; la falta de E2E del carnet ya está
         en TES-1 de la 008a;
       - el chunk de la web pesa unos 1,1 MB y Vite avisa por pasar de 500 kB: es TES-2 de la 008a, que sigue abierta.
+  - **Deuda de la 010c** (ronda 1 del ataque y revisión, 27/11/2026; las medias y las bajas no abren ronda, D-31; F1, media,
+    quedó corregida en `8c45c5b` y no queda aquí; el detalle está en [`rondas.md`](010-mensualidades/rondas.md)):
+    - **F2** (baja): reintentar una renovación con la misma clave después de un cambio de horario de esa matrícula responde
+      409 `CLAVE_YA_USADA` y no 200, porque `esElMismoPedido` (`mensualidades/nucleo.ts`) compara las clases pedidas con las
+      `matricula_clases` actuales, que el cambio modificó.
+    - **F3** (baja, **pregunta para Bryan**): si el alumno cambia a otra clase el mismo día, puede quedar con dos faltas ese
+      día, una por la ocurrencia de la clase quitada y otra por la de la clase agregada. Ningún documento dice si deben ser
+      una o dos. Propuesta: como máximo una falta por día y alumno.
+    - **Observación del trigger** (baja, de diseño): `matricula_clases_solo_matricula_abierta` cubre `INSERT` y `DELETE`,
+      pero no un `UPDATE` de `matricula_clases` hecho por el dueño de las tablas (la app no tiene `UPDATE`), ni reabrir y
+      volver a cerrar una matrícula dentro de una misma transacción.
+    - **De la revisión** (T33): las faltas de las ocurrencias de una clase quitada que ya pasaron se pierden si la tarea de
+      faltas no había corrido antes del cambio. La spec solo acepta el caso de hasta 5 minutos («Riesgos aceptados»).
+    - **Pendiente de Bryan:** la web del cambio se verificó con la API simulada; Bryan debe probar el flujo completo en su
+      PC, con la guía de Windows («Probar el cambio de horario»).
+    - **Pendiente de corregir:** el título con `$4096` de las pruebas del criterio 104 en
+      `scripts/test/rol-app-ronda3.test.mjs` (líneas 314 y 418).
   - Nota de 003: "por vencer" (`diasPorVencer`) y la prioridad de renovación (`diasPrioridadRenovacion`) los leerá
     `leerConfiguracion(tx)` dentro de la transacción de la operación, sin caché. Son valores aparte: cambiar uno no cambia
     el otro (DR-3 de 003).

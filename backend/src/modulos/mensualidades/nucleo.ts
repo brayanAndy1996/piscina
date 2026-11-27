@@ -148,7 +148,7 @@ export async function decidirLaClave(
 }
 
 /** El alumno con `FOR UPDATE` (después del bloqueo consultivo): 404 si dejó de existir o es un `CLIENTE`. */
-async function bloquearAlumno(tx: TransaccionAcademia, alumnoId: string): Promise<AlumnoLeido> {
+export async function bloquearAlumno(tx: TransaccionAcademia, alumnoId: string): Promise<AlumnoLeido> {
   const filas = await tx.cliente.$queryRaw<
     {
       id: string;

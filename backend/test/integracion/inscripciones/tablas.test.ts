@@ -2,6 +2,8 @@
 // Actualizada por la 007 (spec 007-pagos, criterio 7 y «Pruebas protegidas anteriores que amplía la 007a»): el tipo `estado_solicitud` suma `CONFIRMADA`,
 // `solicitudes_inscripcion` suma la columna `registrada_por` (uuid, nula) y su llave compuesta a `usuarios`, y `matriculas` suma el único
 // `(academia_id, id, alumno_id)` que piden las llaves de `pagos`. No se quitó ni se cambió nada más.
+// Actualizada por la 010c (spec 010-mensualidades, criterio 34 y A2, aprobado por Bryan el 26/11/2026): `matricula_clases` suma la columna `agregada_en` (`timestamptz(3)`, nula)
+// y una política de `DELETE` (`matricula_clases_borrar`, de la forma de 001), para que el cambio de horario pueda quitar las clases que salen. No se quitó ni se cambió nada más.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { conTransaccionRevertida, ejecutarComo } from '../../utilidades/base-datos';
 import { exigirTablasDeInscripcion, TABLAS_005, type Tabla005 } from '../../utilidades/inscripciones';
@@ -230,6 +232,8 @@ describe('criterio 1: columnas de cada tabla', () => {
       academia_id: { tipo: /^uuid$/, obligatoria: true },
       matricula_id: { tipo: /^uuid$/, obligatoria: true },
       clase_id: { tipo: /^uuid$/, obligatoria: true },
+      // 010c, criterio 34 (A2): la hora a la que entró la clase en un cambio de horario; nula en las filas de la inscripción y de la renovación.
+      agregada_en: { tipo: /^timestamp\(3\) with time zone$/, obligatoria: false },
     });
   });
 });
@@ -417,7 +421,7 @@ describe('criterio 1: RLS activada y forzada, y políticas', () => {
   });
 
   it.each(TABLAS_005)(
-    'criterio 1: %s tiene políticas con la forma exacta de la 001 (criterio 132) y solo las de SELECT, INSERT y UPDATE (más DELETE en apoderados)',
+    'criterio 1: %s tiene políticas con la forma exacta de la 001 (criterio 132) y solo las de SELECT, INSERT y UPDATE (más DELETE en apoderados y en matricula_clases)',
     async (tabla) => {
       const politicas = await conTransaccionRevertida('propietario', undefined, async (cliente) => {
         await cliente.query('SET LOCAL search_path = pg_catalog, public');
@@ -436,7 +440,8 @@ describe('criterio 1: RLS activada y forzada, y políticas', () => {
       });
 
       // a = INSERT, r = SELECT, w = UPDATE, d = DELETE.
-      const esperados = tabla === 'apoderados' ? ['a', 'd', 'r', 'w'] : ['a', 'r', 'w'];
+      // 010c, criterio 34 (A2): `matricula_clases` suma la política de DELETE del cambio de horario.
+      const esperados = tabla === 'apoderados' || tabla === 'matricula_clases' ? ['a', 'd', 'r', 'w'] : ['a', 'r', 'w'];
       expect(politicas.map((politica) => politica.comando).sort()).toEqual(esperados);
       expect(politicas.every((politica) => politica.permisiva)).toBe(true);
       expect(politicas.flatMap(problemasDeLaPolitica)).toEqual([]);

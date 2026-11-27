@@ -132,7 +132,7 @@ export class FaltasService {
    * Quién tiene una falta (criterio 24): por cada fecha D de `fechas` y cada clase activa de la matrícula del mes de D (`VIGENTE` o `FINALIZADA`, con D entre
    * `fecha_inicio` y `fecha_fin`) que cae ese día ISO:
    * - la ocurrencia ya terminó (`fin <= ahora`, con la fecha y la hora en America/Lima: DR-1);
-   * - está incluida en la mensualidad (su inicio es posterior a `matriculas.creado_en`, DT-14) y su inicio no es anterior a la confirmación del pago
+   * - está incluida en la mensualidad (su inicio es posterior a `matriculas.creado_en`, DT-14, y a `matricula_clases.agregada_en` si la clase entró con un cambio de horario, criterio 38 de 010c) y su inicio no es anterior a la confirmación del pago
    *   (`verificado_en` del pago `CONFIRMADO`; sin pago confirmado no hay falta);
    * - el alumno no tiene ninguna asistencia de ese día (salvo las `PARTICULAR`), le quedan clases y no está `INACTIVO` (DR-4).
    */
@@ -154,6 +154,7 @@ export class FaltasService {
         JOIN pagos p ON p.academia_id = m.academia_id AND p.matricula_id = m.id AND p.estado = 'CONFIRMADO'
        WHERE ((f.fecha + c.hora_fin) AT TIME ZONE 'America/Lima') <= ${ahora}::timestamptz
          AND ((f.fecha + c.hora_inicio) AT TIME ZONE 'America/Lima') > m.creado_en
+         AND (mc.agregada_en IS NULL OR ((f.fecha + c.hora_inicio) AT TIME ZONE 'America/Lima') > mc.agregada_en)
          AND ((f.fecha + c.hora_inicio) AT TIME ZONE 'America/Lima') >= p.verificado_en
          AND NOT EXISTS (
                SELECT 1 FROM asistencias s

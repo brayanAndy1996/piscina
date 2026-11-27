@@ -18,7 +18,22 @@ export interface EntradaDeLaDecision {
   /** Sin matrícula del día, un pago `PENDIENTE_VERIFICACION` de una matrícula `RESERVADA` del mes (DR-3). */
   readonly pagoEnVerificacion: boolean;
   /** La clase de la matrícula que cae hoy, o `null` si no tiene. */
-  readonly claseDeHoy: { readonly horaInicio: string; readonly horaFin: string } | null;
+  readonly claseDeHoy: {
+    readonly horaInicio: string;
+    readonly horaFin: string;
+    /** Cuándo entró la clase a la matrícula con un cambio de horario (010c); nula o ausente si estuvo desde la inscripción o la renovación. */
+    readonly agregadaEn?: Date | null;
+  } | null;
+}
+
+/**
+ * ¿La ocurrencia está incluida en la mensualidad? (DT-14 de 009, ampliada por el criterio 38 de 010c): su inicio es posterior a la creación de la matrícula
+ * y, si la clase entró con un cambio de horario (`agregadaEn` no nula), también posterior a ese instante. «Posterior» es estricto: un cambio a las 10:00:00.000
+ * deja fuera la ocurrencia de las 10:00 y uno a las 09:59:59.999 la deja dentro.
+ */
+export function ocurrenciaIncluida(inicio: Date, creadaEn: Date, agregadaEn?: Date | null): boolean {
+  if (inicio.getTime() <= creadaEn.getTime()) return false;
+  return agregadaEn === undefined || agregadaEn === null || inicio.getTime() > agregadaEn.getTime();
 }
 
 export type DecisionDeMarcado =
@@ -28,7 +43,7 @@ export type DecisionDeMarcado =
 /**
  * Qué hacer con una lectura (spec 009a, criterio 7; HU-14, RN-15, RN-16, D-16): la primera validación que falla decide, en este orden:
  * alumno inactivo → ya marcó hoy → pago en verificación → sin matrícula del día → sin clases restantes → sin clase hoy o fuera de la ventana
- * `[inicio, fin)` → ocurrencia no incluida en la mensualidad (su inicio no es posterior a la creación de la matrícula, DT-14). Si pasan todas,
+ * `[inicio, fin)` → ocurrencia no incluida en la mensualidad (su inicio no es posterior a la creación de la matrícula, DT-14, ni a la hora en que la clase entró con un cambio de horario, criterio 38 de 010c). Si pasan todas,
  * registrar con el estado de llegada. Pura: sin base de datos, sin reloj propio.
  */
 export function decidirMarcado(entrada: EntradaDeLaDecision): DecisionDeMarcado {
@@ -43,7 +58,9 @@ export function decidirMarcado(entrada: EntradaDeLaDecision): DecisionDeMarcado 
   if (entrada.claseDeHoy === null) return rechazo('FUERA_DE_HORARIO');
   const ventana = ventanaDeLaClase(entrada.hoy, entrada.claseDeHoy.horaInicio, entrada.claseDeHoy.horaFin);
   if (!dentroDeLaVentana(entrada.ahora, ventana)) return rechazo('FUERA_DE_HORARIO');
-  if (ventana.inicio.getTime() <= matricula.creadaEn.getTime()) return rechazo('CLASE_NO_INCLUIDA');
+  if (!ocurrenciaIncluida(ventana.inicio, matricula.creadaEn, entrada.claseDeHoy.agregadaEn)) {
+    return rechazo('CLASE_NO_INCLUIDA');
+  }
   return {
     tipo: 'REGISTRAR',
     estadoLlegada: estadoDeLlegada(entrada.ahora, ventana.inicio, entrada.toleranciaMinutos),
@@ -68,7 +85,12 @@ export interface EntradaDelPosterior {
   /** La matrícula `VIGENTE` que cubre `fecha`, o `null` si no hay. */
   readonly matricula: { readonly clasesTotales: number; readonly clasesUsadas: number; readonly creadaEn: Date } | null;
   /** La clase de la matrícula que cae en `fecha`, o `null` si no tiene. */
-  readonly clase: { readonly horaInicio: string; readonly horaFin: string } | null;
+  readonly clase: {
+    readonly horaInicio: string;
+    readonly horaFin: string;
+    /** Cuándo entró la clase a la matrícula con un cambio de horario (010c); nula o ausente si estuvo desde la inscripción o la renovación. */
+    readonly agregadaEn?: Date | null;
+  } | null;
 }
 
 export type CodigoDelPosterior = CodigoRechazoAsistencia;
@@ -98,7 +120,9 @@ export function decidirPosterior(entrada: EntradaDelPosterior): DecisionDelPoste
   if (entrada.ahora.getTime() < ventana.fin.getTime()) return rechazo('CLASE_NO_TERMINADA');
   const llegadaEn = instanteEnLima(entrada.fecha, entrada.horaLlegada);
   if (!dentroDeLaVentana(llegadaEn, ventana)) return rechazo('HORA_FUERA_DE_LA_CLASE');
-  if (ventana.inicio.getTime() <= matricula.creadaEn.getTime()) return rechazo('CLASE_NO_INCLUIDA');
+  if (!ocurrenciaIncluida(ventana.inicio, matricula.creadaEn, entrada.clase.agregadaEn)) {
+    return rechazo('CLASE_NO_INCLUIDA');
+  }
   return {
     tipo: 'REGISTRAR',
     estadoLlegada: estadoDeLlegada(llegadaEn, ventana.inicio, entrada.toleranciaMinutos),
