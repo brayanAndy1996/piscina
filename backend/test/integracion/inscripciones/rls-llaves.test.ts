@@ -1,4 +1,7 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Ajuste por el criterio 34 de 010-mensualidades (trigger de matricula_clases), consecuencia directa de A2, decidido por el orquestador el 27/11/2026: el trigger BEFORE
+// `matricula_clases_solo_matricula_abierta` responde 23514 antes que la RLS (42501) y la llave foránea (23503) cuando la matrícula de la fila no existe o la sesión no la ve;
+// solo cambia el código esperado de esas filas (siguen rechazadas y no queda nada escrito).
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type AcademiaDePrueba, crearAcademiaDePrueba } from '../../utilidades/academias';
 import { ejecutarComo, limpiarBase } from '../../utilidades/base-datos';
@@ -119,13 +122,16 @@ describe('criterio 3: RLS y llaves compuestas de las tablas de la inscripción',
   });
 
   describe.each(TABLAS_005)('INSERT en %s', (tabla) => {
+    // 010c (criterio 34): en `matricula_clases` el trigger BEFORE de la 010c responde 23514 antes que la RLS de inserción cuando la sesión no ve la matrícula de la fila.
+    const codigoRechazo = tabla === 'matricula_clases' ? '23514' : '42501';
+
     it('criterio 3: un INSERT con la academia_id de B en contexto de A falla con 42501 y B no recibe nada', async () => {
       const antes = await idsDe(tabla, { academiaId: B.academia.id });
       const fila = await filaNuevaDe(tabla, B);
 
       await expect(
         insertarFila('app', tabla, B.academia.id, fila, { contexto: { academiaId: A.academia.id } }),
-      ).rejects.toMatchObject({ code: '42501' });
+      ).rejects.toMatchObject({ code: codigoRechazo });
 
       expect(await idsDe(tabla, { academiaId: B.academia.id })).toEqual(antes);
     });
@@ -137,7 +143,7 @@ describe('criterio 3: RLS y llaves compuestas de las tablas de la inscripción',
           await expect(
             insertarFila('app', tabla, d.academia.id, fila, { contexto }),
             `${JSON.stringify(contexto)} en ${d.academia.id}`,
-          ).rejects.toMatchObject({ code: '42501' });
+          ).rejects.toMatchObject({ code: codigoRechazo });
         }
       }
     });
@@ -329,8 +335,10 @@ describe('criterio 3: RLS y llaves compuestas de las tablas de la inscripción',
       ];
 
       for (const [nombre, tabla, fila] of casos) {
+        // 010c (criterio 34): la fila de `matricula_clases` con la matrícula de B la rechaza antes el trigger BEFORE (23514), que gana a la llave foránea (23503).
+        const codigo = tabla === 'matricula_clases' ? '23514' : '23503';
         await expect(insertarFila('propietario', tabla, A.academia.id, fila), nombre).rejects.toMatchObject({
-          code: '23503',
+          code: codigo,
         });
       }
     });

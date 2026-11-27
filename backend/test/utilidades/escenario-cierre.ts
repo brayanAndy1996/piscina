@@ -1,4 +1,7 @@
 // spec: 010-mensualidades (pruebas protegidas)
+// Ajuste por el criterio 34 de 010-mensualidades (trigger de matricula_clases), consecuencia directa de A2, decidido por el orquestador el 27/11/2026: los sembradores
+// de matrículas cerradas (`sembrarSolicitud`; `sembrarEnMasa` en la 005b; `sembrarAlumno` en escenario-cierre) siembran la matrícula abierta (`VIGENTE`), insertan sus clases y
+// después la pasan a su estado final (mismas columnas y valores que antes).
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -193,7 +196,7 @@ export async function sembrarAlumno(
       `INSERT INTO matriculas (id, academia_id, alumno_id, plan_id, anio, mes, fecha_inicio, fecha_fin, clases_totales, clases_usadas,
                               es_proporcional, precio_plan, clases_por_mes_plan, monto_calculado, estado, reserva_vence_en, creado_en, actualizado_en)
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::smallint, $6::smallint, $7::date, $8::date, $9, $10,
-               false, 120.00, 12, 120.00, $11::estado_matricula, NULL, $12, $12)`,
+               false, 120.00, 12, 120.00, 'VIGENTE'::estado_matricula, NULL, $11, $11)`,
       [
         id,
         academiaId,
@@ -205,7 +208,6 @@ export async function sembrarAlumno(
         `${matricula.mes.anio}-${dos(matricula.mes.mes)}-${dos(ultimo)}`,
         matricula.clasesTotales ?? 12,
         matricula.clasesUsadas ?? 0,
-        matricula.estado,
         creado,
       ],
       { academiaId },
@@ -217,6 +219,15 @@ export async function sembrarAlumno(
       [academiaId, id, [...claseIds]],
       { academiaId },
     );
+    // 010c (criterio 34): las clases de una matrícula cerrada no se insertan; se siembra `VIGENTE` y, con sus clases ya puestas, pasa a su estado final.
+    if (matricula.estado !== 'VIGENTE') {
+      await ejecutarComo(
+        'propietario',
+        `UPDATE matriculas SET estado = $3::estado_matricula WHERE academia_id = $1::uuid AND id = $2::uuid`,
+        [academiaId, id, matricula.estado],
+        { academiaId },
+      );
+    }
   }
   return { academiaId, alumnoId, dni, matriculaIds };
 }

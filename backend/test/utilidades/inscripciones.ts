@@ -1,4 +1,7 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Ajuste por el criterio 34 de 010-mensualidades (trigger de matricula_clases), consecuencia directa de A2, decidido por el orquestador el 27/11/2026: los sembradores
+// de matrículas cerradas (`sembrarSolicitud`; `sembrarEnMasa` en la 005b; `sembrarAlumno` en escenario-cierre) siembran la matrícula abierta (`VIGENTE`), insertan sus clases y
+// después la pasan a su estado final (mismas columnas y valores que antes).
 // Actualizada por la 007 (spec 007-pagos, criterio 7): `TIPO_DE_COLUMNA` suma `registrada_por` (uuid) para escribir esa columna de `solicitudes_inscripcion`. No se quitó ni se cambió nada más.
 // Actualizada por la 010a (spec 010-mensualidades, criterio 1: `CHECK matriculas_renovacion_sin_vencimiento`, una matrícula sin solicitud nunca tiene `reserva_vence_en`): `filaValida('matriculas')` queda sin vencimiento
 // (la fila ya no tiene solicitud, así que no puede tener reserva) y `sqlLlenarClase`, cuando llena con matrículas `RESERVADA` con vencimiento, siembra también la solicitud de cada una. No cambia lo que comprueban las pruebas
@@ -1231,13 +1234,22 @@ export async function sembrarSolicitud(academiaId: string, opciones: OpcionesSem
     precio_plan: opciones.precioPlan ?? '120.00',
     clases_por_mes_plan: opciones.clasesPorMesPlan ?? 12,
     monto_calculado: opciones.monto ?? '120.00',
-    estado: reservada ? 'RESERVADA' : 'CANCELADA',
+    // 010c (criterio 34): las clases de una matrícula cerrada no se insertan; la cancelada se siembra `VIGENTE` y se cancela después de sus clases.
+    estado: reservada ? 'RESERVADA' : 'VIGENTE',
     reserva_vence_en: vence,
     creado_en: creada,
     actualizado_en: creada,
   });
   for (const claseId of opciones.claseIds) {
     await insertarFila('propietario', 'matricula_clases', academiaId, { matricula_id: matriculaId, clase_id: claseId });
+  }
+  if (!reservada) {
+    await ejecutarComo(
+      'propietario',
+      `UPDATE matriculas SET estado = 'CANCELADA'::estado_matricula WHERE academia_id = $1::uuid AND id = $2::uuid`,
+      [academiaId, matriculaId],
+      { academiaId },
+    );
   }
   for (const tipo of ['DATOS_PERSONALES', 'DESLINDE']) {
     await insertarFila('propietario', 'consentimientos', academiaId, {

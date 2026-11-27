@@ -1,4 +1,7 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Ajuste por el criterio 34 de 010-mensualidades (trigger de matricula_clases), consecuencia directa de A2, decidido por el orquestador el 27/11/2026: los sembradores
+// de matrículas cerradas (`sembrarSolicitud`; `sembrarEnMasa` en la 005b; `sembrarAlumno` en escenario-cierre) siembran la matrícula abierta (`VIGENTE`), insertan sus clases y
+// después la pasan a su estado final (mismas columnas y valores que antes).
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -590,7 +593,7 @@ export async function sembrarEnMasa(
        INSERT INTO matriculas (id, academia_id, alumno_id, plan_id, solicitud_id, anio, mes, fecha_inicio, fecha_fin, clases_totales, clases_usadas,
                                es_proporcional, precio_plan, clases_por_mes_plan, monto_calculado, estado, reserva_vence_en, creado_en, actualizado_en)
        SELECT x.matricula, $1::uuid, x.alumno, $10::uuid, x.solicitud, 2026, 11, DATE '2026-11-01', DATE '2026-11-30', 12, 0,
-              false, 120.00, 12, 120.00, CASE WHEN $9::text = 'PENDIENTE_PAGO' THEN 'RESERVADA' ELSE 'CANCELADA' END::estado_matricula,
+              false, 120.00, 12, 120.00, CASE WHEN $9::text = 'PENDIENTE_PAGO' THEN 'RESERVADA' ELSE 'VIGENTE' END::estado_matricula,
               CASE WHEN $9::text = 'PENDIENTE_PAGO' THEN $12::timestamptz ELSE NULL END,
               $8::timestamptz + make_interval(secs => x.n), $8::timestamptz + make_interval(secs => x.n)
          FROM unnest($2::uuid[], $4::uuid[], $7::uuid[], $6::int[]) AS x(alumno, solicitud, matricula, n)
@@ -613,5 +616,14 @@ export async function sembrarEnMasa(
     ],
     { academiaId },
   );
+  if (!activa) {
+    // 010c (criterio 34): las clases de una matrícula cerrada no se insertan; la matrícula se siembra abierta y después se cancela.
+    await ejecutarComo(
+      'propietario',
+      `UPDATE matriculas SET estado = 'CANCELADA'::estado_matricula WHERE academia_id = $1::uuid AND id = ANY($2::uuid[])`,
+      [academiaId, matriculas],
+      { academiaId },
+    );
+  }
   return solicitudes;
 }
