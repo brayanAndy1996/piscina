@@ -1,4 +1,4 @@
-// spec: 010d-inscripcion-mes-siguiente (pruebas protegidas)
+// spec: 010-mensualidades (pruebas protegidas)
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { leerMovimientos } from '../../utilidades/caja';
 import { leerAuditoriaDeAcademia } from '../../utilidades/datos';

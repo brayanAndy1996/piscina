@@ -1,4 +1,4 @@
-// spec: 010d-inscripcion-mes-siguiente (pruebas protegidas)
+// spec: 010-mensualidades (pruebas protegidas)
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { cookiesDePagos, crearEscenarioDePagos, type EscenarioPagos } from '../../utilidades/escenario-pagos';
 import {

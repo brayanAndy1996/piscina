@@ -1,4 +1,4 @@
-// spec: 010d-inscripcion-mes-siguiente (pruebas protegidas)
+// spec: 010-mensualidades (pruebas protegidas)
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';

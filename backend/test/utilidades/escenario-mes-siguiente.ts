@@ -1,4 +1,4 @@
-// spec: 010d-inscripcion-mes-siguiente (pruebas protegidas)
+// spec: 010-mensualidades (pruebas protegidas)
 import { randomUUID } from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { expect } from 'vitest';
