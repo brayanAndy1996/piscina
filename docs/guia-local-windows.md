@@ -432,6 +432,20 @@ npm run dev
 - La 010a tiene una migración nueva, `20261126140000_renovaciones`, que agrega una regla a las matrículas: una renovación (una matrícula sin solicitud) no puede llevar vencimiento de reserva. `npm run db:preparar` la aplica a las dos bases, la de desarrollo y la de pruebas. Si se detiene con el código 23514 en esa migración, tu base tiene una matrícula sin solicitud con vencimiento de reserva, algo que solo puede venir de un cambio hecho a mano; la solución es empezar de cero (mira "Borrar la base de desarrollo y empezar de cero", en "Problemas frecuentes").
 - No hay paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta. La semilla no cambia: repetir `npm run db:preparar` no duplica nada (ver "Probar la renovación de la mensualidad").
 
+## Después de traer la historia 010c
+
+Si ya tenías el proyecto con la historia 010b, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- La 010c tiene dos migraciones nuevas. `20261127190000_cambio_horario` agrega a `matricula_clases` la columna `agregada_en`, con el momento en que entró cada clase, y da a la API permiso para borrar las clases que salen en un cambio de horario. `20261127200000_trigger_matricula_clases_bloqueo` ajusta el trigger que impide cambiar las clases de una matrícula cerrada. `npm run db:preparar` las aplica a las dos bases, la de desarrollo y la de pruebas.
+- No hay paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta. La semilla no cambia: repetir `npm run db:preparar` no duplica nada (ver "Probar el cambio de horario").
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -1065,6 +1079,20 @@ Con `npm run dev` encendido:
 11. Al aprobar o rechazar, el alumno recibe un correo, y su apoderado también si es menor, como Mateo. El correo no lleva credenciales.
 
 Las pruebas automáticas de la renovación corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
+
+## Probar el cambio de horario
+
+La secretaria o el administrador cambian el horario de una mensualidad desde la ficha del alumno, en **Alumnos y carnets** (`/panel/alumnos/{id}`, sección **Mensualidad**). El entrenador y el alumno no lo ven, y la API responde 403 si lo piden. El cambio no cobra nada ni cambia el monto ni las clases ya usadas: solo cambian las clases de la mensualidad. Desde ese momento, la asistencia y las faltas siguen el horario nuevo: una clase agregada cuenta solo desde la hora del cambio, y una clase quitada ya no se marca.
+
+Con `npm run dev` encendido:
+
+1. Entra como la secretaria (`10000002`) en **http://localhost:5173/a/delfines/ingresar**. Si Valeria Andrea Mendoza Salas (DNI `20000001`) aún no es alumna con su mensualidad del mes en curso, sigue el paso 1 de "Probar la renovación de la mensualidad".
+2. Abre su ficha y, en la sección **Mensualidad**, pulsa **Cambiar horario** en la mensualidad del mes en curso. Si ya tiene la renovación del mes siguiente (vigente o en verificación), aparece otra fila para ese mes, con su propio botón.
+3. En el diálogo **Cambiar horario** marca las clases nuevas y desmarca las que ya no quiere. Se pueden elegir las clases del plan de su mensualidad (del nivel del alumno, en los días y franjas del plan). Cada una muestra sus cupos, o **Llena**. Las clases que ya no están en el plan aparecen en **Ya no disponibles** y solo se pueden quitar.
+4. Escribe el **motivo** (de 3 a 200 caracteres; queda en la auditoría) y pulsa **Cambiar horario**. Aparece **Horario cambiado**, con el horario nuevo. Si con ese horario quedan menos clases de las que le faltan por usar en el mes, la pantalla lo avisa.
+5. Si una clase se llena mientras eliges, se marca **Sin cupo** y sale de la selección: elige otra. Si la mensualidad ya no se puede cambiar (por ejemplo, porque está cerrada o es de otro mes), el diálogo dice que «Esta mensualidad ya no se puede cambiar».
+
+Las pruebas automáticas del cambio corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
 
 ## Día a día
 
