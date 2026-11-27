@@ -27,7 +27,6 @@ interface FilaDeMatricula {
   nombres: string;
   apellidos: string;
   nivel: FilaDelListadoMensualidades['nivel'];
-  matricula_id: string;
   anio: number;
   mes: number;
   pagada: boolean;
@@ -87,11 +86,13 @@ export class ListadoDeMensualidadesService {
 
       const anterior = mesAnterior(pedido);
       const siguiente = mesSiguiente(pedido);
-      const filas = await this.leerMatriculas(tx, esElMesEnCurso ? [anterior, pedido, siguiente] : [anterior, pedido]);
+      const filas = await this.leerMatriculas(
+        tx,
+        esElMesEnCurso ? [anterior, pedido, siguiente] : [anterior, pedido],
+        consulta.alumnoId?.toLowerCase() ?? null,
+      );
       const porAlumno = new Map<string, Map<string, MensualidadDeUnMes>>();
-      const soloElAlumno = consulta.alumnoId?.toLowerCase();
       for (const fila of filas) {
-        if (soloElAlumno !== undefined && fila.alumno_id !== soloElAlumno) continue;
         const meses = porAlumno.get(fila.alumno_id) ?? new Map<string, MensualidadDeUnMes>();
         porAlumno.set(fila.alumno_id, meses);
         const mes = clave({ anio: fila.anio, mes: fila.mes });
@@ -170,12 +171,17 @@ export class ListadoDeMensualidadesService {
 
   /**
    * Las matrículas de los meses dados de alumnos `ALUMNO_ACTIVO` o `ALUMNO_VENCIDO`: las pagadas (`VIGENTE` o `FINALIZADA`) y las que están en verificación
-   * (`RESERVADA` sin vencimiento y con un pago `PENDIENTE_VERIFICACION`, RN-28), con el plan y las clases. Siempre con `academia_id`; sin bloqueos.
+   * (`RESERVADA` sin vencimiento y con un pago `PENDIENTE_VERIFICACION`, RN-28), con el plan y las clases. Con `alumnoId`, solo las de ese alumno (el filtro va en
+   * la sentencia, no en memoria). Siempre con `academia_id`; sin bloqueos.
    */
-  private async leerMatriculas(tx: TransaccionAcademia, meses: readonly MesDeCalendario[]): Promise<FilaDeMatricula[]> {
+  private async leerMatriculas(
+    tx: TransaccionAcademia,
+    meses: readonly MesDeCalendario[],
+    alumnoId: string | null,
+  ): Promise<FilaDeMatricula[]> {
     const indices = meses.map(indiceDelMes);
     return tx.cliente.$queryRaw<FilaDeMatricula[]>`
-      SELECT a.id::text AS alumno_id, a.nombres, a.apellidos, a.nivel::text AS nivel, m.id::text AS matricula_id,
+      SELECT a.id::text AS alumno_id, a.nombres, a.apellidos, a.nivel::text AS nivel,
              m.anio::int AS anio, m.mes::int AS mes, (m.estado IN ('VIGENTE', 'FINALIZADA')) AS pagada,
              m.plan_id::text AS plan_id, p.nombre AS plan_nombre, m.clases_usadas::int AS clases_usadas, m.clases_totales::int AS clases_totales,
              COALESCE((
@@ -189,6 +195,7 @@ export class ListadoDeMensualidadesService {
         JOIN alumnos a ON a.academia_id = m.academia_id AND a.id = m.alumno_id AND a.estado IN ('ALUMNO_ACTIVO', 'ALUMNO_VENCIDO')
         JOIN planes p ON p.academia_id = m.academia_id AND p.id = m.plan_id
        WHERE m.academia_id = ${tx.academiaId}::uuid
+         AND (${alumnoId}::uuid IS NULL OR m.alumno_id = ${alumnoId}::uuid)
          AND (m.anio::int * 12 + m.mes::int - 1) = ANY(${indices}::int[])
          AND (m.estado IN ('VIGENTE', 'FINALIZADA')
               OR (m.estado = 'RESERVADA' AND m.reserva_vence_en IS NULL
