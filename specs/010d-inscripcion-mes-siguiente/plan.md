@@ -3,6 +3,9 @@
 Entrega de la historia 010 (DR-10 de la [spec 010](../010-mensualidades/spec.md)), especificada en su propia carpeta
 (DT-1). Trabaja sobre la 010c (cambio de horario) ya implementada. Sin migraciones.
 
+**Estado:** aprobado el 27/11/2026. Bryan aceptó la propuesta de P1 a P5 (DR-1 a DR-5 de `spec.md`) y el orquestador
+aceptó DT-1 a DT-13 tal como están aquí. En pruebas protegidas.
+
 ## Módulos afectados
 
 - `packages/contratos/src/inscripcion.ts` (e índice): `mesesInscripcionSchema`, `consultaFormularioSchema` y `mes`
@@ -18,7 +21,7 @@ Entrega de la historia 010 (DR-10 de la [spec 010](../010-mensualidades/spec.md)
   - `cupo-para-nuevos.ts` (nuevo): `cuposParaInscripcionNueva(tx, clases, mes, ahora)` (DT-8); se exporta en `index.ts`.
 - `backend/src/modulos/pagos/cupo.ts`: `exigirCupoDeLaMatricula` usa `cuposParaInscripcionNueva` (criterio 10).
 - `backend/src/modulos/mensualidades/cierre-de-mes.service.ts`: la condición de `ALUMNO_ACTIVO → ALUMNO_VENCIDO`
-  (criterio 11, DT-10; solo si Bryan aprueba P2).
+  (criterio 11, DT-10, DR-2).
 - `backend/src/modulos/academias/limite-inicio-sesion.ts`: regla `lectura` para `/inscripcion/meses` (DT-11).
 - OpenAPI generado: la ruta nueva y los parámetros nuevos, si el generador no los toma solo.
 - `frontend/src/modulos/inscripcion/`: `PaginaInscripcion.tsx` (paso «¿Desde cuándo?»), `pasos/PasoPlan.tsx`,
@@ -47,8 +50,7 @@ planes con `estadoDelPlan(plan, primerDiaDelMes(M+1)) === 'VIGENTE'` y las clase
 `cotizar(academia, datos)`: `mes = datos.mes ?? M`. Si `mes` no es de inscripción, `mesCambio(M)` (DT-4). Plan
 disponible en la `fechaInicio` del mes. `validarSeleccion` como hoy. La cotización: `cotizarInscripcion(plan, clases,
 ahora)` para M (sin cambios) y `cotizarRenovacion(plan, clases, mes, ahora)` para M+1 (DT-13), que cotiza desde las
-00:00 de Lima del día 1. Si Bryan elige la alternativa de P1 (precio completo siempre), solo cambia esta llamada para
-M+1: `montoProporcional(precio, clasesPorMes, clasesPorMes)` con `clasesTotales = clasesPorMes`.
+00:00 de Lima del día 1, con el tope del plan (DR-1: la misma regla de la renovación, no el precio completo siempre).
 
 ### Envío (criterios 4 a 8)
 
@@ -93,8 +95,7 @@ con `cupoLibre({ aforo, ocupacion, reservas, esTitular: false, esMesSiguiente })
 En las dos condiciones de `ALUMNO_ACTIVO` de `cerrarLaAcademia` (la selección de afectados y el `UPDATE`), el
 `NOT EXISTS` de la matrícula `VIGENTE` pasa de `= mes en curso` a `IN (mes en curso, mes en curso + 1)` con el mismo
 índice entero (`anio × 12 + mes − 1`). Las condiciones de `ALUMNO_VENCIDO → ALUMNO_ACTIVO` y las de `FINALIZADA` no
-cambian. Si Bryan elige la alternativa (c) de P2, esta tarea se quita y el criterio 11 se reescribe; con la (b), se
-especifica de nuevo.
+cambian (DR-2).
 
 ### Asistencia (criterio 12)
 
@@ -107,7 +108,7 @@ ocurrencias incluidas y el registro posterior con el mes. El criterio fija ese c
   meses, un paso inicial con las dos opciones; el mes elegido entra en la clave de la oferta (`['inscripcion',
   nombreCorto, 'oferta', mes]`), en la cotización y en el envío. Cambiar de mes descarta plan, clases y cotización.
   `MES_CAMBIO` invalida las dos consultas y vuelve al paso del mes. Con un solo mes, el paso no aparece y el formulario
-  es el de la 005. `SIN_CLASES_EN_EL_MES` con `aperturaMesSiguiente` muestra la fecha (P4).
+  es el de la 005. `SIN_CLASES_EN_EL_MES` con `aperturaMesSiguiente` muestra la fecha (DR-4).
 - Seguimiento, panel de solicitudes y bandeja: un formateador común «{Mes} de {año}, desde el {día}/{mes}» cuando `mes`
   no es el mes en curso de `hoy` (de la respuesta o de la fecha local de Lima, como ya lo hacen).
 
@@ -124,7 +125,7 @@ ocurrencias incluidas y el registro posterior con el mes. El criterio fija ese c
 | DT-7 | `vencimientoDeReservaDelMes(ahora, mes)` = mínimo entre `ahora + 24 h` y el fin del mes de la matrícula; `vencimientoDeReserva(ahora)` queda igual | Cambiar `vencimientoDeReserva` | `reserva-protegido.test.ts` (criterio 54 de 005) fija que cae en el mes de «ahora»; para M las dos coinciden |
 | DT-8 | Una sola función `cuposParaInscripcionNueva` en `matriculas/` para el formulario, el envío y el nuevo intento tras un rechazo | Repetir la cuenta en cada lugar | «Reglas para las historias siguientes» de 010: toda operación que ocupe una clase en M+1 usa la función común; lo que se muestra y lo que se decide no pueden divergir |
 | DT-9 | `PAGO_RECHAZADO` mientras el mes de hoy no sea posterior al de la matrícula | Dejar la igualdad de la 007b | Con la igualdad, un rechazo de M+1 en M se vería `VENCIDA` y el cliente no podría subir otro comprobante (D-05) |
-| DT-10 | El cierre no vence a un `ALUMNO_ACTIVO` con matrícula `VIGENTE` de M+1 (propuesta de P2) | Dejar la regla de la 010b | Con la regla actual, el alumno nuevo que pagó M+1 pasaría a `ALUMNO_VENCIDO` en la vuelta siguiente (15 minutos) hasta el día 1 |
+| DT-10 | El cierre no vence a un `ALUMNO_ACTIVO` con matrícula `VIGENTE` de M+1 (DR-2) | Dejar la regla de la 010b | Con la regla actual, el alumno nuevo que pagó M+1 pasaría a `ALUMNO_VENCIDO` en la vuelta siguiente (15 minutos) hasta el día 1 |
 | DT-11 | `/inscripcion/meses` en la regla `lectura` (60 por minuto, mismo contador que las otras dos lecturas) | Sin límite o regla propia | Toda ruta pública lleva su límite (criterio 33 de 005); es una lectura más del formulario |
 | DT-12 | Sin E2E nueva: el flujo es el de la E2E de la 005 con otro mes, y la ventana depende de `RELOJ`, que las E2E no fijan | Una E2E con la configuración en 28 días | Frágil según la fecha real; la integración cubre los bordes con `RELOJ` |
 | DT-13 | Se reutilizan `ventanaDeRenovacion`, `mesesPermitidos`, `mesSiguiente`, `primerDiaDelMes`, `cotizarRenovacion` y `cupoLibre` importando los archivos de `mensualidades/dominio/` (puros), no el módulo Nest | Copiarlos en `inscripciones/` | Una sola definición de la ventana y de la cotización; `mensualidades/dominio/` no importa servicios, así que no hay ciclos |

@@ -15,8 +15,10 @@
   010 («Cupo del mes siguiente»).
 - **Ruta crítica:** sí. Toca entradas públicas, aforo y reservas, cálculo del cobro, pagos, aislamiento entre academias,
   fechas en America/Lima y la tarea del cierre de mes. Las pantallas no son críticas.
-- **Estado:** borrador del 27/11/2026, para aprobar. Se especifica en su propia carpeta (DT-1 del plan, decisión del
-  orquestador por D-31: la spec 010 ya tiene 790 líneas). T35 de `specs/010-mensualidades/tasks.md` apunta aquí.
+- **Estado:** aprobada por Bryan el 27/11/2026, con la propuesta de las cinco preguntas (P1 a P5, que son DR-1 a DR-5
+  de esta spec, en «Resueltas»); el orquestador aceptó DT-1 a DT-13 del plan el mismo día. **En pruebas protegidas.** Se
+  especifica en su propia carpeta (DT-1 del plan, decisión del orquestador por D-31: la spec 010 ya tiene 790 líneas).
+  T35 de `specs/010-mensualidades/tasks.md` apunta aquí.
 
 ## Objetivo
 
@@ -63,7 +65,7 @@ de M, leídos con `leerConfiguracion(tx)` en la transacción, sin caché), **ocu
 - **Cotización del mes siguiente:** la de la renovación de M+1 (criterio 5 y DT-6 de 010; `cotizarRenovacion`): clases
   desde las 00:00:00.000 de Lima del día 1 de M+1, `clasesTotales = min(clasesRestantes, clasesPorMes)`, monto con
   `montoProporcional` y redondeo hacia arriba al sol entero una sola vez (D-03), `esProporcional = clasesRestantes <
-  clasesPorMes`, `fechaInicio` el día 1 y `fechaFin` el último día de M+1 (pregunta P1).
+  clasesPorMes`, `fechaInicio` el día 1 y `fechaFin` el último día de M+1 (DR-1).
 - **Plan disponible para el mes X:** activo, que aplica al nivel elegido y `VIGENTE` en la `fecha_inicio` del mes: hoy
   para M (como la 005) y el día 1 para M+1 (DT-5 de 010).
 - **Reserva sin pago de una matrícula del mes X:** el menor entre «ahora» más 24 horas y las 23:59:59.999 de Lima del
@@ -114,8 +116,8 @@ de M, leídos con `leerConfiguracion(tx)` en la transacción, sin caché), **ocu
    con `detalles.mes` igual a M (DT-4). Ejemplos con `Decimal`: plan de S/ 120.00 y 12 clases, lunes, miércoles y
    viernes, para diciembre de 2026 (13 ocurrencias, tope 12): `clasesTotales` 12, S/ 120, no proporcional,
    `fechaInicio` `2026-12-01`; el 28/01/2027, plan de S/ 100.00 y 13 clases, lunes, miércoles y viernes, para febrero
-   de 2027 (12 ocurrencias): `100 × 12 ÷ 13` = 92.31 → S/ 93, proporcional (si Bryan elige la alternativa de P1, S/ 100
-   y no proporcional). No escribe, no bloquea y no comprueba el cupo. _(crítico)_ (HU-34, RN-25, D-03, DR-3 de 010)
+   de 2027 (12 ocurrencias): `100 × 12 ÷ 13` = 92.31 → S/ 93, proporcional. No escribe, no bloquea y no comprueba el
+   cupo. _(crítico)_ (HU-34, RN-25, D-03, DR-1, DR-3 de 010)
 4. **Envío para el mes siguiente.** `POST /api/a/{nombreCorto}/inscripcion` con `inscripcion.mes` igual a M+1 y la
    ventana abierta (con la configuración leída en la transacción) hace lo del criterio 16 de 005 con la matrícula de
    M+1: `anio` y `mes` de M+1, `fecha_inicio` el día 1, `fecha_fin` el último día, `clases_totales`, `es_proporcional`,
@@ -182,8 +184,9 @@ de M, leídos con `leerConfiguracion(tx)` en la transacción, sin caché), **ocu
    ella con concepto `INSCRIPCION`; el comprobante deja la matrícula `RESERVADA` sin vencimiento (RN-28), sin tocar la
    caja, y al aprobarlo entra a la caja abierta del día en que se verifica (D-04), antes o después del día 1. El total
    sale de lo guardado (`totalACobrar`, también con el ajuste del administrador, criterio 11 de 007). Al confirmar: la
-   matrícula de M+1 pasa a `VIGENTE`, la solicitud a `CONFIRMADA` y la persona deja de ser `CLIENTE`, con su cuenta y su
-   QR (HU-04; ver P2). No se crea ni se toca ninguna matrícula de M. Un cambio de `diasPrioridadRenovacion` o el paso
+   matrícula de M+1 pasa a `VIGENTE`, la solicitud a `CONFIRMADA` y la persona pasa de `CLIENTE` a `ALUMNO_ACTIVO` en
+   ese momento, con su usuario, su contraseña inicial igual al DNI con cambio obligatorio y su QR (HU-04, DR-2), sin
+   esperar al día 1. No se crea ni se toca ninguna matrícula de M. Un cambio de `diasPrioridadRenovacion` o el paso
    del día 1 no impiden pagar una solicitud de M+1 ya creada. Pruebas: cobro en efectivo el 27/11 (201, ingreso en la
    caja del 27/11, ticket, matrícula de diciembre `VIGENTE`); sin caja abierta, 409 `SIN_CAJA_ABIERTA` sin escribir;
    comprobante el 28/11 y aprobación el 2/12 (el ingreso va a la caja del 2/12). _(crítico)_ (HU-04, HU-07 a HU-09,
@@ -204,17 +207,18 @@ de M, leídos con `leerConfiguracion(tx)` en la transacción, sin caché), **ocu
 
 ### E. Estado del alumno y asistencia antes del día 1
 
-11. **El cierre de mes no vence a quien ya pagó el mes siguiente (P2).** La tarea del cierre de mes (criterio 27 de 010)
+11. **El cierre de mes no vence a quien ya pagó el mes siguiente (DR-2).** La tarea del cierre de mes (criterio 27 de 010)
     pasa un `ALUMNO_ACTIVO` a `ALUMNO_VENCIDO` solo si no tiene matrícula `VIGENTE` de M **ni de M+1**; el resto de sus
     reglas no cambia. Con `RELOJ` fijo y `TZ=Asia/Tokyo`: un cliente que pagó diciembre el 27/11 queda `ALUMNO_ACTIVO`
     después de las vueltas del 27/11, del 30/11 a las 23:59:59.999 y del 1/12 a las 00:00:00.000. Un `ALUMNO_ACTIVO`
     sin nada de M ni de M+1 sigue pasando a `ALUMNO_VENCIDO`; un `ALUMNO_VENCIDO` que renovó diciembre sigue
     `ALUMNO_VENCIDO` hasta el 1/12 (criterio 28 de 010, sin cambios). Volver a correr la tarea no cambia nada.
-    _(crítico)_ (8.8, RN-23, D-23)
+    _(crítico)_ (8.8, RN-23, D-23, DR-2)
 12. **La asistencia empieza el día 1.** Un alumno cuya única matrícula `VIGENTE` es la de M+1: el marcado por QR o
     manual de una clase de M responde 409 `MENSUALIDAD_NO_VIGENTE` (009), sin descontar; la tarea de faltas no le
     registra faltas en M; el registro posterior de un día de M lo rechaza. El 1/12 marca la clase de ese día (dentro de
-    su horario, D-16) y descuenta de la matrícula de diciembre. _(crítico)_ (RN-14, RN-15, D-16, criterio 16 de 010)
+    su horario, D-16) y descuenta de la matrícula de diciembre. _(crítico)_ (RN-14, RN-15, D-16, DR-2, criterio 16 de
+    010)
 
 ### F. Aislamiento, entradas públicas y recepción
 
@@ -229,10 +233,11 @@ de M, leídos con `leerConfiguracion(tx)` en la transacción, sin caché), **ocu
     (criterio 25 de 005). Las peticiones de recepción no cuentan (criterio 33 de 007). El registro técnico de estas rutas
     no lleva DNI, nombres, datos médicos, token ni cuerpo (criterio 28 de 005). _(crítico)_ (criterios 25, 28, 33 y 49
     de 005)
-15. **Inscripción desde recepción (P3).** Un envío para M+1 con la sesión de un `ADMIN` o una `SECRETARIA` de la academia
-    hace lo mismo que el público, con las reglas del criterio 34 de 007 (actor vigente, sin el límite de 5 por conexión,
-    auditoría con actor `USUARIO`), y los mismos cupos: tampoco toma un lugar apartado. _(crítico)_ (sección 2.1, criterio
-    34 de 007)
+15. **Inscripción desde recepción (DR-3).** Un envío para M+1 con la sesión de un `ADMIN` o una `SECRETARIA` de la
+    academia (desde «Nueva inscripción», que es el mismo formulario) hace lo mismo que el público, con las reglas del
+    criterio 34 de 007 (actor vigente, sin el límite de 5 por conexión, auditoría con actor `USUARIO`), y los mismos
+    cupos: tampoco toma un lugar apartado. El cobro en efectivo de esa solicitud exige la caja abierta de hoy (criterio
+    9). _(crítico)_ (sección 2.1, criterio 34 de 007, DR-3)
 
 ### G. Contratos, web y documentación
 
@@ -246,8 +251,10 @@ de M, leídos con `leerConfiguracion(tx)` en la transacción, sin caché), **ocu
     clases y los cupos salen de `GET …/inscripcion?mes=` del mes elegido, y la cotización y el envío llevan ese `mes`. El
     resumen y la confirmación dicen el mes y desde qué día empieza. Con un solo mes, el formulario es el de hoy; si la
     cotización responde `SIN_CLASES_EN_EL_MES` y hay `aperturaMesSiguiente`, el aviso dice desde qué fecha se puede
-    inscribir para el mes siguiente (P4). Ante `MES_CAMBIO`, vuelve a pedir los meses y la oferta, y pide elegir otra vez.
-    Las claves de las consultas llevan el nombre corto y el mes. _(prueba obligatoria, componentes)_ (HU-01, HU-02)
+    inscribir para el mes siguiente («Las inscripciones para diciembre se abren el 26/11»), en lugar de «vuelve el día 1»
+    (DR-4). Ante `MES_CAMBIO`, vuelve a pedir los meses y la oferta, y pide elegir otra vez. Las claves de las consultas
+    llevan el nombre corto y el mes. La web no sugiere inscribirse a los últimos días del mes en curso para ganar
+    prioridad (DR-5). _(prueba obligatoria, componentes)_ (HU-01, HU-02, DR-4)
 18. **Seguimiento y panel.** La página de seguimiento (`/a/{nombreCorto}/solicitud/{token}`), la lista del panel de
     solicitudes y la bandeja de pagos muestran el mes de la inscripción cuando no es el mes en curso («Diciembre de 2026,
     desde el 1/12»), con lo que ya traen sus contratos. _(prueba obligatoria, componentes)_
@@ -273,7 +280,7 @@ de M, leídos con `leerConfiguracion(tx)` en la transacción, sin caché), **ocu
 - **El administrador baja `diasPrioridadRenovacion` en plena ventana:** M+1 deja de ofrecerse desde la petición
   siguiente; lo ya reservado sigue (criterio 5).
 - **Inscripción a M durante la ventana:** se sigue ofreciendo; al pagar, la persona pasa a ser titular para M+1 (regla de
-  la 010; ver P5).
+  la 010, que se mantiene: DR-5).
 - **Clase de 19:00 a 20:00 del 30/11 y envío a las 19:30:** para M+1 cuentan todas las clases de diciembre desde el día 1;
   para M, la de hoy ya no cuenta (criterio 8 de 005).
 
@@ -317,7 +324,7 @@ compara con el mes de la matrícula) y las reservas de prioridad se calculan al 
 - Avisos o correos sobre la apertura de la ventana; inscribirse para meses posteriores a M+1.
 - Un «mes de prueba» o asistencia antes del día 1.
 - Los códigos de descuento (015) en la inscripción al mes siguiente: llegarán con la 015, como en la renovación.
-- Cambiar la prioridad de la 010 (ver P5).
+- Cambiar la prioridad de la 010 (DR-5).
 
 ## Impacto en especificaciones anteriores
 
@@ -329,7 +336,7 @@ compara con el mes de la matrícula) y las reservas de prioridad se calculan al 
   que no cambia (la de M+1 es una función nueva, DT-7). El test-writer lo vuelve a comprobar (T1).
 - **007:** `estadoVisible` y `estadoVisibleSql` (criterio 10) y `exigirCupoDeLaMatricula` (cupo con reservas si la
   matrícula es de M+1). Con matrículas de M o pasadas el resultado es el mismo; las pruebas protegidas no cambian.
-- **010b:** la regla del cierre de mes para `ALUMNO_ACTIVO` (criterio 11, si Bryan aprueba P2). Ninguna prueba protegida
+- **010b:** la regla del cierre de mes para `ALUMNO_ACTIVO` (criterio 11, DR-2). Ninguna prueba protegida
   de la 010b siembra un `ALUMNO_ACTIVO` con solo una matrícula `VIGENTE` de M+1; el test-writer lo comprueba (T1).
 - **010 (T35):** apunta a esta carpeta. La spec 010 no se reescribe.
 - **Web de la 005:** `Inscripcion.test.tsx` (no protegida) suma los simulacros de `/meses`.
@@ -348,7 +355,10 @@ compara con el mes de la matrícula) y las reservas de prioridad se calculan al 
 
 ## Decisiones
 
-Técnicas, propuestas para el orquestador; el detalle y la alternativa descartada de cada una están en `plan.md`:
+Técnicas, propuestas por el especificador y aceptadas por el orquestador el 27/11/2026 tal como se propusieron; el
+detalle y la alternativa descartada de cada una están en `plan.md`. Las decisiones del responsable (DR-1 a DR-5) están
+en «Resueltas».
+
 DT-1 (carpeta propia), DT-2 (`/inscripcion/meses` y `?mes=` sin cambiar la forma del `GET`), DT-3 (`mes` opcional en la
 cotización), DT-4 (`MES_CAMBIO` para un mes que no es de inscripción), DT-5 (`?mes=` no permitido: listas vacías), DT-6
 («ahora» único de la 005), DT-7 (`vencimientoDeReservaDelMes`), DT-8 (una función de cupo para inscripciones nuevas),
@@ -357,31 +367,37 @@ DT-9 (estado visible tras un rechazo), DT-10 (regla del cierre), DT-11 (límite 
 
 ## Preguntas abiertas
 
-Para Bryan, en una sola tanda. Cada una con la propuesta, que es lo que dicen los criterios mientras tanto.
+Ninguna. Las cinco preguntas de negocio (P1 a P5) quedaron resueltas: ver «Resueltas».
 
-- **P1. Cuánto paga quien se inscribe al mes siguiente.** DR-10 dice «el mes siguiente completo». **Propuesta:** la misma
-  regla de la renovación (DR-3 de 010) y de la inscripción (DR-2 de 005): las clases del mes desde el día 1 con el tope
-  del plan; casi siempre es el precio completo, y solo baja si el plan tiene más clases que las que caben en ese mes
-  (por ejemplo, 13 clases en un febrero con 12: S/ 93 en vez de S/ 100). **Alternativa:** siempre el precio completo
-  del plan. _(Criterios 3 y 4.)_
-- **P2. Qué pasa al pagar antes del día 1.** **Propuesta:** al confirmarse el pago la persona pasa a ser alumno en ese
-  momento, con su usuario, su contraseña inicial y su carnet (HU-04 dice «solo con el pago confirmado»), y queda «activo»;
-  el cierre de mes no la marca como vencida aunque no tenga mensualidad del mes en curso, porque ya pagó la siguiente.
-  La asistencia empieza el día 1 (antes, el lector la rechaza como «mensualidad no vigente»). **Alternativas:** (b) que
-  siga como cliente hasta el día 1 y reciba su cuenta y su carnet ese día (más complejo y contradice HU-04); (c) dejar
-  que el cierre la marque «vencida» hasta el día 1 (sin cambio de código, pero recepción vería «vencido» a un alumno
-  nuevo que ya pagó). _(Criterios 9, 11 y 12.)_
-- **P3. La secretaria también inscribe al mes siguiente.** **Propuesta:** sí, desde «Nueva inscripción», que es el mismo
-  formulario, con las mismas reglas y los mismos cupos (no puede tomar un lugar apartado); cobra en efectivo con la caja
-  abierta de hoy. **Alternativa:** solo el público; recepción no ofrece el mes siguiente. _(Criterio 15.)_
-- **P4. Qué ve el cliente fuera de la ventana.** **Propuesta:** el formulario sigue como hoy (solo el mes en curso).
-  Si ya no quedan clases en el mes, el aviso dice desde qué fecha puede inscribirse para el mes siguiente (por ejemplo,
-  «Las inscripciones para diciembre se abren el 26/11»), en vez de «vuelve el día 1». **Alternativa:** mantener el aviso
-  de la 005 («vuelve el día 1»). _(Criterios 1 y 17.)_
-- **P5. Inscribirse al mes en curso durante la ventana da prioridad.** Con las reglas de la 010, quien se inscribe el
-  27/11 a los últimos días de noviembre y paga pasa a ser titular y compite por los lugares apartados de diciembre; con
-  la 010d el formulario muestra las dos opciones, así que el atajo es más visible. **Propuesta:** mantener la regla de la
-  010 (no cambia nada: nunca se pasa del aforo, y si hay más titulares que lugares, entran los primeros en renovar), y
-  que la web no lo sugiera. **Alternativa:** que una inscripción nueva al mes en curso hecha durante la ventana no dé
-  prioridad; cambia la definición de titular de la 010 y una prueba protegida de la 010a (criterio 44 a), por lo que
-  pediría tu aprobación de ese cambio. _(Casos límite; sin criterio propio.)_
+## Resueltas
+
+Decisiones del responsable. Se conserva cada pregunta, resumida, con lo decidido y la alternativa descartada.
+
+- **DR-1 (pregunta P1). Cuánto paga quien se inscribe al mes siguiente.** DR-10 de 010 dice «el mes siguiente
+  completo». **Decidido por Bryan el 27/11/2026 (la propuesta):** la misma regla de la renovación (DR-3 de 010) y de la
+  inscripción (DR-2 de 005): las clases del mes desde el día 1, con el tope del plan. Casi siempre es el precio
+  completo; solo baja si el plan tiene más clases que las que caben en ese mes (13 clases en un febrero con 12: S/ 93 en
+  vez de S/ 100). Alternativa descartada: siempre el precio completo del plan. _(Definición «Cotización del mes
+  siguiente»; criterios 3 y 4.)_
+- **DR-2 (pregunta P2). Qué pasa al pagar antes del día 1.** **Decidido por Bryan el 27/11/2026 (la propuesta):** al
+  confirmarse el pago, la persona pasa a ser alumno en ese momento, con su usuario, su contraseña inicial y su carnet
+  (HU-04), y queda `ALUMNO_ACTIVO`; el cierre de mes no la pasa a `ALUMNO_VENCIDO` aunque no tenga mensualidad del mes
+  en curso, porque ya pagó la siguiente. La asistencia empieza el día 1 (antes, el marcado responde
+  `MENSUALIDAD_NO_VIGENTE`). Alternativas descartadas: (b) que siga como cliente hasta el día 1 y reciba su cuenta y su
+  carnet ese día (más complejo y contradice HU-04); (c) dejar que el cierre la marque vencida hasta el día 1 (recepción
+  vería «vencido» a un alumno nuevo que ya pagó). _(Criterios 9, 11 y 12; DT-10.)_
+- **DR-3 (pregunta P3). La secretaria también inscribe al mes siguiente.** **Decidido por Bryan el 27/11/2026 (la
+  propuesta):** sí, desde «Nueva inscripción», que es el mismo formulario, con las mismas reglas y los mismos cupos (no
+  toma un lugar apartado); el cobro en efectivo exige la caja abierta de hoy. Alternativa descartada: solo el formulario
+  público. _(Criterio 15.)_
+- **DR-4 (pregunta P4). Qué ve el cliente fuera de la ventana.** **Decidido por Bryan el 27/11/2026 (la propuesta):** el
+  formulario sigue como hoy, solo con el mes en curso; si ya no quedan clases en el mes, el aviso dice desde qué fecha
+  puede inscribirse para el mes siguiente («Las inscripciones para diciembre se abren el 26/11»). Alternativa
+  descartada: mantener el aviso de la 005 («vuelve el día 1»). _(Criterios 1 y 17.)_
+- **DR-5 (pregunta P5). Inscribirse al mes en curso durante la ventana da prioridad.** **Decidido por Bryan el
+  27/11/2026 (la propuesta):** se mantiene la regla de la 010: quien se inscribe a los últimos días del mes en curso y
+  paga pasa a ser titular y compite por los lugares apartados del mes siguiente; nunca se pasa del aforo y, con más
+  titulares que lugares, entran los primeros en renovar (DT-4 y criterio 44 de 010). La web no sugiere ese camino.
+  Alternativa descartada: que una inscripción nueva al mes en curso hecha durante la ventana no dé prioridad (cambiaba
+  la definición de titular de la 010 y una prueba protegida de la 010a). _(Casos límite, «Fuera de alcance» y criterio
+  17.)_

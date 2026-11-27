@@ -6,8 +6,8 @@ inicio `// spec: 010d-inscripcion-mes-siguiente (pruebas protegidas)`.
 
 ## Aprobación
 
-- [ ] T0 · orquestador y responsable · Bryan responde P1 a P5; el orquestador acepta DT-1 a DT-13. Si P2 no es la
-  propuesta, el especificador ajusta los criterios 9 y 11 y DT-10 antes de T1.
+- [x] T0 · orquestador y responsable · Bryan responde P1 a P5; el orquestador acepta DT-1 a DT-13. **Hecho
+  (27/11/2026):** Bryan aprobó la propuesta de las cinco (DR-1 a DR-5 de `spec.md`) y el orquestador aceptó DT-1 a DT-13.
 
 ## Pruebas protegidas
 
@@ -40,10 +40,10 @@ inicio `// spec: 010d-inscripcion-mes-siguiente (pruebas protegidas)`.
 - [ ] T10 · backend · `InscripcionesService`: `leerMeses` y su ruta; `leerFormulario` con `?mes=`; `cotizar` y el envío
   con el mes de inscripción; regla `lectura` de `/inscripcion/meses` (criterios 1 a 8, 13 a 15; DT-2 a DT-6, DT-11, DT-13)
 - [ ] T11 · backend · `estadoVisible`, `estadoVisibleSql` y `exigirCupoDeLaMatricula` (criterios 9 y 10; DT-9)
-- [ ] T12 · backend · Regla del cierre de mes para `ALUMNO_ACTIVO` con matrícula `VIGENTE` de M+1, si P2 es la propuesta
+- [ ] T12 · backend · Regla del cierre de mes para `ALUMNO_ACTIVO` con matrícula `VIGENTE` de M+1 (DR-2)
   (criterios 11 y 12; DT-10)
 - [ ] T13 · frontend · Paso «¿Desde cuándo?», oferta y cotización por mes, resumen y confirmación con el mes, aviso de
-  apertura (P4), `MES_CAMBIO`; simulacros de `/meses` en `Inscripcion.test.tsx`; pruebas de componentes (criterio 17)
+  apertura (DR-4), `MES_CAMBIO`; simulacros de `/meses` en `Inscripcion.test.tsx`; pruebas de componentes (criterio 17)
 - [ ] T14 · frontend · El mes de la inscripción en el seguimiento, la lista de solicitudes y la bandeja; pruebas de
   componentes (criterio 18)
 
