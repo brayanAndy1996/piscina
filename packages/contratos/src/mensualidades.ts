@@ -141,19 +141,25 @@ export type EstadoMensualidad = z.infer<typeof estadoMensualidadSchema>;
 
 /** El primer mes que acepta el listado (criterio 25): `2000-01`. El tope, el mes en curso de Lima, lo comprueba el servicio con el reloj. */
 export const PRIMER_MES_DEL_LISTADO = '2000-01';
+const PATRON_DE_MES = /^[0-9]{4}-(0[1-9]|1[0-2])$/;
 
 /**
  * Los parámetros de `GET /api/mensualidades` (criterio 25). Todos son opcionales y el esquema es estricto: uno que no se define (como una
  * academia), repetido o con otra forma es un 400 `SOLICITUD_INVALIDA` con el campo. La academia sale siempre de la sesión.
  */
 export const consultaListadoMensualidadesSchema = z.strictObject({
+  // La cota solo se comprueba si el formato es válido: un mes mal escrito da un solo error, el del formato.
   mes: mesSchema
-    .refine((mes) => mes >= PRIMER_MES_DEL_LISTADO, { message: 'El mes no puede ser anterior a 2000-01.' })
+    .refine((mes) => !PATRON_DE_MES.test(mes) || mes >= PRIMER_MES_DEL_LISTADO, {
+      message: 'El mes no puede ser anterior a 2000-01.',
+    })
     .optional(),
   estado: estadoMensualidadSchema.optional(),
   planId: z.uuid('El plan no es válido.').optional(),
   nivel: nivelNatacionSchema.optional(),
   claseId: z.uuid('La clase no es válida.').optional(),
+  /** Solo a este alumno (la ficha del alumno): uno de otra academia o que no existe da la lista vacía. */
+  alumnoId: z.uuid('El alumno no es válido.').optional(),
 });
 export type ConsultaListadoMensualidades = z.infer<typeof consultaListadoMensualidadesSchema>;
 

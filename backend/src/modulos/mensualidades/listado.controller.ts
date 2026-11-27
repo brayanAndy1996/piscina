@@ -18,13 +18,14 @@ import { ListadoDeMensualidadesService } from './listado.service';
 function consultaCruda(solicitud: Request): Record<string, string | string[]> {
   const posicion = solicitud.originalUrl.indexOf('?');
   const parametros = new URLSearchParams(posicion === -1 ? '' : solicitud.originalUrl.slice(posicion + 1));
-  const consulta: Record<string, string | string[]> = {};
+  // Un `Map` y no un objeto con claves del usuario: `__proto__` o `constructor` son un nombre más y el esquema estricto los rechaza como desconocidos.
+  const consulta = new Map<string, string | string[]>();
   for (const [nombre, valor] of parametros) {
-    const previo = consulta[nombre];
-    if (previo === undefined) consulta[nombre] = valor;
-    else consulta[nombre] = [...(Array.isArray(previo) ? previo : [previo]), valor];
+    const previo = consulta.get(nombre);
+    if (previo === undefined) consulta.set(nombre, valor);
+    else consulta.set(nombre, [...(Array.isArray(previo) ? previo : [previo]), valor]);
   }
-  return consulta;
+  return Object.fromEntries(consulta);
 }
 
 /**

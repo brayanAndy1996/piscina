@@ -1,7 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { anioYMesEnLima } from '../../comun/fechas';
-import { BaseDatos, errorParaRegistro, type TransaccionAcademia } from '../../infraestructura/prisma';
+import {
+  BaseDatos,
+  ErrorAcademiaSuspendida,
+  errorParaRegistro,
+  type TransaccionAcademia,
+} from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 
 /** Lo que una academia cerró en una vuelta (criterio 27): solo cantidades, nunca alumnos, matrículas ni DNI. */
@@ -44,8 +49,12 @@ export class CierreDeMesService {
     this.registro.setContext(CierreDeMesService.name);
   }
 
-  /** Una vuelta con el instante `ahora`: devuelve lo cerrado por academia (las saltadas, suspendidas o con error no aparecen). */
-  async cerrar(ahora: Date = this.reloj.ahora()): Promise<Map<string, ResultadoDelCierre>> {
+  /**
+   * Una vuelta: devuelve lo cerrado por academia (las saltadas, suspendidas o con error no aparecen). Sin `ahora` (la tarea), «ahora» es el reloj y se lee
+   * **por academia, después de tomar los bloqueos** (definición de «Ahora» de la spec): una vuelta que cruza la medianoche cierra cada academia con el mes
+   * que corresponde al momento en que la procesa. Con `ahora` explícito (las pruebas), ese instante se respeta en todas.
+   */
+  async cerrar(ahora?: Date): Promise<Map<string, ResultadoDelCierre>> {
     const cerradas = new Map<string, ResultadoDelCierre>();
     let academias: string[];
     try {
@@ -62,13 +71,10 @@ export class CierreDeMesService {
       return cerradas;
     }
 
-    const enCurso = anioYMesEnLima(ahora);
-    const indiceDelMesEnCurso = enCurso.anio * 12 + enCurso.mes - 1;
+    const leerAhora = (): Date => ahora ?? this.reloj.ahora();
     for (const academiaId of academias) {
       try {
-        const resultado = await this.baseDatos.conAcademia(academiaId, (tx) =>
-          this.cerrarLaAcademia(tx, ahora, indiceDelMesEnCurso),
-        );
+        const resultado = await this.baseDatos.conAcademia(academiaId, (tx) => this.cerrarLaAcademia(tx, leerAhora));
         if (resultado === null) {
           this.registro.debug(
             { academiaId },
@@ -79,6 +85,11 @@ export class CierreDeMesService {
         cerradas.set(academiaId, resultado);
         this.registro.info({ academiaId, ...resultado }, 'Cierre de mes');
       } catch (error) {
+        if (error instanceof ErrorAcademiaSuspendida) {
+          // Se suspendió entre la lista y su turno: se salta como una academia suspendida (no es un error; `conAcademia` no ejecutó nada).
+          this.registro.debug({ academiaId }, 'Cierre de mes: la academia se suspendió; se salta en esta vuelta');
+          continue;
+        }
         this.registro.error(
           { err: errorParaRegistro(error), academiaId },
           'No se pudo hacer el cierre de mes de una academia',
@@ -89,20 +100,23 @@ export class CierreDeMesService {
   }
 
   /**
-   * La transacción de una academia: `null` si otra instancia tiene su bloqueo; si no, lo que cambió. `indiceDelMesEnCurso` es `año × 12 + mes − 1`: comparar
-   * un solo entero evita la comparación de pares y cruza el cambio de año sin casos especiales.
+   * La transacción de una academia: `null` si otra instancia tiene su bloqueo; si no, lo que cambió. El mes en curso es `año × 12 + mes − 1`: comparar un
+   * solo entero evita la comparación de pares y cruza el cambio de año sin casos especiales. Los afectados se eligen con el mes de un primer «ahora»; las
+   * escrituras, con un segundo «ahora» leído después de los `FOR UPDATE`, que decide el mes y es el `actualizado_en`. Si entre los dos cambió el mes, solo
+   * se escribe a los alumnos ya bloqueados y los demás los toma la vuelta siguiente.
    */
-  private async cerrarLaAcademia(
-    tx: TransaccionAcademia,
-    ahora: Date,
-    indiceDelMesEnCurso: number,
-  ): Promise<ResultadoDelCierre | null> {
+  private async cerrarLaAcademia(tx: TransaccionAcademia, leerAhora: () => Date): Promise<ResultadoDelCierre | null> {
+    const indiceDelMes = (instante: Date): number => {
+      const mes = anioYMesEnLima(instante);
+      return mes.anio * 12 + mes.mes - 1;
+    };
     // Primera sentencia: el bloqueo consultivo de la academia (criterio 27). `pg_try_…` no espera: si otra instancia lo tiene, se salta.
     const bloqueo = await tx.cliente.$queryRaw<{ tomado: boolean }[]>`
       SELECT pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtextextended('cierre-de-mes:' || ${tx.academiaId}::text, 0)) AS tomado`;
     if (bloqueo[0]?.tomado !== true) return null;
 
     // Los afectados, sin bloquear nada (criterio 27).
+    const indiceDelMesEnCurso = indiceDelMes(leerAhora());
     const afectados = await tx.cliente.$queryRaw<{ id: string }[]>`
       SELECT a.id::text AS id
         FROM alumnos a
@@ -132,11 +146,14 @@ export class CierreDeMesService {
        ORDER BY id
          FOR UPDATE`;
 
-    // Las mismas condiciones, otra vez, con lo que se confirmó mientras se esperaba. Todo `VIGENTE` de estos alumnos está bloqueado.
+    // «Ahora» después de los bloqueos (definición de la spec) y las mismas condiciones, otra vez, con lo que se confirmó mientras se esperaba.
+    // Todo `VIGENTE` de estos alumnos está bloqueado.
+    const ahora = leerAhora();
+    const mesParaEscribir = indiceDelMes(ahora);
     const matriculasFinalizadas = await tx.cliente.$executeRaw`
       UPDATE matriculas SET estado = 'FINALIZADA'::estado_matricula, actualizado_en = ${ahora}::timestamptz
        WHERE academia_id = ${tx.academiaId}::uuid AND alumno_id = ANY(${alumnos}::uuid[]) AND estado = 'VIGENTE'::estado_matricula
-         AND (anio::int * 12 + mes::int - 1) < ${indiceDelMesEnCurso}::int`;
+         AND (anio::int * 12 + mes::int - 1) < ${mesParaEscribir}::int`;
     const cambiados = await tx.cliente.$queryRaw<{ estado: string }[]>`
       UPDATE alumnos a
          SET estado = CASE WHEN a.estado = 'ALUMNO_ACTIVO' THEN 'ALUMNO_VENCIDO' ELSE 'ALUMNO_ACTIVO' END::estado_alumno,
@@ -144,10 +161,10 @@ export class CierreDeMesService {
        WHERE a.academia_id = ${tx.academiaId}::uuid AND a.id = ANY(${alumnos}::uuid[])
          AND ((a.estado = 'ALUMNO_ACTIVO' AND NOT EXISTS (SELECT 1 FROM matriculas m
                                                            WHERE m.academia_id = a.academia_id AND m.alumno_id = a.id AND m.estado = 'VIGENTE'
-                                                             AND (m.anio::int * 12 + m.mes::int - 1) = ${indiceDelMesEnCurso}::int))
+                                                             AND (m.anio::int * 12 + m.mes::int - 1) = ${mesParaEscribir}::int))
               OR (a.estado = 'ALUMNO_VENCIDO' AND EXISTS (SELECT 1 FROM matriculas m
                                                            WHERE m.academia_id = a.academia_id AND m.alumno_id = a.id AND m.estado = 'VIGENTE'
-                                                             AND (m.anio::int * 12 + m.mes::int - 1) = ${indiceDelMesEnCurso}::int)))
+                                                             AND (m.anio::int * 12 + m.mes::int - 1) = ${mesParaEscribir}::int)))
       RETURNING a.estado::text AS estado`;
     return {
       matriculasFinalizadas,

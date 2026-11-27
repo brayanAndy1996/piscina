@@ -89,7 +89,9 @@ export class ListadoDeMensualidadesService {
       const siguiente = mesSiguiente(pedido);
       const filas = await this.leerMatriculas(tx, esElMesEnCurso ? [anterior, pedido, siguiente] : [anterior, pedido]);
       const porAlumno = new Map<string, Map<string, MensualidadDeUnMes>>();
+      const soloElAlumno = consulta.alumnoId?.toLowerCase();
       for (const fila of filas) {
+        if (soloElAlumno !== undefined && fila.alumno_id !== soloElAlumno) continue;
         const meses = porAlumno.get(fila.alumno_id) ?? new Map<string, MensualidadDeUnMes>();
         porAlumno.set(fila.alumno_id, meses);
         const mes = clave({ anio: fila.anio, mes: fila.mes });

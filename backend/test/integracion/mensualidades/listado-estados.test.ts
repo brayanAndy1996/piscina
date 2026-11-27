@@ -199,8 +199,7 @@ describe('el listado de mensualidades (criterio 25)', () => {
       estado: 'PENDIENTE_VERIFICACION',
       siguiente: { mes: '2026-12', estado: 'EN_VERIFICACION' },
     });
-    expect(listado.totales.PENDIENTE_VERIFICACION).toBe(1);
-    // Diciembre en verificación: quien no tiene nada más reciente aparece con la de diciembre, y el del mes siguiente (diciembre) lo ve como pendiente.
+    expect(listado.totales).toMatchObject({ PENDIENTE_VERIFICACION: 1 });
     const diciembre = listadoDe(await pedir()).alumnos.filter((uno) => uno.estado === 'PENDIENTE_VERIFICACION');
     expect(diciembre.map((uno) => uno.alumnoId)).toEqual([alumno.alumnoId]);
   });
