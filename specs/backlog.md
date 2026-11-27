@@ -314,7 +314,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   RN-08).
   - Estado: spec aprobada por Bryan el 26/11/2026 (DR-1 a DR-12, cambios A1, A2 y A3 a pruebas protegidas; DT-1 a DT-30), en
     [`specs/010-mensualidades/`](010-mensualidades/spec.md). Cuatro entregas: 010a renovación con prioridad (criterios 1 a 23,
-    44 y 45), **lista para unir** (26/11/2026, dos rondas adversariales; criterios 44 y 45 nuevos); 010b estados y cierre de
+    44 y 45), unida a main el 26/11/2026, [PR #20](https://github.com/brayanAndy1996/piscina/pull/20), tras dos rondas adversariales (criterios 44 y 45 nuevos); 010b lista para unir (PR por abrir), 27/11/2026; 010b estados y cierre de
     mes (24 a 33); 010c cambio de horario (34 a 43); y 010d inscripción pública al mes siguiente (DR-10; se especifica con la
     010c unida).
   - **Deuda de la 010a** (revisión y suite completa, 26/11/2026; las medias y las bajas no abren ronda, D-31; las rondas no
@@ -333,6 +333,31 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
       repetido solo, pasa 19 de 19. Es un límite de la utilidad de prueba bajo carga, no una falla del sistema. La suite
       final sobre el HEAD la corre la CI del PR.
     - El bloqueo de todas las matrículas del alumno (`nucleo.ts`) no es deuda: es DT-22 de la spec.
+  - **Deuda de la 010b** (revisión, 27/11/2026; las medias y las bajas no abren ronda, D-31; las tres fallas bajas de la
+    ronda 1, F1 a F3, están corregidas en `a57690c` y no quedan aquí; el detalle está en
+    [`rondas.md`](010-mensualidades/rondas.md)):
+    - **Menores de la revisión** (T24):
+      - la web elige el mes que muestra `/panel/mensualidades` con el reloj del navegador, no con el de Lima que trae la
+        API (`hoy`); es la misma causa que el menor de la 010a, en otra pantalla;
+      - «No usó N clases» solo mira el mes anterior, y el criterio 31 dice «la última mensualidad cerrada»;
+      - las opciones de «Plan» y «Horario» del filtro salen del listado del mes, que se corta en 500 filas: con más
+        alumnos, faltan opciones;
+      - código duplicado entre la tarea y el bucle del cierre de mes (`cierre-de-mes.tarea.ts` y
+        `cierre-de-mes.service.ts`) y la tarea de faltas de la 009b (`faltas.tarea.ts`): la bandera `enCurso`, el arranque
+        y el `@Cron`;
+      - `indiceDelMes` está en `cierre-de-mes.service.ts` y en `listado.service.ts`, y `mesAnterior` en
+        `listado.service.ts` y en `frontend/src/lib/fechas.ts`;
+      - la clave de TanStack Query del listado (`listado`, en `useClavesMensualidades`, `hooks.ts`) no incluye `alumnoId`:
+        la ficha usa otra clave, pero una consulta por alumno con ese mismo hook se mezclaría con la general;
+      - orden de imports y mensaje del estado vacío del listado (`PaginaMensualidades.tsx`);
+      - el `info` «Cierre de mes» se escribe por academia en cada vuelta de 15 minutos aunque no cambie nada (DT-34).
+    - **De la revisión y de la suite** (T24):
+      - sin prueba del listado con más de 500 filas: `hayMas` solo se prueba en `false` (DT-37);
+      - las 95 pruebas que se saltan según privilegios del rol y de la plataforma: confirmar que las de aislamiento corren
+        en la CI. Es la misma pregunta de la 009 (T12), que sigue abierta;
+      - no hay E2E del flujo inscripción → verificación del pago → carnet → asistencia; la falta de E2E del carnet ya está
+        en TES-1 de la 008a;
+      - el chunk de la web pesa unos 1,1 MB y Vite avisa por pasar de 500 kB: es TES-2 de la 008a, que sigue abierta.
   - Nota de 003: "por vencer" (`diasPorVencer`) y la prioridad de renovación (`diasPrioridadRenovacion`) los leerá
     `leerConfiguracion(tx)` dentro de la transacción de la operación, sin caché. Son valores aparte: cambiar uno no cambia
     el otro (DR-3 de 003).

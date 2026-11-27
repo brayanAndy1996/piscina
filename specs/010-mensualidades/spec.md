@@ -23,7 +23,8 @@
   010a (26/11/2026) agregó el criterio 44 y ajustó la definición de «Cupo libre» y DT-4; la ronda 2 (26/11/2026), con
   DR-12 de Bryan, agregó el criterio 45 y ajustó la definición de «Titular de prioridad», DT-3 y el criterio 9 (detalle
   en `rondas.md`). Al cerrar la 010a, el orquestador anotó las desviaciones de la implementación como DT-22 a DT-30, y P12
-  (A3) quedó resuelta como consecuencia de DR-12.
+  (A3) quedó resuelta como consecuencia de DR-12. **010b lista para unir** (27/11/2026, una ronda adversarial sin fallas
+  críticas ni altas, sin criterios nuevos); sus decisiones de implementación son DT-31 a DT-37, en `plan.md`.
 
 ## Objetivo
 
@@ -345,8 +346,8 @@ sus criterios se agregan a esta spec cuando se planifique.
     con diciembre en verificación, `PENDIENTE_VERIFICACION`; el 1/12 sin diciembre, `VENCIDO`; el 1/12 con diciembre en
     verificación, `PENDIENTE_VERIFICACION`. Pruebas unitarias, también con `TZ=Asia/Tokyo`. _(prueba obligatoria)_
     (HU-11, 4.5)
-25. **[010b] Listado (HU-11).** `GET /api/mensualidades?mes=&estado=&planId=&nivel=&claseId=` (`mes` por defecto M; no
-    puede ser posterior a M ni anterior a 2000-01) responde `listadoMensualidadesSchema`: `mes`, `hoy`, `totales` (por
+25. **[010b] Listado (HU-11).** `GET /api/mensualidades?mes=&estado=&planId=&nivel=&claseId=&alumnoId=` (`mes` por defecto
+    M; no puede ser posterior a M ni anterior a 2000-01) responde `listadoMensualidadesSchema`: `mes`, `hoy`, `totales` (por
     estado, con los demás filtros aplicados), `alumnos` y `hayMas`. Aparecen los alumnos (no `CLIENTE` ni `INACTIVO`) con
     mensualidad pagada o en verificación en X, o pagada en X−1 (DR-8). Cada fila: `alumnoId`, `nombres`, `apellidos`,
     `nivel`, `estado`, `mensualidad` (la de X o, si está `VENCIDO`, la de X−1: `mes`, `plan` con `id` y `nombre`,
@@ -354,7 +355,9 @@ sus criterios se agregan a esta spec cuando se planifique.
     'EN_VERIFICACION' }` o `null`). `planId` y `claseId` filtran por la mensualidad de la fila; `nivel`, por el del
     alumno. Orden por apellidos, nombres e id; como mucho 500 filas (DT-14). Sin DNI, datos médicos ni apoderado. Un
     parámetro con otra forma, repetido o fuera de rango: 400 `SOLICITUD_INVALIDA` con el campo. No escribe, no bloquea y
-    no audita. _(prueba obligatoria)_ (HU-11)
+    no audita. `alumnoId` (opcional, UUID) deja solo las filas de ese alumno de la academia de la sesión, con sus
+    totales; uno de otra academia o inexistente responde 200 con la lista vacía y los totales en cero. La ficha del
+    alumno lo usa (criterio 31; DT-31 de `plan.md`). _(prueba obligatoria)_ (HU-11)
 26. **[010b] Permisos y aislamiento del listado.** `REGISTRAR_INSCRIPCION_Y_COBRO` (DT-9): `ENTRENADOR` y `ALUMNO`, 403;
     sin sesión, 401; las demás respuestas de acceso del criterio 17. Con A y B, el listado de A no trae alumnos,
     matrículas, planes ni clases de B, y un `planId` o `claseId` de B no devuelve nada. `HEAD` responde 404.
@@ -367,7 +370,7 @@ sus criterios se agregan a esta spec cuando se planifique.
     de un mes anterior a M pasa a `FINALIZADA` (sus clases no usadas se pierden: `clases_totales − clases_usadas` queda
     como registro y ya no sirven para marcar); todo alumno `ALUMNO_ACTIVO` sin matrícula `VIGENTE` de M pasa a
     `ALUMNO_VENCIDO`, y todo `ALUMNO_VENCIDO` con matrícula `VIGENTE` de M pasa a `ALUMNO_ACTIVO` (8.8, 4.5). `CLIENTE` e
-    `INACTIVO` no cambian. Toma los alumnos afectados con `FOR UPDATE` (ordenados por id), después sus matrículas con
+    `INACTIVO` no cambian. Toma los alumnos afectados con `FOR UPDATE` (ordenados por id), después sus matrículas `VIGENTE` con
     `FOR UPDATE` (ordenadas por id), vuelve a evaluar y escribe con sentencias de muchas filas, sin bucles de escrituras.
     Un error en una academia se registra con `errorParaRegistro` y sigue con las demás. Cada academia deja un `info`
     `'Cierre de mes'` con la academia y las cantidades, sin alumnos ni DNI. No audita (DT-12). Volver a correrla no
@@ -586,8 +589,8 @@ Errores nuevos: 409 `MES_NO_PERMITIDO`, `MENSUALIDAD_YA_REGISTRADA`, `FECHA_OPER
 Técnicas: DT-1 a DT-21, propuestas por el especificador y aceptadas por el orquestador el 26/11/2026 tal como se
 propusieron, junto con la partición en 010a, 010b, 010c y 010d; DT-3 y DT-4 se ajustaron después en las rondas
 adversariales de la 010a. DT-22 a DT-30 son desviaciones de la implementación de la 010a, que el orquestador anota el
-26/11/2026 al cerrar la entrega. Las decisiones del responsable (DR-1 a DR-12) y las aprobaciones A1, A2 y A3 están en
-«Resueltas».
+26/11/2026 al cerrar la entrega. DT-31 a DT-37, de la implementación de la 010b (27/11/2026), están en «Decisiones» de
+`plan.md`. Las decisiones del responsable (DR-1 a DR-12) y las aprobaciones A1, A2 y A3 están en «Resueltas».
 
 - **DT-1. Tres entregas (010a, 010b, 010c)** y la 010d, aprobada con DR-10, que se especifica después. Descartado: dos entregas (la 010b
   mezclaría la tarea programada con el cupo del cambio de horario) o una sola (pasaría de 800 líneas y de 3 rondas).

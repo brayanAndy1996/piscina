@@ -2,11 +2,18 @@ import { type ClaseDeMensualidad, NOMBRE_DIA, type OfertaRenovacion } from '@aqu
 import { useId, useState } from 'react';
 import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, ESTILO_BOTON, Insignia } from '../../componentes/ui';
-import { formatearFechaCalendario, formatearMes, hoyEnLima, mesActualEnLima } from '../../lib/fechas';
+import { formatearFechaCalendario, formatearMes, hoyEnLima, mesActualEnLima, mesAnterior } from '../../lib/fechas';
+import { useAsistenciaDelMes } from '../asistencia/hooks';
 import { COLOR_ESTADO_ALUMNO, ETIQUETA_ESTADO_ALUMNO } from '../carnet/etiquetas';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { DialogoRenovar } from './DialogoRenovar';
-import { useOfertaRenovacion } from './hooks';
+import {
+  COLOR_ESTADO_MENSUALIDAD,
+  ETIQUETA_ESTADO_MENSUALIDAD,
+  textoDeClasesPerdidas,
+  textoDeClasesUsadas,
+} from './etiquetas';
+import { useEstadoDeMensualidadDelAlumno, useOfertaRenovacion } from './hooks';
 import { mensajeDeOferta } from './mensajes';
 
 interface Propiedades {
@@ -28,6 +35,68 @@ function TextoDeClases({ clases }: { clases: readonly ClaseDeMensualidad[] }) {
 /** La ventana de renovación abierta es la que permite un mes posterior al en curso: lo decide la API en `mesesPermitidos`. */
 function haySiguientePermitido(oferta: OfertaRenovacion, mesEnCurso: string): boolean {
   return oferta.mesesPermitidos.some((mes) => mes > mesEnCurso);
+}
+
+/**
+ * El estado de la mensualidad del alumno (010b, criterio 31) y, de la última mensualidad cerrada, las clases que no usó (RN-23). El estado lo da
+ * la API (`GET /api/mensualidades`): la web no lo calcula. Las clases perdidas son las restantes de la matrícula del mes anterior.
+ */
+function EstadoDeLaMensualidad({ alumnoId, oferta }: { alumnoId: string; oferta: OfertaRenovacion }) {
+  const mesEnCurso = mesActualEnLima();
+  const inactivo = oferta.alumno.estado === 'INACTIVO';
+  // El listado no trae a un alumno inactivo: no se pide.
+  const estado = useEstadoDeMensualidadDelAlumno(alumnoId, !inactivo);
+  const cerrada = useAsistenciaDelMes(alumnoId, mesAnterior(mesEnCurso));
+  useAlPerderSesion(estado.error);
+  useAlPerderSesion(cerrada.error);
+  const fila = estado.data?.fila ?? null;
+  const perdidas = cerrada.data?.matricula?.clasesRestantes ?? 0;
+
+  return (
+    <div className="space-y-1">
+      <p className="text-sm font-medium text-slate-800">Estado de la mensualidad</p>
+      {inactivo ? (
+        <p className="text-slate-700">El alumno está inactivo: no tiene estado de mensualidad.</p>
+      ) : fila ? (
+        <div className="space-y-1">
+          <p>
+            <Insignia color={COLOR_ESTADO_MENSUALIDAD[fila.estado]}>
+              {ETIQUETA_ESTADO_MENSUALIDAD[fila.estado]}
+            </Insignia>
+          </p>
+          <p className="text-slate-900">
+            {fila.estado === 'VENCIDO' ? 'Su última mensualidad fue la de ' : 'Mensualidad de '}
+            {formatearMes(fila.mensualidad.mes)} ·{' '}
+            {textoDeClasesUsadas(fila.mensualidad.clasesUsadas, fila.mensualidad.clasesTotales)}.
+          </p>
+          {fila.siguiente ? (
+            <p className="text-sm text-slate-700">
+              Mes siguiente, {formatearMes(fila.siguiente.mes)}:{' '}
+              {fila.siguiente.estado === 'PAGADA' ? 'pagada' : 'con el pago por verificar'}.
+            </p>
+          ) : null}
+        </div>
+      ) : estado.data ? (
+        <p className="text-slate-700">
+          Sin mensualidad pagada ni por verificar en {formatearMes(mesEnCurso)} ni en{' '}
+          {formatearMes(mesAnterior(mesEnCurso))}.
+        </p>
+      ) : estado.isError ? (
+        esErrorDeApi(estado.error, 401) ? null : (
+          <p className="text-slate-700">No pudimos consultar el estado de la mensualidad.</p>
+        )
+      ) : (
+        <p role="status" className="text-slate-700">
+          Consultando el estado…
+        </p>
+      )}
+      {perdidas > 0 ? (
+        <p className="text-sm text-slate-800">
+          {textoDeClasesPerdidas(perdidas)} en {formatearMes(mesAnterior(mesEnCurso))}; se perdieron al cerrar el mes.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -77,6 +146,7 @@ export function SeccionMensualidad({ alumnoId }: Propiedades) {
               {ETIQUETA_ESTADO_ALUMNO[oferta.alumno.estado]}
             </Insignia>
           </div>
+          <EstadoDeLaMensualidad alumnoId={alumnoId} oferta={oferta} />
           <div>
             <p className="text-sm font-medium text-slate-800">Mes en curso: {formatearMes(mesEnCurso)}</p>
             {oferta.mensualidadActual ? (

@@ -9,6 +9,7 @@ import { PaginaMiCarnet } from '../modulos/carnet/PaginaMiCarnet';
 import { PaginaClases } from '../modulos/clases/PaginaClases';
 import { PaginaConfiguracion } from '../modulos/configuracion/PaginaConfiguracion';
 import { Inicio } from '../modulos/inicio/Inicio';
+import { PaginaMensualidades } from '../modulos/mensualidades/PaginaMensualidades';
 import { PaginaInscripcion } from '../modulos/inscripcion/PaginaInscripcion';
 import { PaginaPanel } from '../modulos/panel/PaginaPanel';
 import { PaginaPagos } from '../modulos/pagos/PaginaPagos';
@@ -53,6 +54,7 @@ export function Rutas() {
         <Route path="/panel/cajas/:id" element={<DetalleCaja />} />
         <Route path="/panel/alumnos" element={<PaginaAlumnos />} />
         <Route path="/panel/alumnos/:id" element={<PaginaCarnetAlumno />} />
+        <Route path="/panel/mensualidades" element={<PaginaMensualidades />} />
         <Route path="/panel/asistencia" element={<PaginaAsistencia />} />
         <Route path="/panel/mi-carnet" element={<PaginaMiCarnet />} />
       </Route>

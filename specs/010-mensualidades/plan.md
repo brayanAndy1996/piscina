@@ -1,6 +1,7 @@
 # 010 · Plan técnico
 
-**Estado:** aprobado con la spec el 26/11/2026; 010a en curso. Bryan aceptó las propuestas de P1 a P11 (DR-1 a DR-11
+**Estado:** aprobado con la spec el 26/11/2026; 010a lista para unir (26/11/2026) y 010b lista para unir (27/11/2026, con
+DT-31 a DT-37 al final de «Decisiones»). Bryan aceptó las propuestas de P1 a P11 (DR-1 a DR-11
 de la spec) y los cambios A1 y A2; el orquestador, DT-1 a DT-21 y la partición en 010a, 010b, 010c y 010d. El diseño
 no cambia. La 010d (inscripción pública al mes siguiente, DR-10) se diseña cuando se especifique.
 
@@ -11,7 +12,7 @@ no cambia. La 010d (inscripción pública al mes siguiente, DR-10) se diseña cu
   - `renovacion.controller.ts`, `renovacion.service.ts` (oferta, cotización y efectivo) y
     `renovacion-comprobante.service.ts` (010a);
   - `listado.controller.ts` y `listado.service.ts` (010b);
-  - `cierre-de-mes.service.ts` y `cierre-de-mes.tarea.ts` (010b);
+  - `cierre-de-mes.service.ts`, `cierre-de-mes.tarea.ts` y `tareas-mensualidades.module.ts` (010b, DT-32);
   - `horario.controller.ts` y `horario.service.ts` (010c);
   - `bloqueos.ts`: las filas de la renovación y del cambio, en el orden de la regla;
   - `errores.ts` e `index.ts`.
@@ -96,21 +97,23 @@ que el alumno que pide y la cuenta de reservas no se contradigan.
 
 **Listado.** Una lectura sin bloqueos: las matrículas de X, X−1 y X+1 de la academia con sus pagos pendientes, sus
 planes y sus clases; `estadoDeMensualidad` decide el estado de cada alumno en memoria; los filtros y los totales se
-aplican después; corta en 500 filas.
+aplican después; corta en 500 filas (DT-37). Con `alumnoId`, la sentencia lee solo las de ese alumno (DT-31). La consulta
+se valida de forma estricta (DT-36).
 
 **Cierre de mes.** `CierreDeMesTarea` (`@Cron('0 */15 * * * *', { name: 'cierre-de-mes' })` y al arrancar) llama a
-`CierreDeMesService.cerrar(RELOJ.ahora())`, con el mismo módulo condicionado por `TAREAS_PROGRAMADAS` que la tarea de
-faltas. Por academia:
+`CierreDeMesService.cerrar()`, que lee el reloj por academia (DT-35), desde su propio módulo `TareasMensualidadesModule`,
+cargado como el de las faltas solo con `TAREAS_PROGRAMADAS=activas` (DT-32). Por academia:
 
 1. `pg_try_advisory_xact_lock(hashtextextended('cierre-de-mes:' || academia, 0))`; si no lo obtiene, sigue con la
    siguiente.
 2. Los ids de los alumnos afectados (los de las matrículas `VIGENTE` de meses anteriores a M y los que cambiarían de
    `ALUMNO_ACTIVO` a `ALUMNO_VENCIDO` o al revés), sin bloquear.
-3. `SELECT … FROM alumnos WHERE id = ANY(…) ORDER BY id FOR UPDATE`; después sus matrículas con `FOR UPDATE`, ordenadas
-   por id.
+3. `SELECT … FROM alumnos WHERE id = ANY(…) ORDER BY id FOR UPDATE`; después sus matrículas `VIGENTE` con `FOR UPDATE`,
+   ordenadas por id (DT-33).
 4. Las dos sentencias de escritura (`UPDATE matriculas … WHERE estado = 'VIGENTE' AND (anio, mes) < M` y `UPDATE
-   alumnos SET estado = CASE …`), que vuelven a evaluar la condición sobre las filas ya bloqueadas.
-5. El `info` con las cantidades.
+   alumnos SET estado = CASE …`), limitadas a los alumnos bloqueados, que vuelven a evaluar la condición con el «ahora»
+   leído después de los bloqueos (DT-33, DT-35).
+5. El `info` con las cantidades, después de confirmar (DT-34).
 
 El orden alumno → matrícula es el mismo del marcado (009), de la tarea de faltas (009b), del cobro (007a) y de la
 renovación, así que no hay ciclos.
@@ -137,6 +140,53 @@ la asistencia (la función que ya decide `CLASE_NO_INCLUIDA`) y en la consulta d
 | Tarea del cierre separada de la de faltas (DT-12) | Correr el cierre dentro de la tarea de faltas | Cada tarea tiene su bloqueo y su error; A1, aprobada el 26/11/2026 |
 | `DELETE` e `INSERT` con `agregada_en` (DT-15) | Historial con `quitada_en` | No cambia las consultas de 005 a 009 que leen las clases actuales |
 | Módulo nuevo `mensualidades/` | Repartir en `matriculas/` y `pagos/` | `matriculas/` no tiene Nest; la renovación tiene controlador y tarea propios |
+
+### Decisiones técnicas de la implementación de la 010b
+
+DT-1 a DT-30 están en «Decisiones» de `spec.md`. Estas nacieron al implementar la 010b; el orquestador las anota al
+cerrar la entrega, el 27/11/2026, verificadas en el código.
+
+- **DT-31. Filtro `alumnoId` del listado** (commit `2fa6d15`). `GET /api/mensualidades` acepta `alumnoId` opcional
+  (`z.uuid`, en `consultaListadoMensualidadesSchema`). El filtro va en la sentencia de `listado.service.ts`
+  (`m.alumno_id = alumnoId` junto a `m.academia_id` de la sesión, además de RLS), en minúsculas: un alumno de otra
+  academia o inexistente da 200 con `alumnos` vacío, `totales` en cero y `hayMas` false, no un error. Los totales son
+  los de ese alumno. Lo usa la sección «Mensualidad» de la ficha (criterio 31). Se apoya en el aislamiento del listado
+  (criterio 26), sin criterio crítico nuevo; lo cubre la prueba no protegida
+  `backend/test/integracion/mensualidades/listado-consulta.test.ts`. Descartado: filtrar en memoria (leería todas las
+  filas de la academia para mostrar una) o una ruta propia por alumno (otro endpoint con su permiso y su aislamiento).
+- **DT-32. Módulo aparte `TareasMensualidadesModule`** (`tareas-mensualidades.module.ts`), solo con `CierreDeMesTarea`.
+  `AppModule` lo carga con `ScheduleModule.forRoot()` y `TareasAsistenciaModule` solo con `TAREAS_PROGRAMADAS=activas`
+  (criterio 30). `CierreDeMesService` está en `MensualidadesModule`, que siempre se carga: las pruebas lo llaman
+  directamente con las tareas apagadas. La tarea lleva una bandera en memoria que salta una vuelta si la anterior sigue
+  en el mismo proceso; entre instancias manda el bloqueo consultivo. Descartado: la tarea dentro de
+  `MensualidadesModule` (se cargaría con las tareas apagadas) o en el módulo de tareas de la asistencia (mezclaría
+  módulos).
+- **DT-33. El cierre bloquea solo lo que escribe.** Después de los alumnos afectados (`FOR UPDATE`, por id), bloquea solo
+  sus matrículas `VIGENTE` (las únicas que finaliza y las que deciden el estado del alumno), no todas sus matrículas.
+  Los dos `UPDATE` se limitan a los alumnos bloqueados (`id = ANY(…)` y `alumno_id = ANY(…)`): nunca escriben una fila
+  que no se bloqueó en el orden alumno → matrícula. Si el mes cambia entre la elección de los afectados y las escrituras,
+  solo se escriben los ya bloqueados y el resto queda para la vuelta siguiente. Descartado: bloquear todas las
+  matrículas de los afectados (más filas a las 00:00 sin cambiar el resultado) o un `UPDATE` sobre toda la academia.
+- **DT-34. Un `info` «Cierre de mes» por academia en cada vuelta,** con `academiaId` y las tres cantidades, también
+  cuando son cero, después de confirmar su transacción. La academia saltada porque otra instancia tiene su bloqueo o
+  porque se suspendió entre la lista y su turno deja un `debug` y la vuelta sigue (ronda 1 de la 010b, F2); un error,
+  un `error` con `errorParaRegistro`. Descartado: registrar solo cuando hay cambios (no se vería que la tarea corre).
+- **DT-35. `cerrar(ahora?)` usa el reloj por defecto.** Sin argumento (la tarea), lee `RELOJ.ahora()` por academia,
+  después del bloqueo consultivo y otra vez después de los `FOR UPDATE`, y ese segundo instante decide el mes y el
+  `actualizado_en` (ronda 1 de la 010b, F1). Con un instante explícito (las pruebas), ese vale para todas las academias.
+  Ajusta el diseño, que decía `cerrar(RELOJ.ahora())`. Descartado: leer la hora una vez para toda la vuelta (una vuelta
+  que cruza la medianoche del día 1 cerraría las últimas academias con el mes anterior).
+- **DT-36. Consulta estricta del listado** (ronda 1 de la 010b, F3). `listado.controller.ts` arma la consulta desde la
+  dirección con `URLSearchParams` en un `Map`: un nombre repetido pasa a ser un arreglo, que el esquema rechaza, y uno
+  que la API no define (`academiaId`, `__proto__`) lo rechaza `z.strictObject`. Todo responde 400 `SOLICITUD_INVALIDA`
+  con el campo (criterio 25). El tope inferior del `mes` (2000-01) está en el esquema; el superior (no posterior a M),
+  en el servicio con el reloj, también 400 con el campo `mes`. Descartado: la consulta ya interpretada por Express, que
+  dejaba pasar parámetros mal formados o repetidos.
+- **DT-37. Tope de 500 filas con `hayMas`** (complementa DT-14). `MAXIMO_DE_FILAS_DEL_LISTADO = 500`: el corte se hace
+  en memoria después de filtrar y ordenar; `totales` cuentan todas las filas con los demás filtros, no solo las 500, y
+  `hayMas` es true si había más. No hay prueba con más de 500 filas (sembrar 501 alumnos con sus matrículas encarece la
+  suite); las pruebas comprueban `hayMas: false`. Riesgo aceptado en `spec.md`. Descartado: paginación (no hace falta
+  con los filtros, DT-14).
 
 ## Migraciones
 

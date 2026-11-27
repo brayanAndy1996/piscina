@@ -19,8 +19,8 @@ export interface Entorno {
    */
   readonly ALMACEN_DIRECTORIO: string;
   /**
-   * Si la API programa sus tareas periódicas (por ahora, el registro de faltas de la 009b, D-08): `activas` (por defecto) o `inactivas`. Las pruebas la
-   * fijan en `inactivas` y llaman a la tarea directamente.
+   * Si la API programa sus tareas periódicas (el registro de faltas de la 009b, D-08, y el cierre de mes de la 010b): `activas` (por defecto) o
+   * `inactivas`, que apaga las dos. Las pruebas la fijan en `inactivas` y llaman a los servicios directamente.
    */
   readonly TAREAS_PROGRAMADAS: TareasProgramadas;
 }

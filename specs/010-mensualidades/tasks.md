@@ -73,20 +73,24 @@ las de la 010c, con la 010b unida.
 
 ## 010b · Estados de la mensualidad y cierre de mes
 
-- [ ] T17 · test-writer · Pruebas protegidas del cierre: academias activas y suspendidas, bloqueo consultivo, error
+- [x] T17 · test-writer · Pruebas protegidas del cierre: academias activas y suspendidas, bloqueo consultivo, error
   aislado, matrículas y estado del alumno, bordes de Lima, Yape aprobado tarde, faltas con la matrícula finalizada,
-  concurrencia sin `40P01` (criterios 27 a 29)
-- [ ] T18 · test-writer · Pruebas protegidas de permisos y aislamiento del listado (criterio 26); ajuste aprobado (A1)
-  de la prueba del criterio 33 de 009 (criterio 30)
-- [ ] T19 · tester · Confirmar el rojo de T17 y T18; commit «Pruebas protegidas (010): 010b, … (en rojo)»
-- [ ] T20 · backend · `estado.ts` con sus pruebas unitarias; listado `GET /api/mensualidades` (criterios 24 a 26)
-- [ ] T21 · backend · `CierreDeMesService` y `CierreDeMesTarea` en el módulo condicionado por `TAREAS_PROGRAMADAS`
-  (criterios 27 a 30)
-- [ ] T22 · frontend · `/panel/mensualidades` y el estado en `/panel/alumnos/{id}`; pruebas de componentes (criterios 31
-  y 32)
-- [ ] T23 · adversarial · Ataque de la 010b (hasta 3 rondas)
-- [ ] T24 · revisor y tester (a la vez) · Revisión; suite completa, lint y tipos
-- [ ] T25 · documentador · `docs/arquitectura.md`, `.env.example` y nota del backlog; marcar tareas (criterio 33)
+  concurrencia sin `40P01` (criterios 27 a 29) _(`523c911`)_
+- [x] T18 · test-writer · Pruebas protegidas de permisos y aislamiento del listado (criterio 26); ajuste aprobado (A1)
+  de la prueba del criterio 33 de 009 (criterio 30) _(`523c911`)_
+- [x] T19 · tester · Confirmar el rojo de T17 y T18; commit «Pruebas protegidas (010): 010b, … (en rojo)» _(`523c911`)_
+- [x] T20 · backend · `estado.ts` con sus pruebas unitarias; listado `GET /api/mensualidades` (criterios 24 a 26)
+  _(`c8d5f0c`; los ajustes del ataque, en `a57690c` y `2fa6d15`)_
+- [x] T21 · backend · `CierreDeMesService` y `CierreDeMesTarea` en el módulo condicionado por `TAREAS_PROGRAMADAS`
+  (criterios 27 a 30) _(`316b0df`; el reloj por academia, en `a57690c`)_
+- [x] T22 · frontend · `/panel/mensualidades` y el estado en `/panel/alumnos/{id}`; pruebas de componentes (criterios 31
+  y 32) _(`a301ea3`, y `2e6ae8f` para el estado de la ficha)_
+- [x] T23 · adversarial · Ataque de la 010b (hasta 3 rondas) _(cerrado en 1 de 3 rondas, 27/11/2026: F1 a F3, bajas,
+  corregidas en `a57690c`; ver `rondas.md`)_
+- [x] T24 · revisor y tester (a la vez) · Revisión; suite completa, lint y tipos _(sin commit propio: las notas del
+  revisor y del tester están en la deuda de la 010 en `specs/backlog.md`)_
+- [x] T25 · documentador · `docs/arquitectura.md`, `.env.example` y nota del backlog; marcar tareas (criterio 33)
+  _(este commit, el de cierre)_
 
 ## 010c · Cambio de horario
 
@@ -113,9 +117,9 @@ las de la 010c, con la 010b unida.
   del PR)_
 - [x] 010a: ataque adversarial sin fallas críticas ni altas abiertas _(dos rondas, 26/11/2026: R1-1 en el criterio 44 y
   R2-1 en el 45)_
-- [ ] 010b: pruebas escritas por test-writer y confirmadas en rojo
-- [ ] 010b: pruebas en verde tras la implementación
-- [ ] 010b: ataque adversarial sin fallas críticas ni altas abiertas
+- [x] 010b: pruebas escritas por test-writer y confirmadas en rojo _(523c911)_
+- [x] 010b: pruebas en verde tras la implementación _(suite completa en 2e6ae8f, 27/11/2026: 18530 pasan, 0 fallan)_
+- [x] 010b: ataque adversarial sin fallas críticas ni altas abiertas _(una ronda, 27/11/2026: F1 a F3 bajas)_
 - [ ] 010c: pruebas escritas por test-writer y confirmadas en rojo
 - [ ] 010c: pruebas en verde tras la implementación
 - [ ] 010c: ataque adversarial sin fallas críticas ni altas abiertas

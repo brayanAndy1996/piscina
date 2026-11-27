@@ -44,6 +44,13 @@ const OPCIONES: readonly Opcion[] = [
     ruta: () => '/panel/alumnos',
   },
   {
+    permiso: 'REGISTRAR_INSCRIPCION_Y_COBRO',
+    texto: 'Mensualidades',
+    descripcion:
+      'Mira quién está al día, por vencer, vencido o con un pago por verificar, filtra por plan, nivel u horario y entra a un alumno para renovar.',
+    ruta: () => '/panel/mensualidades',
+  },
+  {
     permiso: 'REGISTRAR_ASISTENCIA',
     texto: 'Asistencia',
     descripcion: 'Registra la asistencia escaneando el QR del carnet con la lectora o la cámara, o buscando al alumno.',

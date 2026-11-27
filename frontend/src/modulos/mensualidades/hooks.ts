@@ -1,5 +1,10 @@
-import type { CotizarRenovacion, DatosRenovacionComprobante, RenovarEnEfectivo } from '@aquagestion/contratos';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type {
+  ConsultaListadoMensualidades,
+  CotizarRenovacion,
+  DatosRenovacionComprobante,
+  RenovarEnEfectivo,
+} from '@aquagestion/contratos';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useClavesAsistenciaDelMes } from '../asistencia/hooks';
 import { useClavesCaja } from '../caja/hooks';
 import { useClavesCarnet } from '../carnet/hooks';
@@ -16,6 +21,19 @@ export function useClavesMensualidades() {
   return {
     todas: base,
     de: (alumnoId: string) => [...base, alumnoId] as const,
+    /** Todos los listados de `/panel/mensualidades` y los estados de las fichas: cambian con una renovación. */
+    listados: [...base, 'listado'] as const,
+    listado: (filtro: ConsultaListadoMensualidades) =>
+      [
+        ...base,
+        'listado',
+        filtro.mes ?? null,
+        filtro.estado ?? null,
+        filtro.planId ?? null,
+        filtro.nivel ?? null,
+        filtro.claseId ?? null,
+      ] as const,
+    estadoDe: (alumnoId: string) => [...base, alumnoId, 'estado'] as const,
     oferta: (alumnoId: string, mes: string | null) => [...base, alumnoId, 'oferta', mes] as const,
     cotizacion: (alumnoId: string, datos: CotizarRenovacion) =>
       [...base, alumnoId, 'cotizacion', datos.mes, datos.planId, [...datos.claseIds].sort()] as const,
@@ -50,6 +68,42 @@ export function useCotizacionDeRenovacion(alumnoId: string, datos: CotizarRenova
 }
 
 /**
+ * El listado de mensualidades (criterio 25). Se vuelve a pedir al entrar y no se reintenta; mientras llega el de otro filtro se sigue viendo el
+ * anterior (`isPlaceholderData`), que la página marca como «Actualizando».
+ */
+export function useListadoMensualidades(filtro: ConsultaListadoMensualidades) {
+  const claves = useClavesMensualidades();
+  return useQuery({
+    queryKey: claves.listado(filtro),
+    queryFn: () => api.listarMensualidades(filtro),
+    placeholderData: keepPreviousData,
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * El estado de la mensualidad de un alumno para su ficha (criterio 31): `GET /api/mensualidades?alumnoId=…` del mes en curso. La respuesta trae
+ * como mucho su fila; una lista vacía significa que no tiene mensualidad pagada ni por verificar en el mes ni en el anterior. `activo` es `false`
+ * para un alumno inactivo, que el listado nunca trae.
+ */
+export function useEstadoDeMensualidadDelAlumno(alumnoId: string, activo: boolean) {
+  const claves = useClavesMensualidades();
+  return useQuery({
+    queryKey: claves.estadoDe(alumnoId),
+    queryFn: async () => {
+      const listado = await api.listarMensualidades({ alumnoId });
+      return { fila: listado.alumnos.find((alumno) => alumno.alumnoId === alumnoId) ?? null };
+    },
+    enabled: activo,
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
  * Lo que cambia con una renovación: la oferta y la sección, el carnet (su matrícula), la asistencia del mes, la ocupación de las clases, la
  * caja (el efectivo entra) y la bandeja de pagos (un comprobante queda por verificar). Se vuelve a pedir pase lo que pase: un 409 significa
  * que lo que se veía ya no es lo que hay.
@@ -65,6 +119,7 @@ function useRefrescarTrasRenovar(alumnoId: string) {
   return () =>
     Promise.all([
       cliente.invalidateQueries({ queryKey: claves.de(alumnoId) }),
+      cliente.invalidateQueries({ queryKey: claves.listados }),
       cliente.invalidateQueries({ queryKey: clavesCarnet.de(alumnoId) }),
       cliente.invalidateQueries({ queryKey: clavesAsistencia.de(alumnoId) }),
       cliente.invalidateQueries({ queryKey: clavesClases.ocupacion }),
