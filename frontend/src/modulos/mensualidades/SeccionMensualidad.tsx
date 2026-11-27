@@ -1,9 +1,4 @@
-import {
-  type ClaseDeMensualidad,
-  type ConsultaListadoMensualidades,
-  NOMBRE_DIA,
-  type OfertaRenovacion,
-} from '@aquagestion/contratos';
+import { type ClaseDeMensualidad, NOMBRE_DIA, type OfertaRenovacion } from '@aquagestion/contratos';
 import { useId, useState } from 'react';
 import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, ESTILO_BOTON, Insignia } from '../../componentes/ui';
@@ -49,14 +44,8 @@ function haySiguientePermitido(oferta: OfertaRenovacion, mesEnCurso: string): bo
 function EstadoDeLaMensualidad({ alumnoId, oferta }: { alumnoId: string; oferta: OfertaRenovacion }) {
   const mesEnCurso = mesActualEnLima();
   const inactivo = oferta.alumno.estado === 'INACTIVO';
-  // El listado no trae a un alumno inactivo. El nivel y, si ya tiene mensualidad del mes, el plan acotan el listado para encontrarlo.
-  const filtro: ConsultaListadoMensualidades | null = inactivo
-    ? null
-    : {
-        nivel: oferta.alumno.nivel,
-        ...(oferta.mensualidadActual?.mes === mesEnCurso ? { planId: oferta.mensualidadActual.plan.id } : {}),
-      };
-  const estado = useEstadoDeMensualidadDelAlumno(alumnoId, filtro);
+  // El listado no trae a un alumno inactivo: no se pide.
+  const estado = useEstadoDeMensualidadDelAlumno(alumnoId, !inactivo);
   const cerrada = useAsistenciaDelMes(alumnoId, mesAnterior(mesEnCurso));
   useAlPerderSesion(estado.error);
   useAlPerderSesion(cerrada.error);
@@ -87,8 +76,6 @@ function EstadoDeLaMensualidad({ alumnoId, oferta }: { alumnoId: string; oferta:
             </p>
           ) : null}
         </div>
-      ) : estado.data?.indeterminado ? (
-        <p className="text-slate-700">No pudimos determinar el estado de la mensualidad. Búscalo en Mensualidades.</p>
       ) : estado.data ? (
         <p className="text-slate-700">
           Sin mensualidad pagada ni por verificar en {formatearMes(mesEnCurso)} ni en{' '}

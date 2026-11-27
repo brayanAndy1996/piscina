@@ -33,8 +33,7 @@ export function useClavesMensualidades() {
         filtro.nivel ?? null,
         filtro.claseId ?? null,
       ] as const,
-    estadoDe: (alumnoId: string, filtro: ConsultaListadoMensualidades) =>
-      [...base, alumnoId, 'estado', filtro.mes ?? null, filtro.planId ?? null, filtro.nivel ?? null] as const,
+    estadoDe: (alumnoId: string) => [...base, alumnoId, 'estado'] as const,
     oferta: (alumnoId: string, mes: string | null) => [...base, alumnoId, 'oferta', mes] as const,
     cotizacion: (alumnoId: string, datos: CotizarRenovacion) =>
       [...base, alumnoId, 'cotizacion', datos.mes, datos.planId, [...datos.claseIds].sort()] as const,
@@ -85,20 +84,19 @@ export function useListadoMensualidades(filtro: ConsultaListadoMensualidades) {
 }
 
 /**
- * El estado de la mensualidad de un alumno para su ficha (criterio 31). La API no tiene una consulta por alumno: se pide el listado del mes en
- * curso acotado por su nivel y, si tiene mensualidad en el mes, por su plan, y se busca su fila. Con `hayMas` y sin fila no se puede saber.
- * `filtro` es `null` mientras no se conocen el nivel ni el plan del alumno.
+ * El estado de la mensualidad de un alumno para su ficha (criterio 31): `GET /api/mensualidades?alumnoId=…` del mes en curso. La respuesta trae
+ * como mucho su fila; una lista vacía significa que no tiene mensualidad pagada ni por verificar en el mes ni en el anterior. `activo` es `false`
+ * para un alumno inactivo, que el listado nunca trae.
  */
-export function useEstadoDeMensualidadDelAlumno(alumnoId: string, filtro: ConsultaListadoMensualidades | null) {
+export function useEstadoDeMensualidadDelAlumno(alumnoId: string, activo: boolean) {
   const claves = useClavesMensualidades();
   return useQuery({
-    queryKey: filtro ? claves.estadoDe(alumnoId, filtro) : [...claves.de(alumnoId), 'estado', null],
+    queryKey: claves.estadoDe(alumnoId),
     queryFn: async () => {
-      const listado = await api.listarMensualidades(filtro ?? {});
-      const fila = listado.alumnos.find((alumno) => alumno.alumnoId === alumnoId) ?? null;
-      return { fila, hoy: listado.hoy, mes: listado.mes, indeterminado: fila === null && listado.hayMas };
+      const listado = await api.listarMensualidades({ alumnoId });
+      return { fila: listado.alumnos.find((alumno) => alumno.alumnoId === alumnoId) ?? null };
     },
-    enabled: filtro !== null,
+    enabled: activo,
     retry: false,
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,

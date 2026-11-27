@@ -24,7 +24,7 @@ const AHORA = new Date('2026-11-27T15:00:00.000Z');
 
 const RUTA_LISTADO = 'GET /api/mensualidades?mes=2026-11';
 const RUTA_OFERTA = `GET /api/alumnos/${ID_ALUMNO}/renovacion`;
-const RUTA_ESTADO = `GET /api/mensualidades?nivel=BASICO&planId=${PLAN3}`;
+const RUTA_ESTADO = `GET /api/mensualidades?alumnoId=${ID_ALUMNO}`;
 const RUTA_ASISTENCIA_OCT = `GET /api/alumnos/${ID_ALUMNO}/asistencias?mes=2026-10`;
 
 const CLASES_BASICO = [
@@ -390,7 +390,7 @@ describe('/panel/alumnos/{id}: estado de la mensualidad (criterio 31)', () => {
     expect(await within(region).findByText('Por vencer')).toBeInTheDocument();
     expect(within(region).getByText('Estado de la mensualidad')).toBeInTheDocument();
     expect(within(region).getByText(/Mensualidad de noviembre de 2026 · Usó 4 de 12 clases\./)).toBeInTheDocument();
-    // El listado se acota con el nivel y el plan del alumno; la web no calcula el estado.
+    // Se pide solo su fila con el filtro por alumno; la web no calcula el estado.
     expect(pedidas(api)).toContain(RUTA_ESTADO);
   });
 
@@ -414,7 +414,7 @@ describe('/panel/alumnos/{id}: estado de la mensualidad (criterio 31)', () => {
   it('un vencido muestra su última mensualidad y el mes siguiente por verificar', async () => {
     servidorDeFicha(
       {
-        ['GET /api/mensualidades?nivel=BASICO']: () => ({
+        [RUTA_ESTADO]: () => ({
           estado: 200,
           cuerpo: listado({
             alumnos: [
@@ -492,14 +492,6 @@ describe('/panel/alumnos/{id}: estado de la mensualidad (criterio 31)', () => {
       await within(await seccion()).findByText(
         /Sin mensualidad pagada ni por verificar en noviembre de 2026 ni en octubre de 2026/,
       ),
-    ).toBeInTheDocument();
-  });
-
-  it('con hayMas y sin su fila no inventa un estado', async () => {
-    servidorDeFicha({ [RUTA_ESTADO]: () => ({ estado: 200, cuerpo: listado({ alumnos: [], hayMas: true }) }) });
-    mostrar(`/panel/alumnos/${ID_ALUMNO}`);
-    expect(
-      await within(await seccion()).findByText(/No pudimos determinar el estado de la mensualidad/),
     ).toBeInTheDocument();
   });
 
