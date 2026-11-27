@@ -24,7 +24,10 @@
   DR-12 de Bryan, agregó el criterio 45 y ajustó la definición de «Titular de prioridad», DT-3 y el criterio 9 (detalle
   en `rondas.md`). Al cerrar la 010a, el orquestador anotó las desviaciones de la implementación como DT-22 a DT-30, y P12
   (A3) quedó resuelta como consecuencia de DR-12. **010b lista para unir** (27/11/2026, una ronda adversarial sin fallas
-  críticas ni altas, sin criterios nuevos); sus decisiones de implementación son DT-31 a DT-37, en `plan.md`.
+  críticas ni altas, sin criterios nuevos); sus decisiones de implementación son DT-31 a DT-37, en `plan.md`. **010c
+  implementada, pendiente de unir** (27/11/2026): criterio 46 nuevo (DT-38); la ronda adversarial 1 se cerró sin fallas
+  críticas ni altas ni criterios nuevos (detalle en `rondas.md`); sus decisiones de implementación son DT-38 a DT-48, en
+  `plan.md`.
 
 ## Objetivo
 
@@ -597,6 +600,11 @@ Errores nuevos: 409 `MES_NO_PERMITIDO`, `MENSUALIDAD_YA_REGISTRADA`, `FECHA_OPER
   `scripts/test/rol-app-ronda3.test.mjs` y `backend/test/integracion/aislamiento/rol-app.test.ts`): la excepción a
   «ninguna tabla tiene `DELETE`» suma `matricula_clases` (consecuencia directa de A2, decidida por el orquestador el
   27/11/2026).
+- **Sembradores de pruebas de otras historias (010c, commit `8579373`):** por el trigger del criterio 34, que rechaza
+  agregar clases a una matrícula que no está `RESERVADA` ni `VIGENTE`, `sembrarSolicitud` (`inscripciones.ts`),
+  `sembrarEnMasa` (`inscripciones-005b.ts`) y `sembrarAlumno` (`escenario-cierre.ts`) insertan la matrícula abierta,
+  agregan sus clases y después la pasan a su estado final. `rls-llaves.test.ts` espera 23514 para `matricula_clases`.
+  Consecuencia de A2 y del criterio 34.
 - **008:** sin cambios. La matrícula del carnet (DT-12 de 008) ya elige la vigente de hoy o la más reciente, que con
   una renovación puede ser la del mes siguiente.
 - **003:** `diasPorVencer` y `diasPrioridadRenovacion` dejan de estar «sin usar» en `docs/arquitectura.md`.

@@ -129,3 +129,32 @@ en criterios de `spec.md`; las medias o bajas quedan como deuda en las notas de 
 - **Fuera de las rondas.** El filtro `alumnoId` del listado (commit `2fa6d15`, DT-31 de `plan.md`) nació en la
   implementación de la ficha del alumno; lo cubre la prueba no protegida
   `backend/test/integracion/mensualidades/listado-consulta.test.ts`.
+
+## Entrega 010c · Ronda 1
+
+- **Fecha:** 27/11/2026
+- **Qué se atacó:** lo nuevo de la 010c en la ruta crítica (criterios 34 a 41 y 46): el trigger
+  `matricula_clases_solo_matricula_abierta` frente a cierres y cancelaciones concurrentes; el cupo de la clase destino
+  con cambios, renovaciones e inscripciones a la vez; la regla ampliada de «ocurrencia incluida» en el marcado, el
+  registro posterior y la tarea de faltas; el orden de bloqueos; la auditoría; los permisos y el aislamiento del cambio
+  y de la lectura del horario.
+
+| Falla | Gravedad | Qué pasó | Decisión |
+| --- | --- | --- | --- |
+| F1 | media | El trigger `matricula_clases_solo_matricula_abierta` leía la matrícula sin `FOR SHARE`: un cierre concurrente podía colarse entre la lectura del trigger y el `INSERT` o `DELETE`, y dejar cambiadas las clases de una matrícula ya cerrada (criterio 34). | Corregida en `8c45c5b`: migración `20261127200000_trigger_matricula_clases_bloqueo` (el trigger lee la matrícula con `FOR SHARE`) y prueba no protegida `backend/test/integracion/mensualidades/horario-trigger-carrera.test.ts`. Sin criterio nuevo |
+| F2 | baja | Reintentar una renovación con la misma clave después de un cambio de horario de esa matrícula responde 409 `CLAVE_YA_USADA` y no 200: `esElMismoPedido` (`nucleo.ts`) compara las clases pedidas con las `matricula_clases` actuales, que el cambio modificó. | Deuda en `specs/backlog.md` |
+| F3 | baja | Si se cambia a un alumno a otra clase el mismo día, puede quedar con dos faltas ese día: una por la ocurrencia de la clase quitada y otra por la de la clase agregada. Ningún documento dice si debe ser una o dos. | Deuda en `specs/backlog.md`; pregunta para Bryan |
+| Obs. | baja | El trigger cubre `INSERT` y `DELETE`; no cubre un `UPDATE` de `matricula_clases` hecho por el dueño (la app no tiene `UPDATE`) ni reabrir y volver a cerrar una matrícula dentro de una misma transacción. Observación de diseño, sin reproducción por la app. | Deuda en `specs/backlog.md` |
+
+- **Sin fallas críticas ni altas** en los criterios 34 a 41 y 46.
+
+## Cierre de la 010c
+
+- **Fecha:** 27/11/2026. El ataque se cerró en 1 de 3 rondas, sin fallas críticas ni altas, así que no hubo rondas
+  adicionales ni criterios nuevos. F1 quedó corregida en `8c45c5b`; F2, F3 y la observación del trigger quedan como
+  deuda en la nota de la 010 en `specs/backlog.md` (F3, con la pregunta para Bryan).
+- **Revisión.** Las faltas de las ocurrencias de una clase quitada que ya pasaron se pierden si la tarea de faltas no
+  había corrido antes del cambio (deuda). La web se corrigió en `9380767`: la clase actual que ya no está en el plan
+  aparece en un grupo «Ya no disponible», y el bloque «Horario» de la ficha ya no depende de la oferta de renovación.
+- **Suite completa:** 18817 pasan, 0 fallan y 95 se saltan (condicionales por privilegios de la base o por
+  plataforma); e2e, 6 de 6.

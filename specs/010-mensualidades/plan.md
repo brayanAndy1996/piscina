@@ -1,7 +1,7 @@
 # 010 · Plan técnico
 
-**Estado:** aprobado con la spec el 26/11/2026; 010a lista para unir (26/11/2026) y 010b lista para unir (27/11/2026, con
-DT-31 a DT-37 al final de «Decisiones»). Bryan aceptó las propuestas de P1 a P11 (DR-1 a DR-11
+**Estado:** aprobado con la spec el 26/11/2026; 010a lista para unir (26/11/2026), 010b lista para unir (27/11/2026, con
+DT-31 a DT-37 al final de «Decisiones») y 010c implementada y pendiente de unir (27/11/2026, con DT-38 a DT-48). Bryan aceptó las propuestas de P1 a P11 (DR-1 a DR-11
 de la spec) y los cambios A1 y A2; el orquestador, DT-1 a DT-21 y la partición en 010a, 010b, 010c y 010d. El diseño
 no cambia. La 010d (inscripción pública al mes siguiente, DR-10) se diseña cuando se especifique.
 
@@ -209,6 +209,37 @@ cerrar la entrega, el 27/11/2026, verificadas en el código.
   cambiar, no depende de hoy ni de `diasPorVencer`, y no obliga a correr `estadoDeMensualidad` por matrícula. Es crítico
   por permisos y aislamiento (D-23, sección 2.1). Descartado: ampliar la oferta de renovación con `matriculaId`, que no
   resuelve los cupos de un mes ya inscrito y cambia una forma protegida (`ofertaRenovacionSchema`, criterio 2).
+
+Las siguientes nacieron al implementar el backend de la 010c; el orquestador las anota al cerrar la entrega, el
+27/11/2026.
+
+- **DT-39. `SELECCION_NO_VALIDA` uniforme, sin posiciones.** Los errores de `validarSeleccion` salen todos en el campo
+  `claseIds`, cada mensaje una sola vez y sin la posición de la clase: el rechazo no distingue una clase inexistente de
+  una de otra academia ni dice cuál de las pedidas falló (criterio 41). Descartado: un error por clase, con su posición.
+- **DT-40. Se valida la selección completa** con `validarSeleccion` (005), incluidas las clases que se mantienen, no
+  solo las que entran: el horario resultante cumple el criterio 4 con el plan y el nivel de hoy (DT-20). Descartado:
+  validar solo las nuevas (dejaría una selección final que no cumple el plan).
+- **DT-41. Orden de decisión del cambio:** 404 `NO_ENCONTRADO` → 409 `MATRICULA_NO_MODIFICABLE` → sin diferencias (200
+  sin escribir, criterio 37) → `SELECCION_NO_VALIDA` → `SIN_CUPO`.
+- **DT-42. «Modificable»** es una matrícula del mes M o M+1 de «ahora», `VIGENTE` o `RESERVADA` sin vencimiento (en
+  verificación); la reserva de 24 horas no (criterio 35). La comparten el `POST` y el `GET` (`sePuedeCambiarElHorario`).
+- **DT-43. No se actualiza la fila de `matriculas`.** El cambio solo borra e inserta en `matricula_clases`; ninguna
+  columna de la matrícula cambia (criterio 37); la fecha del cambio queda en `agregada_en` y en la auditoría.
+- **DT-44. El cupo sale de `cuposDelHorario`,** una sola función que usan el `GET` (criterio 46) y el `POST` (criterio
+  36), para que «`cuposRestantes` 0 si y solo si `SIN_CUPO`» se cumpla por construcción. Descartado: dos cálculos
+  paralelos.
+- **DT-45. `ocurrenciasRestantes`** cuenta desde «ahora» si la matrícula es de M y desde las 00:00 de Lima del día 1 si
+  es de M+1 (como `cotizarRenovacion`, DT-6).
+- **DT-46. Trigger `BEFORE INSERT OR DELETE`,** por fila, que lee la matrícula con `FOR SHARE` (ronda 1 de la 010c, F1),
+  responde 23514 y cierra por defecto si no la ve. No cubre `UPDATE` (la app no lo tiene) ni reabrir y cerrar en una
+  misma transacción (deuda, `rondas.md`).
+- **DT-47. Una sola `ocurrenciaIncluida`,** estricta (inicio posterior a `creado_en` y a `agregada_en`), en el dominio
+  de la asistencia, usada por el marcado, el registro posterior y la tarea de faltas; `agregadaEn` es opcional en sus
+  tipos para no cambiar a quienes no la tienen (criterio 38).
+- **DT-48. Detalles del `GET` del horario.** `clasesDelPlan` se filtra por nivel, día y franja sin pasar por
+  `validarSeleccion` (que valida una selección, no lista opciones); `estado` es `VIGENTE` o `EN_VERIFICACION`;
+  `conPrioridad` es true solo en una matrícula de M+1 y si la clase está en la matrícula `VIGENTE` del mes M (criterio
+  46).
 
 ## Migraciones
 
