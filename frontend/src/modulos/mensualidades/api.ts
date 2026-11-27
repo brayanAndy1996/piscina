@@ -1,7 +1,9 @@
 import {
   CABECERA_DATOS_RENOVACION,
+  type ConsultaListadoMensualidades,
   type CotizarRenovacion,
   type DatosRenovacionComprobante,
+  listadoMensualidadesSchema,
   ofertaRenovacionSchema,
   type RenovarEnEfectivo,
   respuestaCotizacionRenovacionSchema,
@@ -51,4 +53,18 @@ export async function subirComprobanteDeRenovacion(alumnoId: string, datos: Dato
     respuestaRenovacionSchema,
   );
   return respuesta.datos;
+}
+
+/**
+ * `GET /api/mensualidades` (010b, criterio 25): solo viajan los filtros que se eligieron; la academia sale de la sesión. Los estados y los
+ * totales los calcula la API, nunca la web.
+ */
+export async function listarMensualidades(filtro: ConsultaListadoMensualidades) {
+  const parametros = new URLSearchParams();
+  for (const [nombre, valor] of Object.entries(filtro)) {
+    if (typeof valor === 'string' && valor !== '') parametros.set(nombre, valor);
+  }
+  const texto = parametros.toString();
+  return (await pedirJson(texto ? `/api/mensualidades?${texto}` : '/api/mensualidades', listadoMensualidadesSchema))
+    .datos;
 }
