@@ -14,8 +14,8 @@ import { leerClasesActivas, leerClasesPorIds, leerPlan } from '../inscripciones/
 import { type ClaseElegida, clasesRestantes } from '../matriculas';
 import { cuposDelHorario } from './cupo-del-horario';
 import { diferenciaDeClases, sePuedeCambiarElHorario } from './dominio/horario';
-import { inicioDelMesEnLima } from './dominio/ventana';
-import { matriculaNoModificable, planNoDisponible, seleccionNoValida, sinCupoParaRenovar } from './errores';
+import { inicioDelMesEnLima, textoDelMes } from './dominio/ventana';
+import { matriculaNoModificable, seleccionNoValida, sinCupoParaRenovar } from './errores';
 import {
   bloquearMatriculaParaElCambio,
   leerAlumno,
@@ -27,8 +27,11 @@ import {
 } from './lectura';
 import { bloquearAlumno } from './nucleo';
 
-/** El texto `AAAA-MM` de un mes. */
-const textoDelMes = (anio: number, mes: number): string => `${anio}-${String(mes).padStart(2, '0')}`;
+/** Un dato que las comprobaciones anteriores garantizan: si falta, es un error interno y no un caso de negocio. */
+function exigir<T>(valor: T | undefined, descripcion: string): T {
+  if (valor === undefined) throw new Error(`Error interno del cambio de horario: falta ${descripcion}.`);
+  return valor;
+}
 
 export const ACCION_HORARIO_CAMBIADO = 'MATRICULA_HORARIO_CAMBIADO';
 
@@ -79,8 +82,8 @@ export class HorarioService {
 
       const salida: HorarioDelAlumno['matriculas'] = [];
       for (const matricula of matriculas) {
-        const plan = await leerPlan(tx, matricula.planId);
-        if (!plan) throw new Error('La matrícula no tiene su plan.');
+        // El plan de una matrícula existe siempre: la llave foránea compuesta (academia_id, plan_id) lo garantiza.
+        const plan = exigir((await leerPlan(tx, matricula.planId)) ?? undefined, 'el plan de la matrícula');
         const clases = await leerClasesDeLaMatricula(tx, matricula.id);
         const delPlan = activas.filter(
           (clase) => plan.diasPermitidos.includes(clase.diaSemana) && plan.franjasPermitidas.includes(clase.horaInicio),
@@ -95,7 +98,7 @@ export class HorarioService {
         });
         salida.push({
           id: matricula.id,
-          mes: textoDelMes(matricula.anio, matricula.mes),
+          mes: textoDelMes(matricula),
           estado: matricula.estado === 'VIGENTE' ? 'VIGENTE' : 'EN_VERIFICACION',
           plan: {
             id: plan.id,
@@ -113,7 +116,7 @@ export class HorarioService {
             diaSemana: clase.diaSemana,
             horaInicio: clase.horaInicio,
             horaFin: clase.horaFin,
-            cuposRestantes: Math.max(0, cupoLibrePorClase.get(clase.id) ?? 0),
+            cuposRestantes: Math.max(0, exigir(cupoLibrePorClase.get(clase.id), 'el cupo de una clase del plan')),
             conPrioridad: esMesSiguiente && titulares.has(clase.id),
           })),
         });
@@ -149,7 +152,8 @@ export class HorarioService {
     // 3. La matrícula con `FOR UPDATE` y sus clases de ahora.
     const matricula = await bloquearMatriculaParaElCambio(tx, matriculaIdPedido.toLowerCase(), alumno.id);
     const actuales = await leerClaseIdsDeLaMatricula(tx, matricula.id);
-    const pedidas = [...new Set(datos.claseIds.map((id) => id.toLowerCase()))].sort();
+    // `claseIdsSchema` ya rechaza los ids repetidos (sin distinguir mayúsculas): solo se normalizan y se ordenan.
+    const pedidas = datos.claseIds.map((id) => id.toLowerCase()).sort();
     const diferencia = diferenciaDeClases(actuales, pedidas);
     // 4. Las clases que salen y las que entran, en una sola llamada (el SQL las ordena por id): quien las tuvo antes ya terminó.
     const bloqueadas = await bloquearClasesParaCupo(tx, [...diferencia.salen, ...diferencia.entran]);
@@ -165,8 +169,7 @@ export class HorarioService {
     }
 
     // El plan de la matrícula tal como está hoy y el nivel actual del alumno (criterio 4, DT-20).
-    const plan = await leerPlan(tx, matricula.planId);
-    if (!plan) throw planNoDisponible();
+    const plan = exigir((await leerPlan(tx, matricula.planId)) ?? undefined, 'el plan de la matrícula');
     const quedan = await leerClasesPorIds(tx, diferencia.seQuedan);
     const errores = validarSeleccion(plan, alumno.nivel, [...bloqueadas, ...quedan], pedidas, 'claseIds');
     if (errores.length > 0) throw seleccionNoValida(erroresUniformes(errores));
@@ -179,10 +182,15 @@ export class HorarioService {
       mesDeLaMatricula: { anio: matricula.anio, mes: matricula.mes },
       mesEnCurso,
       ahora,
-      clases: diferencia.entran.map((id) => ({ id, aforo: aforos.get(id) ?? 0 })),
+      clases: diferencia.entran.map((id) => ({
+        id,
+        aforo: exigir(aforos.get(id), 'una clase que entra, ya validada'),
+      })),
       propias: new Set(actuales),
     });
-    const sinLugar = diferencia.entran.filter((id) => (cupoLibrePorClase.get(id) ?? 0) < 1);
+    const sinLugar = diferencia.entran.filter(
+      (id) => exigir(cupoLibrePorClase.get(id), 'el cupo de una clase que entra') < 1,
+    );
     if (sinLugar.length > 0) throw sinCupoParaRenovar(sinLugar);
 
     // Escrituras: las filas de las clases que salen se borran y las que entran se insertan con «ahora»; las que se quedan no cambian.
@@ -231,7 +239,7 @@ export class HorarioService {
     return {
       matricula: {
         id: matricula.id,
-        mes: textoDelMes(matricula.anio, matricula.mes),
+        mes: textoDelMes(matricula),
         clases,
         clasesTotales: matricula.clasesTotales,
         clasesUsadas: matricula.clasesUsadas,
