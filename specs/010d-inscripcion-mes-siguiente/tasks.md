@@ -1,8 +1,8 @@
 # 010d · Tareas
 
 Cada tarea indica su rol y los criterios que cubre. Empiezan con la 010c unida a `main` y la spec aprobada por Bryan
-(P1 a P5). Los commits de pruebas protegidas dicen «Pruebas protegidas (010d): … (en rojo)», y las pruebas llevan al
-inicio `// spec: 010d-inscripcion-mes-siguiente (pruebas protegidas)`.
+(P1 a P5). Los commits de pruebas protegidas dicen «Pruebas protegidas (010): 010d, … (en rojo)», y las pruebas llevan al
+inicio `// spec: 010-mensualidades (pruebas protegidas)`.
 
 ## Aprobación
 
@@ -29,7 +29,7 @@ inicio `// spec: 010d-inscripcion-mes-siguiente (pruebas protegidas)`.
   10)
 - [ ] T6 · test-writer · Cierre de mes y asistencia del alumno nuevo antes del día 1; aislamiento entre A y B; límites
   por conexión y registro técnico; inscripción de recepción (criterios 11 a 15)
-- [ ] T7 · tester · Confirmar que T2 a T6 fallan por la razón esperada; commit «Pruebas protegidas (010d): … (en rojo)»
+- [ ] T7 · tester · Confirmar que T2 a T6 fallan por la razón esperada; commit «Pruebas protegidas (010): 010d, … (en rojo)»
 
 ## Implementación
 
