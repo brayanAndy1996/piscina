@@ -117,9 +117,9 @@ las de la 010c, con la 010b unida.
   del PR)_
 - [x] 010a: ataque adversarial sin fallas críticas ni altas abiertas _(dos rondas, 26/11/2026: R1-1 en el criterio 44 y
   R2-1 en el 45)_
-- [ ] 010b: pruebas escritas por test-writer y confirmadas en rojo
-- [ ] 010b: pruebas en verde tras la implementación
-- [ ] 010b: ataque adversarial sin fallas críticas ni altas abiertas
+- [x] 010b: pruebas escritas por test-writer y confirmadas en rojo _(523c911)_
+- [x] 010b: pruebas en verde tras la implementación _(suite completa en 2e6ae8f, 27/11/2026: 18530 pasan, 0 fallan)_
+- [x] 010b: ataque adversarial sin fallas críticas ni altas abiertas _(una ronda, 27/11/2026: F1 a F3 bajas)_
 - [ ] 010c: pruebas escritas por test-writer y confirmadas en rojo
 - [ ] 010c: pruebas en verde tras la implementación
 - [ ] 010c: ataque adversarial sin fallas críticas ni altas abiertas
