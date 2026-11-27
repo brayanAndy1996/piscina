@@ -429,10 +429,12 @@ sus criterios se agregan a esta spec cuando se planifique.
     los pagos y la caja no cambian (DR-9). Si las clases pedidas son las que ya tiene, responde 200 sin escribir ni
     auditar (un doble clic no duplica nada, DT-16). _(prueba obligatoria)_ (DR-9)
 38. **[010c] Asistencia y faltas después del cambio.** Una ocurrencia de una clase agregada está incluida en la
-    mensualidad solo si empieza después de `matriculas.creado_en` y de `agregada_en` (amplía DT-14 de 009). Con `RELOJ`
-    fijo, un cambio a las 15:00 de un martes a la clase de ese martes a las 10:00: el marcado de ese día responde
-    `CLASE_NO_INCLUIDA`, la tarea de faltas no registra falta por ella y el registro posterior de ese día responde
-    `CLASE_NO_INCLUIDA`; la del martes siguiente se marca y descuenta. Una clase quitada ya no se marca
+    mensualidad solo si empieza después de `matriculas.creado_en` y de `agregada_en` (amplía DT-14 de 009); «después» es
+    estricto: un cambio a las 10:00:00.000 deja fuera la ocurrencia de las 10:00 y uno a las 09:59:59.999 la deja dentro.
+    Con `RELOJ` fijo, un cambio a las 15:00 de un martes a la clase de ese martes a las 10:00: la tarea de faltas no
+    registra falta por la ocurrencia de las 10:00 de ese día y el registro posterior de ese día responde
+    `CLASE_NO_INCLUIDA`; un cambio hecho durante la clase (por ejemplo a las 10:30): el marcado de esa ocurrencia, también
+    por QR, responde `CLASE_NO_INCLUIDA`. En los dos casos la del martes siguiente se marca y descuenta. Una clase quitada ya no se marca
     (`FUERA_DE_HORARIO`) ni genera faltas desde el cambio. Si ya marcó hoy en la clase anterior, la nueva de hoy responde
     `ASISTENCIA_YA_REGISTRADA`. _(crítico)_ (RN-14, RN-16, D-16, D-08)
 39. **[010c] Orden de bloqueos.** `bloquearActorVigente` → el alumno con `FOR UPDATE` → la matrícula con `FOR UPDATE` →
@@ -564,7 +566,12 @@ Errores nuevos: 409 `MES_NO_PERMITIDO`, `MENSUALIDAD_YA_REGISTRADA`, `FECHA_OPER
   posterior y la tarea de faltas. Las pruebas protegidas de la 009 no cambian (las filas existentes la tienen nula).
 - **005 (A2, aprobada por Bryan el 26/11/2026):** los criterios 1 y 2 de 005 (`tablas.test.ts` y `privilegios.test.ts`,
   protegidas) fijan las columnas de `matricula_clases` y esperan 42501 al borrar una fila. La 010c suma `agregada_en` y el
-  `DELETE`; hay que ajustar esas dos pruebas, con la nota en la cabecera, como hizo la 009 (DT-18 de 007).
+  `DELETE`; hay que ajustar esas dos pruebas, con la nota en la cabecera, como hizo la 009 (DT-18 de 007). Por el mismo
+  `DELETE` se ajustan también, con la nota en la cabecera, las tres pruebas protegidas que fijan la lista exacta de
+  privilegios de `aquagestion_app` (`backend/src/infraestructura/prisma/privilegios-app.test.ts`,
+  `scripts/test/rol-app-ronda3.test.mjs` y `backend/test/integracion/aislamiento/rol-app.test.ts`): la excepción a
+  «ninguna tabla tiene `DELETE`» suma `matricula_clases` (consecuencia directa de A2, decidida por el orquestador el
+  27/11/2026).
 - **008:** sin cambios. La matrícula del carnet (DT-12 de 008) ya elige la vigente de hoy o la más reciente, que con
   una renovación puede ser la del mes siguiente.
 - **003:** `diasPorVencer` y `diasPrioridadRenovacion` dejan de estar «sin usar» en `docs/arquitectura.md`.
@@ -725,7 +732,12 @@ Decisiones del responsable. Bryan aprobó la propuesta de cada pregunta el 26/11
 
 - **A1 (010b).** La prueba del criterio 33 de 009 pasa de `['faltas']` a `['cierre-de-mes', 'faltas']`. _(Criterio 30.)_
 - **A2 (010c).** Las pruebas de los criterios 1 y 2 de 005 (`tablas.test.ts` y `privilegios.test.ts`) suman
-  `agregada_en` y el `DELETE` en `matricula_clases`, con la nota en la cabecera. _(Criterio 34.)_
+  `agregada_en` y el `DELETE` en `matricula_clases`, con la nota en la cabecera. Como consecuencia directa de A2 (el mismo
+  `DELETE` aprobado por Bryan el 26/11/2026), el orquestador decidió el 27/11/2026 ajustar también otras tres pruebas
+  protegidas que fijan la lista exacta de privilegios de `aquagestion_app`, con la nota en la cabecera de cada archivo: la
+  excepción a «ninguna tabla tiene `DELETE`» suma `matricula_clases` en
+  `backend/src/infraestructura/prisma/privilegios-app.test.ts`, `scripts/test/rol-app-ronda3.test.mjs` y
+  `backend/test/integracion/aislamiento/rol-app.test.ts`. _(Criterio 34.)_
 - **A3 (010a, pregunta P12).** La prueba protegida del criterio 9 «un titular con la matrícula de noviembre en verificación
   también tiene prioridad» (`backend/test/integracion/mensualidades/renovacion-prioridad.test.ts`) se reescribe con la regla
   de DR-12: la matrícula de M en verificación no da prioridad para M+1. Lo aplicó el orquestador como consecuencia directa

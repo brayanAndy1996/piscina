@@ -8,6 +8,9 @@
 // Actualizada por la 009 (spec 009-asistencia, criterio 1 e «Impacto en especificaciones anteriores»; CAMBIO APROBADO POR BRYAN el 25/11/2026): `UPDATE_EXACTO` suma `clases_usadas` en `matriculas` (cada asistencia descuenta una clase en la misma
 // transacción del marcado). Se quita el intento de `clases_usadas` que esperaba 42501 y se agrega, en su lugar, que la app sí puede subirla y que el CHECK de la 005 sigue impidiendo pasar de `clases_totales` (23514). El precio, los montos, las clases
 // totales, el año, el mes, el alumno, el plan y la `academia_id` siguen prohibidos y comprobados; el nuevo `UPDATE_EXACTO` sigue fijando los privilegios exactos.
+// Actualizada por la 010c (spec 010-mensualidades, criterio 34 y A2, aprobado por Bryan el 26/11/2026): `aquagestion_app` suma `DELETE` en `matricula_clases` (el cambio de horario borra las clases que salen). Se quita el intento de
+// `DELETE` de `matricula_clases` que esperaba 42501 y se agrega que la app sí puede borrar las filas de una matrícula abierta (el trigger y la RLS están en `mensualidades/horario-modelo.test.ts`). `UPDATE` de `matricula_clases` sigue
+// prohibido y comprobado, y `UPDATE_EXACTO` no cambia. No se quitó ni se cambió nada más.
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { crearAcademiaDePrueba } from '../../utilidades/academias';
@@ -75,7 +78,7 @@ const UPDATE_EXACTO: Record<Tabla005, string[]> = {
 describe.each(TABLAS_005)('criterio 2: privilegios exactos de aquagestion_app sobre %s', (tabla) => {
   beforeEach(exigirTablasDeInscripcion);
 
-  it('criterio 2: sobre la tabla tiene SELECT e INSERT, DELETE solo en apoderados, y ni UPDATE de tabla entera, TRUNCATE, REFERENCES ni TRIGGER', async () => {
+  it('criterio 2: sobre la tabla tiene SELECT e INSERT, DELETE solo en apoderados y matricula_clases (010c), y ni UPDATE de tabla entera, TRUNCATE, REFERENCES ni TRIGGER', async () => {
     const { rows } = await ejecutarComo(
       'propietario',
       `SELECT pg_catalog.has_table_privilege($1::name, $2, 'SELECT') AS "SELECT",
@@ -93,7 +96,7 @@ describe.each(TABLAS_005)('criterio 2: privilegios exactos de aquagestion_app so
         SELECT: true,
         INSERT: true,
         UPDATE: false,
-        DELETE: tabla === 'apoderados',
+        DELETE: tabla === 'apoderados' || tabla === 'matricula_clases',
         TRUNCATE: false,
         REFERENCES: false,
         TRIGGER: false,
@@ -193,7 +196,7 @@ describe('criterio 2: lo que el rol de la app puede y no puede escribir', () => 
     expect((await leerSolicitudes(A.id))[0]).toMatchObject({ codigo: cliente.codigo, estado: 'PENDIENTE_PAGO' });
   });
 
-  it('criterio 2: no puede cambiar el precio, los montos, las clases ni la academia_id de una matrícula, ni borrarla; no puede tocar ni borrar consentimientos ni matricula_clases (42501)', async () => {
+  it('criterio 2: no puede cambiar el precio, los montos, las clases ni la academia_id de una matrícula, ni borrarla; no puede tocar ni borrar consentimientos ni cambiar matricula_clases (42501)', async () => {
     const intentos: [string, string, unknown[]][] = [
       ['precio_plan', 'UPDATE matriculas SET precio_plan = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
       ['monto_calculado', 'UPDATE matriculas SET monto_calculado = 1 WHERE id = $1::uuid', [cliente.matriculaId]],
@@ -215,7 +218,6 @@ describe('criterio 2: lo que el rol de la app puede y no puede escribir', () => 
         'UPDATE matricula_clases SET clase_id = gen_random_uuid() WHERE matricula_id = $1::uuid',
         [cliente.matriculaId],
       ],
-      ['DELETE matricula_clases', 'DELETE FROM matricula_clases WHERE matricula_id = $1::uuid', [cliente.matriculaId]],
     ];
     for (const [nombre, sql, parametros] of intentos) {
       await expect(comoApp(sql, parametros), nombre).rejects.toMatchObject({ code: '42501' });
@@ -327,7 +329,18 @@ describe('criterio 2: lo que el rol de la app puede y no puede escribir', () => 
     expect((await leerMatriculas(A.id))[0]).toMatchObject({ estado: 'CANCELADA', reserva_vence_en: null });
   });
 
-  it('criterio 2: sí puede borrar al apoderado (el único DELETE) y crear filas de su academia', async () => {
+  it('criterio 2 (010c): sí puede borrar las clases de una matrícula abierta (el cambio de horario), pero no cambiarlas con un UPDATE', async () => {
+    const borrados = await comoApp('DELETE FROM matricula_clases WHERE matricula_id = $1::uuid', [cliente.matriculaId]);
+
+    expect(borrados.rowCount).toBe(1);
+    await expect(
+      comoApp('UPDATE matricula_clases SET clase_id = gen_random_uuid() WHERE matricula_id = $1::uuid', [
+        cliente.matriculaId,
+      ]),
+    ).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('criterio 2: sí puede borrar al apoderado (el único DELETE de la 005) y crear filas de su academia', async () => {
     const borrados = await comoApp('DELETE FROM apoderados WHERE alumno_id = $1::uuid', [cliente.alumnoId]);
 
     expect(borrados.rowCount).toBe(1);
