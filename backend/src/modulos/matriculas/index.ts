@@ -1,9 +1,10 @@
 // Contrato público del módulo de matrículas para las historias siguientes (spec 005, "Interfaces del backend"):
 //   contarOcupacion(tx, claseIds, { anio, mes }, ahora)  cuántas matrículas que ocupan cupo en ese mes incluye cada clase.
 //   contarInscritos(tx, claseIds, ahora)                  la mayor ocupación de cada clase entre el mes en curso y los siguientes (DR-5 de 004).
+//   contarReservasDePrioridad(tx, claseIds, mesEnCurso, ahora)  los titulares de prioridad de cada clase: sus lugares apartados para el mes siguiente (010a, D-06).
 // Cuentan sin bloquear: quien llama ya bloqueó las clases con `bloquearClasesParaCupo`. Sin Nest, como `leerConfiguracion`.
 // El cobro (`clasesRestantes`, `montoProporcional`, `calcularTotal`) está en `dominio/cobro.ts`.
-export { contarInscritos, contarOcupacion } from './ocupacion';
+export { contarInscritos, contarOcupacion, contarReservasDePrioridad } from './ocupacion';
 export {
   baseProporcional,
   calcularTotal,

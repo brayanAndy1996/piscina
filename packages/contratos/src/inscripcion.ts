@@ -155,7 +155,7 @@ export const correoSchema = z
  * Una lista de 1 a 7 clases, sin repetidos (el id se compara sin distinguir mayúsculas) y todas UUID. Los errores de la lista se informan
  * en el campo de la lista (`inscripcion.claseIds`) y no en cada elemento, para que la web los muestre en un solo lugar.
  */
-const claseIdsSchema = z
+export const claseIdsSchema = z
   .array(z.string('Las clases no son válidas.'), 'Elige las clases.')
   .min(1, 'Elige al menos una clase.')
   .max(7, 'Elige como mucho 7 clases.')

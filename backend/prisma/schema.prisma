@@ -481,6 +481,8 @@ model SolicitudInscripcion {
 
 /// La mensualidad de un alumno en un mes (RN-27). La reserva de la 005 es una matrícula `RESERVADA` con vencimiento (D1 de 005). Guarda su
 /// propio precio y clases: un cambio del plan no la afecta (HU-19). El índice único parcial de la matrícula que ocupa cupo va a mano.
+/// Una matrícula sin solicitud (`solicitud_id` nula) es una renovación (010a): nunca tiene `reserva_vence_en`. El CHECK
+/// `matriculas_renovacion_sin_vencimiento` va a mano en la migración `20261126140000_renovaciones`, que Prisma no representa.
 model Matricula {
   id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   academiaId       String          @map("academia_id") @db.Uuid

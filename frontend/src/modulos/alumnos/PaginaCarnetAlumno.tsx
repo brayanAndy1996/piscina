@@ -12,12 +12,13 @@ import { useUsuario } from '../sesion/contexto';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
 import { DialogoFoto } from '../foto/DialogoFoto';
+import { SeccionMensualidad } from '../mensualidades/SeccionMensualidad';
 import { AsistenciaDelMes } from './AsistenciaDelMes';
 import { DialogoRegenerarQr } from './DialogoRegenerarQr';
 
 /**
  * `/panel/alumnos/{id}`: el carnet de un alumno para el personal (HU-13, criterio 19 de 008), con «Descargar PDF» y, para quien puede cobrar
- * (`REGISTRAR_INSCRIPCION_Y_COBRO`), «Regenerar QR» y «Cambiar foto» o «Agregar foto» (archivo o cámara, criterio 28 de 008b) y la sección «Asistencia» del mes (009b, criterio 32). `ADMIN` y `SECRETARIA`.
+ * (`REGISTRAR_INSCRIPCION_Y_COBRO`), «Regenerar QR» y «Cambiar foto» o «Agregar foto» (archivo o cámara, criterio 28 de 008b), la sección «Mensualidad» con «Renovar» (010a, criterio 20) y la sección «Asistencia» del mes (009b, criterio 32). `ADMIN` y `SECRETARIA`.
  */
 export function PaginaCarnetAlumno() {
   return (
@@ -90,6 +91,7 @@ function ContenidoCarnetAlumno() {
               </>
             }
           />
+          {puedeRegenerar ? <SeccionMensualidad alumnoId={carnet.alumno.id} /> : null}
           {veAsistencia ? (
             <AsistenciaDelMes
               alumnoId={carnet.alumno.id}

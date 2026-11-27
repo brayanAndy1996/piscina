@@ -23,8 +23,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 007b | Yape y transferencia: comprobante y bandeja de verificación | Sí | ✅ |
 | 008a | Carnet digital y QR | En parte | ✅ |
 | 008b | Foto desde el panel y cámara | En parte | ✅ |
-| 009 | Asistencia y faltas | Sí | 🟨 |
-| 010 | Mensualidades y renovación | En parte | ⬜ |
+| 009 | Asistencia y faltas | Sí | ✅ |
+| 010 | Mensualidades y renovación | En parte | 🟨 |
 | 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
 
 ### Notas
@@ -273,7 +273,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Estado: spec aprobada por Bryan el 25/11/2026 (DR-1 a DR-6 y el privilegio `UPDATE (clases_usadas)`; DT-1 a DT-30), en
     [`specs/009-asistencia/`](009-asistencia/spec.md). Dos entregas: 009a (marcado por QR y manual, criterios 1 a 21; unida a
     main el 26/11/2026, [PR #18](https://github.com/brayanAndy1996/piscina/pull/18), tras una ronda adversarial sin críticas ni altas; ver [`rondas.md`](009-asistencia/rondas.md)) y
-    009b (faltas, registro posterior y consulta del mes, criterios 22 a 37): lista para unir (26/11/2026, una ronda adversarial sin críticas ni altas); ver [`rondas.md`](009-asistencia/rondas.md).
+    009b (faltas, registro posterior y consulta del mes, criterios 22 a 37): unida a main el 26/11/2026, [PR #19](https://github.com/brayanAndy1996/piscina/pull/19), tras una ronda adversarial sin críticas ni altas; ver [`rondas.md`](009-asistencia/rondas.md).
   - **Corregidas en la 009b** (R1-1 y R1-2 de la ronda 1 de la 009a, medias): R1-1 con el criterio 36 y R1-2 con el
     criterio 37, cada una con su prueba protegida (`7641ca1`) y su corrección (`ddeeec8`).
   - **Deuda de la 009a** (ronda 1, 26/11/2026; las medias y las bajas no abren ronda, D-31; el detalle está en
@@ -312,16 +312,38 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 - **010 · Mensualidades.** Estados al día, por vencer, vencido y pendiente (HU-11), renovación con prioridad de
   horario (HU-12, D-06), cierre de mes y clases no usadas (RN-23), cambio de horario por la secretaria (HU-03,
   RN-08).
+  - Estado: spec aprobada por Bryan el 26/11/2026 (DR-1 a DR-12, cambios A1, A2 y A3 a pruebas protegidas; DT-1 a DT-30), en
+    [`specs/010-mensualidades/`](010-mensualidades/spec.md). Cuatro entregas: 010a renovación con prioridad (criterios 1 a 23,
+    44 y 45), **lista para unir** (26/11/2026, dos rondas adversariales; criterios 44 y 45 nuevos); 010b estados y cierre de
+    mes (24 a 33); 010c cambio de horario (34 a 43); y 010d inscripción pública al mes siguiente (DR-10; se especifica con la
+    010c unida).
+  - **Deuda de la 010a** (revisión y suite completa, 26/11/2026; las medias y las bajas no abren ronda, D-31; las rondas no
+    dejaron deuda abierta, y el detalle está en [`rondas.md`](010-mensualidades/rondas.md)):
+    - **Menores de la revisión** (T15):
+      - la web usa el reloj del navegador para decidir si el mes es «siguiente», los límites de fecha del comprobante y el
+        texto «se abre el…» (`DialogoRenovar.tsx` y `SeccionMensualidad.tsx`); debería salir de la oferta de la API;
+      - `montoEscrito` no se reinicia al cambiar el plan o las clases en el diálogo; el servidor lo rechaza con
+        `MONTO_DISTINTO`;
+      - `esRechazoDeLaTransaccion`, `borrarSinFallar`, `resolverConfirmacionIncierta` y `ESPERA_RELECTURA_MS` tienen 3 copias
+        (`renovacion-comprobante.service.ts`, `pagos/comprobante.service.ts` e `inscripciones/foto-del-alumno.ts`);
+      - `renovacion-comprobante.service.ts` importa utilidades desde un servicio de Nest;
+      - el ticket de una renovación dice «← Volver a las solicitudes».
+    - **Del tester** (T15): `asistencia/idempotencia.test.ts` falló una vez en la suite completa (18 335 pasan, 1 falla y 95
+      se saltan, sobre `8f80c9a`), por el límite de seguridad de 15 s de `conAlumnoRetenido` bajo la carga de la suite;
+      repetido solo, pasa 19 de 19. Es un límite de la utilidad de prueba bajo carga, no una falla del sistema. La suite
+      final sobre el HEAD la corre la CI del PR.
+    - El bloqueo de todas las matrículas del alumno (`nucleo.ts`) no es deuda: es DT-22 de la spec.
   - Nota de 003: "por vencer" (`diasPorVencer`) y la prioridad de renovación (`diasPrioridadRenovacion`) los leerá
     `leerConfiguracion(tx)` dentro de la transacción de la operación, sin caché. Son valores aparte: cambiar uno no cambia
     el otro (DR-3 de 003).
   - Desde 005a: el cupo de una renovación o de un cambio de horario se cuenta con `contarOcupacion` (una matrícula de ese mes
     ocupa cupo si está `VIGENTE`, o `RESERVADA` sin vencer), después de `bloquearClasesParaCupo` (regla «Cupo de una clase»
-    de 004). Las renovaciones no tienen `solicitud_id`. La inscripción para el mes siguiente y la prioridad de renovación
-    (D-06) siguen en la pregunta N3 de la spec 005, que decide esta historia.
+    de 004). Las renovaciones no tienen `solicitud_id`. La prioridad de renovación (D-06) la trae la 010a
+    (`contarReservasDePrioridad`, calculada al leer); la inscripción para el mes siguiente (N3 de la spec 005) es la 010d
+    (DR-10).
   - Nota de 007b: la bandeja de pagos (`GET /api/pagos/pendientes`, en `verificacion.service.ts`) hace un `JOIN` interno con
     `solicitudes_inscripcion`, así que los pagos de renovación, que no tienen solicitud, no aparecerían en `/panel/pagos`.
-    La 010 tendrá que cambiarlo al llevar esos pagos a la bandeja.
+    La 010a lo cambió: la bandeja hace un `LEFT JOIN` y devuelve `solicitud: null` en las renovaciones (DT-10).
 - **011 · Panel del alumno y apoderado.** Datos, plan, horario, clases restantes, vencimiento, asistencia día por
   día con hora (puntual, tarde, falta), nivel actual; solo lectura salvo el cambio de contraseña (HU-06, D-08, D-14).
 
@@ -364,8 +386,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 
 ## Pendiente técnico
 
-- **Integración continua: límite del trabajo de Linux.** En esta rama, el trabajo de Linux de `.github/workflows/ci.yml`
-  pasa de 60 a 90 minutos (`timeout-minutes: 90`), aprobado por Bryan el 25/11/2026. En el PR #13 la suite tardó 51 de
-  los 60 minutos. En este entorno la suite tardó 40 minutos. Queda pendiente repartir la integración en trabajos paralelos
-  (D-31), en su propio PR: ese es el arreglo de fondo, y los 90 minutos son provisionales.
+- **Hecho (`e9103cd`, 26/11/2026): integración continua en trabajos paralelos.** Aprobado por Bryan el 26/11/2026. La
+  integración del backend se reparte en 4 trabajos (`integracion`, con `--shard` de Vitest, D-31), cada uno con su propio
+  PostgreSQL. El trabajo de Linux, que el 25/11/2026 había pasado a 90 minutos como solución provisional, vuelve a 60, y
+  cada trabajo de integración tiene 60.
 - **Pruebas de integración: una base por proceso.** Las pruebas de integración comparten una sola base de datos y chocan si dos procesos corren a la vez. En la revisión de la 008b, 10 pruebas de `verificacion-aprobar-007b.test.ts` fallaron en la suite completa por eso; repetido solo, ese archivo pasa 26 de 26. Conviene una base por proceso.

@@ -418,6 +418,20 @@ npm run dev
 - `npm ci` instala `@nestjs/schedule` en la API: es el planificador que registra las faltas cada 5 minutos. Sin ese paso, la API no encuentra el paquete y no arranca.
 - **`TAREAS_PROGRAMADAS` en tu `.env`.** Decide si la API corre la tarea de faltas. Si no está en tu `.env`, vale `activas`, que es el valor por defecto: la API registra las faltas de las clases de ayer y de hoy cada 5 minutos y una vez al encender `npm run dev`. No hace falta agregarla. La línea está comentada en `.env.example`, así que `npm run env:completar` no la agrega sola. Si no quieres que aparezcan faltas mientras pruebas, abre `.env` con `notepad .env` y agrega la línea `TAREAS_PROGRAMADAS=inactivas`: con ese valor, la API no registra faltas por su cuenta, y el registro posterior sigue funcionando. Otro valor impide arrancar la API, que dice que la variable debe ser `activas` o `inactivas`. No copies `.env.example` encima: borrarías tus cambios.
 
+## Después de traer la historia 010a
+
+Si ya tenías el proyecto con la historia 009b, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm run db:preparar
+npm run dev
+```
+
+- La 010a tiene una migración nueva, `20261126140000_renovaciones`, que agrega una regla a las matrículas: una renovación (una matrícula sin solicitud) no puede llevar vencimiento de reserva. `npm run db:preparar` la aplica a las dos bases, la de desarrollo y la de pruebas. Si se detiene con el código 23514 en esa migración, tu base tiene una matrícula sin solicitud con vencimiento de reserva, algo que solo puede venir de un cambio hecho a mano; la solución es empezar de cero (mira "Borrar la base de desarrollo y empezar de cero", en "Problemas frecuentes").
+- No hay paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta. La semilla no cambia: repetir `npm run db:preparar` no duplica nada (ver "Probar la renovación de la mensualidad").
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -570,7 +584,7 @@ los demás se guardan y los usarán sus historias.
 | ---------------------------------------------------- | ------------ | ----------------- | --------------------------------------------------------------------------------- |
 | Tolerancia de tardanza (minutos)                     | 10           | de 0 a 30         | Se guarda; la asistencia la usará (historia 009).                                  |
 | Días para marcar una mensualidad "por vencer" (días) | 5            | de 1 a 15         | Se guarda; las mensualidades la usarán (historia 010).                             |
-| Días de prioridad para renovar (días)                | 5            | de 1 a 15         | Se guarda; la renovación la usará (historia 010).                                  |
+| Días de prioridad para renovar (días)                | 5            | de 1 a 15         | La renovación la usa (historia 010a): ver «Probar la renovación de la mensualidad».                                  |
 | Intentos fallidos antes del bloqueo (intentos)       | 5            | de 3 a 10         | Ya se aplica al ingreso y al cambio de contraseña.                                 |
 | Duración del bloqueo (minutos)                       | 15           | de 5 a 60         | Ya se aplica al ingreso y al cambio de contraseña.                                 |
 | Teléfono de la academia                              | Sin teléfono | 6 a 20 caracteres | Ya se ve en la cabecera del panel y en las páginas públicas (ingreso, inscripción y seguimiento). |
@@ -1020,6 +1034,37 @@ Sirve para una clase de este mes que ya terminó, a la que el alumno vino y no s
 20. Si la API no acepta el registro, el diálogo dice por qué, debajo de la fecha o de la hora, o arriba de los botones si no es de un campo: «La fecha debe ser de este mes y no puede ser posterior a hoy.», «La clase todavía no terminó: durante la clase se marca con el QR o de forma manual.», «La hora de llegada debe estar dentro de la clase.» o «El alumno ya tiene su asistencia registrada ese día.».
 
 Las pruebas automáticas de la asistencia corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
+
+## Probar la renovación de la mensualidad
+
+La renovación (historia 010a) la registran la secretaria o el administrador desde la ficha del alumno, en **Alumnos y carnets** (`/panel/alumnos/{id}`, sección **Mensualidad**). El entrenador y el alumno no la ven, y la API responde 403 si la piden. En efectivo hace falta la caja de hoy abierta (ver "Probar la caja del día"); sin ella, la web dice «Abre la caja antes de cobrar.». Con Yape o transferencia, la renovación llega a **Pagos por verificar**, como cualquier otro pago (ver "Probar el pago con Yape o transferencia").
+
+Con `npm run dev` encendido:
+
+**Preparar el alumno y la ventana**
+
+1. Entra como la secretaria (`10000002`) en **http://localhost:5173/a/delfines/ingresar**, abre la caja de hoy en **Caja** y cobra en efectivo la inscripción de `AQ-SM0001` (ver "Probar el cobro en efectivo, el ajuste y el ticket"). Así, Valeria Andrea Mendoza Salas (DNI `20000001`) queda como alumna, con la mensualidad del mes en curso. La mensualidad de la semilla es del mes en que la semilla se hizo: si ese mes ya pasó, inscribe a un alumno nuevo este mes (ver "Probar la inscripción pública").
+2. La renovación del mes siguiente solo se ofrece dentro de la ventana, que son los últimos días del mes en la hora de Lima. Con la configuración por defecto son los últimos 5 días (en noviembre, del 26 al 30). Para probarla cualquier día, en **Configuración** (ver "Probar la configuración de la academia") pon **Días de prioridad para renovar** en 15: la ventana pasa a ser los últimos 15 días (en noviembre, del 16 al 30). Con 1, la ventana es solo el último día del mes. Vuelve a poner 5 cuando termines, porque el valor es de toda la academia.
+3. Fuera de la ventana, la sección **Mensualidad** dice «No hay meses por renovar: el alumno ya tiene su mensualidad registrada, pagada o por verificar.» y, si el mes siguiente todavía no se abre, «La renovación del mes siguiente se abre el …». Dentro de la ventana, dice «Se puede renovar: diciembre de 2026.».
+
+**Renovar en efectivo**
+
+4. En la sección **Mensualidad**, pulsa **Renovar**. El **Mes a renovar** es diciembre de 2026. Las clases en las que Valeria ya tiene su lugar aparecen con **Su horario**: en la ventana, ese lugar queda apartado para ella. Una clase con **Llena** no tiene lugar.
+5. Elige el plan y las clases. Con **Método de pago** en **Efectivo**, pulsa **Cobrar** con el monto que muestra el diálogo. Aparece «Renovación registrada», con el botón **Imprimir ticket**, y el ingreso entra a la caja de hoy.
+6. Vuelve a abrir la sección: ya muestra la mensualidad de diciembre y, como no quedan meses por renovar, **Renovar** queda desactivado. Un doble clic no cobra dos veces: si la misma clave vuelve a llegar, el diálogo dice «Esta renovación ya estaba registrada con la misma clave: no se cobró otra vez.».
+
+**Renovar con Yape o transferencia**
+
+7. Para probarlo, usa otro alumno con su mensualidad del mes en curso y sin renovar, por ejemplo `AQ-SM0003` (Mateo Quispe Rojas, DNI `20000003`), después de aprobar su Yape de ejemplo (ver "Probar el pago con Yape o transferencia").
+8. Pulsa **Renovar** en su ficha y elige **Método de pago**: **Yape** o **Transferencia bancaria**. Sube la foto o la captura del comprobante (JPG o PNG, de hasta 5 MB) y escribe el **Número de operación**, la **Fecha de la operación** y el **Monto pagado (S/)**. La fecha no puede ser posterior a hoy ni anterior al inicio de la renovación. Pulsa **Enviar a verificación**: aparece «Renovación enviada a verificación».
+9. Un número de operación que ya está en un pago abierto con el mismo método no se acepta otra vez, aunque lo escribas con espacios, con ceros al inicio o en minúsculas: la web dice «Ese número de operación ya se registró. Revisa el número del comprobante.».
+
+**Ver la renovación en la bandeja**
+
+10. Entra a **Pagos por verificar** como la secretaria o el administrador. La renovación aparece como «Renovación de diciembre de 2026», con el nombre del alumno, y sin código de solicitud. Antes de **Aprobar**, comprueba en tu Yape que el dinero llegó: al aprobar, la renovación queda vigente y el ingreso entra a la caja de hoy. Con **Rechazar** (y su motivo), la renovación queda cancelada, se libera su cupo y se puede registrar otra del mismo mes.
+11. Al aprobar o rechazar, el alumno recibe un correo, y su apoderado también si es menor, como Mateo. El correo no lleva credenciales.
+
+Las pruebas automáticas de la renovación corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
 
 ## Día a día
 

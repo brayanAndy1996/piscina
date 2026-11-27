@@ -1,6 +1,7 @@
+import type { PagoPendiente } from '@aquagestion/contratos';
 import { esErrorDeApi } from '../../api/cliente';
 import { mensajeGeneral } from '../../lib/errores';
-import { formatearFechaCalendario } from '../../lib/fechas';
+import { formatearFechaCalendario, formatearMes } from '../../lib/fechas';
 import { detallesDeError } from '../solicitudes/mensajes';
 
 /** Lo que se dice ante cada error de la verificación de pagos (criterios 46 a 49 de 007b). Textos en español y sin códigos. */
@@ -56,4 +57,24 @@ export function esRechazoSinSalida(error: unknown): boolean {
 export function mensajeDeImagen(error: unknown): string {
   if (esErrorDeApi(error, 404)) return 'No encontramos la imagen de este comprobante. Actualiza la lista.';
   return `No pudimos cargar la imagen del comprobante. ${mensajeGeneral(error)}`;
+}
+
+/** Una renovación no tiene solicitud (010a, DT-10, criterio 22): la bandeja la reconoce por `solicitud: null`. */
+export function esRenovacion(pago: PagoPendiente): boolean {
+  return pago.solicitud === null;
+}
+
+/** El rótulo corto del pago: el código de la solicitud, o «Renovación de diciembre de 2026». */
+export function rotuloDelPago(pago: PagoPendiente): string {
+  return pago.solicitud?.codigo ?? `Renovación de ${formatearMes(pago.mes)}`;
+}
+
+/**
+ * Cómo se nombra el pago en las etiquetas de los botones: «la solicitud AQ-7F3K9X» o «la renovación de diciembre de 2026 de Mario Rojas
+ * Díaz» (con el nombre, porque dos alumnos pueden renovar el mismo mes).
+ */
+export function descripcionDelPago(pago: PagoPendiente): string {
+  return pago.solicitud
+    ? `la solicitud ${pago.solicitud.codigo}`
+    : `la renovación de ${formatearMes(pago.mes)} de ${pago.cliente.nombres} ${pago.cliente.apellidos}`;
 }

@@ -19,6 +19,7 @@ import { CajaModule } from './modulos/caja';
 import { ClasesModule } from './modulos/clases';
 import { ConfiguracionModule } from './modulos/configuracion';
 import { InscripcionesModule } from './modulos/inscripciones';
+import { MensualidadesModule } from './modulos/mensualidades';
 import { PagosModule } from './modulos/pagos';
 import { PlanesModule } from './modulos/planes';
 import { SaludModule } from './modulos/salud/salud.module';
@@ -62,6 +63,7 @@ export class AppModule {
         PagosModule,
         AlumnosModule,
         AsistenciaModule,
+        MensualidadesModule,
         SaludModule,
         // Las tareas programadas (las faltas de la 009b) solo se cargan con `TAREAS_PROGRAMADAS=activas`; las pruebas las apagan (criterio 33).
         ...(entorno.TAREAS_PROGRAMADAS === 'activas' ? [ScheduleModule.forRoot(), TareasAsistenciaModule] : []),

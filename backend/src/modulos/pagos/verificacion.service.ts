@@ -20,12 +20,28 @@ import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vige
 import type { SesionVerificada } from '../autenticacion/tipos';
 import { bloquearClasesParaCupo } from '../clases';
 import { UsuariosService } from '../usuarios/usuarios.service';
-import { avisarPagoConfirmado, avisarPagoRechazado, type AcademiaDelAviso, destinatariosDelAviso } from './avisos';
+import {
+  type AcademiaDelAviso,
+  type AvisoDeRenovacion,
+  avisarPagoConfirmado,
+  avisarPagoRechazado,
+  avisarRenovacionConfirmada,
+  avisarRenovacionRechazada,
+  avisoDeRenovacion,
+  type DestinatarioDelAviso,
+  destinatariosDelAviso,
+} from './avisos';
 import { bloquearFilasDelPago, type DatosDelPagoLeido, type FilasDelPago, leerDatosDelPago } from './bloqueos';
 import { confirmarPagoEnTransaccion } from './confirmacion';
 import { leerPago } from './cobros.service';
 import { decidirAprobacion, decidirRechazo } from './dominio/estado-pago';
 import { noEncontrado, pagoYaConfirmado, pagoYaRechazado } from './errores';
+
+/** El aviso que se envía después de confirmar: el del cobro de una solicitud o el de una renovación; ninguno en un reintento (200). */
+type AvisoPendiente =
+  | { readonly tipo: 'PAGO'; readonly aviso: DestinatarioDelAviso }
+  | { readonly tipo: 'RENOVACION'; readonly aviso: AvisoDeRenovacion }
+  | null;
 
 interface FilaPendiente {
   id: string;
@@ -34,8 +50,9 @@ interface FilaPendiente {
   numero_operacion: string;
   fecha_operacion: string;
   registrado_en: Date;
-  solicitud_id: string;
-  codigo: string;
+  /** Nulo en una renovación (010a): la matrícula no tiene solicitud. */
+  solicitud_id: string | null;
+  codigo: string | null;
   nombres: string;
   apellidos: string;
   dni: string;
@@ -85,7 +102,7 @@ export class VerificacionService {
                a.nombres, a.apellidos, a.dni, m.anio::int AS anio, m.mes::int AS mes
           FROM pagos p
           JOIN matriculas m ON m.academia_id = p.academia_id AND m.id = p.matricula_id
-          JOIN solicitudes_inscripcion s ON s.academia_id = m.academia_id AND s.id = m.solicitud_id
+          LEFT JOIN solicitudes_inscripcion s ON s.academia_id = m.academia_id AND s.id = m.solicitud_id
           JOIN alumnos a ON a.academia_id = p.academia_id AND a.id = p.alumno_id
          WHERE p.academia_id = ${academiaId}::uuid AND p.estado = 'PENDIENTE_VERIFICACION'::estado_pago
          ORDER BY p.registrado_en, p.id
@@ -99,7 +116,8 @@ export class VerificacionService {
         numeroOperacion: fila.numero_operacion,
         fechaOperacion: fila.fecha_operacion,
         enviadoEn: fila.registrado_en.toISOString(),
-        solicitud: { id: fila.solicitud_id, codigo: fila.codigo },
+        solicitud:
+          fila.solicitud_id === null || fila.codigo === null ? null : { id: fila.solicitud_id, codigo: fila.codigo },
         cliente: { nombres: fila.nombres, apellidos: fila.apellidos, dni: fila.dni },
         mes: `${fila.anio}-${String(fila.mes).padStart(2, '0')}`,
         mesTerminado: fila.anio * 12 + fila.mes < hoy.anio * 12 + hoy.mes,
@@ -179,14 +197,14 @@ export class VerificacionService {
       );
       return {
         respuesta: await this.respuestaDelPago(tx, pago.id),
-        aviso:
-          filas.solicitud === null
-            ? null
-            : await destinatariosDelAviso(tx, filas.alumno.id, filas.solicitud.codigo, ahora),
+        aviso: await this.avisoDe(tx, filas, ahora),
       };
     });
-    if (resultado.aviso !== null)
-      avisarPagoConfirmado(this.correo, this.registro, this.academiaDe(sesion), resultado.aviso);
+    if (resultado.aviso?.tipo === 'PAGO') {
+      avisarPagoConfirmado(this.correo, this.registro, this.academiaDe(sesion), resultado.aviso.aviso);
+    } else if (resultado.aviso?.tipo === 'RENOVACION') {
+      avisarRenovacionConfirmada(this.correo, this.registro, this.academiaDe(sesion), resultado.aviso.aviso);
+    }
     return resultado.respuesta;
   }
 
@@ -242,14 +260,19 @@ export class VerificacionService {
       });
       return {
         respuesta: await this.respuestaDelPago(tx, pago.id),
-        aviso:
-          filas.solicitud === null
-            ? null
-            : await destinatariosDelAviso(tx, filas.alumno.id, filas.solicitud.codigo, ahora),
+        aviso: await this.avisoDe(tx, filas, ahora),
       };
     });
-    if (resultado.aviso !== null) {
-      avisarPagoRechazado(this.correo, this.registro, this.academiaDe(sesion), resultado.aviso, datos.motivo);
+    if (resultado.aviso?.tipo === 'PAGO') {
+      avisarPagoRechazado(this.correo, this.registro, this.academiaDe(sesion), resultado.aviso.aviso, datos.motivo);
+    } else if (resultado.aviso?.tipo === 'RENOVACION') {
+      avisarRenovacionRechazada(
+        this.correo,
+        this.registro,
+        this.academiaDe(sesion),
+        resultado.aviso.aviso,
+        datos.motivo,
+      );
     }
     return resultado.respuesta;
   }
@@ -268,6 +291,17 @@ export class VerificacionService {
     const pago = filas?.pagos.find((fila) => fila.id === pagoIdPedido.toLowerCase());
     if (filas === null || pago === undefined) throw noEncontrado();
     return { filas, pago };
+  }
+
+  /**
+   * A quién avisar después de confirmar la aprobación o el rechazo: con solicitud, el aviso del cobro de la 007 (con su código); sin ella (una
+   * renovación, spec 010a, DR-7), el de la renovación (con el mes y el plan). Se lee dentro de la transacción; el envío va después de confirmarla.
+   */
+  private async avisoDe(tx: TransaccionAcademia, filas: FilasDelPago, ahora: Date): Promise<AvisoPendiente> {
+    if (filas.solicitud !== null) {
+      return { tipo: 'PAGO', aviso: await destinatariosDelAviso(tx, filas.alumno.id, filas.solicitud.codigo, ahora) };
+    }
+    return { tipo: 'RENOVACION', aviso: await avisoDeRenovacion(tx, filas.alumno.id, filas.matricula.id, ahora) };
   }
 
   private async respuestaDelPago(tx: TransaccionAcademia, pagoId: string): Promise<RespuestaPago> {

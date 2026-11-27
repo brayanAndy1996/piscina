@@ -9,7 +9,13 @@ import { formatearFechaCalendario, formatearMes } from '../../lib/fechas';
 import { ETIQUETA_METODO } from '../caja/montos';
 import { esErrorDeCambioDeSesion, useAlPerderSesion } from '../sesion/hooks';
 import { useAprobarPago, useCajaDeHoyAbierta } from './hooks';
-import { esAprobacionSinSalida, esErrorDeCajaAlAprobar, mensajeDeAprobacion } from './mensajes';
+import {
+  esAprobacionSinSalida,
+  esErrorDeCajaAlAprobar,
+  esRenovacion,
+  mensajeDeAprobacion,
+  rotuloDelPago,
+} from './mensajes';
 
 interface Propiedades {
   pago: PagoPendiente;
@@ -34,6 +40,8 @@ export function DialogoAprobarPago({ pago, alCerrar }: Propiedades) {
   const errorGeneral =
     aprobar.isError && !errorDeCaja && !esErrorDeApi(aprobar.error, 401) && !esErrorDeCambioDeSesion(aprobar.error);
   const nombre = `${pago.cliente.nombres} ${pago.cliente.apellidos}`;
+  // Una renovación (010a, criterio 22) no es un alumno nuevo: no se crea usuario, solo queda vigente la mensualidad.
+  const renovacion = esRenovacion(pago);
 
   const cerrar = () => {
     if (!pendiente) alCerrar();
@@ -53,15 +61,16 @@ export function DialogoAprobarPago({ pago, alCerrar }: Propiedades) {
 
   if (aprobado) {
     return (
-      <Modal titulo={`Pago aprobado: ${pago.solicitud.codigo}`} alCerrar={cerrar}>
+      <Modal titulo={`Pago aprobado: ${rotuloDelPago(pago)}`} alCerrar={cerrar}>
         <div className="mt-2 space-y-4">
           <p role="status" className="rounded-2xl bg-emerald-50 p-4 text-emerald-900 ring-1 ring-emerald-200">
             Se aprobó el pago de {formatearSoles(aprobado.monto)} de {nombre}.
             {aprobado.numeroTicket !== null ? ` Ticket N.º ${aprobado.numeroTicket}.` : ''}
           </p>
           <p className="text-sm text-slate-700">
-            Ya es alumno de la academia y el ingreso quedó en la caja de hoy. Entra con su DNI como usuario y contraseña
-            inicial, y el sistema le pide cambiarla al ingresar.
+            {renovacion
+              ? `La mensualidad de ${formatearMes(pago.mes)} ya está vigente y el ingreso quedó en la caja de hoy.`
+              : 'Ya es alumno de la academia y el ingreso quedó en la caja de hoy. Entra con su DNI como usuario y contraseña inicial, y el sistema le pide cambiarla al ingresar.'}
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" onClick={alCerrar} className={ESTILO_BOTON.secundario}>
@@ -77,11 +86,11 @@ export function DialogoAprobarPago({ pago, alCerrar }: Propiedades) {
   }
 
   return (
-    <Modal titulo={`Aprobar el pago: ${pago.solicitud.codigo}`} alCerrar={cerrar}>
+    <Modal titulo={`Aprobar el pago: ${rotuloDelPago(pago)}`} alCerrar={cerrar}>
       <div className="mt-2 space-y-4">
         <div className="space-y-1 text-slate-700">
           <p>
-            Cliente: <strong className="break-words text-slate-900">{nombre}</strong>
+            {renovacion ? 'Alumno' : 'Cliente'}: <strong className="break-words text-slate-900">{nombre}</strong>
           </p>
           <p>
             {ETIQUETA_METODO[pago.metodo]} · Operación{' '}
@@ -97,13 +106,14 @@ export function DialogoAprobarPago({ pago, alCerrar }: Propiedades) {
           </span>
         </p>
         <p className="text-sm text-slate-700">
-          Antes de aprobar, comprueba en tu Yape o en el estado de cuenta que el dinero llegó. Al aprobar, la persona
-          pasa a alumno y se le crea su usuario.
+          {renovacion
+            ? `Antes de aprobar, comprueba en tu Yape o en el estado de cuenta que el dinero llegó. Al aprobar, la renovación de ${formatearMes(pago.mes)} queda vigente. El usuario y el carnet del alumno no cambian.`
+            : 'Antes de aprobar, comprueba en tu Yape o en el estado de cuenta que el dinero llegó. Al aprobar, la persona pasa a alumno y se le crea su usuario.'}
         </p>
         {pago.mesTerminado ? (
           <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
-            Este pago es de {formatearMes(pago.mes)}, un mes que ya terminó. Se puede aprobar: la inscripción queda en
-            ese mes.
+            Este pago es de {formatearMes(pago.mes)}, un mes que ya terminó. Se puede aprobar: la{' '}
+            {renovacion ? 'mensualidad' : 'inscripción'} queda en ese mes.
           </p>
         ) : null}
 

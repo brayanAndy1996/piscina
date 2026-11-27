@@ -1,9 +1,11 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Actualizada por la 010a (spec 010-mensualidades, criterio 1: `CHECK matriculas_renovacion_sin_vencimiento`, una matrícula sin solicitud nunca tiene `reserva_vence_en`): las matrículas RESERVADA con vencimiento que insertan estas pruebas ahora llevan su solicitud
+// (se siembra una por cada alumno), porque sin ella el 23514 sería el de la renovación y no el de `matriculas_reserva_dentro_del_mes`. No cambia lo que se comprueba.
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type AcademiaDePrueba, crearAcademiaDePrueba } from '../../utilidades/academias';
 import { conClienteComo, ejecutarComo, limpiarBase, type RolPruebas } from '../../utilidades/base-datos';
-import { crearAlumnoSolo, exigirTablasDeInscripcion } from '../../utilidades/inscripciones';
+import { crearAlumnoSolo, exigirTablasDeInscripcion, filaValida, insertarFila } from '../../utilidades/inscripciones';
 import { crearPlanDePrueba } from '../../utilidades/planes-clases';
 
 // Criterio 56 (crítico, RN-28, DR-12; criterio 4 c; respuesta R1, ronda 1): `matriculas` tiene el CHECK `matriculas_reserva_dentro_del_mes`:
@@ -60,14 +62,34 @@ describe('criterio 56: la base no acepta una reserva que cruce el mes', () => {
   }
 
   const SQL_INSERTAR = `INSERT INTO matriculas (id, academia_id, alumno_id, plan_id, anio, mes, fecha_inicio, fecha_fin, clases_totales,
-      clases_usadas, es_proporcional, precio_plan, clases_por_mes_plan, monto_calculado, estado, reserva_vence_en, creado_en, actualizado_en)
+      clases_usadas, es_proporcional, precio_plan, clases_por_mes_plan, monto_calculado, estado, reserva_vence_en, creado_en, actualizado_en,
+      solicitud_id)
     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::smallint, $6::smallint, $7::date, $8::date, 10, 0, true, 120.00, 12, 100.00,
-      'RESERVADA'::estado_matricula, $9::timestamptz, now(), now())`;
+      'RESERVADA'::estado_matricula, $9::timestamptz, now(), now(), $10::uuid)`;
+
+  /** Un alumno nuevo con su solicitud (la matrícula con vencimiento solo existe con solicitud: 010a, criterio 1). */
+  async function alumnoConSolicitud(): Promise<{ alumnoId: string; solicitudId: string }> {
+    const alumnoId = await crearAlumnoSolo(A.id);
+    const solicitud = await filaValida('solicitudes_inscripcion', { alumnoId });
+    await insertarFila('propietario', 'solicitudes_inscripcion', A.id, solicitud);
+    return { alumnoId, solicitudId: solicitud['id'] as string };
+  }
 
   async function insertar(rol: RolPruebas, zona: Zona, mes: Mes, reserva: string | null): Promise<void> {
-    const alumnoId = await crearAlumnoSolo(A.id);
+    const { alumnoId, solicitudId } = await alumnoConSolicitud();
     await enTransaccion(rol, zona, (consultar) =>
-      consultar(SQL_INSERTAR, [randomUUID(), A.id, alumnoId, planId, mes.anio, mes.mes, mes.inicio, mes.fin, reserva]),
+      consultar(SQL_INSERTAR, [
+        randomUUID(),
+        A.id,
+        alumnoId,
+        planId,
+        mes.anio,
+        mes.mes,
+        mes.inicio,
+        mes.fin,
+        reserva,
+        solicitudId,
+      ]),
     );
   }
 
@@ -78,10 +100,21 @@ describe('criterio 56: la base no acepta una reserva que cruce el mes', () => {
     deReserva: string,
     aReserva: string | null,
   ): Promise<void> {
-    const alumnoId = await crearAlumnoSolo(A.id);
+    const { alumnoId, solicitudId } = await alumnoConSolicitud();
     const id = randomUUID();
     await enTransaccion(rol, zona, (consultar) =>
-      consultar(SQL_INSERTAR, [id, A.id, alumnoId, planId, mes.anio, mes.mes, mes.inicio, mes.fin, deReserva]),
+      consultar(SQL_INSERTAR, [
+        id,
+        A.id,
+        alumnoId,
+        planId,
+        mes.anio,
+        mes.mes,
+        mes.inicio,
+        mes.fin,
+        deReserva,
+        solicitudId,
+      ]),
     );
     await enTransaccion(rol, zona, (consultar) =>
       consultar(
@@ -149,6 +182,7 @@ describe('criterio 56: la base no acepta una reserva que cruce el mes', () => {
           NOVIEMBRE.mes,
           NOVIEMBRE.inicio,
           NOVIEMBRE.fin,
+          null,
           null,
         ]),
       ),

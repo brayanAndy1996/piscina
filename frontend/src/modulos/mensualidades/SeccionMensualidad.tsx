@@ -1,0 +1,142 @@
+import { type ClaseDeMensualidad, NOMBRE_DIA, type OfertaRenovacion } from '@aquagestion/contratos';
+import { useId, useState } from 'react';
+import { esErrorDeApi } from '../../api/cliente';
+import { Alerta, ESTILO_BOTON, Insignia } from '../../componentes/ui';
+import { formatearFechaCalendario, formatearMes, hoyEnLima, mesActualEnLima } from '../../lib/fechas';
+import { COLOR_ESTADO_ALUMNO, ETIQUETA_ESTADO_ALUMNO } from '../carnet/etiquetas';
+import { useAlPerderSesion } from '../sesion/hooks';
+import { DialogoRenovar } from './DialogoRenovar';
+import { useOfertaRenovacion } from './hooks';
+import { mensajeDeOferta } from './mensajes';
+
+interface Propiedades {
+  alumnoId: string;
+}
+
+function TextoDeClases({ clases }: { clases: readonly ClaseDeMensualidad[] }) {
+  return (
+    <ul aria-label="Clases de la mensualidad" className="mt-1 flex flex-wrap gap-2">
+      {clases.map((clase) => (
+        <li key={clase.id} className="rounded-lg bg-sky-50 px-3 py-1 text-sm text-slate-900 ring-1 ring-sky-100">
+          {NOMBRE_DIA[clase.diaSemana]} {clase.horaInicio} a {clase.horaFin}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** La ventana de renovación abierta es la que permite un mes posterior al en curso: lo decide la API en `mesesPermitidos`. */
+function haySiguientePermitido(oferta: OfertaRenovacion, mesEnCurso: string): boolean {
+  return oferta.mesesPermitidos.some((mes) => mes > mesEnCurso);
+}
+
+/**
+ * La sección «Mensualidad» de `/panel/alumnos/{id}` (010a, criterio 20): la mensualidad del mes en curso (plan y clases), los meses que se
+ * pueden renovar ahora y el botón «Renovar». Solo para quien puede cobrar (`REGISTRAR_INSCRIPCION_Y_COBRO`); la página decide si la muestra.
+ * Todo lo que dice sale de la oferta de la API: la web no calcula ventanas ni montos.
+ */
+export function SeccionMensualidad({ alumnoId }: Propiedades) {
+  const idTitulo = useId();
+  const consulta = useOfertaRenovacion(alumnoId, null);
+  useAlPerderSesion(consulta.error);
+  const [dialogo, setDialogo] = useState(false);
+  const oferta = consulta.data;
+  const mesEnCurso = mesActualEnLima();
+  const inactivo = oferta?.alumno.estado === 'INACTIVO';
+  const puedeRenovar = oferta !== undefined && oferta.mesesPermitidos.length > 0 && !inactivo;
+
+  return (
+    <section
+      aria-labelledby={idTitulo}
+      className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 sm:p-6"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 id={idTitulo} className="text-xl font-semibold text-slate-900">
+          Mensualidad
+        </h2>
+        {oferta ? (
+          <button
+            type="button"
+            disabled={!puedeRenovar}
+            onClick={() => setDialogo(true)}
+            className={ESTILO_BOTON.primario}
+          >
+            Renovar
+          </button>
+        ) : null}
+      </div>
+
+      {oferta ? (
+        <>
+          {consulta.isError && !esErrorDeApi(consulta.error, 401) ? (
+            <Alerta>No pudimos actualizar la mensualidad. Lo que ves puede estar desactualizado.</Alerta>
+          ) : null}
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-slate-800">Estado del alumno</p>
+            <Insignia color={COLOR_ESTADO_ALUMNO[oferta.alumno.estado]}>
+              {ETIQUETA_ESTADO_ALUMNO[oferta.alumno.estado]}
+            </Insignia>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-800">Mes en curso: {formatearMes(mesEnCurso)}</p>
+            {oferta.mensualidadActual ? (
+              <div className="mt-1 space-y-1">
+                <p className="text-slate-900">
+                  Mensualidad de {formatearMes(oferta.mensualidadActual.mes)} ·{' '}
+                  <strong>{oferta.mensualidadActual.plan.nombre}</strong>
+                </p>
+                <TextoDeClases clases={oferta.mensualidadActual.clases} />
+              </div>
+            ) : (
+              <p className="mt-1 text-slate-700">No tiene mensualidad en {formatearMes(mesEnCurso)}.</p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-slate-800">Renovación</p>
+            {inactivo ? (
+              <p className="text-slate-700">El alumno está inactivo y no puede renovar.</p>
+            ) : oferta.mesesPermitidos.length > 0 ? (
+              <p className="text-slate-900">
+                Se puede renovar: {oferta.mesesPermitidos.map((mes) => formatearMes(mes)).join(' y ')}.
+              </p>
+            ) : (
+              <p className="text-slate-700">
+                No hay meses por renovar: el alumno ya tiene su mensualidad registrada, pagada o por verificar.
+              </p>
+            )}
+            {haySiguientePermitido(oferta, mesEnCurso) ? (
+              <p className="text-sm text-slate-700">
+                La renovación del mes siguiente está abierta del {formatearFechaCalendario(oferta.ventana.desde)} al{' '}
+                {formatearFechaCalendario(oferta.ventana.hasta)}: el lugar de cada alumno vigente queda apartado para él
+                hasta el día 1.
+              </p>
+            ) : hoyEnLima() < oferta.ventana.desde ? (
+              <p className="text-sm text-slate-700">
+                La renovación del mes siguiente se abre el {formatearFechaCalendario(oferta.ventana.desde)}.
+              </p>
+            ) : null}
+          </div>
+        </>
+      ) : consulta.isError ? (
+        esErrorDeApi(consulta.error, 401) ? null : (
+          <div className="space-y-3">
+            <Alerta>{mensajeDeOferta(consulta.error)}</Alerta>
+            {esErrorDeApi(consulta.error, 404) || esErrorDeApi(consulta.error, 403) ? null : (
+              <button type="button" onClick={() => void consulta.refetch()} className={ESTILO_BOTON.secundario}>
+                Volver a intentar
+              </button>
+            )}
+          </div>
+        )
+      ) : (
+        <p role="status" className="text-slate-700">
+          Cargando la mensualidad…
+        </p>
+      )}
+
+      {dialogo && oferta ? (
+        <DialogoRenovar alumnoId={alumnoId} ofertaInicial={oferta} alCerrar={() => setDialogo(false)} />
+      ) : null}
+    </section>
+  );
+}

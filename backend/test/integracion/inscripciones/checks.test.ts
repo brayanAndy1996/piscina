@@ -1,4 +1,6 @@
 // spec: 005-inscripcion-publica (pruebas protegidas)
+// Actualizada por la 010a (spec 010-mensualidades, criterio 1: `CHECK matriculas_renovacion_sin_vencimiento`): en la prueba de una matrícula que ocupa cupo por alumno y mes, la `RESERVADA` de cada fila no tiene solicitud y, por eso, ya no puede
+// llevar `reserva_vence_en` (sería un 23514 antes que el 23505 que se prueba); queda sin vencimiento, como un pago en verificación. No cambia lo que se comprueba (dos matrículas que ocupan cupo del mismo alumno y mes fallan con 23505).
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type AcademiaDePrueba, crearAcademiaDePrueba } from '../../utilidades/academias';
@@ -273,7 +275,7 @@ describe('criterio 4: invariantes de las tablas de la inscripción', () => {
           const cupo = (estado: string) => ({
             alumno_id: alumnoId,
             estado,
-            reserva_vence_en: estado === 'RESERVADA' ? '2026-11-12T15:00:00.000Z' : null,
+            reserva_vence_en: null,
           });
           await insertarFila('propietario', 'matriculas', A.id, await fila('matriculas', cupo(primera)));
 

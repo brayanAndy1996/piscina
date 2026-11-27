@@ -6,6 +6,7 @@ import {
   respuestaConsultaSolicitudSchema,
 } from '@aquagestion/contratos';
 import { enviarJson, subirArchivoConRespuesta } from '../../api/cliente';
+import { jsonParaCabecera } from '../../lib/cabecera-json';
 
 /**
  * Consulta del seguimiento (`POST /api/a/{nombreCorto}/solicitudes/consulta`, criterios 29 y 30 de 005). El token y el DNI van en el
@@ -21,10 +22,7 @@ export async function consultarSolicitud(nombreCorto: string, consulta: Consulta
  * operación puede traer dígitos de ancho completo, que la API normaliza. Cada carácter fuera de ASCII imprimible va como `\uXXXX`.
  */
 export function datosDePagoParaCabecera(datos: DatosComprobante): string {
-  return JSON.stringify(datos).replace(
-    /[^\x20-\x7e]/g,
-    (caracter) => `\\u${caracter.charCodeAt(0).toString(16).padStart(4, '0')}`,
-  );
+  return jsonParaCabecera(datos);
 }
 
 /** La respuesta del comprobante: la vista de la solicitud (`EN_VERIFICACION`), sin los datos de la academia. */

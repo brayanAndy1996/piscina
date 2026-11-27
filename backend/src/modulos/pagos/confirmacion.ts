@@ -1,5 +1,6 @@
 import type { ConceptoIngreso, MetodoPago } from '../caja/movimientos';
 import { aTextoMonto } from '../../comun/dinero';
+import { anioYMesEnLima } from '../../comun/fechas';
 import { ErrorNegocio } from '../../comun/errores';
 import type { Decimal, TransaccionAcademia } from '../../infraestructura/prisma';
 import { nuevoTokenQr } from '../alumnos/dominio/token-qr';
@@ -25,7 +26,8 @@ import { dniDelPersonal } from './errores';
  * 5. si el alumno es `CLIENTE`, su cuenta con `crearEnTransaccion` (rol `ALUMNO`, usuario y contraseña inicial iguales a su DNI, con el cambio
  *    obligatorio) y pasa a `ALUMNO_ACTIVO` con su `usuario_id`, su token del QR y la fecha de su generación (008a, criterio 2; solo al
  *    pasar de `CLIENTE` a alumno: una renovación no lo toca);
- * 6. la matrícula pasa a `VIGENTE` sin vencimiento y la solicitud, si tiene, a `CONFIRMADA`;
+ * 6. la matrícula pasa a `VIGENTE` sin vencimiento y la solicitud, si tiene, a `CONFIRMADA`; si el alumno estaba `ALUMNO_VENCIDO` y la matrícula
+ *    es del mes en curso de Lima, pasa a `ALUMNO_ACTIVO` (010a: la renovación en efectivo y la aprobación de una renovación);
  * 7. la auditoría del pago (`PAGO_REGISTRADO` o `PAGO_APROBADO`).
  *
  * Cualquier error (el de la caja, el del DNI, el de la base) hace que `conAcademia` revierta la transacción completa: no queda ni el pago, ni la
@@ -155,6 +157,19 @@ export async function confirmarPagoEnTransaccion(
   await tx.cliente.$executeRaw`
     UPDATE matriculas SET estado = 'VIGENTE'::estado_matricula, reserva_vence_en = NULL, actualizado_en = ${ahora}::timestamptz
      WHERE academia_id = ${tx.academiaId}::uuid AND id = ${entrada.matriculaId}::uuid`;
+  // 6 b. Un alumno vencido que paga la mensualidad del mes en curso vuelve a estar activo, en la misma transacción (8.8, 4.5; spec 010a, criterios 6 y 15).
+  //      La de otro mes (la renovación del mes siguiente) no lo cambia: lo decide el cierre de mes (010b). La fila del alumno ya está bloqueada.
+  if (alumno.estado === 'ALUMNO_VENCIDO') {
+    const matriculas = await tx.cliente.$queryRaw<{ anio: number; mes: number }[]>`
+      SELECT anio::int AS anio, mes::int AS mes FROM matriculas
+       WHERE academia_id = ${tx.academiaId}::uuid AND id = ${entrada.matriculaId}::uuid`;
+    const enCurso = anioYMesEnLima(ahora);
+    if (matriculas[0]?.anio === enCurso.anio && matriculas[0]?.mes === enCurso.mes) {
+      await tx.cliente.$executeRaw`
+        UPDATE alumnos SET estado = 'ALUMNO_ACTIVO'::estado_alumno, actualizado_en = ${ahora}::timestamptz
+         WHERE academia_id = ${tx.academiaId}::uuid AND id = ${entrada.alumnoId}::uuid`;
+    }
+  }
   if (entrada.solicitudId !== null) {
     await tx.cliente.$executeRaw`
       UPDATE solicitudes_inscripcion SET estado = 'CONFIRMADA'::estado_solicitud, actualizado_en = ${ahora}::timestamptz
