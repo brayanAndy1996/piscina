@@ -2,6 +2,7 @@ import { type Alcance, type Permiso, puede } from '@aquagestion/contratos';
 import { Link } from 'react-router';
 import { ESTILO_BOTON } from '../../componentes/ui';
 import { alcanceDe } from '../../lib/permisos';
+import { PanelDelAlumno } from '../panel-alumno/PanelDelAlumno';
 import { useUsuario } from '../sesion/contexto';
 import { ETIQUETA_ROL } from '../sesion/etiquetas';
 import { RUTA_CAMBIAR_CLAVE } from '../sesion/hooks';
@@ -143,6 +144,8 @@ export function PaginaPanel() {
           </Link>
         </div>
       </section>
+
+      {alcanceDe(usuario.rol, 'VER_CARNET') === 'PROPIO' ? <PanelDelAlumno /> : null}
 
       {opciones.length > 0 ? (
         <nav aria-label="Opciones">

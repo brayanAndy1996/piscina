@@ -1,16 +1,11 @@
-import { type RegistroDeAsistencia, NOMBRE_DIA, type ResultadoAsistencia } from '@aquagestion/contratos';
+import type { ResultadoAsistencia } from '@aquagestion/contratos';
 import { useId, useState } from 'react';
 import { esErrorDeApi } from '../../api/cliente';
-import { Alerta, CampoSelect, ESTILO_BOTON, Insignia } from '../../componentes/ui';
-import {
-  diaDeLaSemanaDeFecha,
-  formatearFechaCalendario,
-  formatearMes,
-  mesActualEnLima,
-  mesAnterior,
-} from '../../lib/fechas';
+import { Alerta, CampoSelect, ESTILO_BOTON } from '../../componentes/ui';
+import { formatearFechaCalendario, formatearMes, mesActualEnLima, mesAnterior } from '../../lib/fechas';
 import { useAsistenciaDelMes } from '../asistencia/hooks';
-import { ETIQUETA_ESTADO_LLEGADA, ETIQUETA_REGISTRO, mensajeDeAsistenciaDelMes } from '../asistencia/mensajes';
+import { ListaDeAsistencia } from '../asistencia/ListaDeAsistencia';
+import { ETIQUETA_ESTADO_LLEGADA, mensajeDeAsistenciaDelMes } from '../asistencia/mensajes';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { DialogoAsistenciaPosterior } from './DialogoAsistenciaPosterior';
 
@@ -22,20 +17,6 @@ interface Propiedades {
 }
 
 type MesElegido = 'actual' | 'anterior';
-
-function textoDeLlegada(registro: RegistroDeAsistencia): string {
-  const origen = registro.registroPosterior ? 'Posterior' : registro.metodo === 'MANUAL' ? 'Manual' : null;
-  return `Llegó a las ${registro.horaLlegada}${origen ? ` · ${origen}` : ''}`;
-}
-
-function Total({ etiqueta, valor }: { etiqueta: string; valor: string | number }) {
-  return (
-    <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-      <dt className="text-sm text-slate-700">{etiqueta}</dt>
-      <dd className="text-2xl font-semibold text-slate-900">{valor}</dd>
-    </div>
-  );
-}
 
 /**
  * La sección «Asistencia» de `/panel/alumnos/{id}` (009b, criterios 31 y 32): el mes en curso o el anterior, cada día con «Puntual», «Tarde» o
@@ -53,9 +34,6 @@ export function AsistenciaDelMes({ alumnoId, nombre, puedeRegistrar }: Propiedad
   useAlPerderSesion(consulta.error);
   const datos = consulta.data;
 
-  const puntuales =
-    datos?.registros.filter((r) => r.tipo === 'ASISTENCIA' && r.estadoLlegada === 'PUNTUAL').length ?? 0;
-  const tardes = datos?.registros.filter((r) => r.tipo === 'ASISTENCIA' && r.estadoLlegada === 'TARDE').length ?? 0;
   const faltas = datos?.registros.filter((r) => r.tipo === 'FALTA') ?? [];
 
   const alRegistrar = (resultado: ResultadoAsistencia) => {
@@ -115,48 +93,7 @@ export function AsistenciaDelMes({ alumnoId, nombre, puedeRegistrar }: Propiedad
           {consulta.isError && !esErrorDeApi(consulta.error, 401) ? (
             <Alerta>No pudimos actualizar la asistencia. Lo que ves puede estar desactualizado.</Alerta>
           ) : null}
-          <dl aria-label={`Totales de ${formatearMes(mes)}`} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Total etiqueta="Puntual" valor={puntuales} />
-            <Total etiqueta="Tarde" valor={tardes} />
-            <Total etiqueta="Faltas" valor={faltas.length} />
-            <Total etiqueta="Clases restantes" valor={datos.matricula ? datos.matricula.clasesRestantes : '—'} />
-          </dl>
-          {datos.matricula === null ? (
-            <p className="text-sm text-slate-600">No tuvo una mensualidad en {formatearMes(mes)}.</p>
-          ) : null}
-          {datos.registros.length === 0 ? (
-            <p className="text-slate-700">No hay asistencias ni faltas en {formatearMes(mes)}.</p>
-          ) : (
-            <ul aria-label={`Asistencia de ${formatearMes(mes)}`} className="divide-y divide-slate-200">
-              {datos.registros.map((registro) => {
-                const etiqueta =
-                  registro.tipo === 'FALTA' ? ETIQUETA_REGISTRO.FALTA : ETIQUETA_REGISTRO[registro.estadoLlegada];
-                const color =
-                  registro.tipo === 'FALTA' ? 'rojo' : registro.estadoLlegada === 'PUNTUAL' ? 'verde' : 'ambar';
-                return (
-                  <li
-                    key={`${registro.fecha}-${registro.clase.horaInicio}-${registro.tipo}`}
-                    className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <p className="font-medium text-slate-900">
-                        {NOMBRE_DIA[diaDeLaSemanaDeFecha(registro.fecha)]} {formatearFechaCalendario(registro.fecha)}
-                      </p>
-                      <p className="text-sm text-slate-700">
-                        Clase de {registro.clase.horaInicio} a {registro.clase.horaFin}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                      <Insignia color={color}>{etiqueta}</Insignia>
-                      {registro.tipo === 'ASISTENCIA' ? (
-                        <span className="text-sm text-slate-700">{textoDeLlegada(registro)}</span>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <ListaDeAsistencia datos={datos} mes={mes} />
         </>
       ) : consulta.isError ? (
         esErrorDeApi(consulta.error, 401) ? null : (
