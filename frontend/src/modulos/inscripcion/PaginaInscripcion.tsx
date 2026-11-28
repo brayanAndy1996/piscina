@@ -3,8 +3,8 @@ import {
   cotizarInscripcionSchema,
   type Cotizacion,
   enviarInscripcionSchema,
+  type MesesInscripcion,
   NOMBRE_DIA,
-  type RespuestaFormularioInscripcion,
   type RespuestaInscripcionCreada,
   type TextosConsentimiento,
 } from '@aquagestion/contratos';
@@ -16,6 +16,7 @@ import { MarcoPublico } from '../../componentes/MarcoPublico';
 import { frasePorTelefono } from '../../componentes/Telefono';
 import { Alerta, Aviso, ESTILO_BOTON } from '../../componentes/ui';
 import { formatearSoles } from '../../lib/dinero';
+import { formatearDiaYMes, formatearMes, mesSiguiente, nombreDelMes } from '../../lib/fechas';
 import { erroresPorCampo, mensajeGeneral } from '../../lib/errores';
 import { useFotoElegida, useSubirFoto } from '../foto/hooks';
 import {
@@ -39,20 +40,24 @@ import {
   cotizacionDeMontoCambio,
   textosActualizadosDe,
 } from './errores';
-import { useCotizar, useEnviarInscripcion, useFormularioInscripcion } from './hooks';
+import { useCotizar, useEnviarInscripcion, useFormularioInscripcion, useMesesInscripcion } from './hooks';
 import { PasoApoderado } from './pasos/PasoApoderado';
 import { PasoDatos } from './pasos/PasoDatos';
 import { PasoFicha } from './pasos/PasoFicha';
 import { PasoFoto } from './pasos/PasoFoto';
+import { PasoMes } from './pasos/PasoMes';
 import { PasoPlan } from './pasos/PasoPlan';
 import { PasoResumen } from './pasos/PasoResumen';
+import { mensajeDeError } from './pasos/comun';
 
 type Solicitud = RespuestaInscripcionCreada['solicitud'];
 
 /**
  * `/a/{nombreCorto}/inscripcion`: el formulario público de inscripción (HU-01, HU-02; criterio 43 de 005), sin sesión, para el celular y
  * para la PC de recepción. Guía por pasos: datos personales, ficha médica, apoderado (solo si es menor), nivel, plan y clases, la
- * foto opcional (que se sube aparte, después del 201) y el resumen con la cotización y los consentimientos.
+ * foto opcional (que se sube aparte, después del 201) y el resumen con la cotización y los consentimientos. Si la academia está en la ventana
+ * de renovación, el primer paso pregunta desde cuándo empieza la persona: este mes o el siguiente completo (010d, criterio 17). Es el mismo
+ * formulario para el cliente y para la secretaria que inscribe desde «Nueva inscripción» (DR-3).
  */
 export function PaginaInscripcion() {
   const { nombreCorto = '' } = useParams();
@@ -64,30 +69,44 @@ export function PaginaInscripcion() {
 }
 
 function ContenidoInscripcion({ nombreCorto }: { nombreCorto: string }) {
-  const oferta = useFormularioInscripcion(nombreCorto);
+  const meses = useMesesInscripcion(nombreCorto);
 
-  if (oferta.data === undefined) {
-    if (oferta.isPending) {
+  if (meses.data === undefined) {
+    if (meses.isPending) {
       return (
         <p role="status" className="text-slate-600">
           Cargando el formulario…
         </p>
       );
     }
-    return (
-      <div className="space-y-3">
-        <Alerta>
-          {esErrorDeApi(oferta.error, 429)
-            ? 'Hiciste demasiadas consultas desde esta conexión. Espera un minuto e inténtalo de nuevo.'
-            : mensajeGeneral(oferta.error)}
-        </Alerta>
-        <button type="button" onClick={() => void oferta.refetch()} className={ESTILO_BOTON.secundario}>
-          Reintentar
-        </button>
-      </div>
-    );
+    return <ErrorDeCarga error={meses.error} reintentar={() => void meses.refetch()} />;
   }
-  return <Asistente nombreCorto={nombreCorto} oferta={oferta.data} recargarOferta={() => void oferta.refetch()} />;
+  if (meses.data.meses.length === 0) {
+    return <Alerta>Por ahora no hay meses disponibles para inscribirse.</Alerta>;
+  }
+  const recargarMeses = async (): Promise<MesesInscripcion | undefined> => {
+    const resultado = await meses.refetch();
+    return resultado.isError ? undefined : resultado.data;
+  };
+  return <Asistente nombreCorto={nombreCorto} meses={meses.data} recargarMeses={recargarMeses} />;
+}
+
+/** Lo que se ve cuando no cargaron los meses o la oferta: el motivo y la forma de intentar de nuevo. */
+function ErrorDeCarga({ error, reintentar }: { error: unknown; reintentar: () => void }) {
+  return (
+    <div className="space-y-3">
+      <Alerta>{textoDeErrorDeCarga(error)}</Alerta>
+      <button type="button" onClick={reintentar} className={ESTILO_BOTON.secundario}>
+        Reintentar
+      </button>
+    </div>
+  );
+}
+
+function textoDeErrorDeCarga(error: unknown): string {
+  return esErrorDeApi(error, 429)
+    ? 'Hiciste demasiadas consultas desde esta conexión. Espera un minuto e inténtalo de nuevo.'
+    : mensajeGeneral(error);
 }
 
 /** Un nombre de ruta de campo de la API como ruta del formulario: sin los números de posición (`claseIds.2` es `claseIds`). */
@@ -107,18 +126,20 @@ interface DetalleDeError {
 
 function Asistente({
   nombreCorto,
-  oferta,
-  recargarOferta,
+  meses,
+  recargarMeses,
 }: {
   nombreCorto: string;
-  oferta: RespuestaFormularioInscripcion;
-  recargarOferta: () => void;
+  meses: MesesInscripcion;
+  recargarMeses: () => Promise<MesesInscripcion | undefined>;
 }) {
   const form = useForm<CamposInscripcion>({ defaultValues: CAMPOS_INICIALES });
   const { control, getValues, setError: marcarError, setValue } = form;
   // La clave se crea una vez por formulario: un doble clic o un reintento no duplica la solicitud (criterio 43).
   const [claveDeEnvio] = useState(nuevaClaveDeEnvio);
-  const [paso, setPaso] = useState<Paso>('datos');
+  const conElegirMes = meses.meses.length > 1;
+  const [pasoActual, setPaso] = useState<Paso>(conElegirMes ? 'mes' : 'datos');
+  const [recargandoMeses, setRecargandoMeses] = useState(false);
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
   const [creada, setCreada] = useState<Solicitud | null>(null);
   const [llenas, setLlenas] = useState<ClasePublica[]>([]);
@@ -140,18 +161,39 @@ function Asistente({
   const nivel = useWatch({ control, name: 'alumno.nivel' });
   const planId = useWatch({ control, name: 'inscripcion.planId' });
   const claseIds = useWatch({ control, name: 'inscripcion.claseIds' });
-  const menor = esMenor(fechaNacimiento, oferta.hoy);
-  const pasos = pasosDeInscripcion(menor);
+  const mesDelFormulario = useWatch({ control, name: 'inscripcion.mes' });
+
+  // El mes de la inscripción: el único que ofrece la API, o el que la persona eligió entre dos. Sin elegir todavía, es `null` y la persona
+  // está en el paso del mes (010d, criterio 17). La oferta (planes, clases y cupos) es la de ese mes.
+  const mesesOfrecidos = meses.meses.map((ofrecido) => ofrecido.mes);
+  const mesElegido: string | null = conElegirMes
+    ? mesesOfrecidos.includes(mesDelFormulario)
+      ? mesDelFormulario
+      : null
+    : (mesesOfrecidos[0] ?? null);
+  const paso: Paso = conElegirMes && mesElegido === null ? 'mes' : pasoActual;
+  const consultaOferta = useFormularioInscripcion(nombreCorto, mesElegido);
+  const oferta = consultaOferta.data;
+  const hoy = oferta?.hoy ?? meses.hoy;
+  const telefonoAcademia = oferta?.academia.telefono ?? null;
+  const recargarOferta = () => {
+    if (mesElegido !== null) void consultaOferta.refetch();
+  };
+
+  const menor = esMenor(fechaNacimiento, hoy);
+  const pasos = pasosDeInscripcion(menor, conElegirMes);
   const indice = Math.max(0, pasos.indexOf(paso));
-  const plan = oferta.planes.find((candidato) => candidato.id === planId);
-  const elegidas = [...oferta.clases, ...llenas].filter((clase) => claseIds.includes(clase.id));
+  const plan = oferta?.planes.find((candidato) => candidato.id === planId);
+  const elegidas = [...(oferta?.clases ?? []), ...llenas].filter((clase) => claseIds.includes(clase.id));
   const textosVigentes =
     textosNuevos && textosNuevos.menor === menor
       ? textosNuevos
-      : {
-          version: oferta.consentimientos.version,
-          textos: menor ? oferta.consentimientos.textosMenor : oferta.consentimientos.textos,
-        };
+      : oferta
+        ? {
+            version: oferta.consentimientos.version,
+            textos: menor ? oferta.consentimientos.textosMenor : oferta.consentimientos.textos,
+          }
+        : null;
 
   // Al cambiar de paso, el foco va al encabezado del paso (lectores de pantalla y teclado) y la pantalla se acerca a él.
   const encabezado = useRef<HTMLHeadingElement>(null);
@@ -163,6 +205,9 @@ function Asistente({
     }
     encabezado.current?.focus();
   }, [paso]);
+
+  /** Un paso que no existe en este formulario (el del mes, con un solo mes) cae en el del plan. */
+  const pasoQueExiste = (destino: Paso): Paso => (pasos.includes(destino) ? destino : 'plan');
 
   const irA = (nuevo: Paso) => {
     setPaso(nuevo);
@@ -191,6 +236,61 @@ function Asistente({
     recargarOferta();
   };
 
+  /**
+   * Ya no quedan clases este mes con las clases elegidas. Si todavía no abre la inscripción al mes siguiente, el aviso dice desde qué fecha
+   * (DR-4); si ya está abierta, que se puede volver a elegir el mes. Sin el mes siguiente a la vista, el mensaje de la API.
+   */
+  const textoSinClasesEnElMes = (mensajeDeLaApi: string): string => {
+    const base = 'Ya no quedan clases este mes con las clases elegidas.';
+    if (meses.aperturaMesSiguiente) {
+      const mesDeLaApertura = meses.aperturaMesSiguiente.slice(0, 7);
+      return `${base} Las inscripciones para ${nombreDelMes(mesSiguiente(mesDeLaApertura))} se abren el ${formatearDiaYMes(meses.aperturaMesSiguiente)}.`;
+    }
+    const siguiente = meses.meses[1];
+    if (siguiente && mesElegido !== siguiente.mes) {
+      return `${base} Puedes volver al primer paso y elegir ${nombreDelMes(siguiente.mes)} completo.`;
+    }
+    return mensajeDeLaApi;
+  };
+
+  /**
+   * El mes cambió desde que la persona empezó (010d, criterio 17): se piden de nuevo los meses y la oferta, se descarta lo que dependía del
+   * mes (plan, clases y cotización) y se pide elegir otra vez. Con dos meses, la persona vuelve al paso del mes; con uno, al del plan.
+   */
+  const reiniciarPorCambioDeMes = async () => {
+    setValue('inscripcion.mes', '');
+    setValue('inscripcion.planId', '');
+    setValue('inscripcion.claseIds', []);
+    setCotizacion(null);
+    setLlenas([]);
+    setPideConfirmar(false);
+    setAviso(null);
+    setError(null);
+    setRecargandoMeses(true);
+    const nuevos = await recargarMeses();
+    setRecargandoMeses(false);
+    const variosMeses = (nuevos ?? meses).meses.length > 1;
+    setPaso(variosMeses ? 'mes' : 'plan');
+    setError({
+      texto: `Cambió el mes desde que empezaste la inscripción. ${variosMeses ? 'Elige otra vez desde cuándo quieres empezar.' : 'Elige otra vez el plan y las clases.'}`,
+      conConsulta: false,
+    });
+  };
+
+  /** Elegir el otro mes descarta lo que dependía del mes: el plan, las clases y la cotización (010d, criterio 17). */
+  const elegirMes = (mes: string) => {
+    if (mes === mesElegido) return;
+    setValue('inscripcion.mes', mes, { shouldDirty: true });
+    form.clearErrors('inscripcion.mes');
+    setValue('inscripcion.planId', '');
+    setValue('inscripcion.claseIds', []);
+    setCotizacion(null);
+    setLlenas([]);
+    setPideConfirmar(false);
+    setAviso(null);
+    setError(null);
+  };
+
   /** Errores que comparten la cotización y el envío (el mismo orden de la spec). Devuelve `true` si ya los atendió. */
   const atenderErrorDeSeleccion = (falla: unknown): boolean => {
     if (!(falla instanceof ErrorDeApi) || falla.estado !== 409) return false;
@@ -202,11 +302,14 @@ function Asistente({
         volverAElegir(falla.message, { quitarClases: true });
         return true;
       case 'SIN_CLASES_EN_EL_MES':
-        volverAElegir(falla.message);
+        volverAElegir(textoSinClasesEnElMes(falla.message));
+        return true;
+      case 'MES_CAMBIO':
+        void reiniciarPorCambioDeMes();
         return true;
       case 'SIN_CUPO': {
         const ids = new Set(clasesSinCupoDe(falla.detalles));
-        const nuevasLlenas = [...oferta.clases, ...llenas].filter((clase) => ids.has(clase.id));
+        const nuevasLlenas = [...(oferta?.clases ?? []), ...llenas].filter((clase) => ids.has(clase.id));
         setLlenas((anteriores) => [
           ...anteriores,
           ...nuevasLlenas.filter((clase) => !anteriores.some((otra) => otra.id === clase.id)),
@@ -238,6 +341,7 @@ function Asistente({
       planId: campos.inscripcion.planId,
       nivel: campos.alumno.nivel,
       claseIds: campos.inscripcion.claseIds,
+      ...(mesElegido !== null ? { mes: mesElegido } : {}),
     });
     if (!pedido.success) {
       marcarErrores(
@@ -253,7 +357,7 @@ function Asistente({
         if (atenderErrorDeSeleccion(falla)) return;
         setError({
           texto: esErrorDeApi(falla, 429)
-            ? `Hiciste demasiadas consultas desde esta conexión. Espera un minuto e inténtalo de nuevo.${frasePorTelefono(oferta.academia.telefono)}`
+            ? `Hiciste demasiadas consultas desde esta conexión. Espera un minuto e inténtalo de nuevo.${frasePorTelefono(telefonoAcademia)}`
             : mensajeGeneral(falla),
           conConsulta: false,
         });
@@ -265,7 +369,7 @@ function Asistente({
 
   const atenderErrorDeEnvio = (falla: unknown) => {
     if (atenderErrorDeSeleccion(falla)) return;
-    const telefono = frasePorTelefono(oferta.academia.telefono);
+    const telefono = frasePorTelefono(telefonoAcademia);
     if (esErrorDeApi(falla, 400, 'SOLICITUD_INVALIDA')) {
       const errores: Errores = {};
       for (const { campo, mensaje } of erroresPorCampo(falla)) {
@@ -275,7 +379,7 @@ function Asistente({
       const rutas = Object.keys(errores);
       marcarErrores(errores);
       const primera = rutas[0];
-      setPaso(primera ? pasoDeCampo(primera) : 'datos');
+      setPaso(primera ? pasoQueExiste(pasoDeCampo(primera)) : 'datos');
       setError({
         texto:
           primera === 'apoderado' || primera === ''
@@ -297,17 +401,6 @@ function Asistente({
         );
         return;
       }
-    }
-    if (esErrorDeApi(falla, 409, 'MES_CAMBIO')) {
-      // Cambió el mes: se vuelve a cotizar y la persona confirma el monto nuevo.
-      recargarOferta();
-      pedirCotizacion((nueva) => {
-        setCotizacion(nueva);
-        setPideConfirmar(true);
-        setError(null);
-        setAviso(`${falla.message} El nuevo monto es ${formatearSoles(nueva.monto)}. Revísalo y confirma.`);
-      });
-      return;
     }
     if (esErrorDeApi(falla, 409, 'TEXTOS_ACTUALIZADOS')) {
       const nuevos = textosActualizadosDe(falla.detalles);
@@ -349,9 +442,9 @@ function Asistente({
   };
 
   const enviarFormulario = () => {
-    if (enviar.isPending || creada || !cotizacion) return;
+    if (enviar.isPending || creada || !cotizacion || !textosVigentes) return;
     const campos = getValues();
-    const contexto = { hoy: oferta.hoy, plan };
+    const contexto = { hoy, plan };
     const deConsentimientos = validarPaso('resumen', campos, contexto);
     if (Object.keys(deConsentimientos).length > 0) {
       marcarErrores(deConsentimientos);
@@ -370,7 +463,7 @@ function Asistente({
       const errores = erroresDeEsquema(validado.error);
       marcarErrores(errores);
       const primera = Object.keys(errores)[0];
-      setPaso(primera ? pasoDeCampo(primera) : 'datos');
+      setPaso(primera ? pasoQueExiste(pasoDeCampo(primera)) : 'datos');
       setError({ texto: 'Revisa los datos marcados en rojo.', conConsulta: false });
       return;
     }
@@ -383,7 +476,7 @@ function Asistente({
         if (fotoElegida.foto) subirFoto.mutate({ token: solicitud.token, archivo: fotoElegida.foto.archivo });
         fotoElegida.elegir(null);
         // Lo escrito no se queda en la página: solo el código y el enlace.
-        form.reset(CAMPOS_INICIALES);
+        form.reset({ ...CAMPOS_INICIALES, inscripcion: { ...CAMPOS_INICIALES.inscripcion, mes: mesElegido ?? '' } });
         setCreada(solicitud);
       },
       onError: atenderErrorDeEnvio,
@@ -394,7 +487,7 @@ function Asistente({
 
   const avanzar = () => {
     if (cotizar.isPending || enviar.isPending) return;
-    const errores = validarPaso(paso, getValues(), { hoy: oferta.hoy, plan });
+    const errores = validarPaso(paso, getValues(), { hoy, plan, mesesOfrecidos });
     if (Object.keys(errores).length > 0) {
       marcarErrores(errores);
       return;
@@ -428,22 +521,32 @@ function Asistente({
         : subirFoto.isError
           ? 'fallo'
           : null;
-    return <ConfirmacionInscripcion solicitud={creada} telefono={oferta.academia.telefono} foto={foto} />;
+    return <ConfirmacionInscripcion solicitud={creada} telefono={telefonoAcademia} foto={foto} />;
   }
 
-  const ocupado = cotizar.isPending || enviar.isPending;
-  const etiquetaBoton =
-    paso === 'plan'
-      ? cotizar.isPending
-        ? 'Calculando…'
-        : 'Siguiente'
-      : paso === 'resumen'
-        ? enviar.isPending
-          ? 'Enviando…'
-          : pideConfirmar
-            ? 'Confirmar el nuevo monto y enviar'
-            : 'Enviar inscripción'
-        : 'Siguiente';
+  // Sin la oferta del mes elegido no se puede seguir: en los demás pasos se espera aquí (o se reintenta); en el del mes, el botón espera.
+  if (paso !== 'mes' && oferta === undefined) {
+    if (consultaOferta.isError) {
+      return <ErrorDeCarga error={consultaOferta.error} reintentar={recargarOferta} />;
+    }
+    return (
+      <p role="status" className="text-slate-600">
+        Cargando el formulario…
+      </p>
+    );
+  }
+
+  const esperandoOferta = paso === 'mes' && mesElegido !== null && oferta === undefined;
+  const ocupado = cotizar.isPending || enviar.isPending || recargandoMeses;
+  const etiquetaBoton = (() => {
+    if (paso === 'plan') return cotizar.isPending ? 'Calculando…' : 'Siguiente';
+    if (paso === 'mes' && esperandoOferta && !consultaOferta.isError) return 'Cargando…';
+    if (paso === 'resumen') {
+      if (enviar.isPending) return 'Enviando…';
+      return pideConfirmar ? 'Confirmar el nuevo monto y enviar' : 'Enviar inscripción';
+    }
+    return 'Siguiente';
+  })();
 
   return (
     <div className="space-y-5">
@@ -494,14 +597,34 @@ function Asistente({
 
         <fieldset disabled={ocupado} className="min-w-0 space-y-5">
           <legend className="sr-only">{ETIQUETA_PASO[paso]}</legend>
+          {paso === 'mes' ? (
+            <PasoMes
+              meses={meses}
+              valor={mesElegido ?? ''}
+              alElegir={elegirMes}
+              error={mensajeDeError(form.formState.errors, 'inscripcion.mes')}
+              oferta={{
+                cargando: esperandoOferta && !consultaOferta.isError,
+                error: mesElegido !== null && consultaOferta.isError ? textoDeErrorDeCarga(consultaOferta.error) : null,
+                reintentar: recargarOferta,
+              }}
+            />
+          ) : null}
           {paso === 'datos' ? <PasoDatos form={form} /> : null}
           {paso === 'ficha' ? <PasoFicha form={form} /> : null}
           {paso === 'apoderado' ? <PasoApoderado form={form} /> : null}
-          {paso === 'plan' ? <PasoPlan form={form} oferta={oferta} llenas={llenas} /> : null}
+          {paso === 'plan' && oferta ? (
+            <>
+              {conElegirMes ? (
+                <p className="text-sm text-slate-700">Los planes y los cupos son de {formatearMes(oferta.mes)}.</p>
+              ) : null}
+              <PasoPlan form={form} oferta={oferta} llenas={llenas} />
+            </>
+          ) : null}
           {paso === 'foto' ? (
             <PasoFoto foto={fotoElegida.foto} aviso={fotoElegida.aviso} alElegir={fotoElegida.elegir} />
           ) : null}
-          {paso === 'resumen' && cotizacion && plan && nivelValido(nivel) ? (
+          {paso === 'resumen' && cotizacion && plan && textosVigentes && nivelValido(nivel) ? (
             <PasoResumen
               form={form}
               nombreCompleto={`${getValues('alumno.nombres').trim()} ${getValues('alumno.apellidos').trim()}`}
@@ -544,7 +667,11 @@ function Asistente({
           ) : (
             <span />
           )}
-          <button type="submit" disabled={ocupado} className={ESTILO_BOTON.primario}>
+          <button
+            type="submit"
+            disabled={ocupado || (esperandoOferta && !consultaOferta.isError)}
+            className={ESTILO_BOTON.primario}
+          >
             {etiquetaBoton}
           </button>
         </div>

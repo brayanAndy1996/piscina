@@ -46,7 +46,7 @@ export interface CamposInscripcion {
     parentesco: string;
     correo: string;
   };
-  inscripcion: { planId: string; claseIds: string[] };
+  inscripcion: { planId: string; claseIds: string[]; mes: string };
   consentimientos: { datosPersonales: boolean; deslinde: boolean; imagen: boolean };
 }
 
@@ -71,7 +71,7 @@ export const CAMPOS_INICIALES: CamposInscripcion = {
     contactoEmergencia: { nombre: '', telefono: '' },
   },
   apoderado: { nombres: '', apellidos: '', dni: '', telefono: '', parentesco: '', correo: '' },
-  inscripcion: { planId: '', claseIds: [] },
+  inscripcion: { planId: '', claseIds: [], mes: '' },
   consentimientos: { datosPersonales: false, deslinde: false, imagen: false },
 };
 
@@ -79,9 +79,10 @@ export const CAMPOS_INICIALES: CamposInscripcion = {
 // Pasos
 // ---------------------------------------------------------------------------------------------------------------------------------
 
-export type Paso = 'datos' | 'ficha' | 'apoderado' | 'plan' | 'foto' | 'resumen';
+export type Paso = 'mes' | 'datos' | 'ficha' | 'apoderado' | 'plan' | 'foto' | 'resumen';
 
 export const ETIQUETA_PASO: Readonly<Record<Paso, string>> = {
+  mes: '¿Desde cuándo?',
   datos: 'Datos personales',
   ficha: 'Ficha médica',
   apoderado: 'Apoderado',
@@ -90,11 +91,15 @@ export const ETIQUETA_PASO: Readonly<Record<Paso, string>> = {
   resumen: 'Resumen y confirmación',
 };
 
-/** Los pasos del formulario: el del apoderado solo aparece si la persona es menor de edad (RN-20). */
-export function pasosDeInscripcion(menor: boolean): Paso[] {
-  return menor
+/**
+ * Los pasos del formulario: el del apoderado solo aparece si la persona es menor de edad (RN-20), y el del mes solo si la API ofrece dos
+ * meses (010d, criterio 17); con un solo mes, el formulario es el de siempre.
+ */
+export function pasosDeInscripcion(menor: boolean, conElegirMes = false): Paso[] {
+  const pasos: Paso[] = menor
     ? ['datos', 'ficha', 'apoderado', 'plan', 'foto', 'resumen']
     : ['datos', 'ficha', 'plan', 'foto', 'resumen'];
+  return conElegirMes ? ['mes', ...pasos] : pasos;
 }
 
 /** ¿Es menor de edad con esta fecha de nacimiento? Una fecha que todavía no es una fecha real no cuenta como menor. */
@@ -104,6 +109,7 @@ export function esMenor(fechaNacimiento: string, hoy: string): boolean {
 
 /** El paso al que pertenece un campo (por ejemplo, para llevar a la persona al campo que la API rechazó). */
 export function pasoDeCampo(ruta: string): Paso {
+  if (ruta === 'inscripcion.mes') return 'mes';
   if (ruta.startsWith('fichaMedica')) return 'ficha';
   if (ruta.startsWith('apoderado')) return 'apoderado';
   if (ruta.startsWith('inscripcion') || ruta === 'alumno.nivel') return 'plan';
@@ -222,11 +228,17 @@ export interface ContextoDePaso {
   hoy: string;
   /** El plan elegido, si hay uno. */
   plan: PlanPublico | undefined;
+  /** Los meses que ofrece la API (`AAAA-MM`): el paso del mes exige uno de ellos. */
+  mesesOfrecidos?: readonly string[];
 }
 
 /** Los errores de un paso, o un objeto vacío si está bien. Valida con los esquemas compartidos. */
 export function validarPaso(paso: Paso, campos: CamposInscripcion, contexto: ContextoDePaso): Errores {
   switch (paso) {
+    case 'mes':
+      return contexto.mesesOfrecidos?.includes(campos.inscripcion.mes)
+        ? {}
+        : { 'inscripcion.mes': 'Elige desde cuándo quieres empezar.' };
     case 'datos': {
       const resultado = ESQUEMA_DATOS.safeParse(alumnoDe(campos, false));
       const errores = pedirDato(
@@ -267,7 +279,10 @@ export function validarPaso(paso: Paso, campos: CamposInscripcion, contexto: Con
         errores['inscripcion.planId'] = 'Elige un plan.';
         return errores;
       }
-      const resultado = ESQUEMA_ELECCION.safeParse(campos.inscripcion);
+      const resultado = ESQUEMA_ELECCION.safeParse({
+        planId: campos.inscripcion.planId,
+        claseIds: campos.inscripcion.claseIds,
+      });
       if (!resultado.success) {
         const deLista = erroresDeEsquema(resultado.error);
         if (deLista['claseIds']) errores['inscripcion.claseIds'] = deLista['claseIds'];

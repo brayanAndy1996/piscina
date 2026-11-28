@@ -115,3 +115,37 @@ export function diaDeLaSemanaDeFecha(fecha: string): DiaSemana {
   const diaJs = new Date(Date.UTC(anio, mes - 1, dia)).getUTCDay();
   return diaIsoDeAbreviatura(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][diaJs] ?? '');
 }
+
+/** El mes siguiente a `mes` (`AAAA-MM`): `2026-12` da `2027-01`. Es texto: no pasa por zona horaria. */
+export function mesSiguiente(mes: string): string {
+  const [anio = 0, numero = 1] = mes.split('-').map(Number);
+  const [anioSiguiente, mesSiguienteNumero] = numero === 12 ? [anio + 1, 1] : [anio, numero + 1];
+  return `${String(anioSiguiente).padStart(4, '0')}-${String(mesSiguienteNumero).padStart(2, '0')}`;
+}
+
+/** Solo el nombre de un mes `AAAA-MM`, en minúscula: "diciembre". Si no es un mes, se muestra tal cual. */
+export function nombreDelMes(mes: string): string {
+  const partes = /^([0-9]{4})-(0[1-9]|1[0-2])$/.exec(mes);
+  return (partes ? NOMBRE_MES[Number(partes[2]) - 1] : undefined) ?? mes;
+}
+
+/** El día y el mes de una fecha de calendario `AAAA-MM-DD` como `d/MM` ("26/11", "1/12"). Es texto: no pasa por zona horaria. */
+export function formatearDiaYMes(fecha: string): string {
+  const [, mes, dia] = fecha.split('-');
+  return mes && dia ? `${Number(dia)}/${mes}` : fecha;
+}
+
+/** Un mes `AAAA-MM` y el día en que empieza la inscripción: "Diciembre de 2026, desde el 1/12". */
+export function formatearMesDesde(mes: string, fechaInicio: string): string {
+  const texto = formatearMes(mes);
+  return `${texto.charAt(0).toUpperCase()}${texto.slice(1)}, desde el ${formatearDiaYMes(fechaInicio)}`;
+}
+
+/**
+ * El mes de una inscripción para mostrarlo en el seguimiento, en las solicitudes y en la bandeja de pagos (010d, criterio 18). Un mes que
+ * todavía no empieza (el siguiente, que se paga antes del día 1) dice desde qué día: "Diciembre de 2026, desde el 1/12". El mes en curso
+ * y los pasados se dicen como siempre: "noviembre de 2026". `mesEnCurso` es el de hoy en Lima.
+ */
+export function formatearMesDeInscripcion(mes: string, mesEnCurso: string = mesActualEnLima()): string {
+  return mes > mesEnCurso ? formatearMesDesde(mes, `${mes}-01`) : formatearMes(mes);
+}

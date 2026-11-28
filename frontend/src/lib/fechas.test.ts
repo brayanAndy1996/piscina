@@ -7,10 +7,15 @@ import {
   formatearFechaCalendario,
   formatearFechaHora,
   formatearHora,
+  formatearDiaYMes,
   formatearMes,
+  formatearMesDeInscripcion,
+  formatearMesDesde,
   hoyEnLima,
   mesActualEnLima,
   mesAnterior,
+  mesSiguiente,
+  nombreDelMes,
 } from './fechas';
 
 describe('fechas en America/Lima', () => {
@@ -85,5 +90,36 @@ describe('el mes y el día de una fecha de calendario (009b)', () => {
     expect(diaDeLaSemanaDeFecha('2026-11-23')).toBe(1);
     expect(diaDeLaSemanaDeFecha('2026-11-29')).toBe(7);
     expect(diaDeLaSemanaDeFecha('2026-11-25')).toBe(3);
+  });
+});
+
+describe('el mes de una inscripción (010d)', () => {
+  it('mesSiguiente pasa de diciembre a enero del año siguiente', () => {
+    expect(mesSiguiente('2026-11')).toBe('2026-12');
+    expect(mesSiguiente('2026-12')).toBe('2027-01');
+  });
+
+  it('nombreDelMes da solo el nombre, en minúscula', () => {
+    expect(nombreDelMes('2026-12')).toBe('diciembre');
+    expect(nombreDelMes('2027-01')).toBe('enero');
+    expect(nombreDelMes('2026-13')).toBe('2026-13');
+  });
+
+  it('formatearDiaYMes da d/MM sin ceros a la izquierda en el día', () => {
+    expect(formatearDiaYMes('2026-11-26')).toBe('26/11');
+    expect(formatearDiaYMes('2026-12-01')).toBe('1/12');
+    expect(formatearDiaYMes('2026-12-05')).toBe('5/12');
+  });
+
+  it('formatearMesDesde dice el mes con mayúscula inicial y desde qué día', () => {
+    expect(formatearMesDesde('2026-12', '2026-12-01')).toBe('Diciembre de 2026, desde el 1/12');
+    expect(formatearMesDesde('2026-11', '2026-11-27')).toBe('Noviembre de 2026, desde el 27/11');
+  });
+
+  it('formatearMesDeInscripcion dice desde el día 1 solo para un mes que todavía no empieza', () => {
+    expect(formatearMesDeInscripcion('2026-12', '2026-11')).toBe('Diciembre de 2026, desde el 1/12');
+    expect(formatearMesDeInscripcion('2027-01', '2026-12')).toBe('Enero de 2027, desde el 1/01');
+    expect(formatearMesDeInscripcion('2026-11', '2026-11')).toBe('noviembre de 2026');
+    expect(formatearMesDeInscripcion('2026-10', '2026-11')).toBe('octubre de 2026');
   });
 });

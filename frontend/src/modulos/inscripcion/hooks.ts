@@ -3,14 +3,33 @@ import { useIdDeVisita } from '../../lib/visita';
 import * as api from './api';
 
 /**
- * La oferta del formulario (planes vigentes, clases con cupo y textos de consentimiento). Cupos y precios cambian: no se guarda entre
- * visitas (la clave lleva el identificador de la visita). Las claves no llevan sesión: la página es pública y la academia es la de la dirección.
+ * Los meses para los que se puede inscribir hoy (010d, criterio 1). Cambian con el día y con la configuración: no se guardan entre visitas
+ * (la clave lleva el identificador de la visita).
  */
-export function useFormularioInscripcion(nombreCorto: string) {
+export function useMesesInscripcion(nombreCorto: string) {
   const visita = useIdDeVisita();
   return useQuery({
-    queryKey: ['inscripcion-formulario', nombreCorto, visita],
-    queryFn: () => api.obtenerFormulario(nombreCorto),
+    queryKey: ['inscripcion', nombreCorto, 'meses', visita],
+    queryFn: () => api.obtenerMeses(nombreCorto),
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * La oferta del formulario para un mes (planes vigentes, clases con cupo y textos de consentimiento). Cupos y precios cambian: no se guarda
+ * entre visitas (la clave lleva el identificador de la visita) y cada mes tiene la suya. Las claves no llevan sesión: la página es pública y
+ * la academia es la de la dirección. Sin mes elegido todavía (`null`), no pide nada.
+ */
+export function useFormularioInscripcion(nombreCorto: string, mes: string | null) {
+  const visita = useIdDeVisita();
+  return useQuery({
+    queryKey: ['inscripcion', nombreCorto, 'oferta', mes, visita],
+    queryFn: () => api.obtenerFormulario(nombreCorto, mes ?? ''),
+    enabled: mes !== null,
     retry: false,
     gcTime: 0,
     staleTime: 0,

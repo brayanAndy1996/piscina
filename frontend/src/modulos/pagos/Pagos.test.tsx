@@ -165,6 +165,26 @@ describe('la bandeja de pagos (criterio 56)', () => {
     expect(within(terminada).getByText('Transferencia', { selector: 'span' })).toBeInTheDocument();
   });
 
+  it('un pago de la inscripción al mes siguiente dice el mes y desde qué día empieza (010d, criterio 18)', async () => {
+    servidor({
+      pagos: [
+        pendiente({ mes: '2026-12' }),
+        pendiente({
+          id: P2,
+          solicitud: { id: S2, codigo: 'AQ-2B4C6D' },
+          cliente: { nombres: 'Mario', apellidos: 'Rojas Díaz', dni: '71234567' },
+        }),
+      ],
+    });
+    mostrar('/panel/pagos');
+    const siguiente = await tarjeta('AQ-7F3K9X');
+    expect(within(siguiente).getByText('Diciembre de 2026, desde el 1/12')).toBeInTheDocument();
+    // El mes en curso se dice como siempre.
+    const enCurso = await tarjeta('AQ-2B4C6D');
+    expect(within(enCurso).getByText('noviembre de 2026')).toBeInTheDocument();
+    expect(within(enCurso).queryByText(/desde el/)).not.toBeInTheDocument();
+  });
+
   it('sin pendientes lo dice', async () => {
     servidor({ pagos: [] });
     mostrar('/panel/pagos');

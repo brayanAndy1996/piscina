@@ -2,7 +2,12 @@ import { NOMBRE_DIA, NOMBRE_NIVEL, type RespuestaConsultaSolicitud } from '@aqua
 import { Link, useParams } from 'react-router';
 import { formatearSoles } from '../../lib/dinero';
 import { ESTADO_EN_PALABRAS } from '../../lib/estado-solicitud';
-import { formatearFecha, formatearFechaCalendario, formatearFechaHora, formatearMes } from '../../lib/fechas';
+import {
+  formatearFecha,
+  formatearFechaCalendario,
+  formatearFechaHora,
+  formatearMesDeInscripcion,
+} from '../../lib/fechas';
 import { Insignia } from '../../componentes/ui';
 import { frasePorTelefono } from '../../componentes/Telefono';
 import { ETIQUETA_METODO } from '../caja/montos';
@@ -106,7 +111,7 @@ export function VistaSeguimiento({ respuesta }: { respuesta: RespuestaConsultaSo
           </ul>
         </dd>
         <dt className="font-medium text-slate-600 sm:text-slate-800">Mes</dt>
-        <dd className="text-slate-900 mb-2 sm:mb-0">{formatearMes(solicitud.mes)}</dd>
+        <dd className="text-slate-900 mb-2 sm:mb-0">{formatearMesDeInscripcion(solicitud.mes)}</dd>
         <dt className="font-medium text-slate-600 sm:text-slate-800">Clases</dt>
         <dd className="text-slate-900 mb-2 sm:mb-0">
           {solicitud.clasesTotales}

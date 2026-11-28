@@ -5,7 +5,12 @@ import { esErrorDeApi } from '../../api/cliente';
 import { Alerta, ESTILO_BOTON, Insignia } from '../../componentes/ui';
 import { formatearSoles } from '../../lib/dinero';
 import { mensajeGeneral } from '../../lib/errores';
-import { formatearFechaCalendario, formatearFechaHora, formatearMes } from '../../lib/fechas';
+import {
+  formatearFechaCalendario,
+  formatearFechaHora,
+  formatearMes,
+  formatearMesDeInscripcion,
+} from '../../lib/fechas';
 import { ETIQUETA_METODO } from '../caja/montos';
 import { useAlPerderSesion } from '../sesion/hooks';
 import { RequierePermiso } from '../sesion/RequierePermiso';
@@ -185,7 +190,7 @@ function TarjetaPago({ pago, alVer, alAprobar, alRechazar }: PropiedadesTarjeta)
         <dt className="font-medium text-slate-600 sm:text-slate-800">DNI</dt>
         <dd className="mb-2 text-slate-900 sm:mb-0">{pago.cliente.dni}</dd>
         <dt className="font-medium text-slate-600 sm:text-slate-800">Mes</dt>
-        <dd className="mb-2 text-slate-900 sm:mb-0">{formatearMes(pago.mes)}</dd>
+        <dd className="mb-2 text-slate-900 sm:mb-0">{formatearMesDeInscripcion(pago.mes)}</dd>
         <dt className="font-medium text-slate-600 sm:text-slate-800">Fecha de la operación</dt>
         <dd className="mb-2 text-slate-900 sm:mb-0">{formatearFechaCalendario(pago.fechaOperacion)}</dd>
         <dt className="font-medium text-slate-600 sm:text-slate-800">Enviado</dt>
