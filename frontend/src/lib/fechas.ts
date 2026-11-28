@@ -135,10 +135,15 @@ export function formatearDiaYMes(fecha: string): string {
   return mes && dia ? `${Number(dia)}/${mes}` : fecha;
 }
 
+/** El texto con la primera letra en mayúscula. */
+export function capitalizar(texto: string): string {
+  return `${texto.charAt(0).toUpperCase()}${texto.slice(1)}`;
+}
+
 /** Un mes `AAAA-MM` y el día en que empieza la inscripción: "Diciembre de 2026, desde el 1/12". */
 export function formatearMesDesde(mes: string, fechaInicio: string): string {
   const texto = formatearMes(mes);
-  return `${texto.charAt(0).toUpperCase()}${texto.slice(1)}, desde el ${formatearDiaYMes(fechaInicio)}`;
+  return `${capitalizar(texto)}, desde el ${formatearDiaYMes(fechaInicio)}`;
 }
 
 /**

@@ -1,6 +1,6 @@
 import type { MesesInscripcion } from '@aquagestion/contratos';
 import { Alerta, ESTILO_BOTON } from '../../../componentes/ui';
-import { formatearDiaYMes, formatearMes, nombreDelMes } from '../../../lib/fechas';
+import { capitalizar, formatearDiaYMes, formatearMes, nombreDelMes } from '../../../lib/fechas';
 
 interface Propiedades {
   meses: MesesInscripcion;
@@ -10,10 +10,6 @@ interface Propiedades {
   error: string | undefined;
   /** La oferta del mes elegido: cargando, o con su error y la forma de pedirla otra vez. */
   oferta: { cargando: boolean; error: string | null; reintentar: () => void };
-}
-
-function capitalizada(texto: string): string {
-  return `${texto.charAt(0).toUpperCase()}${texto.slice(1)}`;
 }
 
 /**
@@ -28,12 +24,12 @@ export function PasoMes({ meses, valor, alElegir, error, oferta }: Propiedades) 
     {
       mes: enCurso.mes,
       titulo: 'Este mes, desde hoy',
-      detalle: `${capitalizada(formatearMes(enCurso.mes))}. Empiezas hoy, ${formatearDiaYMes(enCurso.fechaInicio)}, y pagas las clases que quedan del mes.`,
+      detalle: `${capitalizar(formatearMes(enCurso.mes))}. Empiezas hoy, ${formatearDiaYMes(enCurso.fechaInicio)}, y pagas las clases que quedan del mes.`,
     },
     {
       mes: siguiente.mes,
-      titulo: `${capitalizada(nombreDelMes(siguiente.mes))} completo, desde el 1`,
-      detalle: `${capitalizada(formatearMes(siguiente.mes))}. Empiezas el ${formatearDiaYMes(siguiente.fechaInicio)} con el mes entero.`,
+      titulo: `${capitalizar(nombreDelMes(siguiente.mes))} completo, desde el 1`,
+      detalle: `${capitalizar(formatearMes(siguiente.mes))}. Empiezas el ${formatearDiaYMes(siguiente.fechaInicio)} con el mes entero.`,
     },
   ];
   return (

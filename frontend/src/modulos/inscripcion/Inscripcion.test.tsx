@@ -1037,6 +1037,9 @@ describe('Formulario de inscripción: ¿Desde cuándo? con la ventana abierta (0
     clase(C_VIE_18, 'BASICO', 5, '18:00', 4),
   ];
 
+  // Con `hoy` el 27/11, la cotización de este mes empieza el 27/11.
+  const COTIZACION_HOY_27 = { ...COTIZACION, fechaInicio: '2026-11-27' };
+
   function servidorConDosMeses(extra: Record<string, Manejador> = {}) {
     return servidor({
       [GET_MESES]: () => ({ estado: 200, cuerpo: MESES_DOS }),
@@ -1047,7 +1050,9 @@ describe('Formulario de inscripción: ¿Desde cuándo? con la ventana abierta (0
       }),
       [POST_COTIZACION]: (cuerpo) => ({
         estado: 200,
-        cuerpo: { cotizacion: (cuerpo as { mes?: string }).mes === '2026-12' ? COTIZACION_DICIEMBRE : COTIZACION },
+        cuerpo: {
+          cotizacion: (cuerpo as { mes?: string }).mes === '2026-12' ? COTIZACION_DICIEMBRE : COTIZACION_HOY_27,
+        },
       }),
       [POST_ENVIO]: (cuerpo) => ({
         estado: 201,
@@ -1132,7 +1137,7 @@ describe('Formulario de inscripción: ¿Desde cuándo? con la ventana abierta (0
     expect(llamadas(api, GET_OFERTA)).toHaveLength(1);
     expect(llamadas(api, POST_COTIZACION)[0]).toMatchObject({ mes: '2026-11' });
     const resumen = screen.getByRole('region', { name: 'Lo que elegiste' });
-    expect(within(resumen).getByText('Noviembre de 2026, desde el 20/11')).toBeInTheDocument();
+    expect(within(resumen).getByText('Noviembre de 2026, desde el 27/11')).toBeInTheDocument();
   });
 
   it('cambiar de mes descarta el plan, las clases y la cotización y pide la oferta del otro mes', async () => {
@@ -1176,6 +1181,30 @@ describe('Formulario de inscripción: ¿Desde cuándo? con la ventana abierta (0
     await siguiente(user, 'Datos personales');
   });
 
+  it('MES_CAMBIO pide la oferta otra vez aunque no se puedan recargar los meses', async () => {
+    let pedidosDeMeses = 0;
+    let envios = 0;
+    const api = servidor({
+      [GET_MESES]: () => {
+        pedidosDeMeses += 1;
+        return pedidosDeMeses === 1 ? { estado: 200, cuerpo: meses() } : error('ERROR_INTERNO', 500);
+      },
+      [POST_ENVIO]: () => {
+        envios += 1;
+        return error('MES_CAMBIO', 409, { mes: '2026-12' });
+      },
+    });
+    const user = await abrir();
+    await llegarAlResumen(user);
+    const ofertasAntes = llamadas(api, GET_OFERTA).length;
+    await aceptarYEnviar(user);
+    await screen.findByRole('heading', { name: 'Plan y horario' });
+    expect(pedidosDeMeses).toBe(2);
+    expect(envios).toBe(1);
+    await waitFor(() => expect(llamadas(api, GET_OFERTA).length).toBeGreaterThan(ofertasAntes));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cambió el mes desde que empezaste la inscripción.');
+  });
+
   it('MES_CAMBIO con dos meses: pide los meses y la oferta otra vez y vuelve al paso del mes sin nada elegido', async () => {
     let pedidosDeMeses = 0;
     let envios = 0;
@@ -1208,7 +1237,8 @@ describe('Formulario de inscripción: ¿Desde cuándo? con la ventana abierta (0
 
     // Elige otra vez y la oferta se pide de nuevo.
     await elegirMes(user, /Diciembre completo, desde el 1/);
-    await waitFor(() => expect(llamadas(api, GET_OFERTA_DICIEMBRE)).toHaveLength(2));
+    // La oferta de diciembre: la primera vez, la recarga que pide el MES_CAMBIO y la de la nueva elección.
+    await waitFor(() => expect(llamadas(api, GET_OFERTA_DICIEMBRE)).toHaveLength(3));
   });
 
   it('SIN_CLASES_EN_EL_MES con la ventana abierta: dice que se puede elegir el mes siguiente completo', async () => {

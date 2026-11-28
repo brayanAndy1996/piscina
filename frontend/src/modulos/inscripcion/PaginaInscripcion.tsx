@@ -9,6 +9,7 @@ import {
   type TextosConsentimiento,
 } from '@aquagestion/contratos';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { type Path, useForm, useWatch } from 'react-hook-form';
 import { Link, useParams } from 'react-router';
 import { ErrorDeApi, esErrorDeApi } from '../../api/cliente';
@@ -137,6 +138,7 @@ function Asistente({
   const { control, getValues, setError: marcarError, setValue } = form;
   // La clave se crea una vez por formulario: un doble clic o un reintento no duplica la solicitud (criterio 43).
   const [claveDeEnvio] = useState(nuevaClaveDeEnvio);
+  const clienteDeConsultas = useQueryClient();
   const conElegirMes = meses.meses.length > 1;
   const [pasoActual, setPaso] = useState<Paso>(conElegirMes ? 'mes' : 'datos');
   const [recargandoMeses, setRecargandoMeses] = useState(false);
@@ -267,6 +269,8 @@ function Asistente({
     setAviso(null);
     setError(null);
     setRecargandoMeses(true);
+    // La oferta se pide otra vez aunque falle la recarga de los meses.
+    void clienteDeConsultas.invalidateQueries({ queryKey: ['inscripcion', nombreCorto, 'oferta'] });
     const nuevos = await recargarMeses();
     setRecargandoMeses(false);
     const variosMeses = (nuevos ?? meses).meses.length > 1;
