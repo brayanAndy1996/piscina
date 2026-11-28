@@ -310,19 +310,26 @@ describe('el alumno de la sesión sale de la sesión y nunca de lo que manda qui
           expect(respuesta.texto, nombre).not.toContain(a1.dni);
         }
       } finally {
+        // `alumnos` no tiene política de DELETE (con FORCE RLS un DELETE no borra nada y no avisa): se le quita la cuenta al gemelo, que es lo que el índice necesita.
         await ejecutarComo(
           'propietario',
-          'DELETE FROM alumnos WHERE academia_id = $1::uuid AND id = $2::uuid',
+          'UPDATE alumnos SET usuario_id = NULL WHERE academia_id = $1::uuid AND id = $2::uuid',
           [esc.e.A.id, gemelo],
-          {
-            academiaId: esc.e.A.id,
-          },
+          { academiaId: esc.e.A.id },
         );
         if (hayIndice) {
           await ejecutarComo(
             'propietario',
             `CREATE UNIQUE INDEX "${INDICE}" ON "alumnos" ("academia_id", "usuario_id")`,
           );
+        }
+        if (hayIndice) {
+          const { rows: despues } = await ejecutarComo(
+            'propietario',
+            'SELECT 1 FROM pg_indexes WHERE tablename = $1 AND indexname = $2',
+            ['alumnos', INDICE],
+          );
+          expect(despues, 'la prueba debe dejar el índice del criterio 1 como lo encontró').toHaveLength(1);
         }
       }
     });
