@@ -460,6 +460,23 @@ npm run dev
 - No hay paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta.
 - Lo que cambia en la pantalla es el formulario de inscripción: ver "Probar la inscripción al mes siguiente".
 
+## Después de traer la historia 011
+
+Si ya tenías el proyecto con la historia 010d, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm ci
+npm run db:preparar
+npm run dev
+```
+
+- La 011 tiene una migración nueva, `20261128100000_panel_alumno`, que agrega un índice único a `alumnos` (una cuenta, un alumno por academia). `npm run db:preparar` la aplica a las dos bases, la de desarrollo y la de pruebas.
+- Hace falta `npm ci`: el paquete `e2e` declara ahora `pg`, `@node-rs/argon2` y `@types/pg`, y `package-lock.json` cambió. `npm ci` instala exactamente lo que dice el lock.
+- No hay variables nuevas, así que `npm run env:completar` no hace falta. La semilla no cambia, y repetir `npm run db:preparar` no duplica nada.
+- Lo que cambia en la pantalla es `/panel` para el alumno: ver "Probar el panel del alumno".
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -573,13 +590,13 @@ Lo que ves en `/panel` depende del rol:
 - **Secretaria:** **Solicitudes de inscripción** (donde cobra en efectivo), **Pagos por verificar** (ver "Probar el pago con Yape o transferencia"), **Alumnos y carnets** (ver "Probar el carnet y el QR"), **Nueva inscripción** y **Caja** (ver "Probar la caja del día"), y
   **Restablecer contraseña**, solo para alumnos.
 - **Entrenador:** solo **Cambiar contraseña**. Las demás pantallas llegan con sus historias.
-- **Alumno:** **Cambiar contraseña** y **Mi carnet** (ver "Probar el carnet y el QR"). Las demás pantallas llegan con sus historias.
+- **Alumno:** su panel (**Mis datos**, **Mi mensualidad** y **Mi asistencia**, ver "Probar el panel del alumno"), **Cambiar contraseña** y **Mi carnet** (ver "Probar el carnet y el QR"). Las demás pantallas llegan con sus historias.
 
 Quién restablece a quién: el administrador, a cualquier usuario de su academia menos a sí mismo; la secretaria, solo a
 alumnos; el superadmin, a los administradores de cada academia. Restablecer deja la contraseña igual al DNI, y la persona
 la cambia al entrar. Si olvidas tu contraseña, pide en recepción que la restablezcan.
 
-Todavía no hay la asistencia del alumno en su panel (historia 011) ni la pantalla de auditoría.
+Todavía no hay la pantalla de auditoría.
 
 ## Probar la configuración de la academia
 
@@ -1061,7 +1078,7 @@ La foto de un alumno se pone o se cambia en su carnet, y la de una solicitud, en
 
 ## Probar la asistencia
 
-La asistencia (historia 009a) la marcan el administrador y la secretaria, en **Asistencia** del inicio del panel (`/panel/asistencia`). El entrenador y el alumno no la ven, y la API responde 403 si la piden. La consulta del mes de un alumno (historia 009b) también es solo del administrador y la secretaria. Marcar solo funciona mientras dura la clase del alumno: para probarla hace falta una clase en curso a la hora actual, y el alumno tiene que estar inscrito y cobrado **antes** de que empiece esa clase. Si se inscribe cuando la clase ya empezó, esa clase no se cobra y la asistencia responde en amarillo «La clase de hoy no está incluida en su mensualidad.»: es lo esperado.
+La asistencia (historia 009a) la marcan el administrador y la secretaria, en **Asistencia** del inicio del panel (`/panel/asistencia`). El entrenador no la ve. El alumno solo ve la suya, en su panel (ver "Probar el panel del alumno"), y la API responde 403 si el entrenador o el alumno piden las rutas del personal. La consulta del mes de un alumno (historia 009b) también es solo del administrador y la secretaria. Marcar solo funciona mientras dura la clase del alumno: para probarla hace falta una clase en curso a la hora actual, y el alumno tiene que estar inscrito y cobrado **antes** de que empiece esa clase. Si se inscribe cuando la clase ya empezó, esa clase no se cobra y la asistencia responde en amarillo «La clase de hoy no está incluida en su mensualidad.»: es lo esperado.
 
 Con `npm run dev` encendido:
 
@@ -1160,6 +1177,38 @@ Con `npm run dev` encendido:
 5. Si una clase se llena mientras eliges, se marca **Sin cupo** y sale de la selección: elige otra. Si la mensualidad ya no se puede cambiar (por ejemplo, porque está cerrada o es de otro mes), el diálogo dice que «Esta mensualidad ya no se puede cambiar».
 
 Las pruebas automáticas del cambio corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
+
+## Probar el panel del alumno
+
+El alumno entra en **/panel** con su DNI y ve su panel (historia 011): **Mis datos**, **Mi mensualidad** y **Mi asistencia**. Su apoderado usa la misma cuenta: entra con el DNI del alumno (RN-29), no tiene una cuenta propia. El panel es solo de lectura; lo único que el alumno cambia es su contraseña, desde el inicio. El personal no ve el panel en **/panel**, y la API responde 403 si pide sus rutas.
+
+Con `npm run dev` encendido:
+
+**Preparar una cuenta de alumno**
+
+1. Ninguna cuenta de ejemplo tiene ficha de alumno: la semilla no liga ninguna cuenta a un alumno (ver "Probar el carnet y el QR"). Para tener uno, cobra en efectivo **AQ-SM0001**, como en "Probar el carnet y el QR" (paso 1), con la caja de hoy abierta. Así la cuenta de **Valeria Andrea Mendoza Salas** (DNI `20000001`) pasa a ser de alumna.
+2. Para ver el caso de un menor con apoderado, aprueba el Yape de **AQ-SM0003**, como en "Probar el pago con Yape o transferencia" (pasos 1 a 6). El alumno es Mateo Quispe Rojas (DNI `20000003`). Su apoderada entra con el DNI de Mateo y su contraseña, porque la cuenta es la del alumno.
+
+**Entrar como el alumno**
+
+3. Entra en **http://localhost:5173/a/delfines/ingresar** con el DNI `20000001` y, como contraseña inicial, el mismo DNI. El sistema te pide cambiarla: sigue el paso 3 de "Entrar como usuario de una academia".
+4. Llegas a **/panel**. Arriba están tu nombre, tu rol (**Alumno**), tu academia y el botón **Cambiar contraseña**. Debajo está tu panel.
+
+**Qué se ve**
+
+5. **Mis datos:** tu nombre y tus apellidos, «DNI: 20000001», tu edad («30 años») y «Nivel: Básico». No aparecen la fecha de nacimiento, la ficha médica, el teléfono ni los datos del apoderado.
+6. **Mi mensualidad:** la insignia del estado (**Al día**, **Por vencer**, **Vencido** o **Pendiente de verificación**); el plan («3 veces por semana», con los datos de ejemplo); una línea por cada clase, como «Lunes 18:00 a 19:00»; «Clases: 0 de 8 usadas · te quedan 8»; y «Vence el» con la fecha del último día de la mensualidad, en formato DD/MM/AAAA. Si ya pasó, dice «Venció el». Si ya renovaste el mes siguiente, aparece «Diciembre: pagada» o «Diciembre: pago en verificación». Con **Por vencer** o **Vencido**, dice «Para renovar, acércate a recepción.».
+7. **Mi asistencia:** un selector **Mes** con los meses en que tuviste mensualidad, con el mes en curso por defecto (por ejemplo, «noviembre de 2026»); los totales **Puntual**, **Tarde**, **Faltas** y **Clases restantes**; y cada día de clase, con **Puntual**, **Tarde** o **Falta», la clase («Clase de 18:00 a 19:00») y «Llegó a las» la hora de llegada. Si no hay registros, dice «No hay asistencias ni faltas en noviembre de 2026.». Para ver registros, marca la asistencia durante la clase (ver "Probar la asistencia").
+8. Al pie del panel dice «Para corregir tus datos o cambiar tu horario, acércate a recepción.». En el inicio, **Mi carnet** lleva a tu carnet (ver "Probar el carnet y el QR").
+
+**Otros casos**
+
+- La cuenta de ejemplo `10000004` (Diego Delgado Soto) entra, pero no tiene ficha de alumno: su panel dice «No encontramos tu ficha de alumno. Acércate a recepción.».
+- Sin mensualidad vigente, **Mi mensualidad** dice «No tienes una mensualidad vigente. Acércate a recepción.»; si la del mes siguiente todavía no empieza, dice «Tu mensualidad empieza el» y la fecha.
+- Con el DNI de otro alumno no se ve su panel: la web no envía ningún id, y la API ignora cualquier id o parámetro que se le pase.
+- Las pruebas automáticas del panel corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`. El E2E (`npm run e2e`) crea sus propios alumnos de prueba (`e2e/utilidades/sembrar-panel.ts`); no usa los de la semilla.
+
+Esta sección no está probada en la PC del responsable (Windows con Docker). Los textos son los que muestra el código de la pantalla, y la suite automática corre en la nube y en la integración continua. Si un paso o un texto no coincide con lo que ves, avísalo.
 
 ## Día a día
 

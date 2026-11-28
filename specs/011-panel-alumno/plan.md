@@ -3,8 +3,9 @@
 Una sola entrega, de ruta crítica, sobre la 010 completa en `main`. Una migración pequeña (un índice único). Dos rutas de
 solo lectura nuevas y la página del alumno en `/panel`.
 
-**Estado:** aprobado el 28/11/2026. Bryan aceptó la propuesta de P1 a P5 (DR-1 a DR-5 de `spec.md`) y el orquestador
-aceptó DT-1 a DT-16 tal como están aquí. En pruebas protegidas.
+**Estado:** implementado el 28/11/2026; ronda adversarial 1 sin fallas críticas ni altas; pendiente de unir a `main`. Bryan
+aceptó la propuesta de P1 a P5 (DR-1 a DR-5 de `spec.md`) y el orquestador aceptó DT-1 a DT-16 tal como están aquí; DT-17 a
+DT-22 los tomó el orquestador durante la implementación.
 
 ## Módulos afectados
 
@@ -129,6 +130,12 @@ Cada DT la acepta el orquestador (decisiones técnicas menores, D-31).
 | DT-14 | `edadEnFecha` vive en `packages/contratos` junto a `esMenorDeEdad`, con la misma regla del 29 de febrero. | Calcular la edad en la web desde la fecha de nacimiento. | La fecha de nacimiento no sale de la API (DR-1) y la edad se calcula con el hoy de Lima del servidor. |
 | DT-15 | Sin límite de peticiones propio. | Un límite por usuario en estas rutas. | Es el pendiente general de la API con sesión (DT-14 de 006), que se decide con el hosting. |
 | DT-16 | Marca de las pruebas protegidas: `// spec: 011-panel-alumno (pruebas protegidas)` y commits «Pruebas protegidas (011): …». | — | Tres dígitos sin letra: el verificador la reconoce (deuda (a) de la 010d). |
+| DT-17 | `leerAlumnoDeLaSesion` en `alumnos/` (`alumno-de-la-sesion.ts`) es la única fuente del alumno de la sesión: la usan el resumen y la asistencia. | Repetir la sentencia en cada lectura del panel. | El 404 y la falla cerrada (dos filas) viven en un solo sitio, y las dos lecturas no pueden decidir distinto cuál es el alumno de la sesión (criterio 2). |
+| DT-18 | La lectura compartida de mensualidades (`mensualidades/lectura-de-estado.ts`) suma `desde` y `hasta` (las fechas de la matrícula), y el listado no los expone. | Que el listado también exponga `desde` y `hasta`. | El panel muestra «Vence el» y «Tu mensualidad empieza el» sin cambiar la respuesta del listado, cuyas pruebas protegidas no se tocan. |
+| DT-19 | El controlador valida `mes` con un objeto zod (`consultaDeAsistenciaSchema`) sobre el valor crudo (`parametroCrudo`), para que el 400 traiga el campo `mes`. No se cambió el controlador de 009b. | Cambiar el controlador de 009b para que su 400 traiga el campo. | El criterio 12 exige los errores de `mes` (también posterior a M y repetido), y la 009b no cambia. |
+| DT-20 | `siguiente` sale de M+1 aunque `estado` sea `null` (criterio 9). | Dar `siguiente` solo cuando hay estado. | Quien se inscribió para el mes siguiente (010d) ve «Tu mensualidad empieza el…» aunque todavía no tenga estado. |
+| DT-21 | La E2E siembra por SQL (`e2e/utilidades/sembrar-panel.ts`): marcar la asistencia por la interfaz depende del reloj real y solo funciona mientras dura la clase. Hay una prueba del sembrador en los bordes del mes (`e2e/pruebas/sembrar-panel.spec.ts`). | Todo por la interfaz. | La E2E no depende de la hora a la que se corra. |
+| DT-22 | «Venció el» para `VENCIDO`; «Vence el» para los demás estados (`PanelDelAlumno.tsx`). | «Vence el» también para `VENCIDO`. | Con una fecha ya pasada, «Vence el» confunde. |
 
 ## Migraciones
 

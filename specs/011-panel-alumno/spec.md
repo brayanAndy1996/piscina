@@ -17,8 +17,9 @@
 - **Ruta crítica:** sí. Permisos y datos sensibles (el panel muestra solo a ese alumno, en solo lectura, con datos de
   menores, Ley 29733) y aislamiento entre academias y entre alumnos. Los cálculos que se muestran (estado de la
   mensualidad, edad) y las pantallas llevan prueba obligatoria, sin ser críticos.
-- **Estado:** aprobada por Bryan el 28/11/2026, con la propuesta de las cinco preguntas (P1 a P5, que son DR-1 a DR-5
-  de esta spec, en «Resueltas»); el orquestador aceptó DT-1 a DT-16 del plan el mismo día. **En pruebas protegidas.**
+- **Estado:** implementada el 28/11/2026; ronda adversarial 1 sin fallas críticas ni altas; **pendiente de unir a `main`**.
+  Aprobada por Bryan el 28/11/2026, con la propuesta de las cinco preguntas (P1 a P5, que son DR-1 a DR-5 de esta spec, en
+  «Resueltas»); el orquestador aceptó DT-1 a DT-16 del plan el mismo día, y DT-17 a DT-22 durante la implementación.
 - **Entregas:** una sola (D-31: la spec cabe holgada en el tope de 800 líneas y tiene una sola superficie de ataque).
 
 ## Objetivo
@@ -339,8 +340,9 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
 
 ## Decisiones
 
-- Las decisiones técnicas (DT-1 a DT-16) están en «Decisiones» de [`plan.md`](plan.md), cada una con su alternativa;
-  el orquestador las aceptó el 28/11/2026. Las decisiones del responsable (DR-1 a DR-5) están en «Resueltas».
+- Las decisiones técnicas (DT-1 a DT-22) están en «Decisiones» de [`plan.md`](plan.md), cada una con su alternativa;
+  el orquestador aceptó DT-1 a DT-16 el 28/11/2026 y tomó DT-17 a DT-22 durante la implementación. Las decisiones del
+  responsable (DR-1 a DR-5) están en «Resueltas».
 - Resuelto por los documentos, sin pregunta: el apoderado entra con la cuenta del alumno (RN-29, D-14); con varios hijos,
   una cuenta por hijo (supuesto 6 de 11.1); el nivel actual es `alumnos.nivel` (D-08, 9.1); el alumno vencido ve su
   panel (como su carnet, criterio 6 de 008) y renueva en recepción (DR-1 de 010); el carnet y el QR siguen en
@@ -348,7 +350,8 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
 
 ## Preguntas abiertas
 
-Las cinco preguntas de negocio (P1 a P5) quedaron resueltas: ver «Resueltas». No queda ninguna pregunta abierta.
+Las cinco preguntas de negocio (P1 a P5) quedaron resueltas: ver «Resueltas». Tras la ronda 1 quedan dos preguntas para
+Bryan, B-1 y B-2, que son deuda de la 011 en `specs/backlog.md` (el detalle, en `rondas.md`).
 
 ## Resueltas
 

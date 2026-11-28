@@ -25,7 +25,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 008b | Foto desde el panel y cámara | En parte | ✅ |
 | 009 | Asistencia y faltas | Sí | ✅ |
 | 010 | Mensualidades y renovación | En parte | ✅ |
-| 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
+| 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | 🟨 |
 
 ### Notas
 
@@ -409,6 +409,18 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     La 010a lo cambió: la bandeja hace un `LEFT JOIN` y devuelve `solicitud: null` en las renovaciones (DT-10).
 - **011 · Panel del alumno y apoderado.** Datos, plan, horario, clases restantes, vencimiento, asistencia día por
   día con hora (puntual, tarde, falta), nivel actual; solo lectura salvo el cambio de contraseña (HU-06, D-08, D-14).
+  - Estado: spec aprobada por Bryan el 28/11/2026 (DR-1 a DR-5; DT-1 a DT-22), en
+    [`specs/011-panel-alumno/`](011-panel-alumno/spec.md). Construida el 28/11/2026 y pendiente de unir a `main`, tras una
+    ronda adversarial sin fallas críticas ni altas ([`rondas.md`](011-panel-alumno/rondas.md)). Suite completa: 19 444
+    pasan, 0 fallan y 95 se saltan; E2E, 7 de 7 (10 de 10 con las pruebas del sembrador).
+  - **Deuda de la 011** (revisión y suite completa, 28/11/2026; las medias y las bajas no abren ronda, D-31):
+    - **B-1 (pregunta para Bryan).** «Vence el 31/12» se muestra con la mensualidad del mes en curso en verificación: si el
+      Yape se rechaza, la familia ya vio la fecha. Propuesta: mostrar «Pago en verificación».
+    - **B-2 (pregunta para Bryan).** El resumen dice «te quedan N» por la matrícula en verificación, y «Mi asistencia» no
+      muestra clases restantes porque la matrícula es `null`. Propuesta: no mostrar restantes mientras la matrícula está
+      en verificación.
+    - **Rendimiento.** El chunk de la web pesa 1,15 MB, y Vite avisa de ello en el build.
+    - **E2E.** Las pruebas E2E dejan una academia por corrida en la base de pruebas.
 
 ## Fase 2: gestión académica
 
