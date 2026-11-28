@@ -352,7 +352,7 @@ La historia 009 (la 009a y la 009b, unidas a `main`) está en [`specs/009-asiste
 - **Lo que todavía no trae:** nada de lo que prometía la 010c. La inscripción pública al mes siguiente es de la 010d (abajo). La deuda de la 010c está en `specs/backlog.md`, en la nota de la 010.
 - **Cómo probarlo en tu PC:** con `npm run dev` encendido, abre un alumno con su mensualidad en **Alumnos y carnets** y pulsa **Cambiar horario** en la sección **Mensualidad**. El paso a paso está en la guía, en «Probar el cambio de horario».
 
-**010d · Inscripción pública al mes siguiente** está construida y pendiente de unir a `main` (28/11/2026). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas de ninguna severidad), la revisión (seis menores corregidos) y la suite completa (19 223 pasan, 0 fallan y 95 se saltan; el E2E, 6 de 6). Trae:
+**010d · Inscripción pública al mes siguiente** está unida a `main` (28/11/2026, PR #23). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas de ninguna severidad), la revisión (seis menores corregidos) y la suite completa (19 223 pasan, 0 fallan y 95 se saltan; el E2E, 6 de 6). Trae:
 
 - **El mes siguiente en el formulario público** (`/a/{nombreCorto}/inscripcion`, y **Nueva inscripción** de recepción): durante la ventana de renovación, el primer paso **¿Desde cuándo?** ofrece **Este mes, desde hoy** o el mes siguiente completo, desde el día 1. Fuera de la ventana, el formulario es el de siempre.
 - **Solo los lugares libres:** quien se inscribe para el mes siguiente toma los lugares que no están apartados para los alumnos que renuevan. El aforo nunca se pasa, aunque varias personas pidan el último lugar a la vez.
@@ -363,7 +363,7 @@ La historia 009 (la 009a y la 009b, unidas a `main`) está en [`specs/009-asiste
 - **Lo que todavía no trae:** nada de la 010. La deuda de la 010d está en `specs/backlog.md`, en la nota de la 010.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, abre http://localhost:5173/a/delfines/inscripcion en los últimos días del mes, o cambia **Días de prioridad para renovar** en **Configuración**. El paso a paso está en la guía, en «Probar la inscripción al mes siguiente». Todavía no está probada en la PC de Windows de Bryan.
 
-La historia 010 (la 010a, la 010b y la 010c, unidas a `main`; la 010d, construida y pendiente de unir) está en [`specs/010-mensualidades/`](specs/010-mensualidades/spec.md). Su estado está en [`specs/backlog.md`](specs/backlog.md).
+La historia 010 (la 010a, la 010b y la 010c, unidas a `main`; y la 010d en [`specs/010d-inscripcion-mes-siguiente/`](specs/010d-inscripcion-mes-siguiente/spec.md), todas unidas a `main`) está en [`specs/010-mensualidades/`](specs/010-mensualidades/spec.md). Su estado está en [`specs/backlog.md`](specs/backlog.md).
 
 ## Cómo levantarlo en Windows
 

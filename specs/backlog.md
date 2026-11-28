@@ -24,7 +24,7 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 008a | Carnet digital y QR | En parte | ✅ |
 | 008b | Foto desde el panel y cámara | En parte | ✅ |
 | 009 | Asistencia y faltas | Sí | ✅ |
-| 010 | Mensualidades y renovación | En parte | 🟨 |
+| 010 | Mensualidades y renovación | En parte | ✅ |
 | 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
 
 ### Notas
@@ -316,9 +316,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     [`specs/010-mensualidades/`](010-mensualidades/spec.md). Cuatro entregas: 010a renovación con prioridad (criterios 1 a 23,
     44 y 45), unida a main el 26/11/2026, [PR #20](https://github.com/brayanAndy1996/piscina/pull/20), tras dos rondas adversariales (criterios 44 y 45 nuevos); 010b estados y cierre de
     mes (24 a 33), unida a main el 27/11/2026, [PR #21](https://github.com/brayanAndy1996/piscina/pull/21), tras una ronda adversarial sin críticas ni altas; 010c cambio de horario (34 a 43 y 46), unida a main el 27/11/2026, [PR #22](https://github.com/brayanAndy1996/piscina/pull/22), tras una ronda adversarial sin críticas
-    ni altas; y 010d inscripción pública al mes siguiente (DR-10), construida el 28/11/2026 y pendiente de unir, tras una
+    ni altas; y 010d inscripción pública al mes siguiente (DR-10), unida a main el 28/11/2026, [PR #23](https://github.com/brayanAndy1996/piscina/pull/23), tras una
     ronda adversarial sin fallas ([`specs/010d-inscripcion-mes-siguiente/`](010d-inscripcion-mes-siguiente/spec.md)). Con
-    la 010d, las cuatro entregas de la 010 quedan hechas; la 010 pasa a ✅ al unir la 010d.
+    la 010d unida, las cuatro entregas de la 010 están en main y la 010 queda ✅. Sigue la 011, en curso.
   - **Deuda de la 010a** (revisión y suite completa, 26/11/2026; las medias y las bajas no abren ronda, D-31; las rondas no
     dejaron deuda abierta, y el detalle está en [`rondas.md`](010-mensualidades/rondas.md)):
     - **Menores de la revisión** (T15):
