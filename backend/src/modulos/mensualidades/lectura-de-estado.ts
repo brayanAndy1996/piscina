@@ -1,5 +1,6 @@
 import type { ClaseDeMensualidad, FilaDelListadoMensualidades } from '@aquagestion/contratos';
 import type { TransaccionAcademia } from '../../infraestructura/prisma';
+import type { MensualidadDeUnMes as MensualidadDeUnMesDe } from './dominio/mensualidad-elegida';
 import { type MesDeCalendario, textoDelMes } from './dominio/ventana';
 
 /**
@@ -26,10 +27,7 @@ export interface FilaDeMatricula {
 }
 
 /** Lo que se guarda de la mensualidad de un alumno en un mes: la pagada o, si no hay, la que está en verificación. */
-export interface MensualidadDeUnMes {
-  readonly pagada: boolean;
-  readonly fila: FilaDeMatricula;
-}
+export type MensualidadDeUnMes = MensualidadDeUnMesDe<FilaDeMatricula>;
 
 /** `AAAA-MM` de un mes de calendario: la clave de `agruparPorMes`. */
 export const claveDelMes = (mes: MesDeCalendario): string => textoDelMes(mes);

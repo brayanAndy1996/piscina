@@ -13,8 +13,8 @@ import { MENSAJE_SOLICITUD_INVALIDA } from '../../comun/validacion';
 import { BaseDatos } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { leerConfiguracion } from '../configuracion/lectura';
-import { estadoDeMensualidad } from './dominio/estado';
-import { type MesDeCalendario, mesDeTexto, mesSiguiente } from './dominio/ventana';
+import { elegirMensualidades } from './dominio/mensualidad-elegida';
+import { mesAnterior, mesDeTexto, mesSiguiente } from './dominio/ventana';
 import {
   agruparPorMes,
   claveDelMes,
@@ -35,8 +35,6 @@ interface Candidato {
 }
 
 const clave = claveDelMes;
-const mesAnterior = ({ anio, mes }: MesDeCalendario): MesDeCalendario =>
-  mes === 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 };
 
 /**
  * El listado de mensualidades (spec 010b, criterios 25 y 26; HU-11, DT-14). Una sola lectura de la academia de la sesión, sin bloqueos, sin escribir y
@@ -79,37 +77,29 @@ export class ListadoDeMensualidadesService {
 
       const candidatos: (Candidato & { estado: EstadoMensualidad })[] = [];
       for (const [alumnoId, meses] of porAlumno) {
-        const delMes = meses.get(clave(pedido));
-        const delAnterior = meses.get(clave(anterior));
-        const delSiguiente = esElMesEnCurso ? meses.get(clave(siguiente)) : undefined;
-        const estado = estadoDeMensualidad({
+        const {
+          estado,
+          actual,
+          siguiente: delSiguiente,
+        } = elegirMensualidades({
           hoy,
           mes: clave(pedido),
           diasPorVencer: configuracion.diasPorVencer,
-          pagadaDelMes: delMes?.pagada === true,
-          enVerificacionDelMes: delMes !== undefined && !delMes.pagada,
-          pagadaDelMesAnterior: delAnterior?.pagada === true,
-          siguiente: delSiguiente === undefined ? null : delSiguiente.pagada ? 'PAGADA' : 'EN_VERIFICACION',
+          meses,
         });
-        if (estado === null) continue;
-        const elegida = estado === 'VENCIDO' ? delAnterior : delMes;
-        if (elegida === undefined) continue;
-        const alumno = elegida.fila;
+        if (estado === null || actual === null) continue;
         candidatos.push({
           estado,
-          planId: alumno.plan_id,
-          claseIds: alumno.clases.map((clase) => clase.id),
+          planId: actual.plan_id,
+          claseIds: actual.clases.map((clase) => clase.id),
           fila: {
             alumnoId,
-            nombres: alumno.nombres,
-            apellidos: alumno.apellidos,
-            nivel: alumno.nivel,
+            nombres: actual.nombres,
+            apellidos: actual.apellidos,
+            nivel: actual.nivel,
             estado,
-            mensualidad: aMensualidad(alumno),
-            siguiente:
-              delSiguiente === undefined
-                ? null
-                : { mes: clave(siguiente), estado: delSiguiente.pagada ? 'PAGADA' : 'EN_VERIFICACION' },
+            mensualidad: aMensualidad(actual),
+            siguiente: delSiguiente === null ? null : { mes: delSiguiente.mes, estado: delSiguiente.estado },
           },
         });
       }

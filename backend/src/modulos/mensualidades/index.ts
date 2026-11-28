@@ -4,8 +4,6 @@
 //   CierreDeMesService.cerrar(ahora?)  el cierre de mes (010b); lo llama `CierreDeMesTarea` (módulo `TareasMensualidadesModule`, cargado solo con
 //     `TAREAS_PROGRAMADAS=activas`, la misma variable que controla la tarea de faltas de la 009b). El servicio está en `MensualidadesModule`, siempre cargado.
 //   estadoDeMensualidad(entrada)  el estado de la mensualidad de un alumno en un mes (010b, pura).
-//   leerMensualidadesParaEstado(tx, meses, alumnoId) y agruparPorMes(filas)  la lectura de las mensualidades que decide el estado, la misma del listado (010b) y del
-//     panel del alumno (011, DT-4); `tx` es la transacción de la academia de quien llama.
 // El cupo del mes siguiente (la 010d, las recuperaciones) se cuenta con `contarOcupacion` y `contarReservasDePrioridad` de `matriculas/` y la
 // función `cupoLibre` de `dominio/cupo.ts`, después de `bloquearClasesParaCupo`.
 export { MensualidadesModule } from './mensualidades.module';
@@ -16,11 +14,3 @@ export { estaPorVencer, mesesPermitidos, ventanaDeRenovacion, type VentanaDeReno
 export { CierreDeMesService, type ResultadoDelCierre } from './cierre-de-mes.service';
 export { TareasMensualidadesModule } from './tareas-mensualidades.module';
 export { estadoDeMensualidad, type EntradaDeEstado } from './dominio/estado';
-export {
-  agruparPorMes,
-  claveDelMes,
-  type FilaDeMatricula,
-  indiceDelMes,
-  leerMensualidadesParaEstado,
-  type MensualidadDeUnMes,
-} from './lectura-de-estado';

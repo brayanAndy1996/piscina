@@ -6,15 +6,17 @@ import { BaseDatos } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { leerAlumnoDeLaSesion } from '../alumnos';
 import { leerConfiguracion } from '../configuracion/lectura';
-import { mesDeTexto, mesSiguiente, textoDelMes } from '../mensualidades/dominio/ventana';
+import { elegirMensualidades } from '../mensualidades/dominio/mensualidad-elegida';
+import { mesAnterior, mesDeTexto, mesSiguiente, textoDelMes } from '../mensualidades/dominio/ventana';
 import {
   agruparPorMes,
   claveDelMes,
   type FilaDeMatricula,
   indiceDelMes,
   leerMensualidadesParaEstado,
+  type MensualidadDeUnMes,
 } from '../mensualidades/lectura-de-estado';
-import { elegirMensualidades, mesesDeAsistencia } from './dominio/mensualidad-del-panel';
+import { mesesDeAsistencia } from './dominio/mensualidad-del-panel';
 
 /**
  * El resumen del panel del alumno y del apoderado (spec 011, criterios 6 a 11; HU-06, D-08, D-14). Una sola transacción de la academia de la sesión, solo de lectura y
@@ -41,8 +43,7 @@ export class MiPanelService {
     const hoy = hoyEnLima(this.reloj.ahora());
     const mesEnCurso = hoy.slice(0, 7);
     const enCurso = mesDeTexto(mesEnCurso);
-    const anterior =
-      enCurso.mes === 1 ? { anio: enCurso.anio - 1, mes: 12 } : { anio: enCurso.anio, mes: enCurso.mes - 1 };
+    const anterior = mesAnterior(enCurso);
     const siguiente = mesSiguiente(enCurso);
 
     const leido = await this.baseDatos.conAcademia(academiaId, async (tx) => {
@@ -60,8 +61,9 @@ export class MiPanelService {
     const { alumno } = leido;
     const elegidas = elegirMensualidades({
       hoy,
+      mes: mesEnCurso,
       diasPorVencer: leido.diasPorVencer,
-      meses: agruparPorMes(leido.filas).get(alumno.id) ?? new Map(),
+      meses: agruparPorMes(leido.filas).get(alumno.id) ?? new Map<string, MensualidadDeUnMes>(),
     });
     return miPanelSchema.parse({
       hoy,
