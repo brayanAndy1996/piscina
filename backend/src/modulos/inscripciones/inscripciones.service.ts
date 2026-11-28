@@ -7,6 +7,7 @@ import {
   type DiaSemana,
   esMenorDeEdad,
   type EnviarInscripcion,
+  type MesesInscripcion,
   type PlanPublico,
   type RespuestaCotizacion,
   type RespuestaFormularioInscripcion,
@@ -34,7 +35,17 @@ import { actorDeSesion, bloquearActorVigente } from '../autenticacion/actor-vige
 import type { SesionVerificada } from '../autenticacion/tipos';
 import { bloquearClasesParaCupo } from '../clases';
 import { leerConfiguracion } from '../configuracion/lectura';
-import { type ClaseElegida, contarOcupacion, vencimientoDeReserva } from '../matriculas';
+import { type ClaseElegida, cuposParaInscripcionNueva, vencimientoDeReservaDelMes } from '../matriculas';
+import { cotizarRenovacion } from '../mensualidades/dominio/cotizacion';
+import {
+  mesDeTexto,
+  mesEnCurso,
+  mesesPermitidos,
+  mesSiguiente,
+  primerDiaDelMes,
+  textoDelMes,
+  ventanaDeRenovacion,
+} from '../mensualidades/dominio/ventana';
 import { estadoDelPlan, compararPlanes } from '../planes/dominio/plan';
 import { cotizarInscripcion } from './dominio/cotizacion';
 import { hashDeToken, nuevoCodigo, nuevoToken } from './dominio/codigos';
@@ -118,28 +129,60 @@ export class InscripcionesService {
   }
 
   // -------------------------------------------------------------------------------------------------------------------------------
-  // GET /api/a/{nombreCorto}/inscripcion (criterio 6)
+  // GET /api/a/{nombreCorto}/inscripcion/meses (010d, criterio 1)
   // -------------------------------------------------------------------------------------------------------------------------------
 
-  async leerFormulario(academia: AcademiaResuelta): Promise<RespuestaFormularioInscripcion> {
+  /**
+   * Los meses para los que se puede inscribir hoy: M siempre (desde hoy) y M+1 si la ventana de renovación está abierta (desde su día 1). La
+   * configuración se lee en la transacción, sin caché (un cambio confirmado vale para la petición siguiente). No escribe, no bloquea y no audita.
+   */
+  async leerMeses(academia: AcademiaResuelta): Promise<MesesInscripcion> {
     const ahora = this.reloj.ahora();
     const hoy = hoyEnLima(ahora);
-    const [anio = '0', mes = '0'] = hoy.split('-');
     return this.baseDatos.conAcademia(academia.id, async (tx) => {
       const configuracion = await leerConfiguracion(tx, { registro: this.registro });
-      const planes = (await leerPlanes(tx))
-        .filter((plan) => estadoDelPlan(plan, hoy) === 'VIGENTE')
-        .sort((a, b) => compararPlanes(a, b, COMPARADOR));
-      const clases = (await leerClasesActivas(tx)).sort(ordenDeClases);
-      const ocupacion = await contarOcupacion(
-        tx,
-        clases.map((clase) => clase.id),
-        { anio: Number(anio), mes: Number(mes) },
-        ahora,
-      );
+      const ventana = ventanaDeRenovacion(ahora, configuracion.diasPrioridadRenovacion);
+      const meses = [{ mes: textoDelMes(ventana.mes), fechaInicio: hoy, inscripcionHasta: ventana.hasta }];
+      if (ventana.abierta) {
+        const siguiente = mesSiguiente(ventana.mes);
+        meses.push({
+          mes: textoDelMes(siguiente),
+          fechaInicio: primerDiaDelMes(siguiente),
+          inscripcionHasta: ventana.hasta,
+        });
+      }
+      return { hoy, meses, aperturaMesSiguiente: ventana.abierta ? null : ventana.desde };
+    });
+  }
+
+  // -------------------------------------------------------------------------------------------------------------------------------
+  // GET /api/a/{nombreCorto}/inscripcion (criterio 6; con `?mes=`, 010d criterio 2)
+  // -------------------------------------------------------------------------------------------------------------------------------
+
+  /**
+   * Los datos del formulario. Sin `mes` o con M, lo de la 005. Con M+1 y la ventana abierta, los planes vigentes el día 1 y las clases con el cupo libre
+   * para una inscripción nueva en M+1 (con las reservas de prioridad, D-06). Un `mes` que no es de inscripción: `planes` y `clases` vacíos (DT-5).
+   */
+  async leerFormulario(academia: AcademiaResuelta, mesPedido?: string): Promise<RespuestaFormularioInscripcion> {
+    const ahora = this.reloj.ahora();
+    const hoy = hoyEnLima(ahora);
+    const mesActual = mesEnCurso(ahora);
+    const mesElegido = mesPedido ?? mesActual;
+    return this.baseDatos.conAcademia(academia.id, async (tx) => {
+      const configuracion = await leerConfiguracion(tx, { registro: this.registro });
+      const permitido =
+        mesElegido === mesActual || mesesPermitidos(ahora, configuracion.diasPrioridadRenovacion).includes(mesElegido);
+      const fechaDePlan = fechaDelPlan(mesElegido, mesActual, hoy);
+      const planes = permitido
+        ? (await leerPlanes(tx))
+            .filter((plan) => estadoDelPlan(plan, fechaDePlan) === 'VIGENTE')
+            .sort((a, b) => compararPlanes(a, b, COMPARADOR))
+        : [];
+      const clasesActivas = permitido ? (await leerClasesActivas(tx)).sort(ordenDeClases) : [];
+      const cupos = await cuposParaInscripcionNueva(tx, clasesActivas, mesDeTexto(mesElegido), ahora);
       const clasesConCupo: ClasePublica[] = [];
-      for (const clase of clases) {
-        const cuposRestantes = Math.max(0, clase.aforo - (ocupacion.get(clase.id) ?? 0));
+      for (const clase of clasesActivas) {
+        const cuposRestantes = Math.max(0, cupos.get(clase.id) ?? 0);
         if (cuposRestantes <= 0) continue;
         clasesConCupo.push({
           id: clase.id,
@@ -163,7 +206,7 @@ export class InscripcionesService {
       }));
       return {
         academia: { nombre: academia.nombre, telefono: configuracion.telefono },
-        mes: `${anio}-${mes}`,
+        mes: mesElegido,
         hoy,
         planes: planesPublicos,
         clases: clasesConCupo,
@@ -187,13 +230,18 @@ export class InscripcionesService {
   async cotizar(academia: AcademiaResuelta, datos: CotizarInscripcion): Promise<RespuestaCotizacion> {
     const ahora = this.reloj.ahora();
     const hoy = hoyEnLima(ahora);
+    const mesActual = mesEnCurso(ahora);
+    const mesElegido = datos.mes ?? mesActual;
     return this.baseDatos.conAcademia(academia.id, async (tx) => {
+      // Un mes que no es de inscripción (010d, DT-4): `MES_CAMBIO` con el mes en curso, antes de mirar el plan.
+      await this.exigirMesDeInscripcion(tx, mesElegido, mesActual, ahora);
+      const fechaDePlan = fechaDelPlan(mesElegido, mesActual, hoy);
       const plan = await leerPlan(tx, datos.planId);
-      if (!plan || !planDisponible(plan, datos.nivel, hoy)) throw planNoDisponible();
+      if (!plan || !planDisponible(plan, datos.nivel, fechaDePlan)) throw planNoDisponible();
       const clases = await leerClasesPorIds(tx, datos.claseIds);
       const errores = validarSeleccion(plan, datos.nivel, clases, datos.claseIds, 'claseIds');
       if (errores.length > 0) throw seleccionNoValida(errores);
-      const cotizacion = cotizarInscripcion(plan, clasesElegidas(clases, datos.claseIds), ahora);
+      const cotizacion = cotizarDelMes(plan, clasesElegidas(clases, datos.claseIds), mesElegido, mesActual, ahora);
       if (cotizacion.clasesRestantes === 0) throw sinClasesEnElMes();
       return { cotizacion };
     });
@@ -297,8 +345,7 @@ export class InscripcionesService {
     const dni = datos.alumno.dni;
     const claseIds = datos.inscripcion.claseIds.map((id) => id.toLowerCase());
     const planId = datos.inscripcion.planId.toLowerCase();
-    const [anioTexto = '0', mesTexto = '0'] = hoy.split('-');
-    const mesActual = `${anioTexto}-${mesTexto}`;
+    const mesActual = mesEnCurso(ahora);
 
     // 1. Bloqueos consultivos, siempre en este orden: la conexión de origen y después el DNI. Ordenan los envíos de una misma conexión
     //    (el límite del criterio 25) y de una misma persona (el DNI único, el reuso de un cliente y la idempotencia) sin llegar a
@@ -324,11 +371,15 @@ export class InscripcionesService {
     if (datos.consentimientos.version !== VERSION_CONSENTIMIENTOS) {
       throw textosActualizados(VERSION_CONSENTIMIENTOS, textosConsentimiento(academia.nombre, { menor }));
     }
-    if (datos.inscripcion.mes !== mesActual) throw mesCambio(mesActual);
+    //    Los meses de inscripción (010d, criterio 4): M siempre y M+1 con la ventana abierta, con la configuración leída en esta transacción
+    //    y el «ahora» de la petición (DT-6). Cualquier otro mes es `MES_CAMBIO`, en el mismo lugar del orden de siempre.
+    const mesElegido = datos.inscripcion.mes;
+    await this.exigirMesDeInscripcion(tx, mesElegido, mesActual, ahora);
 
-    // 4. El plan: activo, vigente hoy y para el nivel elegido (un mismo error para todos los casos).
+    // 4. El plan: activo, vigente el primer día del mes elegido (hoy para M) y para el nivel elegido (un mismo error para todos los casos).
+    const fechaDePlan = fechaDelPlan(mesElegido, mesActual, hoy);
     const plan = await leerPlan(tx, planId);
-    if (!plan || !planDisponible(plan, datos.alumno.nivel, hoy)) throw planNoDisponible();
+    if (!plan || !planDisponible(plan, datos.alumno.nivel, fechaDePlan)) throw planNoDisponible();
 
     // 5. La persona: filas del cliente (`alumnos`, `solicitudes_inscripcion`, `matriculas`) con `FOR UPDATE`.
     const cliente = await this.comprobarPersona(tx, dni, ahora);
@@ -348,21 +399,22 @@ export class InscripcionesService {
     const errores = validarSeleccion(plan, datos.alumno.nivel, bloqueadas, claseIds, 'inscripcion.claseIds');
     if (errores.length > 0) throw seleccionNoValida(errores);
     const elegidas = clasesElegidas(bloqueadas, claseIds);
-    const cotizacion = cotizarInscripcion(plan, elegidas, ahora);
+    const cotizacion = cotizarDelMes(plan, elegidas, mesElegido, mesActual, ahora);
     if (cotizacion.clasesRestantes === 0) throw sinClasesEnElMes();
 
     // 8. Cupo: ninguna clase puede pasar de su aforo. Se cuenta con las clases ya bloqueadas, así que dos envíos por el último cupo
-    //    se ordenan y exactamente uno entra.
-    const ocupacion = await contarOcupacion(tx, claseIds, { anio: Number(anioTexto), mes: Number(mesTexto) }, ahora);
-    const llenas = bloqueadas.filter((clase) => (ocupacion.get(clase.id) ?? 0) >= clase.aforo).map((clase) => clase.id);
+    //    se ordenan y exactamente uno entra. Una inscripción nueva en M+1 no toma un lugar apartado para un titular (010d, DT-8, D-06).
+    const cupos = await cuposParaInscripcionNueva(tx, bloqueadas, mesDeTexto(mesElegido), ahora);
+    const llenas = bloqueadas.filter((clase) => (cupos.get(clase.id) ?? 0) < 1).map((clase) => clase.id);
     if (llenas.length > 0) throw sinCupo(claseIds.filter((id) => llenas.includes(id)));
 
     // 9. El monto que vio el cliente es el que se guarda.
     if (!montosIguales(datos.inscripcion.montoMostrado, cotizacion.monto)) throw montoCambio(cotizacion);
 
     // 10. Escrituras.
-    // Las 24 horas o el fin del mes en Lima, lo que ocurra primero (criterio 54): nunca una reserva que cruce el mes.
-    const reservaVenceEn = vencimientoDeReserva(ahora);
+    // Las 24 horas o el fin del mes de la matrícula en Lima, lo que ocurra primero (criterio 54 de 005; 010d, DT-7): nunca una reserva que cruce el
+    // mes de la matrícula. Para M+1 son siempre las 24 horas.
+    const reservaVenceEn = vencimientoDeReservaDelMes(ahora, mesDeTexto(mesElegido));
     const alumnoId = await this.escribirPersona(tx, datos, cliente, menor, ahora);
     const token = nuevoToken();
     const { id: solicitudId, codigo } = await this.crearSolicitud(tx, {
@@ -396,6 +448,23 @@ export class InscripcionesService {
       ip: ipOrigen,
     });
     return { codigo, token, reservaVenceEn, cotizacion };
+  }
+
+  /**
+   * El mes elegido tiene que ser un mes de inscripción (010d, criterio 4): M siempre y M+1 con la ventana abierta, con la configuración leída en la
+   * transacción (solo si no es M) y el «ahora» de la petición (DT-6). Cualquier otro: 409 `MES_CAMBIO` con el mes en curso.
+   */
+  private async exigirMesDeInscripcion(
+    tx: TransaccionAcademia,
+    mesElegido: string,
+    mesActual: string,
+    ahora: Date,
+  ): Promise<void> {
+    if (mesElegido === mesActual) return;
+    const configuracion = await leerConfiguracion(tx, { registro: this.registro });
+    if (!mesesPermitidos(ahora, configuracion.diasPrioridadRenovacion).includes(mesElegido)) {
+      throw mesCambio(mesActual);
+    }
   }
 
   /**
@@ -705,9 +774,28 @@ interface ResultadoDelEnvio {
   cotizacion: Cotizacion;
 }
 
-/** ¿Se ofrece el plan hoy para ese nivel? Activo, vigente hoy (la fecha es la de Lima) y con el nivel entre los que aplica. */
+/** ¿Se ofrece el plan para ese nivel en esa fecha (hoy para M, el día 1 para M+1; la de Lima)? Activo, vigente ese día y con el nivel entre los que aplica. */
 function planDisponible(plan: PlanLeido, nivel: Parameters<typeof planAplicaAlNivel>[1], hoy: string): boolean {
   return estadoDelPlan(plan, hoy) === 'VIGENTE' && planAplicaAlNivel(plan, nivel);
+}
+
+/** La fecha con la que se mira la vigencia del plan: hoy para M y el día 1 del mes para M+1 (DT-5 de 010). */
+function fechaDelPlan(mesElegido: string, mesActual: string, hoy: string): string {
+  return mesElegido === mesActual ? hoy : primerDiaDelMes(mesDeTexto(mesElegido));
+}
+
+/**
+ * La cotización del mes de inscripción (010d, criterio 3): la de la 005 para el mes en curso (desde «ahora») y la de la renovación para el siguiente
+ * (desde las 00:00 de Lima del día 1, con el tope del plan).
+ */
+function cotizarDelMes(
+  plan: PlanLeido,
+  clases: readonly ClaseElegida[],
+  mes: string,
+  mesActual: string,
+  ahora: Date,
+): Cotizacion {
+  return mes === mesActual ? cotizarInscripcion(plan, clases, ahora) : cotizarRenovacion(plan, clases, mes, ahora);
 }
 
 /** Las clases elegidas en el orden pedido, con lo que necesita el conteo de clases restantes. Las que no vienen en `clases` se omiten. */

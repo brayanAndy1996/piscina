@@ -9,7 +9,7 @@ import {
 } from '@aquagestion/contratos';
 import { CampoCasilla } from '../../../componentes/ui';
 import { formatearSoles } from '../../../lib/dinero';
-import { formatearFechaCalendario, formatearMes } from '../../../lib/fechas';
+import { formatearFechaCalendario, formatearMes, formatearMesDesde } from '../../../lib/fechas';
 import { type FormularioInscripcion, mensajeDeError } from './comun';
 
 /** El monto a pagar y por qué: proporcional "N de M clases" si entra a mitad de mes, y que el precio ya incluye IGV (D-03, HU-34). */
@@ -65,6 +65,8 @@ export function PasoResumen({ form, nombreCompleto, nivel, plan, clases, cotizac
           <dd className="text-slate-900 mb-2 sm:mb-0">{NOMBRE_NIVEL[nivel]}</dd>
           <dt className="font-medium text-slate-600 sm:text-slate-800">Plan</dt>
           <dd className="break-words text-slate-900 mb-2 sm:mb-0">{plan.nombre}</dd>
+          <dt className="font-medium text-slate-600 sm:text-slate-800">Mes</dt>
+          <dd className="text-slate-900 mb-2 sm:mb-0">{formatearMesDesde(cotizacion.mes, cotizacion.fechaInicio)}</dd>
           <dt className="font-medium text-slate-600 sm:text-slate-800">Clases</dt>
           <dd className="text-slate-900 mb-2 sm:mb-0">
             <ul>

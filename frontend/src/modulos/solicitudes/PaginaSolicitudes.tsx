@@ -13,7 +13,7 @@ import { esErrorDeApi } from '../../api/cliente';
 import { enlaceTelefono } from '../../componentes/Telefono';
 import { Alerta, ESTILO_BOTON, Insignia } from '../../componentes/ui';
 import { formatearSoles } from '../../lib/dinero';
-import { formatearFechaHora, formatearMes } from '../../lib/fechas';
+import { formatearFechaHora, formatearMesDeInscripcion } from '../../lib/fechas';
 import { mensajeGeneral } from '../../lib/errores';
 import { ESTADO_DE_PAGO_EN_PALABRAS, ESTADO_EN_PALABRAS } from '../../lib/estado-solicitud';
 import { ETIQUETA_METODO } from '../caja/montos';
@@ -268,7 +268,7 @@ function TarjetaSolicitud({
         <dd className="mb-2 break-words text-slate-900 sm:mb-0">{solicitud.plan.nombre}</dd>
         <dt className="font-medium text-slate-600 sm:text-slate-800">Mes</dt>
         <dd className="mb-2 text-slate-900 sm:mb-0">
-          {formatearMes(solicitud.mes)} ({solicitud.clasesTotales} clases)
+          {formatearMesDeInscripcion(solicitud.mes)} ({solicitud.clasesTotales} clases)
         </dd>
         <dt className="font-medium text-slate-600 sm:text-slate-800">Días y horas</dt>
         <dd className="mb-2 text-slate-900 sm:col-span-3 sm:mb-0">

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { archivoDePrueba, error, llamadas, mostrar, peticiones, simularApi, simularUrlLocal } from '../../pruebas-api';
 import { Rutas } from '../../rutas/Rutas';
 
@@ -486,5 +486,45 @@ describe('"Subir foto" en el seguimiento (criterio 44, 005b)', () => {
     await usuario.upload(entradaDeFoto(), archivoDePrueba('dos.png', 'image/png'));
     expect(urls.liberar).toHaveBeenCalledWith('blob:prueba-1');
     expect(urls.liberar).not.toHaveBeenCalledWith('blob:prueba-2');
+  });
+});
+
+describe('El mes de la inscripción en el seguimiento (010d, criterio 18)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-28T15:00:00.000Z') });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('una inscripción al mes siguiente dice el mes y desde qué día empieza', async () => {
+    servidor(() => ({ estado: 200, cuerpo: respuesta({ mes: '2026-12', esProporcional: false }) }));
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    const solicitud = await screen.findByRole('article', { name: 'Tu solicitud' });
+    expect(within(solicitud).getByText('Diciembre de 2026, desde el 1/12')).toBeInTheDocument();
+  });
+
+  it('una inscripción al mes en curso se ve como siempre, sin "desde"', async () => {
+    servidor(() => ({ estado: 200, cuerpo: respuesta() }));
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    const solicitud = await screen.findByRole('article', { name: 'Tu solicitud' });
+    expect(within(solicitud).getByText('noviembre de 2026')).toBeInTheDocument();
+    expect(within(solicitud).queryByText(/desde el 1\//)).not.toBeInTheDocument();
+  });
+
+  it('la vista reducida de una solicitud vencida para el mes siguiente también lo dice', async () => {
+    servidor(() => ({
+      estado: 200,
+      cuerpo: respuesta({
+        estado: 'VENCIDA',
+        mes: '2026-12',
+        nombres: undefined,
+        reservaVenceEn: undefined,
+        fotoCargada: undefined,
+      }),
+    }));
+    mostrar(`/a/delfines/solicitud/${TOKEN}`);
+    const solicitud = await screen.findByRole('article', { name: 'Tu solicitud' });
+    expect(within(solicitud).getByText('Diciembre de 2026, desde el 1/12')).toBeInTheDocument();
   });
 });

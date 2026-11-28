@@ -27,7 +27,7 @@ export interface ResultadoDelCierre {
  * 1. La lista de academias `ACTIVA` se lee con `comoPlataforma`; esa transacción se cierra (nota O1 de 001). Una academia suspendida no se procesa.
  * 2. Después, un `conAcademia` por academia, una tras otra. Cada uno empieza con `pg_try_advisory_xact_lock('cierre-de-mes:' || academia)`: si otra
  *    instancia tiene ese bloqueo, se salta esa academia en esta vuelta (no espera) y la siguiente la procesa. Es un bloqueo de transacción: se suelta solo.
- * 3. Los alumnos afectados, sin bloquear: los que tienen una matrícula `VIGENTE` de un mes anterior a M, los `ALUMNO_ACTIVO` sin matrícula `VIGENTE` de M y los
+ * 3. Los alumnos afectados, sin bloquear: los que tienen una matrícula `VIGENTE` de un mes anterior a M, los `ALUMNO_ACTIVO` sin matrícula `VIGENTE` de M ni de M+1 (010d, criterio 11, DR-2: quien ya pagó el mes siguiente sigue activo) y los
  *    `ALUMNO_VENCIDO` con ella. `CLIENTE` e `INACTIVO` no cambian de estado (sus matrículas viejas sí se finalizan).
  * 4. Orden de bloqueos (el de la 009, la 009b, la 007a y la 010a, así que no hay ciclos): las filas de esos alumnos con `FOR UPDATE`, ordenadas por id → sus
  *    matrículas `VIGENTE` con `FOR UPDATE`, ordenadas por id. Con los alumnos bloqueados, nadie más puede confirmar ni crear una matrícula de ellos.
@@ -126,7 +126,7 @@ export class CierreDeMesService {
                          AND (m.anio::int * 12 + m.mes::int - 1) < ${indiceDelMesEnCurso}::int)
               OR (a.estado = 'ALUMNO_ACTIVO' AND NOT EXISTS (SELECT 1 FROM matriculas m
                                                               WHERE m.academia_id = a.academia_id AND m.alumno_id = a.id AND m.estado = 'VIGENTE'
-                                                                AND (m.anio::int * 12 + m.mes::int - 1) = ${indiceDelMesEnCurso}::int))
+                                                                AND (m.anio::int * 12 + m.mes::int - 1) IN (${indiceDelMesEnCurso}::int, ${indiceDelMesEnCurso}::int + 1)))
               OR (a.estado = 'ALUMNO_VENCIDO' AND EXISTS (SELECT 1 FROM matriculas m
                                                            WHERE m.academia_id = a.academia_id AND m.alumno_id = a.id AND m.estado = 'VIGENTE'
                                                              AND (m.anio::int * 12 + m.mes::int - 1) = ${indiceDelMesEnCurso}::int)))
@@ -161,7 +161,7 @@ export class CierreDeMesService {
        WHERE a.academia_id = ${tx.academiaId}::uuid AND a.id = ANY(${alumnos}::uuid[])
          AND ((a.estado = 'ALUMNO_ACTIVO' AND NOT EXISTS (SELECT 1 FROM matriculas m
                                                            WHERE m.academia_id = a.academia_id AND m.alumno_id = a.id AND m.estado = 'VIGENTE'
-                                                             AND (m.anio::int * 12 + m.mes::int - 1) = ${mesParaEscribir}::int))
+                                                             AND (m.anio::int * 12 + m.mes::int - 1) IN (${mesParaEscribir}::int, ${mesParaEscribir}::int + 1)))
               OR (a.estado = 'ALUMNO_VENCIDO' AND EXISTS (SELECT 1 FROM matriculas m
                                                            WHERE m.academia_id = a.academia_id AND m.alumno_id = a.id AND m.estado = 'VIGENTE'
                                                              AND (m.anio::int * 12 + m.mes::int - 1) = ${mesParaEscribir}::int)))

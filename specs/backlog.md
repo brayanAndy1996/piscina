@@ -315,8 +315,10 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
   - Estado: spec aprobada por Bryan el 26/11/2026 (DR-1 a DR-12, cambios A1, A2 y A3 a pruebas protegidas; DT-1 a DT-30), en
     [`specs/010-mensualidades/`](010-mensualidades/spec.md). Cuatro entregas: 010a renovación con prioridad (criterios 1 a 23,
     44 y 45), unida a main el 26/11/2026, [PR #20](https://github.com/brayanAndy1996/piscina/pull/20), tras dos rondas adversariales (criterios 44 y 45 nuevos); 010b estados y cierre de
-    mes (24 a 33), unida a main el 27/11/2026, [PR #21](https://github.com/brayanAndy1996/piscina/pull/21), tras una ronda adversarial sin críticas ni altas; 010c cambio de horario (34 a 43 y 46), construida el 27/11/2026 y pendiente de unir, tras una ronda adversarial sin críticas
-    ni altas; y 010d inscripción pública al mes siguiente (DR-10; T35 en `tasks.md`, por especificar con la 010c unida).
+    mes (24 a 33), unida a main el 27/11/2026, [PR #21](https://github.com/brayanAndy1996/piscina/pull/21), tras una ronda adversarial sin críticas ni altas; 010c cambio de horario (34 a 43 y 46), unida a main el 27/11/2026, [PR #22](https://github.com/brayanAndy1996/piscina/pull/22), tras una ronda adversarial sin críticas
+    ni altas; y 010d inscripción pública al mes siguiente (DR-10), construida el 28/11/2026 y pendiente de unir, tras una
+    ronda adversarial sin fallas ([`specs/010d-inscripcion-mes-siguiente/`](010d-inscripcion-mes-siguiente/spec.md)). Con
+    la 010d, las cuatro entregas de la 010 quedan hechas; la 010 pasa a ✅ al unir la 010d.
   - **Deuda de la 010a** (revisión y suite completa, 26/11/2026; las medias y las bajas no abren ronda, D-31; las rondas no
     dejaron deuda abierta, y el detalle está en [`rondas.md`](010-mensualidades/rondas.md)):
     - **Menores de la revisión** (T15):
@@ -375,6 +377,25 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
       PC, con la guía de Windows («Probar el cambio de horario»).
     - **Pendiente de corregir:** el título con `$4096` de las pruebas del criterio 104 en
       `scripts/test/rol-app-ronda3.test.mjs` (líneas 314 y 418).
+  - **Deuda de la 010d** (ronda 1 del ataque y revisión, 28/11/2026; el ataque no encontró fallas de ninguna severidad, así
+    que lo que sigue es de herramientas, de mensajes, de pruebas manuales y de arquitectura; el detalle está en
+    [`rondas.md`](010d-inscripcion-mes-siguiente/rondas.md)):
+    - **(a) Verificador de pruebas protegidas** (**requiere aprobación de Bryan**: es tooling de la 000).
+      `scripts/verificar-pruebas-protegidas.mjs` solo reconoce marcas y títulos con tres dígitos (`PATRON_MARCA` y
+      `PATRON_TITULO`, con `\d{3}`). Una marca como `010d-…` deja el archivo sin proteger en silencio: pasó en la 010d y se
+      resolvió con DT-15 del plan (la marca es `010-mensualidades`, sin tocar el verificador). Propuesta: que el verificador
+      falle cuando aparece una marca o un título casi válido, para que el error se vea en la CI y no en silencio.
+    - **(b) Mensaje de la API para `SIN_CLASES_EN_EL_MES`.** `backend/src/modulos/inscripciones/errores.ts` sigue diciendo
+      «Vuelve el primer día del mes siguiente». La web lo reemplaza con el aviso de apertura («Las inscripciones para
+      diciembre se abren el 26/11.») o con «Puedes volver al primer paso y elegir diciembre completo.»; el texto de la API
+      solo se ve cuando la ventana está abierta y el mes elegido ya es el siguiente.
+    - **(c) Flujo completo en Windows.** La web de la 010d se verificó con la API simulada. Las pantallas de solicitudes y de
+      la bandeja de pagos solo tienen pruebas de componentes. Bryan debe probar el flujo completo en su PC, con la guía de
+      Windows («Probar la inscripción al mes siguiente»).
+    - **(d) Dependencia conceptual `matriculas` → `mensualidades/dominio`** (DT-13; sin ciclos de archivos).
+      `matriculas/cupo-para-nuevos.ts` importa `cupoLibre` de `mensualidades/dominio/cupo.ts` y `mesSiguiente` de
+      `mensualidades/dominio/ventana.ts`; `inscripciones` importa de `ventana.ts` y de `dominio/cotizacion.ts`. Si crece,
+      subir `cupo.ts` y `ventana.ts` a un módulo común.
   - Nota de 003: "por vencer" (`diasPorVencer`) y la prioridad de renovación (`diasPrioridadRenovacion`) los leerá
     `leerConfiguracion(tx)` dentro de la transacción de la operación, sin caché. Son valores aparte: cambiar uno no cambia
     el otro (DR-3 de 003).

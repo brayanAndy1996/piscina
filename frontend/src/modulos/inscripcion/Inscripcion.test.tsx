@@ -100,6 +100,18 @@ const COTIZACION = {
   esProporcional: true,
 };
 
+const COTIZACION_DICIEMBRE = {
+  mes: '2026-12',
+  fechaInicio: '2026-12-01',
+  fechaFin: '2026-12-31',
+  clasesRestantes: 8,
+  clasesTotales: 8,
+  clasesPorMes: 8,
+  precioPlan: '90.00',
+  monto: '90.00',
+  esProporcional: false,
+};
+
 const CREADA = {
   solicitud: {
     codigo: 'AQ-7F3K9X',
@@ -111,14 +123,31 @@ const CREADA = {
   },
 };
 
+const CREADA_DICIEMBRE = {
+  solicitud: { ...CREADA.solicitud, reservaVenceEn: '2026-11-28T15:00:00.000Z', cotizacion: COTIZACION_DICIEMBRE },
+};
+
 const GET_ACADEMIA = 'GET /api/a/delfines';
-const GET_OFERTA = 'GET /api/a/delfines/inscripcion';
+const GET_MESES = 'GET /api/a/delfines/inscripcion/meses';
+const GET_OFERTA = 'GET /api/a/delfines/inscripcion?mes=2026-11';
+const GET_OFERTA_DICIEMBRE = 'GET /api/a/delfines/inscripcion?mes=2026-12';
 const POST_COTIZACION = 'POST /api/a/delfines/inscripcion/cotizacion';
 const POST_ENVIO = 'POST /api/a/delfines/inscripcion';
 const PUT_FOTO = 'PUT /api/a/delfines/solicitudes/foto';
 
+/** Los meses de inscripción: con la ventana cerrada, solo el mes en curso; el 26/11 de 2026 con 5 días, también diciembre. */
+function meses(extra: Record<string, unknown> = {}) {
+  return {
+    hoy: '2026-11-20',
+    meses: [{ mes: '2026-11', fechaInicio: '2026-11-20', inscripcionHasta: '2026-11-30' }],
+    aperturaMesSiguiente: '2026-11-26',
+    ...extra,
+  };
+}
+
 function servidor(extra: Record<string, Manejador> = {}) {
   return simularApi({
+    [GET_MESES]: () => ({ estado: 200, cuerpo: meses() }),
     [GET_ACADEMIA]: () => ({
       estado: 200,
       cuerpo: { nombreCorto: 'delfines', nombre: NOMBRE, telefono: TELEFONO },
@@ -396,7 +425,9 @@ describe('Formulario de inscripción: cotización y envío (criterio 43)', () =>
     const user = await abrir();
     await llegarAlResumen(user);
 
-    expect(llamadas(api, POST_COTIZACION)).toEqual([{ planId: P2, nivel: 'BASICO', claseIds: [C_LUN_17, C_MIE_18] }]);
+    expect(llamadas(api, POST_COTIZACION)).toEqual([
+      { planId: P2, nivel: 'BASICO', claseIds: [C_LUN_17, C_MIE_18], mes: '2026-11' },
+    ]);
     const monto = screen.getByRole('region', { name: 'Monto a pagar' });
     expect(within(monto).getByText('S/ 34.00')).toBeInTheDocument();
     expect(within(monto).getByText(/Proporcional: 3 de 8 clases/)).toBeInTheDocument();
@@ -585,7 +616,12 @@ describe('Formulario de inscripción: respuestas de la API que piden otra decisi
     await elegirClase(user, 'Lunes', /18:00 a 19:00/);
     await pasarPorLaFotoAlResumen(user);
     expect(llamadas(api, POST_COTIZACION)).toHaveLength(2);
-    expect(llamadas(api, POST_COTIZACION)[1]).toEqual({ planId: P2, nivel: 'BASICO', claseIds: [C_MIE_18, C_LUN_18] });
+    expect(llamadas(api, POST_COTIZACION)[1]).toEqual({
+      planId: P2,
+      nivel: 'BASICO',
+      claseIds: [C_MIE_18, C_LUN_18],
+      mes: '2026-11',
+    });
   });
 
   it('MONTO_CAMBIO: muestra el monto nuevo y pide confirmar antes de enviar otra vez, con la misma clave', async () => {
@@ -613,44 +649,56 @@ describe('Formulario de inscripción: respuestas de la API que piden otra decisi
     expect(cuerpoDeEnvio(api, 1)['claveIdempotencia']).toBe(cuerpoDeEnvio(api, 0)['claveIdempotencia']);
   });
 
-  it('MES_CAMBIO: vuelve a cotizar, muestra el monto nuevo y pide confirmar', async () => {
+  it('MES_CAMBIO con un solo mes: pide los meses y la oferta otra vez y pide elegir el plan y las clases de nuevo', async () => {
+    let pedidosDeMeses = 0;
     let envios = 0;
-    let cotizaciones = 0;
     const api = servidor({
-      [POST_COTIZACION]: () => {
-        cotizaciones += 1;
+      [GET_MESES]: () => {
+        pedidosDeMeses += 1;
         return {
           estado: 200,
-          cuerpo: {
-            cotizacion:
-              cotizaciones === 1
-                ? COTIZACION
-                : {
-                    ...COTIZACION,
-                    mes: '2026-12',
-                    fechaInicio: '2026-12-01',
-                    fechaFin: '2026-12-31',
-                    clasesTotales: 8,
-                    monto: '90.00',
-                    esProporcional: false,
-                  },
-          },
+          cuerpo:
+            pedidosDeMeses === 1
+              ? meses()
+              : meses({
+                  hoy: '2026-12-01',
+                  meses: [{ mes: '2026-12', fechaInicio: '2026-12-01', inscripcionHasta: '2026-12-31' }],
+                  aperturaMesSiguiente: '2026-12-27',
+                }),
         };
       },
+      [GET_OFERTA_DICIEMBRE]: () => ({ estado: 200, cuerpo: oferta({ mes: '2026-12', hoy: '2026-12-01' }) }),
+      [POST_COTIZACION]: (cuerpo) => ({
+        estado: 200,
+        cuerpo: { cotizacion: (cuerpo as { mes?: string }).mes === '2026-12' ? COTIZACION_DICIEMBRE : COTIZACION },
+      }),
       [POST_ENVIO]: () => {
         envios += 1;
-        return envios === 1 ? error('MES_CAMBIO', 409, { mes: '2026-12' }) : { estado: 201, cuerpo: CREADA };
+        return envios === 1 ? error('MES_CAMBIO', 409, { mes: '2026-12' }) : { estado: 201, cuerpo: CREADA_DICIEMBRE };
       },
     });
     const user = await abrir();
     await llegarAlResumen(user);
     await aceptarYEnviar(user);
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('El nuevo monto es S/ 90.00'));
-    expect(
-      within(screen.getByRole('region', { name: 'Monto a pagar' })).getByText(/diciembre de 2026/),
-    ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Confirmar el nuevo monto y enviar' }));
+    // Sin mes que elegir (un solo mes), vuelve al plan con la oferta de diciembre y nada elegido.
+    await screen.findByRole('heading', { name: 'Plan y horario' });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Cambió el mes desde que empezaste la inscripción. Elige otra vez el plan y las clases.',
+    );
+    expect(llamadas(api, GET_MESES)).toHaveLength(2);
+    await waitFor(() => expect(llamadas(api, GET_OFERTA_DICIEMBRE)).toHaveLength(1));
+    expect(screen.queryByRole('radio', { checked: true })).not.toBeInTheDocument();
+    expect(llamadas(api, POST_ENVIO)).toHaveLength(1);
+
+    await user.click(await screen.findByLabelText(/Plan 2 veces/));
+    await elegirClase(user, 'Lunes', /17:00 a 18:00/);
+    await elegirClase(user, 'Miércoles', /18:00 a 19:00/);
+    await pasarPorLaFotoAlResumen(user);
+    expect(llamadas(api, POST_COTIZACION)[1]).toMatchObject({ mes: '2026-12' });
+    expect(screen.getByText('Diciembre de 2026, desde el 1/12')).toBeInTheDocument();
+    // Los consentimientos que ya aceptó siguen aceptados: solo falta enviar.
+    await user.click(screen.getByRole('button', { name: 'Enviar inscripción' }));
     await screen.findByRole('heading', { name: 'Tu solicitud quedó registrada' });
     expect(cuerpoDeEnvio(api, 1)['inscripcion']).toMatchObject({ mes: '2026-12', montoMostrado: '90.00' });
   });
@@ -731,15 +779,31 @@ describe('Formulario de inscripción: respuestas de la API que piden otra decisi
     await waitFor(() => expect(llamadas(api, GET_OFERTA)).toHaveLength(2));
   });
 
-  it('SIN_CLASES_EN_EL_MES: avisa y no pasa al resumen', async () => {
+  it('SIN_CLASES_EN_EL_MES: avisa desde qué fecha se abre el mes siguiente y no pasa al resumen (DR-4)', async () => {
     servidor({ [POST_COTIZACION]: () => error('SIN_CLASES_EN_EL_MES', 409) });
     const user = await abrir();
     await llenarDatos(user, '2000-05-10', 'Ficha médica');
     await llenarFicha(user, 'Plan y horario');
     await elegirPlanDeDos(user);
     await user.click(screen.getByRole('button', { name: 'Siguiente' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Mensaje de SIN_CLASES_EN_EL_MES');
+    const alerta = await screen.findByRole('alert');
+    expect(alerta).toHaveTextContent('Ya no quedan clases este mes con las clases elegidas.');
+    expect(alerta).toHaveTextContent('Las inscripciones para diciembre se abren el 26/11.');
+    expect(alerta).not.toHaveTextContent('Vuelve el primer día');
     expect(screen.queryByRole('heading', { name: 'Resumen y confirmación' })).not.toBeInTheDocument();
+  });
+
+  it('SIN_CLASES_EN_EL_MES sin mes siguiente a la vista ni fecha de apertura: muestra el mensaje de la API', async () => {
+    servidor({
+      [GET_MESES]: () => ({ estado: 200, cuerpo: meses({ aperturaMesSiguiente: null }) }),
+      [POST_COTIZACION]: () => error('SIN_CLASES_EN_EL_MES', 409),
+    });
+    const user = await abrir();
+    await llenarDatos(user, '2000-05-10', 'Ficha médica');
+    await llenarFicha(user, 'Plan y horario');
+    await elegirPlanDeDos(user);
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Mensaje de SIN_CLASES_EN_EL_MES');
   });
 });
 
@@ -951,5 +1015,263 @@ describe('Formulario de inscripción: paso de la foto (criterio 43, 005b)', () =
     expect(screen.getByText('AQ-7F3K9X')).toBeInTheDocument();
     espera.resolver();
     expect(await screen.findByText('Foto cargada.')).toBeInTheDocument();
+  });
+});
+
+// --- Spec 010d, criterio 17: la inscripción al mes siguiente -----------------------------------------------------------------------
+
+describe('Formulario de inscripción: ¿Desde cuándo? con la ventana abierta (010d, criterio 17)', () => {
+  const MESES_DOS = {
+    hoy: '2026-11-27',
+    meses: [
+      { mes: '2026-11', fechaInicio: '2026-11-27', inscripcionHasta: '2026-11-30' },
+      { mes: '2026-12', fechaInicio: '2026-12-01', inscripcionHasta: '2026-11-30' },
+    ],
+    aperturaMesSiguiente: null,
+  };
+  // Los cupos de diciembre son otros (los lugares apartados de quienes ya renovaron no se ofrecen).
+  const CLASES_DICIEMBRE = [
+    clase(C_LUN_17, 'BASICO', 1, '17:00', 3),
+    clase(C_LUN_18, 'BASICO', 1, '18:00', 1),
+    clase(C_MIE_18, 'BASICO', 3, '18:00', 2),
+    clase(C_VIE_18, 'BASICO', 5, '18:00', 4),
+  ];
+
+  // Con `hoy` el 27/11, la cotización de este mes empieza el 27/11.
+  const COTIZACION_HOY_27 = { ...COTIZACION, fechaInicio: '2026-11-27' };
+
+  function servidorConDosMeses(extra: Record<string, Manejador> = {}) {
+    return servidor({
+      [GET_MESES]: () => ({ estado: 200, cuerpo: MESES_DOS }),
+      [GET_OFERTA]: () => ({ estado: 200, cuerpo: oferta({ hoy: '2026-11-27' }) }),
+      [GET_OFERTA_DICIEMBRE]: () => ({
+        estado: 200,
+        cuerpo: oferta({ mes: '2026-12', hoy: '2026-11-27', clases: CLASES_DICIEMBRE }),
+      }),
+      [POST_COTIZACION]: (cuerpo) => ({
+        estado: 200,
+        cuerpo: {
+          cotizacion: (cuerpo as { mes?: string }).mes === '2026-12' ? COTIZACION_DICIEMBRE : COTIZACION_HOY_27,
+        },
+      }),
+      [POST_ENVIO]: (cuerpo) => ({
+        estado: 201,
+        cuerpo: (cuerpo as { inscripcion: { mes: string } }).inscripcion.mes === '2026-12' ? CREADA_DICIEMBRE : CREADA,
+      }),
+      ...extra,
+    });
+  }
+
+  async function abrirEnElMes() {
+    const user = userEvent.setup();
+    mostrar('/a/delfines/inscripcion');
+    await screen.findByRole('heading', { name: '¿Desde cuándo?' });
+    return user;
+  }
+
+  async function elegirMes(user: ReturnType<typeof userEvent.setup>, opcion: RegExp) {
+    await user.click(screen.getByLabelText(opcion));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled());
+    await siguiente(user, 'Datos personales');
+  }
+
+  it('el primer paso pregunta ¿Desde cuándo? con las dos opciones y la fecha límite, sin sugerir ninguna (DR-5)', async () => {
+    servidorConDosMeses();
+    await abrirEnElMes();
+    expect(screen.getByText('Paso 1 de 6')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Este mes, desde hoy/)).not.toBeChecked();
+    expect(screen.getByLabelText(/Diciembre completo, desde el 1/)).not.toBeChecked();
+    expect(screen.getByText('Puedes elegir diciembre hasta el 30/11.')).toBeInTheDocument();
+    expect(screen.queryByText(/recomend|último día|aprovech|prioridad/i)).not.toBeInTheDocument();
+    // La lista de pasos de la pantalla ancha incluye el del mes.
+    expect(screen.getByText('1. ¿Desde cuándo?')).toBeInTheDocument();
+  });
+
+  it('no avanza sin elegir el mes', async () => {
+    servidorConDosMeses();
+    const user = await abrirEnElMes();
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    expect(screen.getByText('Elige desde cuándo quieres empezar.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '¿Desde cuándo?' })).toBeInTheDocument();
+  });
+
+  it('con diciembre elegido, la oferta, los cupos, la cotización y el envío son de diciembre, y el resumen y la confirmación dicen el mes', async () => {
+    const api = servidorConDosMeses();
+    const user = await abrirEnElMes();
+    await elegirMes(user, /Diciembre completo, desde el 1/);
+    await llenarDatos(user, '2000-05-10', 'Ficha médica');
+    await llenarFicha(user, 'Plan y horario');
+    expect(llamadas(api, GET_OFERTA_DICIEMBRE)).toHaveLength(1);
+    expect(screen.getByText('Los planes y los cupos son de diciembre de 2026.')).toBeInTheDocument();
+    await elegirPlanDeDos(user);
+    // Los cupos son los de diciembre.
+    expect(within(screen.getByRole('group', { name: 'Lunes' })).getByLabelText(/17:00 a 18:00/)).toHaveAccessibleName(
+      /3 cupos/,
+    );
+    await pasarPorLaFotoAlResumen(user);
+
+    expect(llamadas(api, POST_COTIZACION)).toEqual([
+      { planId: P2, nivel: 'BASICO', claseIds: [C_LUN_17, C_MIE_18], mes: '2026-12' },
+    ]);
+    const resumen = screen.getByRole('region', { name: 'Lo que elegiste' });
+    expect(within(resumen).getByText('Diciembre de 2026, desde el 1/12')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Monto a pagar' })).getByText('Monto a pagar por diciembre de 2026'),
+    ).toBeInTheDocument();
+
+    await aceptarYEnviar(user);
+    await screen.findByRole('heading', { name: 'Tu solicitud quedó registrada' });
+    expect(cuerpoDeEnvio(api)['inscripcion']).toMatchObject({ mes: '2026-12', montoMostrado: '90.00' });
+    expect(screen.getByText('Diciembre de 2026, desde el 1/12')).toBeInTheDocument();
+    expect(llamadas(api, GET_OFERTA)).toHaveLength(0);
+  });
+
+  it('con este mes elegido, pide la oferta de este mes y lo dice en el resumen con la fecha de hoy', async () => {
+    const api = servidorConDosMeses();
+    const user = await abrirEnElMes();
+    await elegirMes(user, /Este mes, desde hoy/);
+    await llenarDatos(user, '2000-05-10', 'Ficha médica');
+    await llenarFicha(user, 'Plan y horario');
+    await elegirPlanDeDos(user);
+    await pasarPorLaFotoAlResumen(user);
+    expect(llamadas(api, GET_OFERTA)).toHaveLength(1);
+    expect(llamadas(api, POST_COTIZACION)[0]).toMatchObject({ mes: '2026-11' });
+    const resumen = screen.getByRole('region', { name: 'Lo que elegiste' });
+    expect(within(resumen).getByText('Noviembre de 2026, desde el 27/11')).toBeInTheDocument();
+  });
+
+  it('cambiar de mes descarta el plan, las clases y la cotización y pide la oferta del otro mes', async () => {
+    const api = servidorConDosMeses();
+    const user = await abrirEnElMes();
+    await elegirMes(user, /Este mes, desde hoy/);
+    await llenarDatos(user, '2000-05-10', 'Ficha médica');
+    await llenarFicha(user, 'Plan y horario');
+    await elegirPlanDeDos(user);
+    await user.click(screen.getByRole('button', { name: 'Atrás' }));
+    await user.click(screen.getByRole('button', { name: 'Atrás' }));
+    await user.click(screen.getByRole('button', { name: 'Atrás' }));
+    await screen.findByRole('heading', { name: '¿Desde cuándo?' });
+    expect(screen.getByLabelText(/Este mes, desde hoy/)).toBeChecked();
+    await user.click(screen.getByLabelText(/Diciembre completo, desde el 1/));
+    await waitFor(() => expect(llamadas(api, GET_OFERTA_DICIEMBRE)).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled());
+    await siguiente(user, 'Datos personales');
+    // Lo escrito en los datos sigue ahí; el plan y las clases no.
+    expect(screen.getByLabelText('Nombres')).toHaveValue('Lucía Fernanda');
+    await siguiente(user, 'Ficha médica');
+    await siguiente(user, 'Plan y horario');
+    expect(screen.getByLabelText(/Plan 2 veces/)).not.toBeChecked();
+    expect(screen.queryByText(/Elegiste/)).not.toBeInTheDocument();
+  });
+
+  it('si la oferta del mes elegido no carga, ofrece reintentar sin avanzar', async () => {
+    let intentos = 0;
+    servidorConDosMeses({
+      [GET_OFERTA_DICIEMBRE]: () => {
+        intentos += 1;
+        return intentos === 1
+          ? error('ERROR_INTERNO', 500)
+          : { estado: 200, cuerpo: oferta({ mes: '2026-12', hoy: '2026-11-27', clases: CLASES_DICIEMBRE }) };
+      },
+    });
+    const user = await abrirEnElMes();
+    await user.click(screen.getByLabelText(/Diciembre completo, desde el 1/));
+    await user.click(await screen.findByRole('button', { name: 'Reintentar' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled());
+    await siguiente(user, 'Datos personales');
+  });
+
+  it('MES_CAMBIO pide la oferta otra vez aunque no se puedan recargar los meses', async () => {
+    let pedidosDeMeses = 0;
+    let envios = 0;
+    const api = servidor({
+      [GET_MESES]: () => {
+        pedidosDeMeses += 1;
+        return pedidosDeMeses === 1 ? { estado: 200, cuerpo: meses() } : error('ERROR_INTERNO', 500);
+      },
+      [POST_ENVIO]: () => {
+        envios += 1;
+        return error('MES_CAMBIO', 409, { mes: '2026-12' });
+      },
+    });
+    const user = await abrir();
+    await llegarAlResumen(user);
+    const ofertasAntes = llamadas(api, GET_OFERTA).length;
+    await aceptarYEnviar(user);
+    await screen.findByRole('heading', { name: 'Plan y horario' });
+    expect(pedidosDeMeses).toBe(2);
+    expect(envios).toBe(1);
+    await waitFor(() => expect(llamadas(api, GET_OFERTA).length).toBeGreaterThan(ofertasAntes));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cambió el mes desde que empezaste la inscripción.');
+  });
+
+  it('MES_CAMBIO con dos meses: pide los meses y la oferta otra vez y vuelve al paso del mes sin nada elegido', async () => {
+    let pedidosDeMeses = 0;
+    let envios = 0;
+    const api = servidorConDosMeses({
+      [GET_MESES]: () => {
+        pedidosDeMeses += 1;
+        return { estado: 200, cuerpo: MESES_DOS };
+      },
+      [POST_ENVIO]: () => {
+        envios += 1;
+        return envios === 1 ? error('MES_CAMBIO', 409, { mes: '2026-11' }) : { estado: 201, cuerpo: CREADA };
+      },
+    });
+    const user = await abrirEnElMes();
+    await elegirMes(user, /Diciembre completo, desde el 1/);
+    await llenarDatos(user, '2000-05-10', 'Ficha médica');
+    await llenarFicha(user, 'Plan y horario');
+    await elegirPlanDeDos(user);
+    await pasarPorLaFotoAlResumen(user);
+    await aceptarYEnviar(user);
+
+    await screen.findByRole('heading', { name: '¿Desde cuándo?' });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Cambió el mes desde que empezaste la inscripción. Elige otra vez desde cuándo quieres empezar.',
+    );
+    expect(pedidosDeMeses).toBe(2);
+    expect(screen.getByLabelText(/Este mes, desde hoy/)).not.toBeChecked();
+    expect(screen.getByLabelText(/Diciembre completo, desde el 1/)).not.toBeChecked();
+    expect(llamadas(api, POST_ENVIO)).toHaveLength(1);
+
+    // Elige otra vez y la oferta se pide de nuevo.
+    await elegirMes(user, /Diciembre completo, desde el 1/);
+    // La oferta de diciembre: la primera vez, la recarga que pide el MES_CAMBIO y la de la nueva elección.
+    await waitFor(() => expect(llamadas(api, GET_OFERTA_DICIEMBRE)).toHaveLength(3));
+  });
+
+  it('SIN_CLASES_EN_EL_MES con la ventana abierta: dice que se puede elegir el mes siguiente completo', async () => {
+    servidorConDosMeses({ [POST_COTIZACION]: () => error('SIN_CLASES_EN_EL_MES', 409) });
+    const user = await abrirEnElMes();
+    await elegirMes(user, /Este mes, desde hoy/);
+    await llenarDatos(user, '2000-05-10', 'Ficha médica');
+    await llenarFicha(user, 'Plan y horario');
+    await elegirPlanDeDos(user);
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Ya no quedan clases este mes con las clases elegidas. Puedes volver al primer paso y elegir diciembre completo.',
+    );
+  });
+
+  it('con un solo mes no hay paso del mes y el formulario es el de siempre', async () => {
+    servidor();
+    await abrir();
+    expect(screen.getByText('Paso 1 de 5')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '¿Desde cuándo?' })).not.toBeInTheDocument();
+  });
+
+  it('si no cargan los meses, ofrece reintentar', async () => {
+    let intentos = 0;
+    servidor({
+      [GET_MESES]: () => {
+        intentos += 1;
+        return intentos === 1 ? error('ERROR_INTERNO', 500) : { estado: 200, cuerpo: meses() };
+      },
+    });
+    const user = userEvent.setup();
+    mostrar('/a/delfines/inscripcion');
+    await user.click(await screen.findByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByRole('heading', { name: 'Datos personales' })).toBeInTheDocument();
   });
 });

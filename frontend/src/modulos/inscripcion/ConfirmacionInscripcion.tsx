@@ -2,7 +2,7 @@ import { puede, type RespuestaInscripcionCreada } from '@aquagestion/contratos';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Alerta, Aviso, ESTILO_BOTON } from '../../componentes/ui';
-import { formatearFechaHora } from '../../lib/fechas';
+import { formatearFechaHora, formatearMesDesde } from '../../lib/fechas';
 import { formatearSoles } from '../../lib/dinero';
 import { frasePorTelefono } from '../../componentes/Telefono';
 import { useSesionAcademia } from '../sesion/hooks';
@@ -127,6 +127,11 @@ export function ConfirmacionInscripcion({
       </section>
 
       <CuadroDeMonto cotizacion={solicitud.cotizacion} />
+
+      <p className="text-slate-800">
+        Tu inscripción es para:{' '}
+        <strong>{formatearMesDesde(solicitud.cotizacion.mes, solicitud.cotizacion.fechaInicio)}</strong>.
+      </p>
 
       <EnlaceDeRecepcion />
 

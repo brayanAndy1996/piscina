@@ -242,6 +242,8 @@ export const cotizarInscripcionSchema = z.strictObject({
   planId: z.uuid('El plan no es válido.'),
   nivel: nivelNatacionSchema,
   claseIds: claseIdsSchema,
+  /** El mes de inscripción (010d, criterio 3): sin él, el mes en curso; con él, el mes en curso o el siguiente si la ventana está abierta. */
+  mes: mesSchema.optional(),
 });
 export type CotizarInscripcion = z.infer<typeof cotizarInscripcionSchema>;
 
@@ -308,6 +310,10 @@ export const consentimientosVigentesSchema = z.strictObject({
 });
 export type ConsentimientosVigentes = z.infer<typeof consentimientosVigentesSchema>;
 
+/** La consulta del `GET /api/a/{nombreCorto}/inscripcion` (010d, criterio 2): solo `mes`, opcional. Estricta. */
+export const consultaFormularioSchema = z.strictObject({ mes: mesSchema.optional() });
+export type ConsultaFormulario = z.infer<typeof consultaFormularioSchema>;
+
 /** `GET /api/a/{nombreCorto}/inscripcion`. */
 export const respuestaFormularioInscripcionSchema = z.strictObject({
   academia: z.strictObject({ nombre: z.string(), telefono: z.string().nullable() }),
@@ -318,6 +324,25 @@ export const respuestaFormularioInscripcionSchema = z.strictObject({
   consentimientos: consentimientosVigentesSchema,
 });
 export type RespuestaFormularioInscripcion = z.infer<typeof respuestaFormularioInscripcionSchema>;
+
+/**
+ * `GET /api/a/{nombreCorto}/inscripcion/meses` (010d, criterio 1): los meses para los que se puede inscribir hoy. `meses` trae siempre el mes en
+ * curso (desde hoy) y, con la ventana de renovación abierta, el siguiente (desde su día 1); `aperturaMesSiguiente` es el primer día de la ventana
+ * mientras no se abre, y `null` cuando está abierta.
+ */
+export const mesInscripcionSchema = z.strictObject({
+  mes: mesSchema,
+  fechaInicio: fechaSchema,
+  inscripcionHasta: fechaSchema,
+});
+export type MesInscripcion = z.infer<typeof mesInscripcionSchema>;
+
+export const mesesInscripcionSchema = z.strictObject({
+  hoy: fechaSchema,
+  meses: z.array(mesInscripcionSchema),
+  aperturaMesSiguiente: fechaSchema.nullable(),
+});
+export type MesesInscripcion = z.infer<typeof mesesInscripcionSchema>;
 
 /** `201` del envío: el código, el token (solo aquí y en el correo), el enlace de seguimiento y la cotización guardada. */
 export const respuestaInscripcionCreadaSchema = z.strictObject({

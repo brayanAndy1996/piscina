@@ -171,12 +171,12 @@ describe('validación por paso con los esquemas compartidos', () => {
 
     const conUna = campos({
       alumno: { ...campos().alumno, nivel: 'BASICO' },
-      inscripcion: { planId: PLAN.id, claseIds: [LUN_17.id] },
+      inscripcion: { planId: PLAN.id, claseIds: [LUN_17.id], mes: '' },
     });
     expect(validarPaso('plan', conUna, CONTEXTO)['inscripcion.claseIds']).toBe('Elige 2 clases, una por día.');
     const completo = campos({
       alumno: { ...campos().alumno, nivel: 'BASICO' },
-      inscripcion: { planId: PLAN.id, claseIds: [LUN_17.id, MIE_18.id] },
+      inscripcion: { planId: PLAN.id, claseIds: [LUN_17.id, MIE_18.id], mes: '' },
     });
     expect(validarPaso('plan', completo, CONTEXTO)).toEqual({});
   });

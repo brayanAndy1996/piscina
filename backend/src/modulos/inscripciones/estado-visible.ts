@@ -21,8 +21,8 @@ export interface DatosDelEstado {
  * cancelación y el cobro. En este orden:
  * 1. la fila `VENCIDA`, `CANCELADA` o `CONFIRMADA` es lo que dice;
  * 2. con un pago `PENDIENTE_VERIFICACION` en la matrícula, `EN_VERIFICACION`;
- * 3. con la matrícula `CANCELADA` y su último pago `RECHAZADO`: `PAGO_RECHAZADO` si «hoy» (Lima) todavía es del mes de la matrícula y
- *    `VENCIDA` si ya no;
+ * 3. con la matrícula `CANCELADA` y su último pago `RECHAZADO`: `PAGO_RECHAZADO` mientras el mes de «hoy» (Lima) no sea posterior al de la
+ *    matrícula (la de M+1 también, 010d, DT-9) y `VENCIDA` después;
  * 4. con la matrícula `CANCELADA`, `CANCELADA`;
  * 5. con la matrícula `RESERVADA` y la reserva vencida (`reserva_vence_en <= ahora`, también en el instante exacto), `VENCIDA`, aunque la
  *    fila aún no lo diga (se calcula al leer, sin tarea programada);
@@ -35,7 +35,10 @@ export function estadoVisible(datos: DatosDelEstado, ahora: Date): EstadoSolicit
   if (datos.estado_matricula === 'CANCELADA') {
     if (datos.estado_ultimo_pago === 'RECHAZADO') {
       const hoy = anioYMesEnLima(ahora);
-      return datos.anio === hoy.anio && datos.mes === hoy.mes ? 'PAGO_RECHAZADO' : 'VENCIDA';
+      // El mes de hoy no es posterior al de la matrícula (010d, DT-9): año y mes juntos, así un rechazo de M+1 sigue vivo en M.
+      const reintentable =
+        datos.anio !== undefined && datos.mes !== undefined && datos.anio * 12 + datos.mes >= hoy.anio * 12 + hoy.mes;
+      return reintentable ? 'PAGO_RECHAZADO' : 'VENCIDA';
     }
     return 'CANCELADA';
   }
@@ -81,7 +84,7 @@ export function estadoVisibleSql(ahora: Date): Fragmento {
       WHEN s.estado <> 'PENDIENTE_PAGO'::estado_solicitud THEN s.estado::text
       WHEN coalesce(up.hay_pendiente, false) THEN 'EN_VERIFICACION'
       WHEN m.estado = 'CANCELADA'::estado_matricula AND up.estado = 'RECHAZADO'::estado_pago THEN
-        (CASE WHEN m.anio = ${hoy.anio}::smallint AND m.mes = ${hoy.mes}::smallint THEN 'PAGO_RECHAZADO' ELSE 'VENCIDA' END)
+        (CASE WHEN (m.anio::int * 12 + m.mes::int) >= ${hoy.anio * 12 + hoy.mes}::int THEN 'PAGO_RECHAZADO' ELSE 'VENCIDA' END)
       WHEN m.estado = 'CANCELADA'::estado_matricula THEN 'CANCELADA'
       WHEN m.estado = 'RESERVADA'::estado_matricula AND m.reserva_vence_en IS NOT NULL
            AND m.reserva_vence_en <= ${ahora}::timestamptz THEN 'VENCIDA'

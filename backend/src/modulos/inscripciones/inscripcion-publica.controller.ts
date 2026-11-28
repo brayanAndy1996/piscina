@@ -1,14 +1,17 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
 import {
+  consultaFormularioSchema,
   type CotizarInscripcion,
   cotizarInscripcionSchema,
   type EnviarInscripcion,
   enviarInscripcionSchema,
+  type MesesInscripcion,
   type RespuestaCotizacion,
   type RespuestaFormularioInscripcion,
   type RespuestaInscripcionCreada,
 } from '@aquagestion/contratos';
 import type { Request } from 'express';
+import { parametroCrudo } from '../../comun/http/parametro-crudo';
 import { ValidarCon } from '../../comun/validacion';
 import type { AcademiaResuelta } from '../../infraestructura/prisma';
 import { ResolverAcademiaPipe } from '../academias/resolver-academia.pipe';
@@ -25,15 +28,30 @@ import { InscripcionesService } from './inscripciones.service';
 export class InscripcionPublicaController {
   private readonly validarCotizacion = new ValidarCon(cotizarInscripcionSchema);
   private readonly validarEnvio = new ValidarCon(enviarInscripcionSchema);
+  private readonly validarConsulta = new ValidarCon(consultaFormularioSchema);
 
   constructor(private readonly servicio: InscripcionesService) {}
 
-  /** Los datos del formulario: planes vigentes, clases con cupo y textos de consentimiento (criterio 6). */
+  /**
+   * Los meses para los que se puede inscribir hoy (010d, criterio 1). Se declara antes que las demás rutas del prefijo; no choca con ellas (`cotizacion`
+   * es un `POST`).
+   */
+  @Get('meses')
+  meses(@Param('nombreCorto', ResolverAcademiaPipe) academia: AcademiaResuelta): Promise<MesesInscripcion> {
+    return this.servicio.leerMeses(academia);
+  }
+
+  /**
+   * Los datos del formulario: planes vigentes, clases con cupo y textos de consentimiento (criterio 6). Con `?mes=` (010d, criterio 2) los de ese mes: solo
+   * se lee la clave `mes` (repetida o mal escrita, 400 en ese campo); las demás se ignoran (criterio 7 de 005). Se valida después de resolver la academia.
+   */
   @Get()
   formulario(
     @Param('nombreCorto', ResolverAcademiaPipe) academia: AcademiaResuelta,
+    @Req() solicitud: Request,
   ): Promise<RespuestaFormularioInscripcion> {
-    return this.servicio.leerFormulario(academia);
+    const { mes } = this.validarConsulta.transform({ mes: parametroCrudo(solicitud, 'mes') });
+    return this.servicio.leerFormulario(academia, mes);
   }
 
   /**

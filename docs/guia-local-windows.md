@@ -446,6 +446,20 @@ npm run dev
 - La 010c tiene dos migraciones nuevas. `20261127190000_cambio_horario` agrega a `matricula_clases` la columna `agregada_en`, con el momento en que entró cada clase, y da a la API permiso para borrar las clases que salen en un cambio de horario. `20261127200000_trigger_matricula_clases_bloqueo` ajusta el trigger que impide cambiar las clases de una matrícula cerrada. `npm run db:preparar` las aplica a las dos bases, la de desarrollo y la de pruebas.
 - No hay paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta. La semilla no cambia: repetir `npm run db:preparar` no duplica nada (ver "Probar el cambio de horario").
 
+## Después de traer la historia 010d
+
+Si ya tenías el proyecto con la historia 010c, haz estos pasos una vez, en la carpeta del proyecto:
+
+```powershell
+git pull
+docker compose up -d
+npm run dev
+```
+
+- La 010d no tiene migraciones, así que `npm run db:preparar` no hace falta. La semilla no cambia.
+- No hay paquetes ni variables nuevas: `npm ci` y `npm run env:completar` no hacen falta.
+- Lo que cambia en la pantalla es el formulario de inscripción: ver "Probar la inscripción al mes siguiente".
+
 ## Entrar a la plataforma y crear una academia de prueba
 
 Con la historia 001, la plataforma de academias está en **http://localhost:5173/plataforma/ingresar**. La usa el
@@ -591,14 +605,14 @@ probarla con los datos de ejemplo:
 8. Vuelve a **Configuración**, pulsa **Usar el valor por defecto** en "Intentos fallidos antes del bloqueo" (vuelve a 5)
    y después **Guardar cambios**.
 
-Estos son los campos de la pantalla, con su valor por defecto y su rango. Hoy solo tienen efecto el bloqueo y el teléfono;
-los demás se guardan y los usarán sus historias.
+Estos son los campos de la pantalla, con su valor por defecto y su rango. Cada campo lo usa la historia que indica la última
+columna.
 
 | Campo                                                | Por defecto  | Rango             | Qué hace hoy                                                                      |
 | ---------------------------------------------------- | ------------ | ----------------- | --------------------------------------------------------------------------------- |
-| Tolerancia de tardanza (minutos)                     | 10           | de 0 a 30         | Se guarda; la asistencia la usará (historia 009).                                  |
-| Días para marcar una mensualidad "por vencer" (días) | 5            | de 1 a 15         | Se guarda; las mensualidades la usarán (historia 010).                             |
-| Días de prioridad para renovar (días)                | 5            | de 1 a 15         | La renovación la usa (historia 010a): ver «Probar la renovación de la mensualidad».                                  |
+| Tolerancia de tardanza (minutos)                     | 10           | de 0 a 30         | La asistencia la usa desde la 009a para marcar puntual o tarde.                                  |
+| Días para marcar una mensualidad "por vencer" (días) | 5            | de 1 a 15         | La 010b la usa para el estado «Por vencer» de la mensualidad.                             |
+| Días de prioridad para renovar (días)                | 5            | de 1 a 15         | La renovación (historia 010a) y la inscripción al mes siguiente (010d) la usan: ver «Probar la renovación de la mensualidad» y «Probar la inscripción al mes siguiente».                                  |
 | Intentos fallidos antes del bloqueo (intentos)       | 5            | de 3 a 10         | Ya se aplica al ingreso y al cambio de contraseña.                                 |
 | Duración del bloqueo (minutos)                       | 15           | de 5 a 60         | Ya se aplica al ingreso y al cambio de contraseña.                                 |
 | Teléfono de la academia                              | Sin teléfono | 6 a 20 caracteres | Ya se ve en la cabecera del panel y en las páginas públicas (ingreso, inscripción y seguimiento). |
@@ -717,6 +731,59 @@ Otras comprobaciones:
   `npm run dev` no las quita: vencen solas, a las 24 horas o al fin del mes en Lima, lo que ocurra primero. Para empezar de
   cero, mira «Borrar la base de desarrollo y empezar de cero».
 - **Recepción.** Las peticiones que haces con tu sesión de administrador o de secretaria (por ejemplo, desde **Nueva inscripción**) no cuentan en los límites de esta sección ni en el de reservas sin pagar. Si cierras la sesión, vuelven a contar.
+
+## Probar la inscripción al mes siguiente
+
+Durante la ventana de renovación (los últimos días del mes, en la hora de Lima), la inscripción pública y **Nueva inscripción**
+de recepción ofrecen también el mes siguiente completo (historia 010d). Quien se inscribe para ese mes toma solo los lugares
+que no están apartados para los alumnos que renuevan (ver "Probar la renovación de la mensualidad"). Con `npm run dev`
+encendido:
+
+**Ver el paso «¿Desde cuándo?»**
+
+El paso solo aparece dentro de la ventana, que depende de la configuración de la academia. Hay dos formas de verlo:
+
+- Cambiar la ventana: entra como administrador de `delfines` (DNI `10000001`), abre **Configuración** (ver "Probar la
+  configuración de la academia"), pon **Días de prioridad para renovar** en 15 y pulsa **Guardar cambios**. La ventana pasa a
+  ser los últimos 15 días del mes (en noviembre, del 16 al 30). Con 1, es solo el último día. Vuelve a poner 5 cuando termines,
+  porque el valor es de toda la academia.
+- Probar en los últimos días del mes: con la configuración por defecto (5 días), la ventana son los últimos 5 días del mes (en
+  noviembre, del 26 al 30).
+
+Fuera de la ventana, el formulario es el de siempre: no hay paso **¿Desde cuándo?** y solo se inscribe para el mes en curso.
+
+**Recorrer la inscripción**
+
+1. Abre **http://localhost:5173/a/delfines/inscripcion**. El primer paso se llama **¿Desde cuándo?** (en la barra de pasos,
+   «1. ¿Desde cuándo?») y pregunta «Elige desde cuándo empiezas».
+2. Hay dos opciones, con el mismo peso:
+   - **Este mes, desde hoy**: «Noviembre de 2026. Empiezas hoy, 28/11, y pagas las clases que quedan del mes.»
+   - **Diciembre completo, desde el 1**: «Diciembre de 2026. Empiezas el 1/12 con el mes entero.»
+
+   Debajo dice «Puedes elegir diciembre hasta el 30/11.». Elige una y pulsa **Siguiente**.
+3. En **Plan y horario**, con diciembre elegido, aparece «Los planes y los cupos son de diciembre de 2026.». Solo se ofrecen
+   las clases con cupo libre para ese mes, que pueden ser menos que las de este mes.
+4. Completa los datos como en "Probar la inscripción pública". En **Resumen y confirmación**, la fila **Mes** dice «Diciembre de
+   2026, desde el 1/12» y el monto dice «Monto a pagar por diciembre de 2026».
+5. La página de confirmación dice «Tu inscripción es para: Diciembre de 2026, desde el 1/12.». Tu cupo queda reservado 24 horas,
+   también si la reserva cruza el día 1; la hora está en la misma pantalla.
+6. En el seguimiento (**Ver el seguimiento de mi solicitud**), la fila **Mes** dice lo mismo. En **Solicitudes de inscripción**,
+   la solicitud aparece como «Diciembre de 2026, desde el 1/12 (N clases)», y en **Pagos por verificar**, el pago tiene la misma
+   fila **Mes**.
+7. Para pagar con Yape o transferencia, sigue "Probar el pago con Yape o transferencia". Al aprobar el pago, la persona pasa a
+   alumno en ese momento, sin esperar al día 1, pero su asistencia empieza el 1 de diciembre: antes, el marcado responde «No
+   tiene una mensualidad vigente.». Si rechazas el pago, la solicitud queda en **Pago rechazado**, y se puede subir otro
+   comprobante mientras haya lugar.
+
+Otras comprobaciones:
+
+- `/inscripcion/meses` cuenta en las 60 lecturas por minuto de "Probar la inscripción pública", junto con el formulario.
+- Usa un DNI que no esté en `delfines`, por ejemplo `30000002`: la academia no deja inscribir dos veces el mismo DNI.
+- Las pruebas automáticas de la 010d corren con `npm test` (necesita PostgreSQL) y con `npm run test:unit`.
+
+**Todavía no está probado en la PC de Windows de Bryan.** La parte web se verificó con pruebas de componentes y una API
+simulada; el recorrido completo, con la base de datos y el navegador de esa PC, está pendiente. Es la deuda (c) de la 010d en
+`specs/backlog.md`.
 
 ## Probar la foto y el panel de solicitudes
 
