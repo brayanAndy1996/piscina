@@ -7,13 +7,14 @@ import { noEncontrado } from './errores';
 /**
  * Las direcciones bajo `/api` sin `HEAD`: la caja (006), los pagos (007b, DT-9 de 006), los alumnos y el carnet (008a, criterio 18; también la
  * renovación de la 010a, que cuelga de `/alumnos`), la asistencia (009a, criterio 18) y las mensualidades y las matrículas (010: el listado y el
- * cambio de horario de la 010b y la 010c).
+ * cambio de horario de la 010b y la 010c) y el panel del alumno (011, criterio 16).
  */
 export const PREFIJOS_SIN_HEAD: readonly string[] = [
   '/cajas',
   '/pagos',
   '/alumnos',
   '/mi-carnet',
+  '/mi-panel',
   '/asistencias',
   '/mensualidades',
   '/matriculas',
