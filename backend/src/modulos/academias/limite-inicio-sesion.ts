@@ -24,9 +24,10 @@ const MINUTO = 60_000;
 const HORA = 60 * MINUTO;
 
 export const LIMITES_PUBLICOS: readonly LimitePublico[] = Object.freeze([
-  // `GET /api/a/{nombreCorto}` y `GET /api/a/{nombreCorto}/inscripcion` comparten el mismo contador.
+  // `GET /api/a/{nombreCorto}`, `GET /api/a/{nombreCorto}/inscripcion` y `GET /api/a/{nombreCorto}/inscripcion/meses` (010d, DT-11) comparten el mismo contador.
   { nombre: 'lectura', metodo: 'GET', patron: /^\/[^/]+\/?$/i, ttl: MINUTO, limite: 60 },
   { nombre: 'lectura', metodo: 'GET', patron: /^\/[^/]+\/inscripcion\/?$/i, ttl: MINUTO, limite: 60 },
+  { nombre: 'lectura', metodo: 'GET', patron: /^\/[^/]+\/inscripcion\/meses\/?$/i, ttl: MINUTO, limite: 60 },
   { nombre: 'cotizacion', metodo: 'POST', patron: /^\/[^/]+\/inscripcion\/cotizacion\/?$/i, ttl: MINUTO, limite: 30 },
   { nombre: 'envio', metodo: 'POST', patron: /^\/[^/]+\/inscripcion\/?$/i, ttl: HORA, limite: 10 },
   { nombre: 'consulta', metodo: 'POST', patron: /^\/[^/]+\/solicitudes\/consulta\/?$/i, ttl: MINUTO, limite: 10 },

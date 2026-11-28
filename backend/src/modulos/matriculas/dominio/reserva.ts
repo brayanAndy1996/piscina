@@ -23,3 +23,14 @@ export function vencimientoDeReserva(ahora: Date): Date {
   const aLas24Horas = ahora.getTime() + RESERVA_SIN_PAGO_MS;
   return new Date(Math.min(aLas24Horas, finDelMesEnLima(ahora).getTime()));
 }
+
+/**
+ * El vencimiento de la reserva de una matrícula del mes `mes` (spec 010d, criterio 4; DR-1 y DR-12 de 005, DT-7 y DT-14): el menor entre `ahora` más
+ * 24 horas y las 23:59:59.999 de Lima del último día de **ese** mes, el de la matrícula. Para el mes en curso de `ahora` (M) es `vencimientoDeReserva(ahora)`;
+ * para el mes siguiente (M+1) son siempre las 24 horas, aunque crucen el día 1, porque el fin de M+1 queda a más de 24 horas. Pura, sin zona del proceso.
+ */
+export function vencimientoDeReservaDelMes(ahora: Date, mes: { anio: number; mes: number }): Date {
+  // El mes de 1 a 12, usado como índice de 0 a 11, ya es el mes siguiente (el 12 pasa a enero del año siguiente).
+  const finDelMes = new TZDate(mes.anio, mes.mes, 1, ZONA_LIMA).getTime() - 1;
+  return new Date(Math.min(ahora.getTime() + RESERVA_SIN_PAGO_MS, finDelMes));
+}
