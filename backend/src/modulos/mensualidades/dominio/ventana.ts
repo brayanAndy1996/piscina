@@ -25,6 +25,11 @@ export function mesSiguiente({ anio, mes }: MesDeCalendario): MesDeCalendario {
   return mes === 12 ? { anio: anio + 1, mes: 1 } : { anio, mes: mes + 1 };
 }
 
+/** El mes que le precede (enero → diciembre del año anterior). */
+export function mesAnterior({ anio, mes }: MesDeCalendario): MesDeCalendario {
+  return mes === 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 };
+}
+
 /** El mes de un texto `AAAA-MM` ya validado por el contrato. */
 export function mesDeTexto(texto: string): MesDeCalendario {
   const [anio = 0, mes = 0] = texto.split('-').map(Number);

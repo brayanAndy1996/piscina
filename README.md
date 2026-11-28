@@ -282,7 +282,7 @@ La historia 007 (la 007a y la 007b) está en [`specs/007-pagos/`](specs/007-pago
 - **El QR nace al pagar:** cuando un cliente pasa a alumno (cobro en efectivo, o aprobación de Yape o transferencia), recibe su QR, con 43 caracteres al azar y sin datos de la persona. El contenido del QR es `AQ1:` más ese token. Un cliente sin pago confirmado no tiene QR, y la base no lo acepta.
 - **Regenerar QR** (solo el administrador y la secretaria): pide un motivo de 3 a 200 caracteres. El QR anterior deja de valer en la misma operación, y un doble clic no genera dos QR nuevos. La regeneración queda en la auditoría de la academia.
 - **Foto pendiente:** un alumno sin foto muestra «Foto pendiente» en la búsqueda y en el carnet. La foto que se subió en la inscripción aparece en el carnet cuando la inscripción está confirmada.
-- **Lo que todavía no trae:** agregar o cambiar la foto desde el panel y con la cámara (008b), la lectura del QR en la entrada (009) y la asistencia del alumno en su panel (011). La web del carnet todavía no tiene pruebas E2E (deuda en `specs/backlog.md`).
+- **Lo que todavía no trae:** agregar o cambiar la foto desde el panel y con la cámara (008b) y la lectura del QR en la entrada (009). La asistencia del alumno en su panel la trae la 011. La web del carnet todavía no tiene pruebas E2E (deuda en `specs/backlog.md`).
 - **Datos de ejemplo:** la semilla no cambia. El carnet aparece cuando se confirma una solicitud de ejemplo: `AQ-SM0001` (cobro en efectivo) o `AQ-SM0003` (aprobación de su Yape).
 - **Cómo probarlo en tu PC:** con `npm run dev` encendido, el paso a paso está en la guía, en «Probar el carnet y el QR».
 
@@ -292,7 +292,7 @@ La historia 007 (la 007a y la 007b) está en [`specs/007-pagos/`](specs/007-pago
 - **Foto desde una solicitud** (`/panel/solicitudes`): en las tarjetas activas y confirmadas, **Agregar foto** abre el mismo diálogo. Las vencidas y las canceladas no tienen el botón. Por ahora, el botón dice «Agregar foto» aunque la solicitud ya tenga foto (deuda de la 008b).
 - **La cámara** necesita el permiso del navegador y un contexto seguro: `localhost` o HTTPS. Al cerrar el diálogo, al cambiar de opción o al salir de la página, la cámara se apaga. Sin permiso o sin cámara, la web dice «No se pudo usar la cámara. Revisa el permiso del navegador o elige un archivo.»
 - **Lo que se guarda:** la foto se recodifica como JPEG sin metadatos (EXIF, GPS, XMP y los demás) y se guarda en la carpeta de la academia dentro de `ALMACEN_DIRECTORIO`; la foto anterior se borra después de confirmar. Cada cambio queda en la auditoría de la academia, con quién lo hizo, cuándo y si fue desde el carnet o desde la solicitud.
-- **Lo que todavía no trae:** la lectura del QR en la entrada (009) y la asistencia del alumno en su panel (011). Las deudas de la 008b (dos medias, que se resuelven antes de producción; dos bajas, y los menores de la revisión) están en `specs/backlog.md`.
+- **Lo que todavía no trae:** la lectura del QR en la entrada (009). La asistencia del alumno en su panel la trae la 011. Las deudas de la 008b (dos medias, que se resuelven antes de producción; dos bajas, y los menores de la revisión) están en `specs/backlog.md`.
 - **Cómo probarlo en tu PC:** con `npm run dev` encendido, el paso a paso está en la guía, en «Probar la foto desde el panel».
 
 La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-carnet-qr/spec.md). Su estado está en
@@ -308,7 +308,7 @@ La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-
 - **Auditoría:** el marcado normal no se audita: la fila de la asistencia guarda quién, cuándo y cómo. `HEAD` sobre `/api/asistencias` responde 404.
 - **Dependencia nueva:** `html5-qrcode` (2.3.8) en la web, que se carga solo al encender la cámara. Migración `20261125190000_asistencias`.
 - **Datos de ejemplo:** la semilla no cambia. Para probarla hace falta una clase en curso (ver la guía).
-- **Lo que todavía no trae:** las faltas, el registro posterior y la consulta del mes, que son de la 009b (abajo); la asistencia en el panel del alumno (011); las recuperaciones (018), las clases particulares (016) y la asistencia en otro horario (020). Las dos fallas medias de la ronda 1 del ataque (R1-1 y R1-2) las corrige la 009b, y el resto de la deuda está en `specs/backlog.md`.
+- **Lo que todavía no trae:** las faltas, el registro posterior y la consulta del mes, que son de la 009b (abajo); las recuperaciones (018), las clases particulares (016) y la asistencia en otro horario (020). La asistencia del alumno en su panel la trae la 011. Las dos fallas medias de la ronda 1 del ataque (R1-1 y R1-2) las corrige la 009b, y el resto de la deuda está en `specs/backlog.md`.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria y pulsa **Asistencia**. El paso a paso está en la guía, en «Probar la asistencia».
 
 **009b · Faltas, registro posterior y consulta del mes** está unida a `main` (PR #19, 26/11/2026). Pasó las pruebas protegidas, el ataque adversarial (una ronda, sin fallas críticas ni altas), la revisión, el E2E, el lint, los tipos y el build. La suite completa la corre la integración continua del PR sobre la versión final, porque la última corrida local compartió la base con otra. Trae:
@@ -319,7 +319,7 @@ La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-
 - **Rechazos.** La API decide, y el diálogo muestra su motivo debajo del campo que falla, o arriba si no es de un campo: «La fecha debe ser de este mes y no puede ser posterior a hoy.», «La clase todavía no terminó: durante la clase se marca con el QR o de forma manual.», «La hora de llegada debe estar dentro de la clase.» o «El alumno ya tiene su asistencia registrada ese día.».
 - **Consulta del mes:** `GET /api/alumnos/{id}/asistencias?mes=AAAA-MM`, para el personal de recepción. No trae DNI ni motivos. El entrenador y el alumno reciben 403 por ahora.
 - **Dependencias y migraciones:** `@nestjs/schedule` en la API. Migraciones `20261126120000_inasistencias` y `20261126130000_inasistencias_unico_id`. La variable `TAREAS_PROGRAMADAS` (`activas` por defecto; `inactivas` apaga las tareas programadas, la de faltas y, desde la 010b, la del cierre de mes, como en las pruebas).
-- **Lo que todavía no trae:** la asistencia en el panel del alumno y del apoderado (011), la del entrenador (012), las recuperaciones (018), la asistencia en otro horario (020) y el día de cierre (017). La deuda de la 009b, con F1 a resolver antes de correr varias instancias, está en `specs/backlog.md`.
+- **Lo que todavía no trae:** la asistencia del entrenador (012), las recuperaciones (018), la asistencia en otro horario (020) y el día de cierre (017). La asistencia en el panel del alumno y del apoderado la trae la 011. La deuda de la 009b, con F1 a resolver antes de correr varias instancias, está en `specs/backlog.md`.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria, abre un alumno en **Alumnos y carnets** y baja a la sección **Asistencia**. El paso a paso está en la guía, en «Probar la asistencia».
 
 La historia 009 (la 009a y la 009b, unidas a `main`) está en [`specs/009-asistencia/`](specs/009-asistencia/spec.md). Su estado está en
@@ -352,7 +352,7 @@ La historia 009 (la 009a y la 009b, unidas a `main`) está en [`specs/009-asiste
 - **Lo que todavía no trae:** nada de lo que prometía la 010c. La inscripción pública al mes siguiente es de la 010d (abajo). La deuda de la 010c está en `specs/backlog.md`, en la nota de la 010.
 - **Cómo probarlo en tu PC:** con `npm run dev` encendido, abre un alumno con su mensualidad en **Alumnos y carnets** y pulsa **Cambiar horario** en la sección **Mensualidad**. El paso a paso está en la guía, en «Probar el cambio de horario».
 
-**010d · Inscripción pública al mes siguiente** está construida y pendiente de unir a `main` (28/11/2026). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas de ninguna severidad), la revisión (seis menores corregidos) y la suite completa (19 223 pasan, 0 fallan y 95 se saltan; el E2E, 6 de 6). Trae:
+**010d · Inscripción pública al mes siguiente** está unida a `main` (28/11/2026, PR #23). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas de ninguna severidad), la revisión (seis menores corregidos) y la suite completa (19 223 pasan, 0 fallan y 95 se saltan; el E2E, 6 de 6). Trae:
 
 - **El mes siguiente en el formulario público** (`/a/{nombreCorto}/inscripcion`, y **Nueva inscripción** de recepción): durante la ventana de renovación, el primer paso **¿Desde cuándo?** ofrece **Este mes, desde hoy** o el mes siguiente completo, desde el día 1. Fuera de la ventana, el formulario es el de siempre.
 - **Solo los lugares libres:** quien se inscribe para el mes siguiente toma los lugares que no están apartados para los alumnos que renuevan. El aforo nunca se pasa, aunque varias personas pidan el último lugar a la vez.
@@ -363,7 +363,17 @@ La historia 009 (la 009a y la 009b, unidas a `main`) está en [`specs/009-asiste
 - **Lo que todavía no trae:** nada de la 010. La deuda de la 010d está en `specs/backlog.md`, en la nota de la 010.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, abre http://localhost:5173/a/delfines/inscripcion en los últimos días del mes, o cambia **Días de prioridad para renovar** en **Configuración**. El paso a paso está en la guía, en «Probar la inscripción al mes siguiente». Todavía no está probada en la PC de Windows de Bryan.
 
-La historia 010 (la 010a, la 010b y la 010c, unidas a `main`; la 010d, construida y pendiente de unir) está en [`specs/010-mensualidades/`](specs/010-mensualidades/spec.md). Su estado está en [`specs/backlog.md`](specs/backlog.md).
+La historia 010 (la 010a, la 010b y la 010c, unidas a `main`; y la 010d en [`specs/010d-inscripcion-mes-siguiente/`](specs/010d-inscripcion-mes-siguiente/spec.md), todas unidas a `main`) está en [`specs/010-mensualidades/`](specs/010-mensualidades/spec.md). Su estado está en [`specs/backlog.md`](specs/backlog.md).
+
+**011 · Panel del alumno y apoderado** está construida y pendiente de unir a `main` (28/11/2026). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas críticas ni altas), la revisión (siete menores corregidos) y la suite completa (19 444 pasan, 0 fallan y 95 se saltan; el E2E, 7 de 7, y 10 de 10 con las pruebas del sembrador). Trae:
+
+- **El panel en `/panel`** para el alumno y su apoderado, que usan la misma cuenta: sus datos (nombres, DNI, edad y nivel), su mensualidad (estado, plan, días y horas de las clases, clases usadas y restantes, vencimiento y el mes siguiente) y su asistencia del mes, día por día, con **Puntual**, **Tarde** o **Falta**. El mes se elige entre los que tuvo mensualidad.
+- **Solo su alumno:** `GET /api/mi-panel` y `GET /api/mi-panel/asistencias` no reciben ningún id; el alumno sale de la sesión. Ningún id, parámetro, cuerpo o cabecera muestra a otro alumno ni a otra academia.
+- **Solo lectura:** el panel no tiene campos ni acciones de edición. Para corregir datos o cambiar el horario, recepción. La contraseña se cambia desde el inicio.
+- **Lo que no muestra:** la ficha médica, los datos del apoderado, el teléfono, el correo, la dirección ni la fecha de nacimiento (la edad sí). El carnet y el QR siguen en **Mi carnet**.
+- **Una migración:** `20261128100000_panel_alumno`, con un índice único en `alumnos` (una cuenta, un alumno por academia). Sin dependencias ni variables nuevas en la API ni en la web; `e2e/` declara `pg` y `@node-rs/argon2`, así que la actualización pide `npm ci`.
+- **Lo que todavía no trae:** el aviso de pago verificado o rechazado (HU-33, DR-5) y el nivel por estilo y la evolución (013). La deuda de la 011 está en `specs/backlog.md`: dos preguntas para Bryan sobre la mensualidad en verificación (B-1 y B-2), el tamaño del chunk de la web y las academias que dejan las E2E en la base de pruebas.
+- **Cómo probarla en tu PC:** con `npm run dev` encendido, cobra en efectivo la inscripción de **AQ-SM0001** y entra con el DNI `20000001`. El paso a paso está en la guía, en «Probar el panel del alumno». Todavía no está probada en la PC de Windows de Bryan.
 
 ## Cómo levantarlo en Windows
 

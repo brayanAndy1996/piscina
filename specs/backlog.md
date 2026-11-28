@@ -24,8 +24,8 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
 | 008a | Carnet digital y QR | En parte | ✅ |
 | 008b | Foto desde el panel y cámara | En parte | ✅ |
 | 009 | Asistencia y faltas | Sí | ✅ |
-| 010 | Mensualidades y renovación | En parte | 🟨 |
-| 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | ⬜ |
+| 010 | Mensualidades y renovación | En parte | ✅ |
+| 011 | Panel del alumno y apoderado: asistencia y nivel | Sí | 🟨 |
 
 ### Notas
 
@@ -316,9 +316,9 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     [`specs/010-mensualidades/`](010-mensualidades/spec.md). Cuatro entregas: 010a renovación con prioridad (criterios 1 a 23,
     44 y 45), unida a main el 26/11/2026, [PR #20](https://github.com/brayanAndy1996/piscina/pull/20), tras dos rondas adversariales (criterios 44 y 45 nuevos); 010b estados y cierre de
     mes (24 a 33), unida a main el 27/11/2026, [PR #21](https://github.com/brayanAndy1996/piscina/pull/21), tras una ronda adversarial sin críticas ni altas; 010c cambio de horario (34 a 43 y 46), unida a main el 27/11/2026, [PR #22](https://github.com/brayanAndy1996/piscina/pull/22), tras una ronda adversarial sin críticas
-    ni altas; y 010d inscripción pública al mes siguiente (DR-10), construida el 28/11/2026 y pendiente de unir, tras una
+    ni altas; y 010d inscripción pública al mes siguiente (DR-10), unida a main el 28/11/2026, [PR #23](https://github.com/brayanAndy1996/piscina/pull/23), tras una
     ronda adversarial sin fallas ([`specs/010d-inscripcion-mes-siguiente/`](010d-inscripcion-mes-siguiente/spec.md)). Con
-    la 010d, las cuatro entregas de la 010 quedan hechas; la 010 pasa a ✅ al unir la 010d.
+    la 010d unida, las cuatro entregas de la 010 están en main y la 010 queda ✅. Sigue la 011, en curso.
   - **Deuda de la 010a** (revisión y suite completa, 26/11/2026; las medias y las bajas no abren ronda, D-31; las rondas no
     dejaron deuda abierta, y el detalle está en [`rondas.md`](010-mensualidades/rondas.md)):
     - **Menores de la revisión** (T15):
@@ -409,6 +409,18 @@ Estados: ⬜ pendiente · 🟨 en curso · ✅ unida a `main`.
     La 010a lo cambió: la bandeja hace un `LEFT JOIN` y devuelve `solicitud: null` en las renovaciones (DT-10).
 - **011 · Panel del alumno y apoderado.** Datos, plan, horario, clases restantes, vencimiento, asistencia día por
   día con hora (puntual, tarde, falta), nivel actual; solo lectura salvo el cambio de contraseña (HU-06, D-08, D-14).
+  - Estado: spec aprobada por Bryan el 28/11/2026 (DR-1 a DR-5; DT-1 a DT-22), en
+    [`specs/011-panel-alumno/`](011-panel-alumno/spec.md). Construida el 28/11/2026 y pendiente de unir a `main`, tras una
+    ronda adversarial sin fallas críticas ni altas ([`rondas.md`](011-panel-alumno/rondas.md)). Suite completa: 19 444
+    pasan, 0 fallan y 95 se saltan; E2E, 7 de 7 (10 de 10 con las pruebas del sembrador).
+  - **Deuda de la 011** (revisión y suite completa, 28/11/2026; las medias y las bajas no abren ronda, D-31):
+    - **B-1 (pregunta para Bryan).** «Vence el 31/12» se muestra con la mensualidad del mes en curso en verificación: si el
+      Yape se rechaza, la familia ya vio la fecha. Propuesta: mostrar «Pago en verificación».
+    - **B-2 (pregunta para Bryan).** El resumen dice «te quedan N» por la matrícula en verificación, y «Mi asistencia» no
+      muestra clases restantes porque la matrícula es `null`. Propuesta: no mostrar restantes mientras la matrícula está
+      en verificación.
+    - **Rendimiento.** El chunk de la web pesa 1,15 MB, y Vite avisa de ello en el build.
+    - **E2E.** Las pruebas E2E dejan una academia por corrida en la base de pruebas.
 
 ## Fase 2: gestión académica
 

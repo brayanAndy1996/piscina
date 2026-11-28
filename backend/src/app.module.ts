@@ -21,6 +21,7 @@ import { ConfiguracionModule } from './modulos/configuracion';
 import { InscripcionesModule } from './modulos/inscripciones';
 import { MensualidadesModule, TareasMensualidadesModule } from './modulos/mensualidades';
 import { PagosModule } from './modulos/pagos';
+import { PanelAlumnoModule } from './modulos/panel-alumno';
 import { PlanesModule } from './modulos/planes';
 import { SaludModule } from './modulos/salud/salud.module';
 import { UsuariosModule } from './modulos/usuarios';
@@ -64,6 +65,7 @@ export class AppModule {
         AlumnosModule,
         AsistenciaModule,
         MensualidadesModule,
+        PanelAlumnoModule,
         SaludModule,
         // Las tareas programadas (las faltas de la 009b y el cierre de mes de la 010b) solo se cargan con `TAREAS_PROGRAMADAS=activas`; las pruebas las apagan (criterio 33).
         ...(entorno.TAREAS_PROGRAMADAS === 'activas'

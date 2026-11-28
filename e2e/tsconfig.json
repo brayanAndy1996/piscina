@@ -12,6 +12,7 @@
     "global-teardown.ts",
     "datos-e2e.ts",
     "ayudas-caja.ts",
+    "utilidades",
     "pruebas"
   ]
 }

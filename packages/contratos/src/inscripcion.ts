@@ -113,6 +113,18 @@ export function esMenorDeEdad(fechaNacimiento: string, hoy: string): boolean {
 }
 
 /**
+ * La edad en años cumplidos de una persona nacida en `fechaNacimiento` si hoy es `hoy` (spec 011, criterio 17; HU-06). Las dos son textos `AAAA-MM-DD`
+ * (la fecha de America/Lima: la API la calcula con el reloj) y se comparan como textos, sin `Date` ni zona del proceso. Cumple años el día de su
+ * cumpleaños; quien nació el 29 de febrero cumple el 1 de marzo en los años no bisiestos. Con la misma regla de `esMenorDeEdad`:
+ * `esMenorDeEdad(f, h) === (edadEnFecha(f, h) < 18)`.
+ */
+export function edadEnFecha(fechaNacimiento: string, hoy: string): number {
+  const [anio, mes, dia] = partesDeFecha(fechaNacimiento);
+  const [anioDeHoy] = partesDeFecha(hoy);
+  return anioDeHoy - anio - (hoy < fechaDeCumpleanios(anioDeHoy, mes, dia) ? 1 : 0);
+}
+
+/**
  * Comprueba que la fecha de nacimiento no sea futura ni de hace más de 100 años (criterio 12). Devuelve el mensaje del error, o `null` si
  * está bien. Lo usan la API (con la fecha de Lima) y la web (con la `hoy` que le da la API).
  */
