@@ -1,13 +1,13 @@
 # 011 · Tareas
 
-Cada tarea indica su rol y los criterios que cubre. Empiezan con la spec aprobada por Bryan (P1 a P5) y DT-1 a DT-16
-aceptadas por el orquestador. Los commits de pruebas protegidas dicen «Pruebas protegidas (011): … (en rojo)», y las
+Cada tarea indica su rol y los criterios que cubre. Empiezan con la spec aprobada por Bryan el 28/11/2026 (DR-1 a DR-5) y
+DT-1 a DT-16 aceptadas por el orquestador. Los commits de pruebas protegidas dicen «Pruebas protegidas (011): … (en rojo)», y las
 pruebas llevan al inicio `// spec: 011-panel-alumno (pruebas protegidas)` (DT-16).
 
 ## Aprobación
 
-- [ ] T0 · orquestador y responsable · Bryan responde P1 a P5; el orquestador acepta DT-1 a DT-16. Si alguna respuesta
-  no es la propuesta, el especificador ajusta los criterios 6, 8, 11, 12, 18 y «Fuera de alcance» antes de seguir.
+- [x] T0 · orquestador y responsable · Bryan responde P1 a P5; el orquestador acepta DT-1 a DT-16. **Hecho
+  (28/11/2026):** Bryan aprobó la propuesta de las cinco (DR-1 a DR-5 de `spec.md`) y el orquestador aceptó DT-1 a DT-16.
 
 ## Pruebas protegidas
 

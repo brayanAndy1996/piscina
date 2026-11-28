@@ -3,8 +3,8 @@
 Una sola entrega, de ruta crítica, sobre la 010 completa en `main`. Una migración pequeña (un índice único). Dos rutas de
 solo lectura nuevas y la página del alumno en `/panel`.
 
-**Estado:** borrador (28/11/2026), pendiente de las respuestas de Bryan a P1 a P5 y de que el orquestador acepte DT-1 a
-DT-16.
+**Estado:** aprobado el 28/11/2026. Bryan aceptó la propuesta de P1 a P5 (DR-1 a DR-5 de `spec.md`) y el orquestador
+aceptó DT-1 a DT-16 tal como están aquí. En pruebas protegidas.
 
 ## Módulos afectados
 
@@ -60,7 +60,7 @@ sale en la respuesta (DT-6).
 2. `leerConfiguracion(tx)` para `diasPorVencer`;
 3. `leerMensualidadesParaEstado(tx, [M−1, M, M+1], alumno.id)`: la misma sentencia del listado (pagadas y en verificación
    de alumnos `ALUMNO_ACTIVO` o `ALUMNO_VENCIDO`, con plan y clases). Un `INACTIVO` no devuelve filas y queda sin estado
-   (provisional de P4);
+   (DR-4);
 4. los meses con mensualidad pagada no posteriores a M: `SELECT DISTINCT anio, mes FROM matriculas WHERE academia_id = …
    AND alumno_id = … AND estado IN ('VIGENTE', 'FINALIZADA') AND anio * 12 + mes - 1 <= índice(M)`.
 
@@ -126,7 +126,7 @@ Cada DT la acepta el orquestador (decisiones técnicas menores, D-31).
 | DT-11 | El carnet y el QR siguen en `/panel/mi-carnet`; el panel enlaza «Mi carnet». | Mostrar el QR en el inicio del panel. | Lo construyó y lo aprobó la 008 (criterio 20); el resumen no relee la foto ni el QR. |
 | DT-12 | Sin foto en el resumen. | La foto como `data:` JPEG, como el carnet. | Otra lectura del almacén por cada visita al inicio, sin que HU-06 la pida; la foto está en «Mi carnet». |
 | DT-13 | La prueba del inventario de escrituras (criterio 15) recorre los manejadores con la metadata de Nest y luego los pide por HTTP. | Confiar en la matriz y en las pruebas de cada historia. | D-14 es una regla de todo el sistema; una escritura nueva que deje pasar al alumno debe romper una prueba protegida. |
-| DT-14 | `edadEnFecha` vive en `packages/contratos` junto a `esMenorDeEdad`, con la misma regla del 29 de febrero. | Calcular la edad en la web desde la fecha de nacimiento. | La fecha de nacimiento no sale de la API (P1) y la edad se calcula con el hoy de Lima del servidor. |
+| DT-14 | `edadEnFecha` vive en `packages/contratos` junto a `esMenorDeEdad`, con la misma regla del 29 de febrero. | Calcular la edad en la web desde la fecha de nacimiento. | La fecha de nacimiento no sale de la API (DR-1) y la edad se calcula con el hoy de Lima del servidor. |
 | DT-15 | Sin límite de peticiones propio. | Un límite por usuario en estas rutas. | Es el pendiente general de la API con sesión (DT-14 de 006), que se decide con el hosting. |
 | DT-16 | Marca de las pruebas protegidas: `// spec: 011-panel-alumno (pruebas protegidas)` y commits «Pruebas protegidas (011): …». | — | Tres dígitos sin letra: el verificador la reconoce (deuda (a) de la 010d). |
 

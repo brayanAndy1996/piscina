@@ -17,7 +17,8 @@
 - **Ruta crítica:** sí. Permisos y datos sensibles (el panel muestra solo a ese alumno, en solo lectura, con datos de
   menores, Ley 29733) y aislamiento entre academias y entre alumnos. Los cálculos que se muestran (estado de la
   mensualidad, edad) y las pantallas llevan prueba obligatoria, sin ser críticos.
-- **Estado:** borrador (28/11/2026), pendiente de la aprobación de Bryan (preguntas P1 a P5).
+- **Estado:** aprobada por Bryan el 28/11/2026, con la propuesta de las cinco preguntas (P1 a P5, que son DR-1 a DR-5
+  de esta spec, en «Resueltas»); el orquestador aceptó DT-1 a DT-16 del plan el mismo día. **En pruebas protegidas.**
 - **Entregas:** una sola (D-31: la spec cabe holgada en el tope de 800 líneas y tiene una sola superficie de ataque).
 
 ## Objetivo
@@ -120,7 +121,7 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
    matrículas, planes, clases o pagos), ni fecha de nacimiento, teléfono, correo, dirección, colegio, ficha médica,
    contacto de emergencia, apoderado, consentimientos, foto ni `foto_clave`, token o contenido del QR, código o token de
    seguimiento, montos, método de pago, número de operación, comprobante, motivo de rechazo, ajuste de monto ni su
-   motivo, entrenador de la clase, ni quién registró una asistencia o su motivo (provisional de P1). Prueba: las claves
+   motivo, entrenador de la clase, ni quién registró una asistencia o su motivo (DR-1). Prueba: las claves
    exactas del JSON para un adulto y para un menor con apoderado, ficha médica (alergias y enfermedades), consentimientos,
    foto, QR, un pago por Yape con número de operación, un ajuste de monto con motivo y un registro posterior con motivo,
    todos con textos únicos; ninguno de esos textos aparece en el cuerpo de las dos rutas del panel. _(crítico)_ (HU-06,
@@ -136,9 +137,9 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
    semana, hora de inicio y de fin de cada clase de la matrícula, también si la clase está inactiva, ordenadas por día y
    hora; después de un cambio de horario, las clases de ahora, 010c), `clasesUsadas`, `clasesTotales`,
    `clasesRestantes` (`clasesTotales − clasesUsadas`), `desde` y `hasta` (`fecha_inicio` y `fecha_fin`, `AAAA-MM-DD`;
-   `hasta` es la fecha de vencimiento que muestra la web, provisional de P3). `siguiente` lleva además `estado`
+   `hasta` es la fecha de vencimiento que muestra la web, DR-3). `siguiente` lleva además `estado`
    (`PAGADA` o `EN_VERIFICACION`). Un alumno `INACTIVO` recibe `estado: null`, `actual: null` y `siguiente: null`
-   (provisional de P4). _(prueba obligatoria)_ (HU-06, HU-11)
+   (DR-4). _(prueba obligatoria)_ (HU-06, HU-11)
 9. **Ejemplos de la mensualidad en Lima.** Con `RELOJ` fijo, `diasPorVencer` = 5 y el proceso en `TZ=Asia/Tokyo`, un
    alumno con noviembre de 2026 pagado (12 clases, 5 usadas):
    - el 25/11 a las 23:59:59.999 de Lima: `AL_DIA`, `actual` noviembre, 7 restantes, `hasta` `2026-11-30`;
@@ -159,7 +160,7 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
     y estado) coinciden con `estado`, `actual` y `siguiente` del panel; si no la trae, el panel da `estado: null`.
     _(prueba obligatoria)_ (regla de 010)
 11. **Meses de asistencia.** `mesesDeAsistencia` trae M siempre y, además, cada mes anterior a M en el que el alumno tuvo
-    una mensualidad pagada, del más nuevo al más viejo y sin repetir (provisional de P2). Nunca trae M+1 ni un mes
+    una mensualidad pagada, del más nuevo al más viejo y sin repetir (DR-2). Nunca trae M+1 ni un mes
     posterior, aunque ya esté pagado. _(prueba obligatoria)_ (D-08)
 
 ### D. Asistencia
@@ -270,7 +271,7 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
 - D-14: solo lectura; la única acción es cambiar la contraseña.
 - D-08 y D-13: asistencia día por día con la hora (puntual, tarde, falta), totales del mes y nivel actual en la Fase 1.
 - HU-06: los datos del perfil.
-- RN-21 y RNF-05: los datos médicos y de menores tienen acceso restringido (P1).
+- RN-21 y RNF-05: los datos médicos y de menores tienen acceso restringido (DR-1).
 - HU-11 y la regla de 010: el estado de la mensualidad sale de `estadoDeMensualidad`.
 - D-23 y D-28: cada academia aparte, aunque la persona sea la misma.
 
@@ -304,7 +305,7 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
   018; HU-35, HU-41), clases particulares (016), asistencia autorizada en otro horario (020): cuando lleguen, cada una
   suma lo suyo al panel.
 - Renovar o pagar desde el panel (DR-1 de 010, D-14) y editar cualquier dato (D-14).
-- Avisos de pago verificado o rechazado y de vencimiento dentro del panel (HU-33, prioridad C; P5).
+- Avisos de pago verificado o rechazado y de vencimiento dentro del panel (HU-33, prioridad C; DR-5).
 - Historial de pagos del alumno (ninguna HU lo pide).
 - Cuentas separadas para apoderados o un selector de hijos (RN-29, supuesto 6).
 - Exportar la asistencia (reportes, Fase 3) y la PWA (Fase 4).
@@ -333,12 +334,13 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
 - **Dos lecturas separadas:** el resumen y la asistencia son dos peticiones; una asistencia marcada entre las dos puede
   mostrar por un momento clases restantes distintas en cada sección. Se corrige al refrescar.
 - **Sin límite de peticiones propio:** como el resto de la API con sesión (DT-14 de 006).
-- **`INACTIVO` sin dueño:** ninguna historia pone todavía a un alumno en `INACTIVO`; el comportamiento del panel es el
-  provisional de P4 hasta que esa historia lo decida.
+- **`INACTIVO` sin dueño:** ninguna historia pone todavía a un alumno en `INACTIVO`; el panel aplica DR-4. Si la historia
+  que traiga ese estado necesita otra cosa (por ejemplo, impedir el ingreso), lo decide su especificación con Bryan.
 
 ## Decisiones
 
-- Las decisiones técnicas (DT-1 a DT-16) están en «Decisiones» de [`plan.md`](plan.md), cada una con su alternativa.
+- Las decisiones técnicas (DT-1 a DT-16) están en «Decisiones» de [`plan.md`](plan.md), cada una con su alternativa;
+  el orquestador las aceptó el 28/11/2026. Las decisiones del responsable (DR-1 a DR-5) están en «Resueltas».
 - Resuelto por los documentos, sin pregunta: el apoderado entra con la cuenta del alumno (RN-29, D-14); con varios hijos,
   una cuenta por hijo (supuesto 6 de 11.1); el nivel actual es `alumnos.nivel` (D-08, 9.1); el alumno vencido ve su
   panel (como su carnet, criterio 6 de 008) y renueva en recepción (DR-1 de 010); el carnet y el QR siguen en
@@ -346,23 +348,33 @@ hoy** (`RELOJ.ahora()` y su fecha en America/Lima), **mes en curso (M)**, **mes 
 
 ## Preguntas abiertas
 
-Para Bryan, en una sola tanda. Cada una tiene su propuesta y un valor provisional, que es la propuesta, para no bloquear.
+Las cinco preguntas de negocio (P1 a P5) quedaron resueltas: ver «Resueltas». No queda ninguna pregunta abierta.
 
-- **P1. ¿Qué datos personales ve la familia en el panel?** HU-06 pide nombre, DNI, nivel, edad, plan, horario, clases y
-  vencimiento. RN-21 deja los datos médicos a la secretaria, el administrador y el entrenador, y RNF-05 pide acceso
-  restringido para los datos de salud y de menores. **Propuesta:** solo lo de HU-06; ni ficha médica, ni datos del
-  apoderado, ni teléfono, correo o dirección. Para revisar o corregir esos datos, recepción. **Alternativa:** mostrar
-  también la ficha médica y los datos del apoderado, en solo lectura, para que la familia los revise.
-- **P2. ¿Desde cuándo se ve la asistencia?** **Propuesta:** el mes en curso y todos los meses anteriores en los que tuvo
-  mensualidad en la academia, con un selector (por defecto, el mes en curso). **Alternativa:** solo el mes en curso y el
-  anterior, como la ficha de recepción.
-- **P3. ¿Qué fecha es «vence el»?** **Propuesta:** el último día de la mensualidad que se muestra (por ejemplo, «Vence el
-  30/11»), y aparte «Diciembre: pagada» o «en verificación» si ya renovó. **Alternativa:** el último día de la última
-  mensualidad pagada («Vence el 31/12» si ya pagó diciembre).
-- **P4. ¿Qué ve un alumno inactivo?** Hoy ninguna historia pone a un alumno en «Inactivo», pero el estado existe (8.8).
-  **Propuesta:** entra y ve sus datos y su historial de asistencia, con «Tu cuenta está inactiva en la academia. Acércate
-  a recepción», sin estado de mensualidad. **Alternativa:** no puede entrar mientras esté inactivo.
-- **P5. ¿El panel avisa si un pago de renovación fue rechazado?** HU-33 (prioridad C) pide avisos de pago verificado o
-  rechazado, y D-08 dice que, si se hacen, van dentro del panel. Hoy el alumno ya recibe el correo del rechazo (DR-7 de
-  010) y el panel muestra «en verificación» mientras se revisa. **Propuesta:** no en la 011; queda para cuando se haga
-  la HU-33. **Alternativa:** mostrar en el panel el último pago rechazado con su motivo, hasta que pague otro.
+## Resueltas
+
+Decisiones del responsable. Bryan aprobó la propuesta de cada pregunta el 28/11/2026.
+
+- **DR-1 (pregunta P1). Qué datos personales ve la familia.** HU-06 pide nombre, DNI, nivel, edad, plan, horario,
+  clases y vencimiento; RN-21 deja los datos médicos a la secretaria, el administrador y el entrenador, y RNF-05 pide
+  acceso restringido para los datos de salud y de menores. **Decidido por Bryan el 28/11/2026 (la propuesta):** solo lo
+  de HU-06; ni ficha médica, ni datos del apoderado, ni teléfono, correo, dirección o fecha de nacimiento (la edad sí).
+  Para revisar o corregir esos datos, recepción. Alternativa descartada: mostrar también la ficha médica y los datos del
+  apoderado, en solo lectura, para que la familia los revise. _(Criterios 6, 7 y 18; DT-14.)_
+- **DR-2 (pregunta P2). Desde cuándo se ve la asistencia.** **Decidido por Bryan el 28/11/2026 (la propuesta):** el mes
+  en curso y todos los meses anteriores en los que tuvo mensualidad en la academia, con un selector (por defecto, el mes
+  en curso). Alternativa descartada: solo el mes en curso y el anterior, como la ficha de recepción. _(Criterios 11, 12 y
+  18.)_
+- **DR-3 (pregunta P3). Qué fecha es «vence el».** **Decidido por Bryan el 28/11/2026 (la propuesta):** el último día de
+  la mensualidad que se muestra (`actual.hasta`, por ejemplo «Vence el 30/11»), y aparte el estado del mes siguiente
+  («Diciembre: pagada» o «Diciembre: pago en verificación») si ya renovó. Alternativa descartada: el último día de la
+  última mensualidad pagada («Vence el 31/12» si ya pagó diciembre). _(Criterios 8 y 18.)_
+- **DR-4 (pregunta P4). Qué ve un alumno inactivo.** Hoy ninguna historia pone a un alumno en `INACTIVO`, pero el estado
+  existe (8.8). **Decidido por Bryan el 28/11/2026 (la propuesta):** entra y ve sus datos y su historial de asistencia,
+  con el aviso «Tu cuenta está inactiva en la academia. Acércate a recepción», sin estado de mensualidad (`estado`,
+  `actual` y `siguiente` en `null`). Alternativa descartada: no puede entrar mientras esté inactivo. _(Criterios 8 y 18;
+  «Riesgos aceptados».)_
+- **DR-5 (pregunta P5). Aviso del pago de renovación rechazado.** HU-33 (prioridad C) pide avisos de pago verificado o
+  rechazado, y D-08 dice que, si se hacen, van dentro del panel. **Decidido por Bryan el 28/11/2026 (la propuesta):** no
+  en la 011; el alumno ya recibe el correo del rechazo (DR-7 de 010) y el panel muestra «en verificación» mientras se
+  revisa. Queda para cuando se haga la HU-33. Alternativa descartada: mostrar en el panel el último pago rechazado con su
+  motivo, hasta que pague otro. _(«Fuera de alcance».)_
