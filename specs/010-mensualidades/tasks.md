@@ -143,8 +143,8 @@ las de la 010c, con la 010b unida.
 
 ## 010d · Inscripción pública al mes siguiente (DR-10)
 
-- [ ] T35 · especificador · Agregar a `spec.md` los criterios de la 010d, con la 010c unida, y sus tareas a este archivo
+- [x] T35 · especificador · Agregar a `spec.md` los criterios de la 010d, con la 010c unida, y sus tareas a este archivo
   _(Nota del 27/11/2026: por D-31 la 010d se especifica en su propia carpeta,
   [`specs/010d-inscripcion-mes-siguiente/`](../010d-inscripcion-mes-siguiente/spec.md), con su `spec.md`, `plan.md`,
-  `tasks.md` y `rondas.md`; DT-1 de su plan, decisión del orquestador. Esta spec no se reescribe. Se marca hecha al
-  cerrar la 010d, en su T17.)_
+  `tasks.md` y `rondas.md`; DT-1 de su plan, decisión del orquestador. Esta spec no se reescribe. **Hecha el 28/11/2026**,
+  al cerrar la 010d (su T17): sus criterios, tareas y rondas están en esa carpeta.)_

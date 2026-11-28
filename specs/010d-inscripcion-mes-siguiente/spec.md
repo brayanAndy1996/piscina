@@ -15,10 +15,11 @@
   010 («Cupo del mes siguiente»).
 - **Ruta crítica:** sí. Toca entradas públicas, aforo y reservas, cálculo del cobro, pagos, aislamiento entre academias,
   fechas en America/Lima y la tarea del cierre de mes. Las pantallas no son críticas.
-- **Estado:** aprobada por Bryan el 27/11/2026, con la propuesta de las cinco preguntas (P1 a P5, que son DR-1 a DR-5
-  de esta spec, en «Resueltas»); el orquestador aceptó DT-1 a DT-13 del plan el mismo día. **En pruebas protegidas.** Se
+- **Estado:** implementada el 28/11/2026; ronda adversarial 1 sin fallas; **pendiente de unir a `main`**. Aprobada por
+  Bryan el 27/11/2026, con la propuesta de las cinco preguntas (P1 a P5, que son DR-1 a DR-5 de esta spec, en
+  «Resueltas»); el orquestador aceptó DT-1 a DT-13 del plan el mismo día, y DT-14 y DT-15 el 27/11/2026 (`0ef31d6`). Se
   especifica en su propia carpeta (DT-1 del plan, decisión del orquestador por D-31: la spec 010 ya tiene 790 líneas).
-  T35 de `specs/010-mensualidades/tasks.md` apunta aquí.
+  T35 de `specs/010-mensualidades/tasks.md` apunta aquí. La ronda está en [`rondas.md`](rondas.md).
 
 ## Objetivo
 

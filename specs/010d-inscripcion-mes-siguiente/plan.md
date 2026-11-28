@@ -4,7 +4,8 @@ Entrega de la historia 010 (DR-10 de la [spec 010](../010-mensualidades/spec.md)
 (DT-1). Trabaja sobre la 010c (cambio de horario) ya implementada. Sin migraciones.
 
 **Estado:** aprobado el 27/11/2026. Bryan aceptó la propuesta de P1 a P5 (DR-1 a DR-5 de `spec.md`) y el orquestador
-aceptó DT-1 a DT-13 tal como están aquí. En pruebas protegidas.
+aceptó DT-1 a DT-13 tal como están aquí. Implementado el 28/11/2026; ronda adversarial 1 sin fallas (ver `tasks.md` y
+`rondas.md`).
 
 ## Módulos afectados
 

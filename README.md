@@ -90,8 +90,8 @@ asistencia, mensualidades, rendimiento de los alumnos y un panel de consulta par
   dice cuántos minutos faltan. El bloqueo del superadmin sigue fijo (5 intentos y 15 minutos).
 - **API:** `GET` y `PATCH /api/configuracion` (solo el administrador) y `GET /api/mi-academia` (nombre, nombre corto y
   teléfono de la academia de la sesión). Cada cambio guardado queda en la auditoría de la academia.
-- **Lo que todavía no usa nada:** los días por vencer y la prioridad de renovación se guardan,
-  pero la 010 todavía no los lee. La tolerancia de tardanza la lee la asistencia desde la 009a. El teléfono se ve en el panel y, desde la 005a, en las páginas públicas.
+- **Quién lo usa:** los días por vencer los lee la 010b, y la prioridad de renovación, la 010a y la 010d. La tolerancia de
+  tardanza la lee la asistencia desde la 009a. El teléfono se ve en el panel y, desde la 005a, en las páginas públicas.
 - **Datos de ejemplo:** la semilla deja un teléfono de ejemplo en `delfines`; `tiburones` queda con los valores por
   defecto.
 
@@ -311,7 +311,7 @@ La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-
 - **Lo que todavía no trae:** las faltas, el registro posterior y la consulta del mes, que son de la 009b (abajo); la asistencia en el panel del alumno (011); las recuperaciones (018), las clases particulares (016) y la asistencia en otro horario (020). Las dos fallas medias de la ronda 1 del ataque (R1-1 y R1-2) las corrige la 009b, y el resto de la deuda está en `specs/backlog.md`.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria y pulsa **Asistencia**. El paso a paso está en la guía, en «Probar la asistencia».
 
-**009b · Faltas, registro posterior y consulta del mes** está construida, lista para unirse a `main` (26/11/2026). Pasó las pruebas protegidas, el ataque adversarial (una ronda, sin fallas críticas ni altas), la revisión, el E2E, el lint, los tipos y el build. La suite completa la corre la integración continua del PR sobre la versión final, porque la última corrida local compartió la base con otra. Trae:
+**009b · Faltas, registro posterior y consulta del mes** está unida a `main` (PR #19, 26/11/2026). Pasó las pruebas protegidas, el ataque adversarial (una ronda, sin fallas críticas ni altas), la revisión, el E2E, el lint, los tipos y el build. La suite completa la corre la integración continua del PR sobre la versión final, porque la última corrida local compartió la base con otra. Trae:
 
 - **Faltas.** Al terminar cada clase, el sistema registra la falta de quien no vino, sin descontar clases. Lo hace una tarea programada cada 5 minutos y al encender la API, para las clases de ayer y de hoy, en la hora de Lima. No hay falta si el alumno marcó ese día, si ya no tenía clases o estaba inactivo, o si se inscribió o pagó después de que empezó la clase.
 - **Asistencia del mes** (`/panel/alumnos/{id}`, sección **Asistencia**, para el administrador y la secretaria): el mes en curso o el anterior, en **Mes**. Cada día de clase aparece con **Puntual**, **Tarde** o **Falta**, la clase («Clase de 18:00 a 19:00») y la hora de llegada («Llegó a las 18:05», con «· Manual» si se marcó buscando al alumno o «· Posterior» si se registró después). Arriba están los totales: **Puntual**, **Tarde**, **Faltas** y **Clases restantes**.
@@ -322,7 +322,7 @@ La historia 008 (la 008a y la 008b) está en [`specs/008-carnet-qr/`](specs/008-
 - **Lo que todavía no trae:** la asistencia en el panel del alumno y del apoderado (011), la del entrenador (012), las recuperaciones (018), la asistencia en otro horario (020) y el día de cierre (017). La deuda de la 009b, con F1 a resolver antes de correr varias instancias, está en `specs/backlog.md`.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria, abre un alumno en **Alumnos y carnets** y baja a la sección **Asistencia**. El paso a paso está en la guía, en «Probar la asistencia».
 
-La historia 009 (la 009a, unida, y la 009b, lista para unirse) está en [`specs/009-asistencia/`](specs/009-asistencia/spec.md). Su estado está en
+La historia 009 (la 009a y la 009b, unidas a `main`) está en [`specs/009-asistencia/`](specs/009-asistencia/spec.md). Su estado está en
 [`specs/backlog.md`](specs/backlog.md).
 
 **010a · Renovación con prioridad** está construida y unida a `main` (26/11/2026, PR #20). Pasó las pruebas protegidas, dos rondas del ataque adversarial (sin fallas críticas ni altas abiertas), la revisión, el E2E, el lint, los tipos y el build. La suite completa, que el tester corrió sobre `8f80c9a`, tuvo una sola falla intermitente por la carga de una prueba (está en la deuda); la integración continua del PR la corre sobre la versión final. Trae:
@@ -336,15 +336,34 @@ La historia 009 (la 009a, unida, y la 009b, lista para unirse) está en [`specs/
 - **Lo que todavía no trae:** el listado de estados y el cierre de mes (010b), el cambio de horario (010c), la inscripción pública al mes siguiente (010d) y los ajustes de monto (015). La deuda de la 010a (menores de la revisión y la prueba intermitente) está en `specs/backlog.md`.
 - **Cómo probarla en tu PC:** con `npm run dev` encendido, entra como la secretaria, abre un alumno en **Alumnos y carnets** y baja a **Mensualidad**. El paso a paso está en la guía, en «Probar la renovación de la mensualidad».
 
-**010c · Cambio de horario** está construida y pendiente de unir a `main` (27/11/2026). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas críticas ni altas abiertas), la revisión y la suite completa (18817 pasan, 0 fallan y 95 se saltan; el E2E, 6 de 6). Trae:
+**010b · Estados de la mensualidad y cierre de mes** está unida a `main` (PR #21, 27/11/2026). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas críticas ni altas abiertas), la revisión y la suite completa (18530 pasan y 0 fallan). Trae:
+
+- **El estado de cada mensualidad** en la ficha del alumno (sección **Mensualidad**): **Al día**, **Por vencer**, **Pendiente de verificación** o **Vencido**, según las mensualidades pagadas o en verificación.
+- **El listado de mensualidades** (`/panel/mensualidades`, para el administrador y la secretaria): filtros por mes, estado, plan, nivel y horario, y totales por estado. Muestra como mucho 500 filas; si hay más, lo avisa.
+- **El cierre de mes:** cada 15 minutos, las matrículas `VIGENTE` de un mes anterior pasan a `FINALIZADA`, y los alumnos sin mensualidad vigente del mes en curso pasan a `ALUMNO_VENCIDO`. Cada academia se cierra por su cuenta. No se audita, porque no hay un actor que lo haga; `TAREAS_PROGRAMADAS=inactivas` lo apaga, como las demás tareas programadas.
+- **Sin migraciones ni variables nuevas.**
+- **Lo que todavía no trae:** nada de la 010b. La deuda de la 010b está en `specs/backlog.md`, en la nota de la 010.
+
+**010c · Cambio de horario** está unida a `main` (PR #22, 27/11/2026). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas críticas ni altas abiertas), la revisión y la suite completa (18817 pasan, 0 fallan y 95 se saltan; el E2E, 6 de 6). Trae:
 
 - **Cambiar horario** (en **Alumnos y carnets**, en la sección **Mensualidad** de cada mensualidad, para el administrador y la secretaria): el diálogo **Cambiar horario** elige las clases del plan de esa mensualidad, pide un motivo de 3 a 200 caracteres y avisa si con el nuevo horario quedan menos clases de las que le faltan por usar. El cambio no cobra nada: el monto y las clases ya usadas no cambian.
 - **Las reglas del cambio:** solo la mensualidad del mes en curso o del siguiente, vigente o en verificación. Cada clase nueva necesita cupo, y el aforo nunca se pasa. Desde el cambio, la asistencia y las faltas siguen el horario nuevo: una clase agregada cuenta solo desde ese momento, y una quitada ya no se marca ni genera faltas. Cada cambio queda en la auditoría, con su motivo.
 - **Migraciones:** `20261127190000_cambio_horario` y `20261127200000_trigger_matricula_clases_bloqueo`. Un trigger impide cambiar las clases de una matrícula cerrada, también para el dueño de la base de datos. No hay dependencias ni variables nuevas.
-- **Lo que todavía no trae:** la inscripción pública al mes siguiente (010d). La deuda de la 010c está en `specs/backlog.md`, en la nota de la 010.
+- **Lo que todavía no trae:** nada de lo que prometía la 010c. La inscripción pública al mes siguiente es de la 010d (abajo). La deuda de la 010c está en `specs/backlog.md`, en la nota de la 010.
 - **Cómo probarlo en tu PC:** con `npm run dev` encendido, abre un alumno con su mensualidad en **Alumnos y carnets** y pulsa **Cambiar horario** en la sección **Mensualidad**. El paso a paso está en la guía, en «Probar el cambio de horario».
 
-La historia 010 (la 010a y la 010b, unidas a `main`; la 010c, pendiente de unir; y la 010d, por especificar) está en [`specs/010-mensualidades/`](specs/010-mensualidades/spec.md). Su estado está en [`specs/backlog.md`](specs/backlog.md).
+**010d · Inscripción pública al mes siguiente** está construida y pendiente de unir a `main` (28/11/2026). Pasó las pruebas protegidas, una ronda del ataque adversarial (sin fallas de ninguna severidad), la revisión (seis menores corregidos) y la suite completa (19 223 pasan, 0 fallan y 95 se saltan; el E2E, 6 de 6). Trae:
+
+- **El mes siguiente en el formulario público** (`/a/{nombreCorto}/inscripcion`, y **Nueva inscripción** de recepción): durante la ventana de renovación, el primer paso **¿Desde cuándo?** ofrece **Este mes, desde hoy** o el mes siguiente completo, desde el día 1. Fuera de la ventana, el formulario es el de siempre.
+- **Solo los lugares libres:** quien se inscribe para el mes siguiente toma los lugares que no están apartados para los alumnos que renuevan. El aforo nunca se pasa, aunque varias personas pidan el último lugar a la vez.
+- **Reserva y pago:** el cupo queda reservado 24 horas, también si la reserva cruza el día 1. Al aprobar el pago, la persona pasa a alumno de inmediato, con la mensualidad del mes siguiente, que empieza el día 1. Un pago rechazado deja la solicitud en **Pago rechazado** y permite subir otro comprobante, si todavía hay lugar.
+- **El mes en el seguimiento, en las solicitudes y en la bandeja:** «Diciembre de 2026, desde el 1/12», cuando el mes todavía no empieza.
+- **El cierre de mes** no vence a quien ya pagó el mes siguiente.
+- **Sin migraciones, paquetes ni variables nuevas.**
+- **Lo que todavía no trae:** nada de la 010. La deuda de la 010d está en `specs/backlog.md`, en la nota de la 010.
+- **Cómo probarla en tu PC:** con `npm run dev` encendido, abre http://localhost:5173/a/delfines/inscripcion en los últimos días del mes, o cambia **Días de prioridad para renovar** en **Configuración**. El paso a paso está en la guía, en «Probar la inscripción al mes siguiente». Todavía no está probada en la PC de Windows de Bryan.
+
+La historia 010 (la 010a, la 010b y la 010c, unidas a `main`; la 010d, construida y pendiente de unir) está en [`specs/010-mensualidades/`](specs/010-mensualidades/spec.md). Su estado está en [`specs/backlog.md`](specs/backlog.md).
 
 ## Cómo levantarlo en Windows
 
