@@ -14,6 +14,6 @@ import { MarcadoService } from './marcado.service';
   imports: [AuditoriaModule],
   controllers: [AsistenciaController, ConsultaDeAsistenciaController],
   providers: [MarcadoService, FaltasService, ConsultaDeAsistenciaService],
-  exports: [MarcadoService, FaltasService],
+  exports: [MarcadoService, FaltasService, ConsultaDeAsistenciaService],
 })
 export class AsistenciaModule {}

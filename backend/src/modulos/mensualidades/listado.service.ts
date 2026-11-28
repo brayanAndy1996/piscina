@@ -1,6 +1,5 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import type {
-  ClaseDeMensualidad,
   ConsultaListadoMensualidades,
   EstadoMensualidad,
   FilaDelListadoMensualidades,
@@ -11,37 +10,23 @@ import { PinoLogger } from 'nestjs-pino';
 import { ErrorNegocio } from '../../comun/errores';
 import { hoyEnLima } from '../../comun/fechas';
 import { MENSAJE_SOLICITUD_INVALIDA } from '../../comun/validacion';
-import { BaseDatos, type TransaccionAcademia } from '../../infraestructura/prisma';
+import { BaseDatos } from '../../infraestructura/prisma';
 import { RELOJ, type Reloj } from '../../infraestructura/reloj';
 import { leerConfiguracion } from '../configuracion/lectura';
 import { estadoDeMensualidad } from './dominio/estado';
-import { type MesDeCalendario, mesDeTexto, mesSiguiente, textoDelMes } from './dominio/ventana';
+import { type MesDeCalendario, mesDeTexto, mesSiguiente } from './dominio/ventana';
+import {
+  agruparPorMes,
+  claveDelMes,
+  type FilaDeMatricula,
+  indiceDelMes,
+  leerMensualidadesParaEstado,
+} from './lectura-de-estado';
 
 /** Como mucho estas filas por respuesta (DT-14); `hayMas` avisa si había más. */
 export const MAXIMO_DE_FILAS_DEL_LISTADO = 500;
 
 const COMPARADOR = new Intl.Collator('es');
-
-interface FilaDeMatricula {
-  alumno_id: string;
-  nombres: string;
-  apellidos: string;
-  nivel: FilaDelListadoMensualidades['nivel'];
-  anio: number;
-  mes: number;
-  pagada: boolean;
-  plan_id: string;
-  plan_nombre: string;
-  clases_usadas: number;
-  clases_totales: number;
-  clases: ClaseDeMensualidad[];
-}
-
-/** Lo que el listado guarda de la mensualidad de un alumno en un mes: la pagada o, si no hay, la que está en verificación. */
-interface MensualidadDeUnMes {
-  readonly pagada: boolean;
-  readonly fila: FilaDeMatricula;
-}
 
 interface Candidato {
   readonly fila: FilaDelListadoMensualidades;
@@ -49,10 +34,9 @@ interface Candidato {
   readonly claseIds: readonly string[];
 }
 
-const clave = (mes: MesDeCalendario): string => textoDelMes(mes);
+const clave = claveDelMes;
 const mesAnterior = ({ anio, mes }: MesDeCalendario): MesDeCalendario =>
   mes === 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 };
-const indiceDelMes = ({ anio, mes }: MesDeCalendario): number => anio * 12 + mes - 1;
 
 /**
  * El listado de mensualidades (spec 010b, criterios 25 y 26; HU-11, DT-14). Una sola lectura de la academia de la sesión, sin bloqueos, sin escribir y
@@ -86,20 +70,12 @@ export class ListadoDeMensualidadesService {
 
       const anterior = mesAnterior(pedido);
       const siguiente = mesSiguiente(pedido);
-      const filas = await this.leerMatriculas(
+      const filas = await leerMensualidadesParaEstado(
         tx,
         esElMesEnCurso ? [anterior, pedido, siguiente] : [anterior, pedido],
         consulta.alumnoId?.toLowerCase() ?? null,
       );
-      const porAlumno = new Map<string, Map<string, MensualidadDeUnMes>>();
-      for (const fila of filas) {
-        const meses = porAlumno.get(fila.alumno_id) ?? new Map<string, MensualidadDeUnMes>();
-        porAlumno.set(fila.alumno_id, meses);
-        const mes = clave({ anio: fila.anio, mes: fila.mes });
-        const previa = meses.get(mes);
-        // La pagada manda sobre la que está en verificación del mismo mes (criterio 24).
-        if (previa === undefined || (fila.pagada && !previa.pagada)) meses.set(mes, { pagada: fila.pagada, fila });
-      }
+      const porAlumno = agruparPorMes(filas);
 
       const candidatos: (Candidato & { estado: EstadoMensualidad })[] = [];
       for (const [alumnoId, meses] of porAlumno) {
@@ -167,41 +143,6 @@ export class ListadoDeMensualidadesService {
         hayMas: mostradas.length > MAXIMO_DE_FILAS_DEL_LISTADO,
       };
     });
-  }
-
-  /**
-   * Las matrículas de los meses dados de alumnos `ALUMNO_ACTIVO` o `ALUMNO_VENCIDO`: las pagadas (`VIGENTE` o `FINALIZADA`) y las que están en verificación
-   * (`RESERVADA` sin vencimiento y con un pago `PENDIENTE_VERIFICACION`, RN-28), con el plan y las clases. Con `alumnoId`, solo las de ese alumno (el filtro va en
-   * la sentencia, no en memoria). Siempre con `academia_id`; sin bloqueos.
-   */
-  private async leerMatriculas(
-    tx: TransaccionAcademia,
-    meses: readonly MesDeCalendario[],
-    alumnoId: string | null,
-  ): Promise<FilaDeMatricula[]> {
-    const indices = meses.map(indiceDelMes);
-    return tx.cliente.$queryRaw<FilaDeMatricula[]>`
-      SELECT a.id::text AS alumno_id, a.nombres, a.apellidos, a.nivel::text AS nivel,
-             m.anio::int AS anio, m.mes::int AS mes, (m.estado IN ('VIGENTE', 'FINALIZADA')) AS pagada,
-             m.plan_id::text AS plan_id, p.nombre AS plan_nombre, m.clases_usadas::int AS clases_usadas, m.clases_totales::int AS clases_totales,
-             COALESCE((
-               SELECT json_agg(json_build_object('id', c.id::text, 'diaSemana', c.dia_semana::int,
-                                                 'horaInicio', to_char(c.hora_inicio, 'HH24:MI'), 'horaFin', to_char(c.hora_fin, 'HH24:MI'))
-                              ORDER BY c.dia_semana, c.hora_inicio, c.id)
-                 FROM matricula_clases mc
-                 JOIN clases c ON c.academia_id = mc.academia_id AND c.id = mc.clase_id
-                WHERE mc.academia_id = m.academia_id AND mc.matricula_id = m.id), '[]'::json) AS clases
-        FROM matriculas m
-        JOIN alumnos a ON a.academia_id = m.academia_id AND a.id = m.alumno_id AND a.estado IN ('ALUMNO_ACTIVO', 'ALUMNO_VENCIDO')
-        JOIN planes p ON p.academia_id = m.academia_id AND p.id = m.plan_id
-       WHERE m.academia_id = ${tx.academiaId}::uuid
-         AND (${alumnoId}::uuid IS NULL OR m.alumno_id = ${alumnoId}::uuid)
-         AND (m.anio::int * 12 + m.mes::int - 1) = ANY(${indices}::int[])
-         AND (m.estado IN ('VIGENTE', 'FINALIZADA')
-              OR (m.estado = 'RESERVADA' AND m.reserva_vence_en IS NULL
-                  AND EXISTS (SELECT 1 FROM pagos pg
-                               WHERE pg.academia_id = m.academia_id AND pg.matricula_id = m.id AND pg.estado = 'PENDIENTE_VERIFICACION')))
-       ORDER BY m.id`;
   }
 }
 
