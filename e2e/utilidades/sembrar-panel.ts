@@ -1,6 +1,7 @@
-import { randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
 import pg from 'pg';
+import { dniInventado } from '../ayudas-caja';
 
 // Sembrador mínimo de la E2E del panel del alumno (historia 011, criterio 20). Escribe por SQL, como dueño de las tablas, en la base de pruebas
 // (la misma de `global-setup.ts`; nunca la de desarrollo): una academia propia, dos hermanos con su cuenta `ALUMNO` (clave inicial igual al DNI y
@@ -49,10 +50,6 @@ const ultimoDia = (anio: number, mes: number) => new Date(Date.UTC(anio, mes, 0)
 function diaIso(anio: number, mes: number, dia: number): number {
   const js = new Date(Date.UTC(anio, mes - 1, dia)).getUTCDay();
   return js === 0 ? 7 : js;
-}
-
-function dniInventado(): string {
-  return String(randomInt(30_000_000, 99_999_999));
 }
 
 function urlDelDueno(): string {

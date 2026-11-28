@@ -34,7 +34,7 @@ export function textoDeClases(
 }
 
 /** «Diciembre» a partir de `2026-12`. */
-export function nombreDeMes(mes: string): string {
+function nombreDeMes(mes: string): string {
   return capitalizar(nombreDelMes(mes));
 }
 
