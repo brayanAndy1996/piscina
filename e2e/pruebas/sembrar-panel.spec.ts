@@ -28,6 +28,7 @@ async function leerLoSembrado(nombreCorto: string): Promise<FilaSembrada[]> {
     const id = academia.rows[0]?.id;
     if (!id) throw new Error('No se sembró la academia.');
     await cliente.query("SELECT set_config('app.academia_id', $1, true)", [id]);
+    // Filtro explícito por academia: en la CI el dueño de la base es superusuario y no pasa por RLS.
     const { rows } = await cliente.query<FilaSembrada>(
       `SELECT al.dni AS alumno_dni,
               to_char(make_date(m.anio::int, m.mes::int, 1), 'YYYY-MM') AS matricula_anio_mes,
@@ -37,7 +38,9 @@ async function leerLoSembrado(nombreCorto: string): Promise<FilaSembrada[]> {
          FROM alumnos al
          JOIN matriculas m ON m.academia_id = al.academia_id AND m.alumno_id = al.id
          LEFT JOIN asistencias a ON a.academia_id = m.academia_id AND a.matricula_id = m.id
+        WHERE al.academia_id = $1::uuid
         ORDER BY al.dni, matricula_anio_mes`,
+      [id],
     );
     await cliente.query('ROLLBACK');
     return rows;
