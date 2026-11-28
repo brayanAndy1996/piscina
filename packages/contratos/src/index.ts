@@ -258,6 +258,7 @@ export {
   cotizacionSchema,
   cotizarInscripcionSchema,
   enviarInscripcionSchema,
+  edadEnFecha,
   esMenorDeEdad,
   GRADOS_COLEGIO,
   mesesInscripcionSchema,
@@ -486,3 +487,11 @@ export {
   type RespuestaCotizacionRenovacion,
   type RespuestaRenovacion,
 } from './mensualidades';
+export {
+  mensualidadDelPanelSchema,
+  miPanelSchema,
+  siguienteDelPanelSchema,
+  type MensualidadDelPanel,
+  type MiPanel,
+  type SiguienteDelPanel,
+} from './panel-alumno';
