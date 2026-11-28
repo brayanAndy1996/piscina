@@ -20,8 +20,7 @@ export function finDelMesEnLima(ahora: Date): Date {
 
 /** El menor entre `ahora` más 24 horas y el fin del mes de Lima de `ahora`. Nunca es anterior a `ahora`. */
 export function vencimientoDeReserva(ahora: Date): Date {
-  const aLas24Horas = ahora.getTime() + RESERVA_SIN_PAGO_MS;
-  return new Date(Math.min(aLas24Horas, finDelMesEnLima(ahora).getTime()));
+  return vencimientoDeReservaDelMes(ahora, anioYMesEnLima(ahora));
 }
 
 /**
