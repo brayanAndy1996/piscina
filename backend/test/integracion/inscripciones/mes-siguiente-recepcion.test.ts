@@ -4,7 +4,7 @@ import { ejecutarComo } from '../../utilidades/base-datos';
 import { cerrarCajaDePrueba, leerCajas } from '../../utilidades/caja';
 import { conFilaRetenida } from '../../utilidades/carreras';
 import { leerAuditoriaDeAcademia } from '../../utilidades/datos';
-import { en } from '../../utilidades/escenario-asistencia';
+import { en, enLima } from '../../utilidades/escenario-asistencia';
 import { type AppCarnet, crearAppCarnet } from '../../utilidades/escenario-carnet';
 import {
   cuerpoParaMes,
@@ -243,9 +243,12 @@ describe('la inscripción desde recepción para el mes siguiente (criterio 15)',
       expect([sinCaja.status, codigoDeRespuesta(sinCaja)], sinCaja.texto).toEqual([409, 'SIN_CAJA_ABIERTA']);
       expect(await instantaneaDeLaAcademia(A())).toBe(antes);
 
-      await abrirCajaPara(esc, INSTANTE.viernes27);
+      // Una caja por día: se abre la del día siguiente (28/11 a las 09:00, antes de que venza la reserva de las 10:00) y el cobro se hace ese día.
+      const el28 = enLima('2026-11-28', '09:00');
+      const cookiesDel28 = en(ctx, esc, el28);
+      await abrirCajaPara(esc, el28);
       const conCaja = await ctx.http.post(rutaCobro(solicitud?.id as string), cuerpoCobro('120.00'), {
-        cookie: cookies.secretaria,
+        cookie: cookiesDel28.secretaria,
       });
 
       expect(conCaja.status, conCaja.texto).toBe(201);

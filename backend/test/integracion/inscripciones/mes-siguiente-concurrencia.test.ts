@@ -86,8 +86,8 @@ describe('el último cupo simultáneo y el orden de bloqueos del envío para el 
     const todas = [esc.e.lunes, esc.e.miercoles, esc.e.viernes];
     return [...todas].sort((a, b) => (a.id < b.id ? -1 : 1));
   };
-  const envioConClases = async (clases: { id: string; dia_semana: number; hora_inicio: string }[]) =>
-    enviarPublico(ctx, await cuerpoParaMes(esc.e, MES_DIC, { clases }));
+  const envioConClases = async (clases: { id: string; dia_semana: number; hora_inicio: string }[], cookie?: string) =>
+    enviarPublico(ctx, await cuerpoParaMes(esc.e, MES_DIC, { clases }), { cookie });
 
   describe('criterio 7: dos envíos públicos por el último lugar libre de c', () => {
     it.each([
@@ -347,7 +347,10 @@ describe('el último cupo simultáneo y el orden de bloqueos del envío para el 
       const ordenes = [ids, [...ids].reverse(), [ids[1], ids[2], ids[0]], [ids[2], ids[0], ids[1]]] as (typeof ids)[];
 
       const respuestas = await Promise.all(
-        Array.from({ length: 10 }, (_, i) => envioConClases(ordenes[i % ordenes.length] as typeof ids)),
+        // Desde recepción: el límite de 5 reservas sin pagar por conexión no cuenta a recepción (criterio 14) y los diez envíos salen de la misma conexión.
+        Array.from({ length: 10 }, (_, i) =>
+          envioConClases(ordenes[i % ordenes.length] as typeof ids, cookies.secretaria),
+        ),
       );
 
       sinErroresDelServidor(respuestas);
@@ -419,8 +422,10 @@ describe('el último cupo simultáneo y el orden de bloqueos del envío para el 
             porId.map((c) => c.id),
           );
 
+        // Se retiene la clase de menor id entre las que ENTRAN: el viernes se queda en la matrícula y el cambio no lo bloquea (sus clases son las que salen y las que entran).
+        const entran = [esc.e.lunes17, esc.miercoles19].sort((a, b) => (a.id < b.id ? -1 : 1));
         const resultados = await cruce(
-          [porId[0]?.id as string],
+          [entran[0]?.id as string],
           ordenar(() => envioConClases([...porId].reverse()), cambio),
         );
 
